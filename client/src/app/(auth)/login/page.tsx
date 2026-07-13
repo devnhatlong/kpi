@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import { Target, TrendingUp, Award } from "lucide-react";
 import { LoginForm } from "@/features/auth/components/LoginForm";
 
 export const metadata: Metadata = {
@@ -14,17 +13,17 @@ export const metadata: Metadata = {
 
 const stats = [
   {
-    icon: Target,
+    title: "VẬN HÀNH",
     label: "Số liệu chấm điểm theo đúng quy định, quy trình của ngành.",
     value: "CHÍNH XÁC",
   },
   {
-    icon: TrendingUp,
+    title: "CÁCH ĐÁNH GIÁ",
     label: "Mỗi cán bộ, chiến sĩ đều thấy rõ căn cứ chấm điểm của mình.",
     value: "MINH BẠCH",
   },
   {
-    icon: Award,
+    title: "TỐC ĐỘ CẬP NHẬT",
     label: "Tiến độ nhiệm vụ được ghi nhận theo thời gian thực.",
     value: "KỊP THỜI",
   },
@@ -71,10 +70,12 @@ export default function LoginPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 max-w-5xl">
-            {stats.map(({ icon: Icon, label, value }) => (
-              <div key={label} className="rounded-3xl bg-white/10 backdrop-blur-md p-7 ring-1 ring-white/15 min-h-[220px] flex flex-col justify-between">
+            {stats.map(({ title, label, value }) => (
+              <div key={title} className="rounded-3xl bg-white/10 backdrop-blur-md p-7 ring-1 ring-white/15 min-h-[220px] flex flex-col justify-between">
                 <div>
-                  <Icon className="h-7 w-7 mb-4 opacity-90" />
+                  <div className="text-xs font-semibold uppercase tracking-[0.35em] text-white/70 mb-4">
+                    {title}
+                  </div>
                   <div className="font-display text-4xl font-bold leading-tight">{value}</div>
                 </div>
                 <div className="text-sm text-white/70 mt-4">{label}</div>
