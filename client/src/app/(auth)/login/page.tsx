@@ -1,3 +1,125 @@
+import type { Metadata } from "next";
+import Image from "next/image";
+import { Target, TrendingUp, Award } from "lucide-react";
+import { LoginForm } from "@/features/auth/components/LoginForm";
+
+export const metadata: Metadata = {
+  title: "Đăng nhập - Hệ thống chấm điểm KPI Công an tỉnh Lâm Đồng",
+  description: "Đăng nhập vào hệ thống chấm điểm và quản lý KPI cán bộ, chiến sĩ Công an tỉnh Lâm Đồng.",
+  openGraph: {
+    title: "Đăng nhập - KPI Công an tỉnh Lâm Đồng",
+    description: "Hệ thống chấm điểm KPI dành cho lực lượng Công an tỉnh Lâm Đồng.",
+  },
+};
+
+const stats = [
+  {
+    icon: Target,
+    label: "Số liệu chấm điểm theo đúng quy định, quy trình của ngành.",
+    value: "CHÍNH XÁC",
+  },
+  {
+    icon: TrendingUp,
+    label: "Mỗi cán bộ, chiến sĩ đều thấy rõ căn cứ chấm điểm của mình.",
+    value: "MINH BẠCH",
+  },
+  {
+    icon: Award,
+    label: "Tiến độ nhiệm vụ được ghi nhận theo thời gian thực.",
+    value: "KỊP THỜI",
+  },
+];
+
 export default function LoginPage() {
-  return <div>Login</div>;
+  return (
+    <div className="min-h-screen grid lg:grid-cols-2 bg-background">
+      <aside
+        className="relative hidden lg:flex flex-col justify-between p-12 text-primary-foreground overflow-hidden"
+        style={{ background: "var(--gradient-hero)" }}
+      >
+        <div
+          className="absolute inset-0 opacity-70 mix-blend-overlay pointer-events-none"
+          style={{ background: "var(--gradient-mesh)" }}
+        />
+        <div className="relative flex items-center gap-3">
+          <div className="relative h-14 w-14">
+            <Image
+              src="/icons/logo_cand.png"
+              alt="Logo Công an"
+              fill
+              sizes="56px"
+              className="object-contain"
+            />
+          </div>
+          <div>
+            <div className="font-display text-xl font-bold">KPI Công an Lâm Đồng</div>
+            <div className="text-xs text-white/75">Hệ thống chấm điểm hiệu suất công tác</div>
+          </div>
+        </div>
+
+        <div className="relative space-y-8">
+          <div>
+            <h1 className="font-display text-5xl font-bold leading-[1.05]">
+              Đánh giá hiệu suất
+              <br />
+              <span className="text-white/80">công tác <span className="text-yellow-100">minh bạch.</span></span>
+            </h1>
+            <p className="mt-5 text-white/80 max-w-xl">
+              Nền tảng chấm điểm KPI giúp cán bộ, chiến sĩ Công an tỉnh Lâm Đồng theo dõi tiến độ
+              nhiệm vụ và nâng cao hiệu quả công tác theo thời gian thực.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 max-w-5xl">
+            {stats.map(({ icon: Icon, label, value }) => (
+              <div key={label} className="rounded-3xl bg-white/10 backdrop-blur-md p-7 ring-1 ring-white/15 min-h-[220px] flex flex-col justify-between">
+                <div>
+                  <Icon className="h-7 w-7 mb-4 opacity-90" />
+                  <div className="font-display text-4xl font-bold leading-tight">{value}</div>
+                </div>
+                <div className="text-sm text-white/70 mt-4">{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="relative text-sm text-white/70">
+          © {new Date().getFullYear()} Công an tỉnh Lâm Đồng.
+        </div>
+      </aside>
+
+      <main className="flex items-center justify-center px-6 py-12 sm:px-10">
+        <div className="w-full max-w-md">
+          <div className="lg:hidden flex items-center gap-3 mb-8">
+            <div className="relative h-14 w-14 rounded-xl overflow-hidden ring-1 ring-primary/20">
+              <Image
+                src="/icons/logo_cand.png"
+                alt="Logo Công an"
+                fill
+                sizes="56px"
+                className="object-contain"
+              />
+            </div>
+            <div className="font-display text-xl font-bold">KPI Công an Lâm Đồng</div>
+          </div>
+
+          <div className="mb-8">
+            <h2 className="font-display text-3xl font-bold text-foreground">Chào mừng trở lại</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Đăng nhập để chấm điểm và quản lý KPI cán bộ, chiến sĩ.
+            </p>
+          </div>
+
+          <LoginForm />
+
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            Chưa có tài khoản?{" "}
+            <a href="#" className="font-medium text-primary hover:underline">
+              Liên hệ quản trị viên
+            </a>
+          </p>
+        </div>
+      </main>
+    </div>
+  );
 }

@@ -1,63 +1,110 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+@import "tailwindcss";
+@source "..";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-glow: var(--primary-glow);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-display: var(--font-display), ui-sans-serif, system-ui;
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui;
 }
 
-* {
-  margin: 0;
-  padding: 0;
+:root {
+  --radius: 0.875rem;
+
+  --background: oklch(0.98 0.006 250);
+  --foreground: oklch(0.20 0.04 260);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.20 0.04 260);
+
+  --primary: oklch(0.55 0.20 265);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-glow: oklch(0.72 0.18 255);
+
+  --secondary: oklch(0.96 0.02 250);
+  --secondary-foreground: oklch(0.25 0.05 265);
+
+  --muted: oklch(0.96 0.01 250);
+  --muted-foreground: oklch(0.50 0.03 260);
+
+  --accent: oklch(0.72 0.18 175);
+  --accent-foreground: oklch(0.15 0.04 260);
+
+  --destructive: oklch(0.60 0.24 27);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.90 0.01 255);
+  --input: oklch(0.94 0.01 255);
+  --ring: oklch(0.55 0.20 265);
+
+  --gradient-hero: linear-gradient(135deg, oklch(0.55 0.20 265), oklch(0.72 0.18 175));
+  --gradient-mesh: radial-gradient(at 20% 20%, oklch(0.72 0.18 255 / 0.35), transparent 55%),
+    radial-gradient(at 80% 30%, oklch(0.72 0.18 175 / 0.30), transparent 55%),
+    radial-gradient(at 50% 90%, oklch(0.55 0.20 265 / 0.25), transparent 60%);
+  --shadow-elegant: 0 20px 60px -25px oklch(0.55 0.20 265 / 0.45);
+  --shadow-card: 0 10px 40px -20px oklch(0.30 0.06 260 / 0.25);
 }
 
-html {
-  font-size: 62.5%;
-  -webkit-text-size-adjust: 100%;
+.dark {
+  --background: oklch(0.16 0.03 260);
+  --foreground: oklch(0.97 0.01 250);
+  --card: oklch(0.22 0.04 262);
+  --card-foreground: oklch(0.97 0.01 250);
+  --primary: oklch(0.72 0.18 255);
+  --primary-foreground: oklch(0.15 0.04 260);
+  --primary-glow: oklch(0.80 0.15 220);
+  --secondary: oklch(0.26 0.04 262);
+  --secondary-foreground: oklch(0.97 0.01 250);
+  --muted: oklch(0.26 0.04 262);
+  --muted-foreground: oklch(0.72 0.03 258);
+  --accent: oklch(0.75 0.16 175);
+  --accent-foreground: oklch(0.15 0.04 260);
+  --destructive: oklch(0.70 0.19 22);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.72 0.18 255);
 }
 
-html,
-body {
-  height: 100%;
-}
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
 
-body {
-  font-size: 1.6rem;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-}
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
 
-img,
-picture,
-video,
-canvas,
-svg {
-  display: block;
-  max-width: 100%;
-}
-
-input,
-button,
-textarea,
-select {
-  font: inherit;
-}
-
-button {
-  cursor: pointer;
-  background: none;
-  border: none;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-ul,
-ol {
-  list-style: none;
-}
-
-table {
-  border-collapse: collapse;
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
 }
