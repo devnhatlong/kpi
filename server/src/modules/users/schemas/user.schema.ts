@@ -1,61 +1,108 @@
+// src/modules/users/schemas/user.schema.ts
+
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 
-/**
- * Một lần gán vai trò cho user:
- *  - roleCode: vai trò (tham chiếu Role.code)
- *  - scopeDepartmentId: node phạm vi trên cây đơn vị.
- *      null  = phạm vi toàn hệ thống (dành cho SUPER_ADMIN)
- *      <id>  = chỉ trong nhánh con cháu của đơn vị này
- *
- * Dùng mảng để hỗ trợ kiêm nhiệm (một người admin nhiều đơn vị,
- * hoặc vừa là manager phòng này vừa staff phòng khác).
- */
-export interface RoleAssignment {
-    roleCode: string;
-    scopeDepartmentId: Types.ObjectId | null;
-}
+import {
+    RoleAssignment,
+    RoleAssignmentSchema,
+} from './role-assignment.schema';
 
 export type UserDocument = HydratedDocument<User>;
 
-@Schema({ timestamps: true, collection: 'users' })
+@Schema({
+    timestamps: true
+})
 export class User {
-    @Prop({ required: true, unique: true, trim: true })
+    @Prop({
+        required: true,
+        unique: true,
+        trim: true,
+        lowercase: true,
+    })
     username!: string;
 
-    @Prop({ required: true })
+    /**
+     * Chỉ lưu mật khẩu đã hash.
+     *
+     * select: false giúp mặc định không trả passwordHash
+     * khi thực hiện find/findOne.
+     */
+    @Prop({
+        required: true,
+        select: false,
+    })
     passwordHash!: string;
 
-    @Prop({ required: true, trim: true })
+    @Prop({
+        required: true,
+        trim: true,
+    })
     fullName!: string;
 
-    @Prop({ unique: true, sparse: true, lowercase: true, trim: true })
-    email!: string;
-
-    @Prop({ trim: true })
-    phone!: string;
-
-    // Đơn vị công tác của user
-    @Prop({ type: Types.ObjectId, ref: 'Department', index: true })
-    departmentId!: Types.ObjectId;
-
-    // Vai trò + phạm vi
     @Prop({
-        type: [
-            {
-                roleCode: { type: String, required: true },
-                scopeDepartmentId: { type: Types.ObjectId, ref: 'Department', default: null },
-            },
-        ],
+        unique: true,
+        sparse: true,
+        lowercase: true,
+        trim: true,
+    })
+    email?: string;
+
+    @Prop({
+        trim: true,
+    })
+    phone?: string;
+
+    /**
+     * Đơn vị công tác chính của người dùng.
+     */
+    @Prop({
+        type: Types.ObjectId,
+        ref: 'Department',
+        index: true,
+    })
+    departmentId?: Types.ObjectId;
+
+    /**
+     * Một người có thể kiêm nhiệm nhiều vai trò,
+     * tại nhiều phạm vi đơn vị khác nhau.
+     */
+    @Prop({
+        type: [RoleAssignmentSchema],
         default: [],
     })
     roleAssignments!: RoleAssignment[];
 
-    @Prop({ default: true })
+    @Prop({
+        default: true,
+        index: true,
+    })
     isActive!: boolean;
 
-    @Prop()
-    lastLoginAt!: Date;
+    @Prop({
+        type: Date,
+        default: null,
+    })
+    lastLoginAt?: Date | null;
+
+    createdAt?: Date;
+    updatedAt?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+/**
+ * Tìm người dùng theo đơn vị và trạng thái.
+ */
+UserSchema.index({
+    departmentId: 1,
+    isActive: 1,
+});
+
+/**
+ * Tìm người có một vai trò cụ thể trong phạm vi đơn vị.
+ */
+UserSchema.index({
+    'roleAssignments.roleCode': 1,
+    'roleAssignments.scopeDepartmentId': 1,
+});
