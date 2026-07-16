@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsersModule } from './modules/users/users.module';
 import { RequestTimingMiddleware } from './common/middlewares/request-timing.middleware';
+import { AuthsModule } from './modules/auths/auths.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { RequestTimingMiddleware } from './common/middlewares/request-timing.mid
       inject: [ConfigService],
     }),
     UsersModule,
+    AuthsModule,
   ],
 })
 export class AppModule implements NestModule {

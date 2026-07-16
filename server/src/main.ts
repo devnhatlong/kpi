@@ -1,14 +1,17 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { TransformInterceptor } from './common/interceptors/response.intercepter';
 import { AllExceptionFilter } from './common/filters/all-exception.filter';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const logger = new Logger('Bootstrap');
   const configService = app.get(ConfigService);
-  const port = configService.get('port');
+
+  app.setGlobalPrefix('api/v1');
 
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true, // xóa các filed dư thừa không có trong DTO
@@ -22,7 +25,19 @@ async function bootstrap() {
   app.useGlobalInterceptors(new TransformInterceptor());
   app.useGlobalFilters(new AllExceptionFilter());
 
-  app.setGlobalPrefix('api/v1');
+  // Swagger setup
+  const config = new DocumentBuilder()
+    .setTitle('KPI API')
+    .setDescription('Xây dựng API cho hệ thống quản lý và chấm điểm KPI')
+    .setVersion('1.0')
+    .build();
+  const documentFactory = () => SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/v1/docs', app, documentFactory);
+
+  const port = configService.get('port');
+
+  logger.log(`Server is running on port ${port}`);
+  logger.log(`Swagger docs available at http://localhost:${port}/api/v1/docs`);
 
   await app.listen(port);
 }

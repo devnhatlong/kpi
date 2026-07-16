@@ -1,14 +1,13 @@
-import { Type } from "class-transformer";
-import { IsNotEmpty, IsNumber, IsString } from "class-validator";
+
+import { NumberNotRequired, StringRequired } from "src/common/decorators";
 
 export class CreateUserDto {
-    @IsString({ message: 'Name phải là một chuỗi' })
+    @StringRequired('Name')
     name!: string;
 
-    @IsNumber({}, { message: 'Age phải là một số' },)
-    @Type(() => Number)
+    @NumberNotRequired
     age!: number;
 
-    @IsNotEmpty()
+    @StringRequired('Password')
     password!: string;
 }
