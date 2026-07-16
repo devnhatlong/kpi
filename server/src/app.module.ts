@@ -3,7 +3,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsersModule } from './modules/users/users.module';
 import { RequestTimingMiddleware } from './common/middlewares/request-timing.middleware';
-import { AuthsModule } from './modules/auths/auths.module';
+import { AuthsModule } from './modules/auth/auth.module';
+import { DepartmentsModule } from './modules/departments/departments.module';
 
 @Module({
   imports: [
@@ -16,6 +17,8 @@ import { AuthsModule } from './modules/auths/auths.module';
       inject: [ConfigService],
     }),
     UsersModule,
+    AuthsModule,
+    DepartmentsModule,
     AuthsModule,
   ],
 })

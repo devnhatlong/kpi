@@ -9,42 +9,42 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }
 
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'Người dùng được tạo thành công.',
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: 'Yêu cầu không hợp lệ.',
-  })
-  @ApiResponse({
-    status: HttpStatus.CONFLICT,
-    description: 'Người dùng đã tồn tại.',
-  })
-  @ApiOperation({ summary: 'Tạo người dùng mới (Admin only)' })
-  @ApiBearerAuth()
-  @Post()
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
-  }
+  // @ApiResponse({
+  //   status: HttpStatus.CREATED,
+  //   description: 'Người dùng được tạo thành công.',
+  // })
+  // @ApiResponse({
+  //   status: HttpStatus.BAD_REQUEST,
+  //   description: 'Yêu cầu không hợp lệ.',
+  // })
+  // @ApiResponse({
+  //   status: HttpStatus.CONFLICT,
+  //   description: 'Người dùng đã tồn tại.',
+  // })
+  // @ApiOperation({ summary: 'Tạo người dùng mới (Admin only)' })
+  // @ApiBearerAuth()
+  // @Post()
+  // create(@Body() createUserDto: CreateUserDto) {
+  //   return this.usersService.create(createUserDto);
+  // }
 
-  @Get()
-  findAll() {
-    return this.usersService.findAll();
-  }
+  // @Get()
+  // findAll() {
+  //   return this.usersService.findAll();
+  // }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(+id);
-  }
+  // @Get(':id')
+  // findOne(@Param('id') id: string) {
+  //   return this.usersService.findOne(+id);
+  // }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(+id, updateUserDto);
-  }
+  // @Patch(':id')
+  // update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+  //   return this.usersService.update(+id, updateUserDto);
+  // }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.usersService.remove(+id);
-  }
+  // @Delete(':id')
+  // remove(@Param('id') id: string) {
+  //   return this.usersService.remove(+id);
+  // }
 }

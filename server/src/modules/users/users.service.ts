@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectModel } from '@nestjs/mongoose';
@@ -9,28 +9,20 @@ import { Model } from 'mongoose';
 export class UsersService {
   constructor(@InjectModel(User.name) private userModel: Model<User>) { }
 
-  async create(createUserDto: CreateUserDto) {
-    const createdUser = new this.userModel(createUserDto);
-    return createdUser.save();
+  async findByEmail(email: string) {
+    return await this.userModel.findOne({ where: { email } })
   }
 
-  async findAll() {
-    const rs = await this.userModel.find();
-    return {
-      data: rs,
-      message: 'Lấy danh sách người dùng thành công',
-    };
+  async validateUser(email: string, password: string) {
+    const alreadyExist = await this.findByEmail(email);
+
+    if (!alreadyExist) throw new BadRequestException("Tài khoản hoặc mật khẩu không đúng");
+
+    console.log({ alreadyExist });
+    return { message: 'Login' }
   }
 
-  async findOne(id: number) {
-    return `This action returns a #${id} user`;
-  }
+  async register() {
 
-  async update(id: number, updateUserDto: UpdateUserDto) {
-    return `This action updates a #${id} user`;
-  }
-
-  async remove(id: number) {
-    return `This action removes a #${id} user`;
   }
 }
