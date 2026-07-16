@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsersModule } from './modules/users/users.module';
+import { RequestTimingMiddleware } from './common/middlewares/request-timing.middleware';
 
 @Module({
   imports: [
@@ -16,4 +17,10 @@ import { UsersModule } from './modules/users/users.module';
     UsersModule,
   ],
 })
-export class AppModule { }
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(RequestTimingMiddleware)
+      .forRoutes({ path: '*', method: RequestMethod.ALL });
+  }
+}
