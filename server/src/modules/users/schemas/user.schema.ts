@@ -1,6 +1,7 @@
 
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import { Helper } from 'src/ultis/helpers';
 
 export type UserDocument = HydratedDocument<User>;
 
@@ -10,16 +11,22 @@ export class User {
     name!: string;
 
     @Prop()
-    age!: number;
+    email!: string;
 
     @Prop()
     password!: string;
 
     @Prop()
-    email!: string;
+    role!: string;
 
     @Prop()
-    role!: string;
+    slug!: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+UserSchema.pre<UserDocument>('validate', function () {
+    if (this.name) {
+        this.slug = Helper.slugify(this.name);
+    }
+});
