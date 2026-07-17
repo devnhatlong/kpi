@@ -43,9 +43,6 @@ export class DepartmentLevel {
         index: true,
     })
     isActive!: boolean;
-
-    createdAt?: Date;
-    updatedAt?: Date;
 }
 
 export const DepartmentLevelSchema = SchemaFactory.createForClass(DepartmentLevel);

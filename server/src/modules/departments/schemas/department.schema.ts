@@ -101,9 +101,6 @@ export class Department {
         index: true,
     })
     isActive!: boolean;
-
-    createdAt?: Date;
-    updatedAt?: Date;
 }
 
 export const DepartmentSchema = SchemaFactory.createForClass(Department);

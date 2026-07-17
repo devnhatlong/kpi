@@ -52,9 +52,6 @@ export class Role {
         index: true,
     })
     isActive!: boolean;
-
-    createdAt?: Date;
-    updatedAt?: Date;
 }
 
 export const RoleSchema = SchemaFactory.createForClass(Role);
