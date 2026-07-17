@@ -2,6 +2,7 @@
 
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
+import * as bcrypt from 'bcrypt';
 
 import {
     RoleAssignment,
@@ -11,7 +12,7 @@ import {
 export type UserDocument = HydratedDocument<User>;
 
 @Schema({
-    timestamps: true
+    timestamps: true,
 })
 export class User {
     @Prop({
@@ -25,14 +26,14 @@ export class User {
     /**
      * Chỉ lưu mật khẩu đã hash.
      *
-     * select: false giúp mặc định không trả passwordHash
+     * select: false giúp mặc định không trả password
      * khi thực hiện find/findOne.
      */
     @Prop({
         required: true,
         select: false,
     })
-    passwordHash!: string;
+    password!: string;
 
     @Prop({
         required: true,
@@ -85,11 +86,38 @@ export class User {
     })
     lastLoginAt?: Date | null;
 
-    createdAt?: Date;
-    updatedAt?: Date;
+    /** So sánh mật khẩu plain với hash đã lưu. */
+    comparePassword!: (password: string) => Promise<boolean>;
+
+    /** Trả về object user không kèm password. */
+    toSafeObject!: () => Omit<User, 'password' | 'comparePassword' | 'toSafeObject'>;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+UserSchema.methods.comparePassword = async function (
+    this: UserDocument,
+    password: string,
+): Promise<boolean> {
+    return bcrypt.compareSync(password, this.password);
+};
+
+UserSchema.methods.toSafeObject = function (this: UserDocument) {
+    const obj = this.toObject();
+    const { password: _, ...rest } = obj;
+    return rest;
+};
+
+/**
+ * Hash password trước khi lưu nếu field bị thay đổi.
+ */
+UserSchema.pre('save', async function () {
+    if (!this.isModified('password')) {
+        return;
+    }
+
+    this.password = await bcrypt.hash(this.password, 10);
+});
 
 /**
  * Tìm người dùng theo đơn vị và trạng thái.
