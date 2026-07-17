@@ -1,38 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Post, UseGuards, Req } from '@nestjs/common';
 import { AuthsService } from './auth.service';
-import { LoginDto } from './dto/login-auth.dto';
+import { LocalAuthGuard } from './guards/local-auth.guard';
 
-@Controller('auths')
+@Controller('auth')
 export class AuthsController {
   constructor(private readonly authsService: AuthsService) { }
 
+  @UseGuards(LocalAuthGuard)
   @Post('login')
-  async login(@Body() loginDto: LoginDto) {
-    return await this.authsService.validateUser(loginDto.email, loginDto.password);
+  login(@Req() req: any) {
+    return this.authsService.login(req.user);
   }
-
-  // @Post()
-  // create(@Body() createAuthDto: CreateAuthDto) {
-  //   return this.authsService.create(createAuthDto);
-  // }
-
-  // @Get()
-  // findAll() {
-  //   return this.authsService.findAll();
-  // }
-
-  // @Get(':id')
-  // findOne(@Param('id') id: string) {
-  //   return this.authsService.findOne(+id);
-  // }
-
-  // @Patch(':id')
-  // update(@Param('id') id: string, @Body() updateAuthDto: UpdateAuthDto) {
-  //   return this.authsService.update(+id, updateAuthDto);
-  // }
-
-  // @Delete(':id')
-  // remove(@Param('id') id: string) {
-  //   return this.authsService.remove(+id);
-  // }
 }

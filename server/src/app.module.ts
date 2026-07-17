@@ -8,6 +8,8 @@ import { DepartmentsModule } from './modules/departments/departments.module';
 import { DepartmentLevelsModule } from './modules/department-levels/department-levels.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { mongooseConfig } from './config/database.config';
+import { JwtModule } from '@nestjs/jwt';
+import type { SignOptions } from 'jsonwebtoken';
 
 @Module({
   imports: [
@@ -16,6 +18,16 @@ import { mongooseConfig } from './config/database.config';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: mongooseConfig,
+    }),
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: {
+          expiresIn: configService.get<string>('JWT_EXPIRES_IN') as SignOptions['expiresIn'],
+        },
+      }),
+      global: true,
     }),
     UsersModule,
     AuthsModule,
