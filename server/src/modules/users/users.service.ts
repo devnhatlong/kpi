@@ -9,6 +9,7 @@ import { Model, Types } from 'mongoose';
 import { User, UserDocument } from './schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { RoleCode } from '@/common/enums/role-code.enum';
 
 @Injectable()
 export class UsersService {
@@ -50,13 +51,23 @@ export class UsersService {
       throw new BadRequestException('Tài khoản đã được đăng ký.');
     }
 
+    // Bootstrap: chưa có SUPER_ADMIN nào → user này trở thành admin hệ thống
+    const hasSuperAdmin = await this.userModel.exists({
+      'roleAssignments.roleCode': RoleCode.SUPER_ADMIN,
+    });
+
     const user = await this.userModel.create({
       username: createUserDto.username,
       password: createUserDto.password,
+      roleAssignments: hasSuperAdmin
+        ? []
+        : [{ roleCode: RoleCode.SUPER_ADMIN, scopeDepartmentId: null }],
     });
 
     return {
-      message: 'Đăng ký tài khoản thành công.',
+      message: hasSuperAdmin
+        ? 'Đăng ký tài khoản thành công.'
+        : 'Đăng ký thành công. Tài khoản này được gán SUPER_ADMIN (admin đầu tiên).',
       user: user.toSafeObject(),
     };
   }
