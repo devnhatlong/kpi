@@ -21,7 +21,7 @@ export class User {
     password!: string;
 
     @Prop({ trim: true })
-    fullName!: string;
+    fullName?: string;
 
     @Prop({ unique: true, sparse: true, lowercase: true, trim: true })
     email?: string;

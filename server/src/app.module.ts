@@ -32,7 +32,6 @@ import type { SignOptions } from 'jsonwebtoken';
     UsersModule,
     AuthsModule,
     DepartmentsModule,
-    AuthsModule,
     DepartmentLevelsModule,
     RolesModule,
   ],
