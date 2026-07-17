@@ -18,7 +18,7 @@ export class AuthsService {
       uid: id,
       role: roleAssignments,
     });
-
+    console.log(accessToken)
     return {
       message: 'Đăng nhập thành công.',
       accessToken: accessToken
