@@ -131,7 +131,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"\",\n  \"email\": \"\",\n  \"phone\": \"\",\n  \"departmentId\": \"\",\n  \"password\": \"\",\n  \"isActive\": true\n}"
+              "raw": "{\n  \"fullName\": \"\",\n  \"email\": \"\",\n  \"phone\": \"\",\n  \"departmentId\": \"\",\n  \"password\": \"\",\n  \"isActive\": true,\n  \"roleAssignments\": [\n    {\n      \"roleCode\": \"\",\n      \"scopeDepartmentId\": null\n    }\n  ]\n}"
             },
             "url": "{{kpi_url}}/users/{{userId}}"
           }

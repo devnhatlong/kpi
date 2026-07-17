@@ -98,6 +98,16 @@ export class UsersService {
     if (updateUserDto.isActive !== undefined) {
       user.isActive = updateUserDto.isActive;
     }
+    if (updateUserDto.roleAssignments !== undefined) {
+      user.roleAssignments = updateUserDto.roleAssignments.map(
+        (assignment) => ({
+          roleCode: assignment.roleCode,
+          scopeDepartmentId: assignment.scopeDepartmentId
+            ? new Types.ObjectId(assignment.scopeDepartmentId)
+            : null,
+        }),
+      );
+    }
 
     await user.save();
 
