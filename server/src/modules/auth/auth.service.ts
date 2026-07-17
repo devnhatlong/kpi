@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -15,8 +16,12 @@ import {
   RefreshTokenDocument,
 } from './schemas/refresh-token.schema';
 
+const MAX_REFRESH_TOKENS_PER_USER = 5;
+
 @Injectable()
 export class AuthsService {
+  private readonly logger = new Logger(AuthsService.name);
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
@@ -35,7 +40,7 @@ export class AuthsService {
 
     return {
       message: 'Đăng nhập thành công.',
-      ...tokens,
+      data: tokens,
     };
   }
 
@@ -57,7 +62,7 @@ export class AuthsService {
 
     return {
       message: 'Làm mới token thành công.',
-      ...tokens,
+      data: tokens,
     };
   }
 
@@ -71,24 +76,89 @@ export class AuthsService {
     return { message: 'Đăng xuất thành công.' };
   }
 
-  private async issueTokens(userId: string, roleAssignments: unknown) {
+  /** Đăng xuất mọi thiết bị: xóa hết refresh token của user. */
+  async logoutAll(userId: string) {
+    await this.refreshTokenModel.deleteMany({
+      userId: new Types.ObjectId(userId),
+    });
+
+    return { message: 'Đã đăng xuất khỏi tất cả thiết bị.' };
+  }
+
+  /** Job định kỳ: xóa các refresh token đã revoke. */
+  async purgeRevokedTokens() {
+    const result = await this.refreshTokenModel.deleteMany({
+      revokedAt: { $ne: null },
+    });
+
+    if (result.deletedCount > 0) {
+      this.logger.log(`Đã xóa ${result.deletedCount} refresh token đã revoke.`);
+    }
+
+    return result.deletedCount;
+  }
+
+  private async issueTokens(
+    userId: string,
+    roleAssignments: Array<{
+      roleCode: string;
+      scopeDepartmentId?: unknown;
+    }> = [],
+  ) {
+    const role = roleAssignments.map((assignment) => ({
+      roleCode: assignment.roleCode,
+      scopeDepartmentId: assignment.scopeDepartmentId
+        ? String(assignment.scopeDepartmentId)
+        : null,
+    }));
+
     const accessToken = await this.jwtService.signAsync({
       uid: userId,
-      role: roleAssignments,
+      role,
     });
 
     const refreshToken = randomBytes(48).toString('hex');
     const tokenHash = this.hashToken(refreshToken);
     const expiresIn =
       this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
+    const userObjectId = new Types.ObjectId(userId);
+
+    await this.enforceTokenLimit(userObjectId);
 
     await this.refreshTokenModel.create({
-      userId: new Types.ObjectId(userId),
+      userId: userObjectId,
       tokenHash,
       expiresAt: this.resolveExpiryDate(expiresIn),
     });
 
     return { accessToken, refreshToken };
+  }
+
+  /**
+   * Giữ tối đa MAX-1 token active trước khi tạo mới,
+   * để sau khi create không vượt quá MAX_REFRESH_TOKENS_PER_USER.
+   */
+  private async enforceTokenLimit(userId: Types.ObjectId) {
+    const activeTokens = await this.refreshTokenModel
+      .find({
+        userId,
+        revokedAt: null,
+        expiresAt: { $gt: new Date() },
+      })
+      .sort({ createdAt: 1 })
+      .select('_id')
+      .lean();
+
+    const overflow = activeTokens.length - (MAX_REFRESH_TOKENS_PER_USER - 1);
+    if (overflow <= 0) {
+      return;
+    }
+
+    const idsToRemove = activeTokens
+      .slice(0, overflow)
+      .map((token) => token._id);
+
+    await this.refreshTokenModel.deleteMany({ _id: { $in: idsToRemove } });
   }
 
   private async findValidRefreshToken(refreshToken: string) {

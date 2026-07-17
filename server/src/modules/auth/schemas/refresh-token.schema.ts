@@ -10,7 +10,8 @@ export class RefreshToken {
   @Prop({ required: true, unique: true })
   tokenHash!: string;
 
-  @Prop({ required: true, index: true })
+  /** Index TTL khai báo bên dưới (schema.index), không dùng index: true ở đây. */
+  @Prop({ required: true })
   expiresAt!: Date;
 
   @Prop({ type: Date, default: null })

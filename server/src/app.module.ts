@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ScheduleModule } from '@nestjs/schedule';
 import { UsersModule } from './modules/users/users.module';
 import { RequestTimingMiddleware } from './common/middlewares/request-timing.middleware';
 import { AuthsModule } from './modules/auth/auth.module';
@@ -14,6 +15,7 @@ import type { SignOptions } from 'jsonwebtoken';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, }),
+    ScheduleModule.forRoot(),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

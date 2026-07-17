@@ -6,3 +6,8 @@ export interface ApiResponse<T> {
     path?: string;
     responseTime?: string;
 }
+
+export type {
+    JwtPayloadUser,
+    JwtRoleAssignment,
+} from './jwt-payload-user.interface';

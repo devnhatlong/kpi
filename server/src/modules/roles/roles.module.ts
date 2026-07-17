@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Role, RoleSchema } from './schemas/role.schema';
 import { RolesController } from './roles.controller';
@@ -13,10 +13,10 @@ import { AuthsModule } from '../auth/auth.module';
         schema: RoleSchema,
       },
     ]),
-    AuthsModule
+    forwardRef(() => AuthsModule),
   ],
-  exports: [MongooseModule],
+  exports: [MongooseModule, RolesService],
   controllers: [RolesController],
   providers: [RolesService],
 })
-export class RolesModule { }
+export class RolesModule {}
