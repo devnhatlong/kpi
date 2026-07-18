@@ -251,12 +251,12 @@ export function UnitsView() {
   }, [tree]);
 
   return (
-    <div className="flex h-[calc(100vh-7.5rem)] min-h-[540px] flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight">Đơn vị</h1>
           <p className="text-sm text-muted-foreground">
-            Quản lý cơ cấu tổ chức dạng cây — dễ kiểm soát đơn vị con và nhân sự.
+            Quản lý cơ cấu tổ chức dạng cây - dễ kiểm soát đơn vị con và nhân sự.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -481,7 +481,7 @@ export function UnitsView() {
                                       {child.name}
                                     </button>
                                   </TableCell>
-                                  <TableCell>{childLevel?.name ?? "—"}</TableCell>
+                                  <TableCell>{childLevel?.name ?? "-"}</TableCell>
                                   <TableCell>
                                     {child.isActive ? (
                                       <Badge variant="secondary">Hoạt động</Badge>
@@ -539,14 +539,14 @@ export function UnitsView() {
                               <TableRow key={user.id}>
                                 <TableCell>{i + 1}</TableCell>
                                 <TableCell className="font-medium">
-                                  {user.fullName || "—"}
+                                  {user.fullName || "-"}
                                 </TableCell>
                                 <TableCell>{user.username}</TableCell>
-                                <TableCell>{user.email || "—"}</TableCell>
+                                <TableCell>{user.email || "-"}</TableCell>
                                 <TableCell>
                                   <div className="flex flex-wrap gap-1">
                                     {(user.roleAssignments ?? []).length === 0 ? (
-                                      <span className="text-muted-foreground">—</span>
+                                      <span className="text-muted-foreground">-</span>
                                     ) : (
                                       user.roleAssignments.map((r) => (
                                         <Badge key={`${user.id}-${r.roleCode}`} variant="outline">

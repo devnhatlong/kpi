@@ -7,9 +7,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset className="bg-background">
+      <SidebarInset className="min-h-svh bg-background">
         <AppHeader />
-        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+        <main className="flex min-h-0 flex-1 flex-col overflow-auto p-4 md:p-4">
+          {children}
+        </main>
       </SidebarInset>
     </SidebarProvider>
   );

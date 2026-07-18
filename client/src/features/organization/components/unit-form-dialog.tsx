@@ -154,10 +154,10 @@ export function UnitFormDialog({
                   <SelectValue placeholder="Chọn cấp" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NONE}>— Không chọn —</SelectItem>
+                  <SelectItem value={NONE}>- Không chọn -</SelectItem>
                   {levels.map((level) => (
                     <SelectItem key={entityId(level)} value={entityId(level)}>
-                      {level.code} — {level.name}
+                      {level.code} - {level.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -170,12 +170,12 @@ export function UnitFormDialog({
                   <SelectValue placeholder="Đơn vị cha" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NONE}>— Đơn vị gốc —</SelectItem>
+                  <SelectItem value={NONE}>- Đơn vị gốc -</SelectItem>
                   {departments
                     .filter((d) => entityId(d) !== editId)
                     .map((d) => (
                       <SelectItem key={entityId(d)} value={entityId(d)}>
-                        {d.code} — {d.name}
+                        {d.code} - {d.name}
                       </SelectItem>
                     ))}
                 </SelectContent>

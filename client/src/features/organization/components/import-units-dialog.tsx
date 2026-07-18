@@ -141,8 +141,8 @@ export function ImportUnitsDialog({ open, onOpenChange, onSuccess }: ImportUnits
                     <TableCell>{i + 1}</TableCell>
                     <TableCell className="font-medium">{row.code}</TableCell>
                     <TableCell>{row.name}</TableCell>
-                    <TableCell>{row.parentCode || "—"}</TableCell>
-                    <TableCell>{row.levelCode || "—"}</TableCell>
+                    <TableCell>{row.parentCode || "-"}</TableCell>
+                    <TableCell>{row.levelCode || "-"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
