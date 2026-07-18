@@ -121,13 +121,17 @@ function NavGroup({ item }: { item: NavItem }) {
           </SidebarMenuButton>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <SidebarMenuSub className="mx-0 border-l-0 px-0 translate-x-0">
+          <SidebarMenuSub className="mx-0 mt-1.5 translate-x-0 gap-0.5 rounded-lg border-l-0 bg-muted/60 px-1 py-1.5 dark:bg-muted/40">
             {item.children.map((child) => {
               const active = isPathActive(pathname, child.href);
               const ChildIcon = child.icon;
               return (
                 <SidebarMenuSubItem key={child.href}>
-                  <SidebarMenuSubButton asChild isActive={active} className="gap-2 pl-8">
+                  <SidebarMenuSubButton
+                    asChild
+                    isActive={active}
+                    className="h-9 translate-x-0 gap-2 rounded-md pl-7 pr-2 text-sm text-foreground hover:bg-background/70 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-none [&>svg]:size-4 [&>svg]:text-muted-foreground data-[active=true]:[&>svg]:text-sidebar-accent-foreground"
+                  >
                     <Link href={child.href}>
                       <ChildIcon />
                       <span>{child.title}</span>

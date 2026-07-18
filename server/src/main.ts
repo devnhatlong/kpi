@@ -13,6 +13,11 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
+  app.enableCors({
+    origin: true,
+    credentials: true,
+  });
+
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true, // xóa các filed dư thừa không có trong DTO
     forbidNonWhitelisted: true, // báo lỗi nếu có các filed dư thừa không có trong DTO

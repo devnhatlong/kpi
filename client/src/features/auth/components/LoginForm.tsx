@@ -1,16 +1,44 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import axios from "axios";
 import { Eye, EyeOff, KeyRound, Lock, User } from "lucide-react";
+import { toast } from "sonner";
+
+import type { ApiResponse, AuthTokens } from "@/features/organization/types";
+import { setTokens } from "@/lib/auth-storage";
+import { getApiErrorMessage } from "@/lib/api-client";
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8080/api/v1";
 
 export function LoginForm() {
+  const router = useRouter();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => setLoading(false), 1200);
+    try {
+      const { data } = await axios.post<ApiResponse<AuthTokens>>(`${API_BASE_URL}/auth/login`, {
+        username,
+        password,
+      });
+      if (!data.data?.accessToken || !data.data?.refreshToken) {
+        throw new Error(data.message || "Đăng nhập thất bại.");
+      }
+      setTokens(data.data.accessToken, data.data.refreshToken);
+      toast.success("Đăng nhập thành công.");
+      router.push("/organization/units");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Tài khoản hoặc mật khẩu không đúng."));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -30,6 +58,8 @@ export function LoginForm() {
               id="username"
               type="text"
               required
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               placeholder="Nhập tên đăng nhập"
               className="w-full h-11 pl-10 pr-4 rounded-lg bg-input/40 border border-border text-sm text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 transition"
             />
@@ -46,6 +76,8 @@ export function LoginForm() {
               id="password"
               type={showPwd ? "text" : "password"}
               required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               className="w-full h-11 pl-10 pr-11 rounded-lg bg-input/40 border border-border text-sm text-foreground placeholder:text-muted-foreground/70 outline-none focus:border-ring focus:ring-2 focus:ring-ring/20 transition"
             />

@@ -1,7 +1,7 @@
-import { PlaceholderPage } from "@/components/common/placeholder-page";
+"use client";
+
+import { UnitsView } from "@/features/organization/components/units-view";
 
 export default function UnitsPage() {
-  return (
-    <PlaceholderPage title="Đơn vị" description="Quản lý cơ cấu đơn vị trong tổ chức." />
-  );
+  return <UnitsView />;
 }

@@ -13,6 +13,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { DepartmentsService } from './departments.service';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
+import { ImportDepartmentsDto } from './dto/import-departments.dto';
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import { PermissionsGuard } from '@/common/guards/permissions.guard';
 import { Permissions } from '@/common/decorators';
@@ -30,6 +31,17 @@ export class DepartmentsController {
   @Post()
   create(@Body() dto: CreateDepartmentDto) {
     return this.departmentsService.create(dto);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Import hàng loạt đơn vị (theo mã cha / mã cấp)',
+  })
+  @UseGuards(JwtGuard, PermissionsGuard)
+  @Permissions(Permission.DEPARTMENT_MANAGE)
+  @Post('import')
+  importMany(@Body() dto: ImportDepartmentsDto) {
+    return this.departmentsService.importMany(dto.rows);
   }
 
   @ApiBearerAuth()
