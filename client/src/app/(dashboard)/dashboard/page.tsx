@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Tổng quan - KPI Score",
+  title: "Tổng quan - KPI Manager",
   description: "Trang tổng quan hệ thống chấm điểm KPI.",
 };
 

@@ -68,7 +68,7 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 export const SIDEBAR_BRAND = {
-  title: "KPI Score",
+  title: "KPI Manager",
   subtitle: "Performance",
 } as const;
 

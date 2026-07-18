@@ -16,7 +16,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "KPI Score",
+  title: "KPI Manager",
   description: "Hệ thống chấm điểm và quản lý KPI",
 };
 
