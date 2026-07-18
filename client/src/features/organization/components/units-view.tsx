@@ -93,9 +93,14 @@ function levelBadgeClass(rank?: number) {
   }
 }
 
-/** Cột indent cố định — đường dọc neo tại left = 10px (giữa ô 20px) */
-const TREE_COL = "relative w-5 shrink-0 self-stretch";
-const TREE_LINE = "pointer-events-none absolute left-[10px] w-px bg-muted-foreground/35";
+/** Cột indent — khoảng cách rõ với cha. Node lá không có slot icon → sát trục hơn. */
+const TREE_COL = 24;
+const TREE_LINE_X = 12;
+const TREE_ROW_H = 32;
+const TREE_STUB_LEAF = 8; // nhánh ngang ngắn cho node không có con
+const TREE_STUB_BRANCH = TREE_COL - TREE_LINE_X; // nhánh tới icon +/-
+const TREE_LINE =
+  "pointer-events-none absolute w-px bg-muted-foreground/40";
 
 function TreeItem({
   node,
@@ -110,7 +115,7 @@ function TreeItem({
   node: UnitTreeNode;
   depth: number;
   isLast: boolean;
-  /** Cột hướng dẫn: true = còn vẽ đường dọc xuống các anh/em sau */
+  /** true = còn anh/em phía dưới → vẽ trục dọc liên tục ở cột đó */
   guides: boolean[];
   selectedId: string;
   expanded: Set<string>;
@@ -121,57 +126,59 @@ function TreeItem({
   const isOpen = expanded.has(node.id);
   const level = levelOf(node.department);
   const selected = selectedId === node.id;
+  const stubWidth = hasChildren ? TREE_STUB_BRANCH : TREE_STUB_LEAF;
+  /** Lá sát trục; node có con cách ra để chỗ icon +/- */
+  const contentPad =
+    depth === 0 ? 0 : (depth - 1) * TREE_COL + TREE_LINE_X + stubWidth;
 
   return (
-    <div className="relative">
+    <div className="relative w-fit max-w-full">
       <button
         type="button"
         onClick={() => onSelect(node.id)}
-        className={cn(
-          "flex w-max min-w-full items-stretch rounded-md py-0.5 pr-2 text-left text-sm transition-colors",
-          selected ? "bg-primary/10 text-foreground" : "hover:bg-muted/80",
-        )}
+        className="group relative inline-flex h-8 items-center text-left text-sm"
       >
-        {/* Indent + đường nối: gap-0 để các cột thẳng hàng tuyệt đối */}
-        <span className="flex shrink-0 items-stretch">
-          {guides.map((continueLine, i) => (
-            <span key={i} className={TREE_COL}>
-              {continueLine ? <span className={cn(TREE_LINE, "inset-y-0")} /> : null}
-            </span>
-          ))}
+        {contentPad > 0 ? (
+          <span className="inline-block shrink-0" style={{ width: contentPad }} aria-hidden />
+        ) : null}
 
-          {depth > 0 ? (
-            <span className={TREE_COL}>
-              <span
-                className={cn(TREE_LINE, "top-0", isLast ? "h-1/2" : "bottom-0")}
-              />
-              <span className="pointer-events-none absolute top-1/2 left-[10px] h-px w-2.5 bg-muted-foreground/35" />
+        {depth > 0 ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 h-px bg-muted-foreground/40"
+            style={{
+              left: (depth - 1) * TREE_COL + TREE_LINE_X,
+              width: stubWidth,
+            }}
+          />
+        ) : null}
+
+        <span
+          className={cn(
+            "inline-flex w-fit items-center gap-1 rounded-md px-1 py-0.5 transition-colors",
+            selected
+              ? "bg-primary/10 text-foreground"
+              : "group-hover:bg-muted/80",
+          )}
+        >
+          {hasChildren ? (
+            <span
+              role="button"
+              tabIndex={-1}
+              className="inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle(node.id);
+              }}
+            >
+              {isOpen ? (
+                <MinusSquare className="size-3.5" strokeWidth={1.75} />
+              ) : (
+                <PlusSquare className="size-3.5" strokeWidth={1.75} />
+              )}
             </span>
           ) : null}
 
-          {/* Luôn giữ slot icon để badge các hàng thẳng cột */}
-          <span className="flex w-5 shrink-0 items-center justify-center self-stretch">
-            {hasChildren ? (
-              <span
-                role="button"
-                tabIndex={-1}
-                className="inline-flex size-4 items-center justify-center text-muted-foreground hover:text-foreground"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggle(node.id);
-                }}
-              >
-                {isOpen ? (
-                  <MinusSquare className="size-3.5" strokeWidth={1.75} />
-                ) : (
-                  <PlusSquare className="size-3.5" strokeWidth={1.75} />
-                )}
-              </span>
-            ) : null}
-          </span>
-        </span>
-
-        <span className="flex min-h-7 items-center gap-1.5 pl-0.5">
           <Badge
             className={cn(
               "min-w-[2.75rem] shrink-0 justify-center rounded px-1.5 py-0 text-[10px] font-bold tracking-wide",
@@ -184,8 +191,28 @@ function TreeItem({
         </span>
       </button>
 
-      {hasChildren && isOpen
-        ? node.children.map((child, index) => (
+      {hasChildren && isOpen ? (
+        <div className="relative">
+          {guides.map((continueLine, i) =>
+            continueLine ? (
+              <span
+                key={i}
+                aria-hidden
+                className={cn(TREE_LINE, "inset-y-0")}
+                style={{ left: i * TREE_COL + TREE_LINE_X }}
+              />
+            ) : null,
+          )}
+          <span
+            aria-hidden
+            className={TREE_LINE}
+            style={{
+              left: depth * TREE_COL + TREE_LINE_X,
+              top: 0,
+              bottom: TREE_ROW_H / 2,
+            }}
+          />
+          {node.children.map((child, index) => (
             <TreeItem
               key={child.id}
               node={child}
@@ -197,8 +224,9 @@ function TreeItem({
               onToggle={onToggle}
               onSelect={onSelect}
             />
-          ))
-        : null}
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
