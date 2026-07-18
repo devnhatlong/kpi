@@ -24,6 +24,8 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -47,6 +49,9 @@
 
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.20 0.04 260);
+
+  --popover: oklch(1 0 0 / 0.72);
+  --popover-foreground: oklch(0.20 0.04 260);
 
   --primary: oklch(0.55 0.20 265);
   --primary-foreground: oklch(0.99 0 0);
@@ -90,6 +95,10 @@
   --foreground: oklch(0.97 0.01 250);
   --card: oklch(0.22 0.04 262);
   --card-foreground: oklch(0.97 0.01 250);
+
+  --popover: oklch(0.22 0.04 262 / 0.75);
+  --popover-foreground: oklch(0.97 0.01 250);
+
   --primary: oklch(0.72 0.18 255);
   --primary-foreground: oklch(0.15 0.04 260);
   --primary-glow: oklch(0.80 0.15 220);
