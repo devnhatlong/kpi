@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthsService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
@@ -17,6 +17,14 @@ export class AuthsController {
   @Post('login')
   login(@Req() req: any) {
     return this.authsService.login(req.user);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Thông tin người dùng hiện tại' })
+  @UseGuards(JwtGuard)
+  @Get('me')
+  me(@CurrentUser() user: JwtPayloadUser) {
+    return this.authsService.me(user.uid);
   }
 
   @ApiOperation({ summary: 'Làm mới access token' })

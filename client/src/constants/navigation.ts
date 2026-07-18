@@ -76,10 +76,3 @@ export const SIDEBAR_BRAND = {
   title: "KPI Manager",
   subtitle: "Performance",
 } as const;
-
-/** Placeholder until auth context is wired */
-export const CURRENT_USER = {
-  name: "Nguyễn Nhật Long",
-  role: "Cán bộ",
-  initials: "NL",
-} as const;

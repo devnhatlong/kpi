@@ -1,15 +1,31 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 
+import type { ApiResponse, AuthTokens } from "@/features/auth/types";
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "@/lib/auth-storage";
-import type { ApiResponse, AuthTokens } from "@/features/organization/types";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8080/api/v1";
+
+const AUTH_SKIP_REFRESH_PATHS = ["/auth/login", "/auth/refresh", "/auth/logout"];
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { "Content-Type": "application/json" },
 });
+
+function shouldSkipRefresh(config?: InternalAxiosRequestConfig): boolean {
+  const url = config?.url ?? "";
+  return AUTH_SKIP_REFRESH_PATHS.some((p) => url.includes(p));
+}
+
+function redirectToLogin() {
+  if (typeof window === "undefined") return;
+  const path = window.location.pathname;
+  if (path === "/login" || path.startsWith("/login?")) return;
+  const next = `${path}${window.location.search}`;
+  const qs = next && next !== "/" ? `?next=${encodeURIComponent(next)}` : "";
+  window.location.assign(`/login${qs}`);
+}
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = getAccessToken();
@@ -43,7 +59,12 @@ api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiResponse<unknown>>) => {
     const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
-    if (error.response?.status === 401 && original && !original._retry) {
+    if (
+      error.response?.status === 401 &&
+      original &&
+      !original._retry &&
+      !shouldSkipRefresh(original)
+    ) {
       original._retry = true;
       refreshPromise ??= refreshAccessToken().finally(() => {
         refreshPromise = null;
@@ -53,6 +74,8 @@ api.interceptors.response.use(
         original.headers.Authorization = `Bearer ${newToken}`;
         return api(original);
       }
+      clearTokens();
+      redirectToLogin();
     }
     return Promise.reject(error);
   },

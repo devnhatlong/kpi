@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogOut, Settings, UserRound } from "lucide-react";
+import { toast } from "sonner";
 
-import { CURRENT_USER } from "@/constants/navigation";
+import { useAuth } from "@/features/auth/auth-provider";
+import { displayNameOf, initialsOf, primaryRoleLabel } from "@/features/auth/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -16,10 +18,16 @@ import {
 
 export function UserMenu() {
   const router = useRouter();
+  const { user, logout } = useAuth();
 
-  const handleLogout = () => {
-    // TODO: gọi API logout khi auth đã nối
-    router.push("/login");
+  const name = user ? displayNameOf(user) : "Người dùng";
+  const role = user ? primaryRoleLabel(user) : "";
+  const initials = user ? initialsOf(user) : "?";
+
+  const handleLogout = async () => {
+    await logout();
+    toast.success("Đã đăng xuất.");
+    router.replace("/login");
   };
 
   return (
@@ -35,12 +43,14 @@ export function UserMenu() {
               className="text-xs font-semibold text-primary-foreground"
               style={{ background: "var(--gradient-hero)" }}
             >
-              {CURRENT_USER.initials}
+              {initials}
             </AvatarFallback>
           </Avatar>
           <div className="hidden min-w-0 text-left leading-tight md:block">
-            <div className="truncate text-sm font-semibold text-foreground">{CURRENT_USER.name}</div>
-            <div className="truncate text-xs text-muted-foreground">{CURRENT_USER.role}</div>
+            <div className="truncate text-sm font-semibold text-foreground">{name}</div>
+            {role ? (
+              <div className="truncate text-xs text-muted-foreground">{role}</div>
+            ) : null}
           </div>
         </button>
       </DropdownMenuTrigger>

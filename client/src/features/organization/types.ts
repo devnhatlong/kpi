@@ -1,11 +1,4 @@
-export type ApiResponse<T> = {
-  success: boolean;
-  message: string;
-  data?: T;
-  timestamp?: string;
-  path?: string;
-  responseTime?: string;
-};
+export type { ApiResponse, AuthTokens } from "@/features/auth/types";
 
 export type DepartmentLevel = {
   _id: string;
@@ -97,11 +90,6 @@ export type UserAccount = {
   roleAssignments: RoleAssignment[];
   isActive: boolean;
   lastLoginAt?: string | null;
-};
-
-export type AuthTokens = {
-  accessToken: string;
-  refreshToken: string;
 };
 
 export function entityId(entity: { _id?: string; id?: string } | string | null | undefined): string {

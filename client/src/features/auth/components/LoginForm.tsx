@@ -1,20 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import axios from "axios";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, KeyRound, Lock, User } from "lucide-react";
 import { toast } from "sonner";
 
-import type { ApiResponse, AuthTokens } from "@/features/organization/types";
-import { setTokens } from "@/lib/auth-storage";
+import { useAuth } from "@/features/auth/auth-provider";
 import { getApiErrorMessage } from "@/lib/api-client";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8080/api/v1";
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -24,16 +21,12 @@ export function LoginForm() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { data } = await axios.post<ApiResponse<AuthTokens>>(`${API_BASE_URL}/auth/login`, {
-        username,
-        password,
-      });
-      if (!data.data?.accessToken || !data.data?.refreshToken) {
-        throw new Error(data.message || "Đăng nhập thất bại.");
-      }
-      setTokens(data.data.accessToken, data.data.refreshToken);
+      await login(username, password);
       toast.success("Đăng nhập thành công.");
-      router.push("/organization/units");
+      const next = searchParams.get("next");
+      const target =
+        next && next.startsWith("/") && !next.startsWith("//") ? next : "/organization/units";
+      router.replace(target);
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Tài khoản hoặc mật khẩu không đúng."));
     } finally {
@@ -58,6 +51,7 @@ export function LoginForm() {
               id="username"
               type="text"
               required
+              autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Nhập tên đăng nhập"
@@ -76,6 +70,7 @@ export function LoginForm() {
               id="password"
               type={showPwd ? "text" : "password"}
               required
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"

@@ -1,0 +1,58 @@
+export type ApiResponse<T> = {
+  success: boolean;
+  message: string;
+  data?: T;
+  timestamp?: string;
+  path?: string;
+  responseTime?: string;
+};
+
+export type AuthTokens = {
+  accessToken: string;
+  refreshToken: string;
+};
+
+export type AuthRoleAssignment = {
+  roleCode: string;
+  scopeDepartmentId?: string | null;
+};
+
+export type AuthUser = {
+  id: string;
+  username: string;
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  departmentId?: string;
+  roleAssignments: AuthRoleAssignment[];
+  isActive: boolean;
+  lastLoginAt?: string | null;
+};
+
+export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
+
+export const ROLE_LABELS: Record<string, string> = {
+  SUPER_ADMIN: "Quản trị hệ thống",
+  UNIT_ADMIN: "Quản trị đơn vị",
+  MANAGER: "Quản lý",
+  STAFF: "Cán bộ",
+};
+
+export function displayNameOf(user: AuthUser): string {
+  return user.fullName?.trim() || user.username;
+}
+
+export function initialsOf(user: AuthUser): string {
+  const name = displayNameOf(user).trim();
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase() || "?";
+}
+
+export function primaryRoleLabel(user: AuthUser): string {
+  const code = user.roleAssignments[0]?.roleCode;
+  if (!code) return "Người dùng";
+  return ROLE_LABELS[code] ?? code;
+}

@@ -44,6 +44,18 @@ export class AuthsService {
     };
   }
 
+  async me(userId: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Tài khoản không hợp lệ.');
+    }
+
+    return {
+      message: 'Lấy thông tin người dùng thành công.',
+      data: user.toSafeObject(),
+    };
+  }
+
   async refresh(refreshToken: string) {
     const stored = await this.findValidRefreshToken(refreshToken);
     if (!stored) {
