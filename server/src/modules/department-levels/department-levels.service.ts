@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -16,12 +17,30 @@ import { UpdateDepartmentLevelDto } from './dto/update-department-level.dto';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 import { buildPaginatedResponse } from '@/common/utils/pagination.util';
 
+const SYSTEM_DEPARTMENT_LEVELS: Array<{
+  code: string;
+  name: string;
+  rank: number;
+}> = [
+  { code: 'CAT', name: 'Công an tỉnh', rank: 1 },
+  { code: 'PHONG', name: 'Cấp phòng', rank: 2 },
+  { code: 'DOI', name: 'Cấp đội', rank: 3 },
+  { code: 'XA', name: 'Cấp xã', rank: 4 },
+  { code: 'PHUONG', name: 'Cấp phường', rank: 5 },
+  { code: 'DON', name: 'Cấp đồn', rank: 6 },
+  { code: 'DACKHU', name: 'Đặc khu', rank: 7 },
+];
+
 @Injectable()
-export class DepartmentLevelsService {
+export class DepartmentLevelsService implements OnModuleInit {
   constructor(
     @InjectModel(DepartmentLevel.name)
     private readonly departmentLevelModel: Model<DepartmentLevelDocument>,
   ) {}
+
+  async onModuleInit() {
+    await this.seedSystemLevels();
+  }
 
   async create(dto: CreateDepartmentLevelDto) {
     const code = dto.code.trim().toUpperCase();
@@ -114,6 +133,26 @@ export class DepartmentLevelsService {
     await level.deleteOne();
 
     return { message: 'Xóa cấp đơn vị thành công.' };
+  }
+
+  async seedSystemLevels() {
+    for (const item of SYSTEM_DEPARTMENT_LEVELS) {
+      await this.departmentLevelModel.updateOne(
+        { code: item.code },
+        {
+          $setOnInsert: {
+            code: item.code,
+            name: item.name,
+            slug: Helper.slugify(item.name),
+            isActive: true,
+          },
+          $set: {
+            rank: item.rank,
+          },
+        },
+        { upsert: true },
+      );
+    }
   }
 
   private async requireLevel(id: string) {
