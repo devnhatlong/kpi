@@ -87,12 +87,12 @@ function NavGroup({ item }: { item: NavItem }) {
             side="right"
             align="start"
             sideOffset={10}
-            className="min-w-52 rounded-xl p-2 shadow-lg"
+            className="min-w-52 rounded-md p-2 shadow-lg"
           >
             {item.children.map((child) => {
               const ChildIcon = child.icon;
               return (
-                <DropdownMenuItem key={child.href} asChild className="gap-2.5 rounded-lg px-3 py-2.5">
+                <DropdownMenuItem key={child.href} asChild className="gap-2.5 rounded-md px-3 py-2.5">
                   <Link href={child.href}>
                     <ChildIcon className="size-4 text-muted-foreground" />
                     <span>{child.title}</span>
@@ -121,7 +121,7 @@ function NavGroup({ item }: { item: NavItem }) {
           </SidebarMenuButton>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <SidebarMenuSub className="mx-0 mt-1.5 translate-x-0 gap-0.5 rounded-lg border-l-0 bg-muted/60 px-1 py-1.5 dark:bg-muted/40">
+          <SidebarMenuSub className="mx-0 mt-1.5 translate-x-0 gap-0.5 rounded-md border-l-0 bg-muted/60 px-1 py-1.5 dark:bg-muted/40">
             {item.children.map((child) => {
               const active = isPathActive(pathname, child.href);
               const ChildIcon = child.icon;
