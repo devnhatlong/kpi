@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { SearchableSelect } from "@/components/common/searchable-select";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,13 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { createDepartment, updateDepartment } from "@/features/organization/api";
 import type {
@@ -78,6 +72,34 @@ export function UnitFormDialog({
     }
   }, [open, edit, defaultParentId]);
 
+  const editId = edit ? entityId(edit) : "";
+
+  const levelOptions = useMemo(
+    () => [
+      { value: NONE, label: "- Không chọn -" },
+      ...levels.map((level) => ({
+        value: entityId(level),
+        label: `${level.code} - ${level.name}`,
+        keywords: level.code,
+      })),
+    ],
+    [levels],
+  );
+
+  const parentOptions = useMemo(
+    () => [
+      { value: NONE, label: "- Đơn vị gốc -" },
+      ...departments
+        .filter((d) => entityId(d) !== editId)
+        .map((d) => ({
+          value: entityId(d),
+          label: `${d.code} - ${d.name}`,
+          keywords: d.code,
+        })),
+    ],
+    [departments, editId],
+  );
+
   const submit = async () => {
     if (!code.trim() || !name.trim()) {
       toast.error("Vui lòng nhập mã và tên đơn vị.");
@@ -115,8 +137,6 @@ export function UnitFormDialog({
     }
   };
 
-  const editId = edit ? entityId(edit) : "";
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -149,41 +169,27 @@ export function UnitFormDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Cấp đơn vị</Label>
-              <Select value={levelId} onValueChange={setLevelId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn cấp" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>- Không chọn -</SelectItem>
-                  {levels.map((level) => (
-                    <SelectItem key={entityId(level)} value={entityId(level)}>
-                      {level.code} - {level.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={levelId}
+                onValueChange={setLevelId}
+                options={levelOptions}
+                placeholder="Chọn cấp"
+                searchPlaceholder="Tìm cấp đơn vị..."
+              />
             </div>
             <div className="space-y-2">
               <Label>Thuộc đơn vị</Label>
-              <Select value={parentId} onValueChange={setParentId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Đơn vị cha" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>- Đơn vị gốc -</SelectItem>
-                  {departments
-                    .filter((d) => entityId(d) !== editId)
-                    .map((d) => (
-                      <SelectItem key={entityId(d)} value={entityId(d)}>
-                        {d.code} - {d.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={parentId}
+                onValueChange={setParentId}
+                options={parentOptions}
+                placeholder="Đơn vị cha"
+                searchPlaceholder="Tìm đơn vị..."
+              />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 items-end">
+          <div className="grid grid-cols-2 items-end gap-3">
             <div className="space-y-2">
               <Label htmlFor="unit-sort">Thứ tự</Label>
               <Input

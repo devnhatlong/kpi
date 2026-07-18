@@ -1,13 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
+
+import { SearchableSelect } from "@/components/common/searchable-select";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { PAGE_SIZE_OPTIONS } from "@/lib/pagination";
 
 type TablePaginationProps = {
@@ -32,6 +28,11 @@ export function TablePagination({
   const from = total === 0 ? 0 : (page - 1) * limit + 1;
   const to = Math.min(page * limit, total);
 
+  const pageSizeOptions = useMemo(
+    () => PAGE_SIZE_OPTIONS.map((size) => ({ value: String(size), label: String(size) })),
+    [],
+  );
+
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-sm text-muted-foreground">
@@ -41,22 +42,14 @@ export function TablePagination({
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground whitespace-nowrap">Mỗi trang</span>
-          <Select
+          <SearchableSelect
             value={String(limit)}
             onValueChange={(value) => onLimitChange(Number(value))}
+            options={pageSizeOptions}
+            searchPlaceholder="Tìm..."
             disabled={disabled}
-          >
-            <SelectTrigger className="h-8 w-[72px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-background">
-              {PAGE_SIZE_OPTIONS.map((size) => (
-                <SelectItem key={size} value={String(size)}>
-                  {size}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            triggerClassName="h-8 w-[88px] px-2"
+          />
         </div>
 
         <div className="flex items-center gap-1">
