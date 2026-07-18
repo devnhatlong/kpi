@@ -124,10 +124,11 @@ export function RolesView() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[80px]">Thứ tự</TableHead>
+                  <TableHead className="w-14">STT</TableHead>
                   <TableHead className="w-[140px]">Mã</TableHead>
                   <TableHead>Tên vai trò</TableHead>
                   <TableHead className="w-[100px]">Quyền</TableHead>
+                  <TableHead className="w-[80px]">Thứ tự</TableHead>
                   <TableHead className="w-[110px]">Loại</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
                   <TableHead className="w-[100px] text-right">Thao tác</TableHead>
@@ -136,13 +137,13 @@ export function RolesView() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                       <div className="inline-flex flex-col items-center gap-2">
                         <Shield className="h-8 w-8 opacity-40" />
                         <span>Chưa có vai trò nào.</span>
@@ -150,9 +151,9 @@ export function RolesView() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((role) => (
+                  filtered.map((role, index) => (
                     <TableRow key={entityId(role)}>
-                      <TableCell>{role.sortOrder ?? 0}</TableCell>
+                      <TableCell className="text-muted-foreground">{index + 1}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="font-mono">
                           {role.code}
@@ -162,6 +163,7 @@ export function RolesView() {
                       <TableCell>
                         <Badge variant="outline">{role.permissions?.length ?? 0}</Badge>
                       </TableCell>
+                      <TableCell>{role.sortOrder ?? 0}</TableCell>
                       <TableCell>
                         {role.isSystem ? (
                           <Badge className="bg-slate-700 text-white border-transparent">

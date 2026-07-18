@@ -136,10 +136,11 @@ export function PermissionsView() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[80px]">Thứ tự</TableHead>
+                  <TableHead className="w-14">STT</TableHead>
                   <TableHead className="w-[160px]">Mã</TableHead>
                   <TableHead>Tên quyền</TableHead>
                   <TableHead className="w-[120px]">Nhóm</TableHead>
+                  <TableHead className="w-[80px]">Thứ tự</TableHead>
                   <TableHead className="w-[110px]">Loại</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
                   <TableHead className="w-[100px] text-right">Thao tác</TableHead>
@@ -148,13 +149,13 @@ export function PermissionsView() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                       <div className="inline-flex flex-col items-center gap-2">
                         <KeyRound className="h-8 w-8 opacity-40" />
                         <span>Chưa có quyền nào.</span>
@@ -162,9 +163,9 @@ export function PermissionsView() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((permission) => (
+                  filtered.map((permission, index) => (
                     <TableRow key={entityId(permission)}>
-                      <TableCell>{permission.sortOrder ?? 0}</TableCell>
+                      <TableCell className="text-muted-foreground">{index + 1}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="font-mono">
                           {permission.code}
@@ -181,6 +182,7 @@ export function PermissionsView() {
                       <TableCell>
                         <Badge variant="outline">{permission.module}</Badge>
                       </TableCell>
+                      <TableCell>{permission.sortOrder ?? 0}</TableCell>
                       <TableCell>
                         {permission.isSystem ? (
                           <Badge className="bg-slate-700 text-white border-transparent">

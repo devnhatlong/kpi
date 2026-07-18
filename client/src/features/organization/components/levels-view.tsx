@@ -129,6 +129,7 @@ export function LevelsView() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-14">STT</TableHead>
                   <TableHead className="w-[120px]">Mã</TableHead>
                   <TableHead>Tên cấp</TableHead>
                   <TableHead className="w-[100px]">Thứ tự</TableHead>
@@ -139,13 +140,13 @@ export function LevelsView() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                       <div className="inline-flex flex-col items-center gap-2">
                         <Layers className="h-8 w-8 opacity-40" />
                         <span>Chưa có cấp đơn vị nào.</span>
@@ -153,8 +154,9 @@ export function LevelsView() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((level) => (
+                  filtered.map((level, index) => (
                     <TableRow key={entityId(level)}>
+                      <TableCell className="text-muted-foreground">{index + 1}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="font-mono">
                           {level.code}
