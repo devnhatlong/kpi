@@ -59,7 +59,7 @@ function NavGroup({ item }: { item: NavItem }) {
   const Icon = item.icon;
 
   return (
-    <Collapsible defaultOpen className="group/collapsible">
+    <Collapsible defaultOpen={false} className="group/collapsible">
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
           <SidebarMenuButton
@@ -73,12 +73,12 @@ function NavGroup({ item }: { item: NavItem }) {
           </SidebarMenuButton>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <SidebarMenuSub>
+          <SidebarMenuSub className="mx-0 border-l-0 px-0 translate-x-0">
             {item.children.map((child) => {
               const active = isPathActive(pathname, child.href);
               return (
                 <SidebarMenuSubItem key={child.href}>
-                  <SidebarMenuSubButton asChild isActive={active}>
+                  <SidebarMenuSubButton asChild isActive={active} className="pl-8">
                     <Link href={child.href}>{child.title}</Link>
                   </SidebarMenuSubButton>
                 </SidebarMenuSubItem>
