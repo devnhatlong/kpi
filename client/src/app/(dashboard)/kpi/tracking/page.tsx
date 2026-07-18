@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
+
 import { PlaceholderPage } from "@/components/common/placeholder-page";
+
+export const metadata: Metadata = {
+  title: "Theo dõi KPI",
+};
 
 export default function KpiTrackingPage() {
   return (

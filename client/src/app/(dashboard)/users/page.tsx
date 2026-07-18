@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
+
 import { PlaceholderPage } from "@/components/common/placeholder-page";
+
+export const metadata: Metadata = {
+  title: "Người dùng",
+};
 
 export default function UsersPage() {
   return (
