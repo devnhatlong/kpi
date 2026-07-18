@@ -96,7 +96,7 @@ function levelBadgeClass(rank?: number) {
 /** Cột indent — khoảng cách rõ với cha. Node lá không có slot icon → sát trục hơn. */
 const TREE_COL = 24;
 const TREE_LINE_X = 12;
-const TREE_ROW_H = 32;
+const TREE_ROW_H = 36;
 const TREE_STUB_LEAF = 8; // nhánh ngang ngắn cho node không có con
 const TREE_STUB_BRANCH = TREE_COL - TREE_LINE_X; // nhánh tới icon +/-
 const TREE_LINE =
@@ -136,7 +136,7 @@ function TreeItem({
       <button
         type="button"
         onClick={() => onSelect(node.id)}
-        className="group relative inline-flex h-8 items-center text-left text-sm"
+        className="group relative inline-flex h-9 cursor-pointer items-center text-left text-sm"
       >
         {contentPad > 0 ? (
           <span className="inline-block shrink-0" style={{ width: contentPad }} aria-hidden />
@@ -155,10 +155,10 @@ function TreeItem({
 
         <span
           className={cn(
-            "inline-flex w-fit items-center gap-1 rounded-md px-1 py-0.5 transition-colors",
+            "inline-flex w-fit cursor-pointer items-center gap-1 rounded-md px-1.5 py-1.5 transition-colors",
             selected
               ? "bg-primary/10 text-foreground"
-              : "group-hover:bg-muted/80",
+              : "group-hover:bg-blue-50",
           )}
         >
           {hasChildren ? (
@@ -593,7 +593,7 @@ export function UnitsView() {
                                   <TableCell>
                                     <button
                                       type="button"
-                                      className="font-medium text-primary hover:underline"
+                                      className="cursor-pointer font-medium text-primary hover:underline"
                                       onClick={() => setSelectedId(entityId(child))}
                                     >
                                       {child.name}
