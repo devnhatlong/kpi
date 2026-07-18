@@ -234,7 +234,7 @@ export function RolesView() {
             <AlertDialogDescription>
               Bạn sắp xoá vai trò{" "}
               <span className="font-medium text-foreground">
-                {deleting?.code} – {deleting?.name}
+                {deleting?.code} - {deleting?.name}
               </span>
               . Thao tác này không thể hoàn tác.
             </AlertDialogDescription>

@@ -35,7 +35,7 @@ export function TablePagination({
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-sm text-muted-foreground">
-        Hiển thị {from}–{to} / {total}
+        Hiển thị {from}-{to} / {total}
       </p>
 
       <div className="flex flex-wrap items-center gap-3">

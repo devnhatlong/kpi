@@ -223,7 +223,7 @@ export function LevelsView() {
             <AlertDialogDescription>
               Bạn sắp xoá cấp{" "}
               <span className="font-medium text-foreground">
-                {deleting?.code} – {deleting?.name}
+                {deleting?.code} - {deleting?.name}
               </span>
               . Thao tác này không thể hoàn tác.
             </AlertDialogDescription>

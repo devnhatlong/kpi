@@ -48,8 +48,7 @@ export const NAV_ITEMS: NavItem[] = [
       { title: "Cấp đơn vị", href: "/organization/levels", icon: Layers },
       { title: "Vai trò", href: "/organization/roles", icon: Shield },
       { title: "Quyền", href: "/organization/permissions", icon: KeyRound },
-      { title: "Người dùng", href: "/users", icon: ContactRound },
-      { title: "Nhân viên", href: "/organization/employees", icon: Users },
+      { title: "Người dùng", href: "/organization/employees", icon: Users },
     ],
   },
   {
