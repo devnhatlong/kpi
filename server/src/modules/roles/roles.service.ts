@@ -1,8 +1,10 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
   OnModuleInit,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -13,22 +15,26 @@ import { RoleCode } from '@/common/enums/role-code.enum';
 import { Helper } from '@/ultis/helpers';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { PermissionsService } from '../permissions/permissions.service';
 
 const ALL_PERMISSIONS = Object.values(Permission);
 
 const SYSTEM_ROLES: Array<{
-  code: RoleCode;
+  code: string;
   name: string;
-  permissions: Permission[];
+  sortOrder: number;
+  permissions: string[];
 }> = [
   {
     code: RoleCode.SUPER_ADMIN,
     name: 'Super Admin',
+    sortOrder: 10,
     permissions: ALL_PERMISSIONS,
   },
   {
     code: RoleCode.UNIT_ADMIN,
     name: 'Unit Admin',
+    sortOrder: 20,
     permissions: [
       Permission.USER_VIEW,
       Permission.USER_MANAGE,
@@ -47,6 +53,7 @@ const SYSTEM_ROLES: Array<{
   {
     code: RoleCode.MANAGER,
     name: 'Manager',
+    sortOrder: 30,
     permissions: [
       Permission.USER_VIEW,
       Permission.DEPARTMENT_VIEW,
@@ -61,6 +68,7 @@ const SYSTEM_ROLES: Array<{
   {
     code: RoleCode.STAFF,
     name: 'Staff',
+    sortOrder: 40,
     permissions: [
       Permission.TASK_VIEW,
       Permission.EVALUATION_SELF,
@@ -73,23 +81,31 @@ const SYSTEM_ROLES: Array<{
 export class RolesService implements OnModuleInit {
   constructor(
     @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
+    @Inject(forwardRef(() => PermissionsService))
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   async onModuleInit() {
+    await this.permissionsService.seedSystemPermissions();
     await this.seedSystemRoles();
   }
 
   async create(dto: CreateRoleDto) {
-    const exists = await this.roleModel.findOne({ code: dto.code });
+    const code = dto.code.trim().toUpperCase();
+    const exists = await this.roleModel.findOne({ code });
     if (exists) {
       throw new BadRequestException('Mã vai trò đã tồn tại.');
     }
 
+    const permissions = (dto.permissions ?? []).map((p) => p.trim().toLowerCase());
+    await this.permissionsService.assertCodesExist(permissions);
+
     const role = await this.roleModel.create({
-      code: dto.code,
+      code,
       name: dto.name.trim(),
       slug: Helper.slugify(dto.name),
-      permissions: dto.permissions ?? [],
+      permissions,
+      sortOrder: dto.sortOrder ?? 0,
       isSystem: false,
       isActive: dto.isActive ?? true,
     });
@@ -101,7 +117,7 @@ export class RolesService implements OnModuleInit {
   }
 
   async findAll() {
-    return this.roleModel.find().sort({ code: 1 });
+    return this.roleModel.find().sort({ sortOrder: 1, code: 1 });
   }
 
   async findOne(id: string) {
@@ -116,7 +132,12 @@ export class RolesService implements OnModuleInit {
       role.slug = Helper.slugify(dto.name);
     }
     if (dto.permissions !== undefined) {
-      role.permissions = dto.permissions;
+      const permissions = dto.permissions.map((p) => p.trim().toLowerCase());
+      await this.permissionsService.assertCodesExist(permissions);
+      role.permissions = permissions;
+    }
+    if (dto.sortOrder !== undefined) {
+      role.sortOrder = dto.sortOrder;
     }
     if (dto.isActive !== undefined) {
       role.isActive = dto.isActive;
@@ -141,23 +162,24 @@ export class RolesService implements OnModuleInit {
     return { message: 'Xóa vai trò thành công.' };
   }
 
-  async getPermissionsByCodes(codes: RoleCode[]): Promise<Permission[]> {
+  async getPermissionsByCodes(codes: string[]): Promise<string[]> {
     if (!codes.length) {
       return [];
     }
 
+    const normalized = codes.map((c) => c.trim().toUpperCase());
     const roles = await this.roleModel
       .find({
-        code: { $in: codes },
+        code: { $in: normalized },
         isActive: true,
       })
       .select('permissions')
       .lean();
 
-    const set = new Set<Permission>();
+    const set = new Set<string>();
     for (const role of roles) {
       for (const permission of role.permissions ?? []) {
-        set.add(permission as Permission);
+        set.add(permission);
       }
     }
 
@@ -176,6 +198,9 @@ export class RolesService implements OnModuleInit {
             permissions: role.permissions,
             isSystem: true,
             isActive: true,
+          },
+          $set: {
+            sortOrder: role.sortOrder,
           },
         },
         { upsert: true },

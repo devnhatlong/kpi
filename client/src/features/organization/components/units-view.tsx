@@ -14,7 +14,6 @@ import {
   Trash2,
   Upload,
   Users,
-  Download,
 } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -59,7 +58,6 @@ import {
 } from "@/features/organization/api";
 import { ImportUnitsDialog } from "@/features/organization/components/import-units-dialog";
 import { UnitFormDialog } from "@/features/organization/components/unit-form-dialog";
-import { downloadUnitsImportTemplate } from "@/features/organization/excel";
 import {
   breadcrumbPath,
   buildUnitTree,
@@ -275,16 +273,6 @@ export function UnitsView() {
           </Breadcrumb>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              void downloadUnitsImportTemplate();
-              toast.success("Đã tải mẫu import đơn vị.");
-            }}
-          >
-            <Download />
-            Tải mẫu đơn vị
-          </Button>
           <Button variant="outline" onClick={() => setImportOpen(true)}>
             <Upload />
             Import Excel

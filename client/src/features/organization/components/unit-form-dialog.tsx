@@ -132,7 +132,7 @@ export function UnitFormDialog({
                 id="unit-code"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="VD: TMTH"
+                placeholder="VD: CNTT"
               />
             </div>
             <div className="col-span-2 space-y-2">
@@ -141,7 +141,7 @@ export function UnitFormDialog({
                 id="unit-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="VD: Đội Tham mưu Tổng hợp"
+                placeholder="VD: Đội Công nghệ thông tin"
               />
             </div>
           </div>

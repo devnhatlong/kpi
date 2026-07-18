@@ -8,6 +8,7 @@ import { AuthsModule } from './modules/auth/auth.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
 import { DepartmentLevelsModule } from './modules/department-levels/department-levels.module';
 import { RolesModule } from './modules/roles/roles.module';
+import { PermissionsModule } from './modules/permissions/permissions.module';
 import { mongooseConfig } from './config/database.config';
 import { JwtModule } from '@nestjs/jwt';
 import type { SignOptions } from 'jsonwebtoken';
@@ -36,6 +37,7 @@ import type { SignOptions } from 'jsonwebtoken';
     DepartmentsModule,
     DepartmentLevelsModule,
     RolesModule,
+    PermissionsModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -4,6 +4,7 @@ import { Role, RoleSchema } from './schemas/role.schema';
 import { RolesController } from './roles.controller';
 import { RolesService } from './roles.service';
 import { AuthsModule } from '../auth/auth.module';
+import { PermissionsModule } from '../permissions/permissions.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AuthsModule } from '../auth/auth.module';
       },
     ]),
     forwardRef(() => AuthsModule),
+    forwardRef(() => PermissionsModule),
   ],
   exports: [MongooseModule, RolesService],
   controllers: [RolesController],

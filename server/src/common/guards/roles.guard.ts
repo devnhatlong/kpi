@@ -27,7 +27,7 @@ export class RolesGuard implements CanActivate {
     const user = request.user as JwtPayloadUser | undefined;
     const roleCodes = (user?.role ?? [])
       .map((assignment) => assignment?.roleCode)
-      .filter((code): code is RoleCode => Boolean(code));
+      .filter((code): code is string => Boolean(code));
 
     if (roleCodes.includes(RoleCode.SUPER_ADMIN)) {
       return true;

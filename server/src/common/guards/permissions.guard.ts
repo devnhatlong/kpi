@@ -48,13 +48,13 @@ export class PermissionsGuard implements CanActivate {
     return true;
   }
 
-  private extractRoleCodes(user?: JwtPayloadUser): RoleCode[] {
+  private extractRoleCodes(user?: JwtPayloadUser): string[] {
     if (!user?.role?.length) {
       return [];
     }
 
     return user.role
       .map((assignment) => assignment?.roleCode)
-      .filter((code): code is RoleCode => Boolean(code));
+      .filter((code): code is string => Boolean(code));
   }
 }

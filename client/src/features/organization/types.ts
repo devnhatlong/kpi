@@ -7,6 +7,83 @@ export type DepartmentLevel = {
   name: string;
   rank: number;
   isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CreateDepartmentLevelInput = {
+  code: string;
+  name: string;
+  rank: number;
+  isActive?: boolean;
+};
+
+export type UpdateDepartmentLevelInput = {
+  code?: string;
+  name?: string;
+  rank?: number;
+  isActive?: boolean;
+};
+
+export type AppPermission = {
+  _id: string;
+  id?: string;
+  code: string;
+  name: string;
+  description?: string;
+  module: string;
+  sortOrder: number;
+  isSystem: boolean;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CreatePermissionInput = {
+  code: string;
+  name: string;
+  description?: string;
+  module?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+export type UpdatePermissionInput = {
+  code?: string;
+  name?: string;
+  description?: string;
+  module?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+export type Role = {
+  _id: string;
+  id?: string;
+  code: string;
+  name: string;
+  slug?: string;
+  permissions: string[];
+  sortOrder: number;
+  isSystem: boolean;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CreateRoleInput = {
+  code: string;
+  name: string;
+  permissions?: string[];
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+export type UpdateRoleInput = {
+  name?: string;
+  permissions?: string[];
+  sortOrder?: number;
+  isActive?: boolean;
 };
 
 export type DepartmentRef = {

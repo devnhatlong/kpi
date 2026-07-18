@@ -1,9 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
-  IsEnum,
   IsMongoId,
+  IsNotEmpty,
   IsOptional,
+  IsString,
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
@@ -12,12 +13,12 @@ import {
   BooleanNotRequired,
   StringNotRequired,
 } from '@/common/decorators';
-import { RoleCode } from '@/common/enums/role-code.enum';
 
 export class RoleAssignmentDto {
-  @ApiProperty({ enum: RoleCode, example: RoleCode.STAFF })
-  @IsEnum(RoleCode, { message: 'Mã vai trò không hợp lệ.' })
-  roleCode!: RoleCode;
+  @ApiProperty({ example: 'STAFF' })
+  @IsString({ message: 'Mã vai trò phải là một chuỗi.' })
+  @IsNotEmpty({ message: 'Mã vai trò không được để trống.' })
+  roleCode!: string;
 
   @ApiPropertyOptional({
     nullable: true,

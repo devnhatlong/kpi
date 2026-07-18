@@ -1,7 +1,5 @@
-import { RoleCode } from '@/common/enums/role-code.enum';
-
 export interface JwtRoleAssignment {
-  roleCode: RoleCode;
+  roleCode: string;
   scopeDepartmentId: string | null;
 }
 

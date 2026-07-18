@@ -1,17 +1,18 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
-export type RoleDocument = HydratedDocument<Role>;
+export type PermissionDocument = HydratedDocument<PermissionEntity>;
 
 @Schema({
   timestamps: true,
+  collection: 'permissions',
 })
-export class Role {
+export class PermissionEntity {
   @Prop({
     required: true,
     unique: true,
     trim: true,
-    uppercase: true,
+    lowercase: true,
   })
   code!: string;
 
@@ -23,18 +24,16 @@ export class Role {
 
   @Prop({
     trim: true,
-    lowercase: true,
   })
-  slug?: string;
+  description?: string;
 
-  /**
-   * Danh sách PermissionEntity.code (lưu trong collection permissions).
-   */
   @Prop({
-    type: [String],
-    default: [],
+    trim: true,
+    lowercase: true,
+    default: 'general',
+    index: true,
   })
-  permissions!: string[];
+  module!: string;
 
   /**
    * Thứ tự hiển thị (nhỏ hơn = đứng trước).
@@ -48,7 +47,7 @@ export class Role {
   sortOrder!: number;
 
   /**
-   * Vai trò hệ thống không được phép xóa.
+   * Quyền hệ thống (seed) không nên xóa nếu đang được dùng.
    */
   @Prop({
     default: false,
@@ -62,4 +61,4 @@ export class Role {
   isActive!: boolean;
 }
 
-export const RoleSchema = SchemaFactory.createForClass(Role);
+export const PermissionSchema = SchemaFactory.createForClass(PermissionEntity);
