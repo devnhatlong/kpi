@@ -49,7 +49,7 @@ export function TablePagination({
             <SelectTrigger className="h-8 w-[72px]">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-background">
               {PAGE_SIZE_OPTIONS.map((size) => (
                 <SelectItem key={size} value={String(size)}>
                   {size}

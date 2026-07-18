@@ -35,7 +35,7 @@ export function UserMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-2.5 rounded-full py-1 pl-1 pr-1 outline-none transition hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring md:pr-2"
+          className="flex cursor-pointer items-center gap-2.5 rounded-md py-1 pl-1 pr-1 outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring md:pr-2"
           aria-label="Menu tài khoản"
         >
           <Avatar className="size-9 ring-2 ring-primary/15">
