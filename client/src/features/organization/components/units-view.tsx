@@ -157,8 +157,8 @@ function TreeItem({
           className={cn(
             "inline-flex w-fit cursor-pointer items-center gap-1 rounded-md px-1.5 py-1.5 transition-colors",
             selected
-              ? "bg-primary/10 text-foreground"
-              : "group-hover:bg-blue-50",
+              ? "bg-primary/10 text-foreground dark:bg-primary/25"
+              : "group-hover:bg-blue-50 group-hover:text-foreground dark:group-hover:bg-blue-950/70",
           )}
         >
           {hasChildren ? (
