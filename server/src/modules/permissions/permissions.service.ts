@@ -14,6 +14,8 @@ import {
 } from './schemas/permission.schema';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 import { UpdatePermissionDto } from './dto/update-permission.dto';
+import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
+import { buildPaginatedResponse } from '@/common/utils/pagination.util';
 
 const SYSTEM_PERMISSIONS: Array<{
   code: string;
@@ -142,8 +144,36 @@ export class PermissionsService implements OnModuleInit {
     };
   }
 
-  async findAll() {
-    return this.permissionModel.find().sort({ sortOrder: 1, module: 1, code: 1 });
+  async findAll(query: PaginationQueryDto = new PaginationQueryDto()) {
+    const filter: Record<string, unknown> = {};
+    if (query.q) {
+      const escaped = query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'i');
+      filter.$or = [
+        { code: regex },
+        { name: regex },
+        { module: regex },
+        { description: regex },
+      ];
+    }
+
+    const sort = { sortOrder: 1 as const, module: 1 as const, code: 1 as const };
+
+    if (query.all) {
+      const data = await this.permissionModel.find(filter).sort(sort);
+      return buildPaginatedResponse(data, data.length, 1, data.length || 1);
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.permissionModel.find(filter).sort(sort).skip(skip).limit(limit),
+      this.permissionModel.countDocuments(filter),
+    ]);
+
+    return buildPaginatedResponse(data, total, page, limit);
   }
 
   async findActiveCodes(): Promise<string[]> {

@@ -40,18 +40,21 @@ export class TransformInterceptor<T> implements NestInterceptor<T, ApiResponse<T
                 return data as ApiResponse<T>;
             }
 
-            // Controller/Service trả { message, data }
+            // Controller/Service trả { message, data } (+ meta nếu có)
             if (
                 data &&
                 typeof data === 'object' &&
                 ('message' in data || 'data' in data)
             ) {
-                const servicedata = data as ApiResponse<T>;
+                const servicedata = data as ApiResponse<T> & { meta?: unknown };
 
                 return {
                     success: true,
                     message: servicedata.message ?? defaultMessage,
                     data: servicedata.data as T,
+                    ...(servicedata.meta !== undefined
+                        ? { meta: servicedata.meta }
+                        : {}),
                     timestamp: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false }),
                     path: request.url,
                     responseTime: responseTime

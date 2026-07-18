@@ -10,6 +10,8 @@ import { User, UserDocument } from './schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { RoleCode } from '@/common/enums/role-code.enum';
+import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
+import { buildPaginatedResponse } from '@/common/utils/pagination.util';
 
 @Injectable()
 export class UsersService {
@@ -72,9 +74,42 @@ export class UsersService {
     };
   }
 
-  async findAll() {
-    const users = await this.userModel.find().sort({ createdAt: -1 });
-    return users.map((user) => user.toSafeObject());
+  async findAll(query: PaginationQueryDto = new PaginationQueryDto()) {
+    const filter: Record<string, unknown> = {};
+    if (query.q) {
+      const escaped = query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'i');
+      filter.$or = [
+        { username: regex },
+        { fullName: regex },
+        { email: regex },
+        { phone: regex },
+      ];
+    }
+
+    const sort = { createdAt: -1 as const };
+
+    if (query.all) {
+      const users = await this.userModel.find(filter).sort(sort);
+      const data = users.map((user) => user.toSafeObject());
+      return buildPaginatedResponse(data, data.length, 1, data.length || 1);
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
+
+    const [users, total] = await Promise.all([
+      this.userModel.find(filter).sort(sort).skip(skip).limit(limit),
+      this.userModel.countDocuments(filter),
+    ]);
+
+    return buildPaginatedResponse(
+      users.map((user) => user.toSafeObject()),
+      total,
+      page,
+      limit,
+    );
   }
 
   async findOne(id: string) {

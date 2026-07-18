@@ -49,6 +49,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TablePagination } from "@/components/common/table-pagination";
 import {
   deleteDepartment,
   departmentKeys,
@@ -68,6 +69,7 @@ import {
 import type { Department } from "@/features/organization/types";
 import { entityId, levelOf } from "@/features/organization/types";
 import { getApiErrorMessage } from "@/lib/api-client";
+import { DEFAULT_PAGE_SIZE, rowIndex } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 
 function levelBadgeClass(rank?: number) {
@@ -179,6 +181,10 @@ export function UnitsView() {
   const [importOpen, setImportOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Department | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [childrenPage, setChildrenPage] = useState(1);
+  const [childrenLimit, setChildrenLimit] = useState(DEFAULT_PAGE_SIZE);
+  const [usersPage, setUsersPage] = useState(1);
+  const [usersLimit, setUsersLimit] = useState(DEFAULT_PAGE_SIZE);
 
   const tree = useMemo(() => buildUnitTree(departments), [departments]);
   const filteredTree = useMemo(() => filterTree(tree, query), [tree, query]);
@@ -200,8 +206,30 @@ export function UnitsView() {
     return parentId === effectiveSelectedId;
   });
   const unitUsers = users.filter((u) => String(u.departmentId ?? "") === effectiveSelectedId);
+
+  const childrenTotalPages = Math.max(1, Math.ceil(children.length / childrenLimit));
+  const usersTotalPages = Math.max(1, Math.ceil(unitUsers.length / usersLimit));
+  const pagedChildren = children.slice(
+    (childrenPage - 1) * childrenLimit,
+    childrenPage * childrenLimit,
+  );
+  const pagedUsers = unitUsers.slice((usersPage - 1) * usersLimit, usersPage * usersLimit);
+
   const selectedLevel = selected ? levelOf(selected) : null;
   const crumb = selected ? breadcrumbPath(departments, effectiveSelectedId) : "";
+
+  useEffect(() => {
+    setChildrenPage(1);
+    setUsersPage(1);
+  }, [effectiveSelectedId]);
+
+  useEffect(() => {
+    if (childrenPage > childrenTotalPages) setChildrenPage(childrenTotalPages);
+  }, [childrenPage, childrenTotalPages]);
+
+  useEffect(() => {
+    if (usersPage > usersTotalPages) setUsersPage(usersTotalPages);
+  }, [usersPage, usersTotalPages]);
 
   const openCreate = (parentId?: string) => {
     setFormEdit(null);
@@ -465,11 +493,13 @@ export function UnitsView() {
                               </TableCell>
                             </TableRow>
                           ) : (
-                            children.map((child, i) => {
+                            pagedChildren.map((child, i) => {
                               const childLevel = levelOf(child);
                               return (
                                 <TableRow key={entityId(child)}>
-                                  <TableCell>{i + 1}</TableCell>
+                                  <TableCell className="text-muted-foreground">
+                                    {rowIndex(childrenPage, childrenLimit, i)}
+                                  </TableCell>
                                   <TableCell>
                                     <Badge className={levelBadgeClass(childLevel?.rank)}>
                                       {child.code}
@@ -515,9 +545,22 @@ export function UnitsView() {
                         </TableBody>
                       </Table>
                     </div>
+                    {children.length > 0 ? (
+                      <TablePagination
+                        page={childrenPage}
+                        limit={childrenLimit}
+                        total={children.length}
+                        totalPages={childrenTotalPages}
+                        onPageChange={setChildrenPage}
+                        onLimitChange={(next) => {
+                          setChildrenLimit(next);
+                          setChildrenPage(1);
+                        }}
+                      />
+                    ) : null}
                   </TabsContent>
 
-                  <TabsContent value="accounts" className="pt-3">
+                  <TabsContent value="accounts" className="space-y-3 pt-3">
                     <div className="rounded-lg border">
                       <Table>
                         <TableHeader>
@@ -538,9 +581,11 @@ export function UnitsView() {
                               </TableCell>
                             </TableRow>
                           ) : (
-                            unitUsers.map((user, i) => (
+                            pagedUsers.map((user, i) => (
                               <TableRow key={user.id}>
-                                <TableCell>{i + 1}</TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {rowIndex(usersPage, usersLimit, i)}
+                                </TableCell>
                                 <TableCell className="font-medium">
                                   {user.fullName || "-"}
                                 </TableCell>
@@ -572,6 +617,19 @@ export function UnitsView() {
                         </TableBody>
                       </Table>
                     </div>
+                    {unitUsers.length > 0 ? (
+                      <TablePagination
+                        page={usersPage}
+                        limit={usersLimit}
+                        total={unitUsers.length}
+                        totalPages={usersTotalPages}
+                        onPageChange={setUsersPage}
+                        onLimitChange={(next) => {
+                          setUsersLimit(next);
+                          setUsersPage(1);
+                        }}
+                      />
+                    ) : null}
                   </TabsContent>
                 </Tabs>
               </>

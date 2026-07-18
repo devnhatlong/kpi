@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -16,6 +17,7 @@ import { JwtGuard } from '../auth/guards/jwt.guard';
 import { PermissionsGuard } from '@/common/guards/permissions.guard';
 import { Permissions } from '@/common/decorators';
 import { Permission } from '@/common/enums/permission.enum';
+import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 
 @ApiTags('Roles (Vai trò)')
 @Controller('roles')
@@ -32,12 +34,12 @@ export class RolesController {
   }
 
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Danh sách vai trò' })
+  @ApiOperation({ summary: 'Danh sách vai trò (phân trang)' })
   @UseGuards(JwtGuard, PermissionsGuard)
   @Permissions(Permission.ROLE_ASSIGN)
   @Get('all')
-  findAll() {
-    return this.rolesService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.rolesService.findAll(query);
   }
 
   @ApiBearerAuth()

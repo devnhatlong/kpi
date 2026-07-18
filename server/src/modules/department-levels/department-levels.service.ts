@@ -13,6 +13,8 @@ import {
 } from './schemas/department-level.schema';
 import { CreateDepartmentLevelDto } from './dto/create-department-level.dto';
 import { UpdateDepartmentLevelDto } from './dto/update-department-level.dto';
+import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
+import { buildPaginatedResponse } from '@/common/utils/pagination.util';
 
 @Injectable()
 export class DepartmentLevelsService {
@@ -42,8 +44,31 @@ export class DepartmentLevelsService {
     };
   }
 
-  async findAll() {
-    return this.departmentLevelModel.find().sort({ rank: 1, name: 1 });
+  async findAll(query: PaginationQueryDto = new PaginationQueryDto()) {
+    const filter: Record<string, unknown> = {};
+    if (query.q) {
+      const escaped = query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'i');
+      filter.$or = [{ code: regex }, { name: regex }];
+    }
+
+    const sort = { rank: 1 as const, name: 1 as const };
+
+    if (query.all) {
+      const data = await this.departmentLevelModel.find(filter).sort(sort);
+      return buildPaginatedResponse(data, data.length, 1, data.length || 1);
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.departmentLevelModel.find(filter).sort(sort).skip(skip).limit(limit),
+      this.departmentLevelModel.countDocuments(filter),
+    ]);
+
+    return buildPaginatedResponse(data, total, page, limit);
   }
 
   async findOne(id: string) {

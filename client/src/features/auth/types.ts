@@ -2,9 +2,29 @@ export type ApiResponse<T> = {
   success: boolean;
   message: string;
   data?: T;
+  meta?: PaginationMeta;
   timestamp?: string;
   path?: string;
   responseTime?: string;
+};
+
+export type PaginationMeta = {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+};
+
+export type PaginatedResult<T> = {
+  data: T[];
+  meta: PaginationMeta;
+};
+
+export type ListQueryParams = {
+  page?: number;
+  limit?: number;
+  q?: string;
+  all?: boolean;
 };
 
 export type AuthTokens = {

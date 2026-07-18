@@ -12,6 +12,8 @@ import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { ImportDepartmentRowDto } from './dto/import-departments.dto';
 import { DepartmentLevelsService } from '../department-levels/department-levels.service';
+import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
+import { buildPaginatedResponse } from '@/common/utils/pagination.util';
 
 type ImportRowResult = {
   row: number;
@@ -60,12 +62,43 @@ export class DepartmentsService {
     };
   }
 
-  async findAll() {
-    return this.departmentModel
-      .find()
-      .sort({ depth: 1, sortOrder: 1, name: 1 })
-      .populate('levelId', 'code name rank')
-      .populate('parentId', 'code name');
+  async findAll(query: PaginationQueryDto = new PaginationQueryDto()) {
+    const filter: Record<string, unknown> = {};
+    if (query.q) {
+      const escaped = query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'i');
+      filter.$or = [{ code: regex }, { name: regex }];
+    }
+
+    const sort = { depth: 1 as const, sortOrder: 1 as const, name: 1 as const };
+    const populate = [
+      { path: 'levelId', select: 'code name rank' },
+      { path: 'parentId', select: 'code name' },
+    ];
+
+    if (query.all) {
+      const data = await this.departmentModel
+        .find(filter)
+        .sort(sort)
+        .populate(populate);
+      return buildPaginatedResponse(data, data.length, 1, data.length || 1);
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.departmentModel
+        .find(filter)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .populate(populate),
+      this.departmentModel.countDocuments(filter),
+    ]);
+
+    return buildPaginatedResponse(data, total, page, limit);
   }
 
   async findOne(id: string) {
@@ -204,9 +237,11 @@ export class DepartmentsService {
       existing.map((d) => [d.code.toUpperCase(), d._id.toString()]),
     );
 
-    const levels = await this.departmentLevelsService.findAll();
+    const levelsResult = await this.departmentLevelsService.findAll(
+      Object.assign(new PaginationQueryDto(), { all: true }),
+    );
     const levelCodeToId = new Map(
-      levels.map((level) => [
+      levelsResult.data.map((level) => [
         String(level.code).toUpperCase(),
         level._id.toString(),
       ]),

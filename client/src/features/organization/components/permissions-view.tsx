@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { KeyRound, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -34,43 +34,34 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TablePagination } from "@/components/common/table-pagination";
 import {
   deletePermission,
-  fetchPermissions,
+  fetchPermissionsPage,
   permissionKeys,
 } from "@/features/organization/api";
 import { PermissionFormDialog } from "@/features/organization/components/permission-form-dialog";
 import type { AppPermission } from "@/features/organization/types";
 import { entityId } from "@/features/organization/types";
+import { useListPagination } from "@/hooks/use-list-pagination";
 import { getApiErrorMessage } from "@/lib/api-client";
+import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
 
 export function PermissionsView() {
-  const { data: permissions = [], isLoading, mutate } = useSWR(
-    permissionKeys.all,
-    fetchPermissions,
+  const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
+    useListPagination();
+
+  const listParams = { page, limit, q: debouncedQuery };
+  const { data, isLoading, mutate } = useSWR(permissionKeys.list(listParams), () =>
+    fetchPermissionsPage(listParams),
   );
 
-  const [query, setQuery] = useState("");
+  const permissions = data?.data ?? [];
+  const meta = data?.meta ?? emptyPaginationMeta(limit);
+
   const [formOpen, setFormOpen] = useState(false);
   const [edit, setEdit] = useState<AppPermission | null>(null);
   const [deleting, setDeleting] = useState<AppPermission | null>(null);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = [...permissions].sort(
-      (a, b) =>
-        (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
-        a.module.localeCompare(b.module) ||
-        a.code.localeCompare(b.code),
-    );
-    if (!q) return list;
-    return list.filter(
-      (p) =>
-        p.code.toLowerCase().includes(q) ||
-        p.name.toLowerCase().includes(q) ||
-        p.module.toLowerCase().includes(q),
-    );
-  }, [permissions, query]);
 
   const openCreate = () => {
     setEdit(null);
@@ -110,9 +101,6 @@ export function PermissionsView() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <p className="text-sm text-muted-foreground">
-            Danh mục permission lưu trong DB, dùng khi gán quyền cho vai trò.
-          </p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="h-4 w-4" />
@@ -153,7 +141,7 @@ export function PermissionsView() {
                       Đang tải...
                     </TableCell>
                   </TableRow>
-                ) : filtered.length === 0 ? (
+                ) : permissions.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                       <div className="inline-flex flex-col items-center gap-2">
@@ -163,9 +151,11 @@ export function PermissionsView() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((permission, index) => (
+                  permissions.map((permission, index) => (
                     <TableRow key={entityId(permission)}>
-                      <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {rowIndex(meta.page, meta.limit, index)}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="font-mono">
                           {permission.code}
@@ -228,6 +218,16 @@ export function PermissionsView() {
               </TableBody>
             </Table>
           </div>
+
+          <TablePagination
+            page={meta.page}
+            limit={limit}
+            total={meta.total}
+            totalPages={meta.totalPages}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
+            disabled={isLoading}
+          />
         </CardContent>
       </Card>
 

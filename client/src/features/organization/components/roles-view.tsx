@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Pencil, Plus, Search, Shield, Trash2 } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -34,31 +34,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { deleteRole, fetchRoles, roleKeys } from "@/features/organization/api";
+import { TablePagination } from "@/components/common/table-pagination";
+import { deleteRole, fetchRolesPage, roleKeys } from "@/features/organization/api";
 import { RoleFormDialog } from "@/features/organization/components/role-form-dialog";
 import type { Role } from "@/features/organization/types";
 import { entityId } from "@/features/organization/types";
+import { useListPagination } from "@/hooks/use-list-pagination";
 import { getApiErrorMessage } from "@/lib/api-client";
+import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
 
 export function RolesView() {
-  const { data: roles = [], isLoading, mutate } = useSWR(roleKeys.all, fetchRoles);
+  const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
+    useListPagination();
 
-  const [query, setQuery] = useState("");
+  const listParams = { page, limit, q: debouncedQuery };
+  const { data, isLoading, mutate } = useSWR(roleKeys.list(listParams), () =>
+    fetchRolesPage(listParams),
+  );
+
+  const roles = data?.data ?? [];
+  const meta = data?.meta ?? emptyPaginationMeta(limit);
+
   const [formOpen, setFormOpen] = useState(false);
   const [edit, setEdit] = useState<Role | null>(null);
   const [deleting, setDeleting] = useState<Role | null>(null);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = [...roles].sort(
-      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.code.localeCompare(b.code),
-    );
-    if (!q) return list;
-    return list.filter(
-      (role) =>
-        role.code.toLowerCase().includes(q) || role.name.toLowerCase().includes(q),
-    );
-  }, [roles, query]);
 
   const openCreate = () => {
     setEdit(null);
@@ -98,9 +97,6 @@ export function RolesView() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <p className="text-sm text-muted-foreground">
-            Vai trò lưu trong DB; quyền gắn vào role lấy từ danh mục permissions.
-          </p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="h-4 w-4" />
@@ -141,7 +137,7 @@ export function RolesView() {
                       Đang tải...
                     </TableCell>
                   </TableRow>
-                ) : filtered.length === 0 ? (
+                ) : roles.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                       <div className="inline-flex flex-col items-center gap-2">
@@ -151,9 +147,11 @@ export function RolesView() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((role, index) => (
+                  roles.map((role, index) => (
                     <TableRow key={entityId(role)}>
-                      <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {rowIndex(meta.page, meta.limit, index)}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="font-mono">
                           {role.code}
@@ -209,6 +207,16 @@ export function RolesView() {
               </TableBody>
             </Table>
           </div>
+
+          <TablePagination
+            page={meta.page}
+            limit={limit}
+            total={meta.total}
+            totalPages={meta.totalPages}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
+            disabled={isLoading}
+          />
         </CardContent>
       </Card>
 

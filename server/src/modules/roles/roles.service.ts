@@ -16,6 +16,8 @@ import { Helper } from '@/ultis/helpers';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { PermissionsService } from '../permissions/permissions.service';
+import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
+import { buildPaginatedResponse } from '@/common/utils/pagination.util';
 
 const ALL_PERMISSIONS = Object.values(Permission);
 
@@ -116,8 +118,31 @@ export class RolesService implements OnModuleInit {
     };
   }
 
-  async findAll() {
-    return this.roleModel.find().sort({ sortOrder: 1, code: 1 });
+  async findAll(query: PaginationQueryDto = new PaginationQueryDto()) {
+    const filter: Record<string, unknown> = {};
+    if (query.q) {
+      const escaped = query.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'i');
+      filter.$or = [{ code: regex }, { name: regex }];
+    }
+
+    const sort = { sortOrder: 1 as const, code: 1 as const };
+
+    if (query.all) {
+      const data = await this.roleModel.find(filter).sort(sort);
+      return buildPaginatedResponse(data, data.length, 1, data.length || 1);
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.roleModel.find(filter).sort(sort).skip(skip).limit(limit),
+      this.roleModel.countDocuments(filter),
+    ]);
+
+    return buildPaginatedResponse(data, total, page, limit);
   }
 
   async findOne(id: string) {

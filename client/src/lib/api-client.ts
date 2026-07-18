@@ -106,3 +106,37 @@ export async function unwrapData<T>(promise: Promise<{ data: ApiResponse<T> }>):
   }
   return data.data;
 }
+
+export async function unwrapPaginated<T>(
+  promise: Promise<{ data: ApiResponse<T[]> }>,
+): Promise<{ data: T[]; meta: NonNullable<ApiResponse<T[]>["meta"]> }> {
+  const { data } = await promise;
+  if (data.data === undefined) {
+    throw new Error(data.message || "Không có dữ liệu phản hồi.");
+  }
+  const meta = data.meta ?? {
+    total: data.data.length,
+    page: 1,
+    limit: data.data.length || 10,
+    totalPages: 1,
+  };
+  return { data: data.data, meta };
+}
+
+export function buildListQuery(params: {
+  page?: number;
+  limit?: number;
+  q?: string;
+  all?: boolean;
+}) {
+  const query: Record<string, string | number | boolean> = {};
+  if (params.all) {
+    query.all = true;
+    if (params.q?.trim()) query.q = params.q.trim();
+    return query;
+  }
+  query.page = params.page ?? 1;
+  query.limit = params.limit ?? 10;
+  if (params.q?.trim()) query.q = params.q.trim();
+  return query;
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Layers, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -34,36 +34,34 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TablePagination } from "@/components/common/table-pagination";
 import {
   deleteDepartmentLevel,
   departmentKeys,
-  fetchDepartmentLevels,
+  fetchDepartmentLevelsPage,
 } from "@/features/organization/api";
 import { LevelFormDialog } from "@/features/organization/components/level-form-dialog";
 import type { DepartmentLevel } from "@/features/organization/types";
 import { entityId } from "@/features/organization/types";
+import { useListPagination } from "@/hooks/use-list-pagination";
 import { getApiErrorMessage } from "@/lib/api-client";
+import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
 
 export function LevelsView() {
-  const { data: levels = [], isLoading, mutate } = useSWR(
-    departmentKeys.levels,
-    fetchDepartmentLevels,
+  const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
+    useListPagination();
+
+  const listParams = { page, limit, q: debouncedQuery };
+  const { data, isLoading, mutate } = useSWR(departmentKeys.levelsList(listParams), () =>
+    fetchDepartmentLevelsPage(listParams),
   );
 
-  const [query, setQuery] = useState("");
+  const levels = data?.data ?? [];
+  const meta = data?.meta ?? emptyPaginationMeta(limit);
+
   const [formOpen, setFormOpen] = useState(false);
   const [edit, setEdit] = useState<DepartmentLevel | null>(null);
   const [deleting, setDeleting] = useState<DepartmentLevel | null>(null);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = [...levels].sort((a, b) => a.rank - b.rank || a.code.localeCompare(b.code));
-    if (!q) return list;
-    return list.filter(
-      (level) =>
-        level.code.toLowerCase().includes(q) || level.name.toLowerCase().includes(q),
-    );
-  }, [levels, query]);
 
   const openCreate = () => {
     setEdit(null);
@@ -103,9 +101,6 @@ export function LevelsView() {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <p className="text-sm text-muted-foreground">
-            Danh mục cấp dùng trong form đơn vị và các dropdown liên quan.
-          </p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="h-4 w-4" />
@@ -144,7 +139,7 @@ export function LevelsView() {
                       Đang tải...
                     </TableCell>
                   </TableRow>
-                ) : filtered.length === 0 ? (
+                ) : levels.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                       <div className="inline-flex flex-col items-center gap-2">
@@ -154,9 +149,11 @@ export function LevelsView() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((level, index) => (
+                  levels.map((level, index) => (
                     <TableRow key={entityId(level)}>
-                      <TableCell className="text-muted-foreground">{index + 1}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {rowIndex(meta.page, meta.limit, index)}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="font-mono">
                           {level.code}
@@ -199,6 +196,16 @@ export function LevelsView() {
               </TableBody>
             </Table>
           </div>
+
+          <TablePagination
+            page={meta.page}
+            limit={limit}
+            total={meta.total}
+            totalPages={meta.totalPages}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
+            disabled={isLoading}
+          />
         </CardContent>
       </Card>
 
