@@ -3,7 +3,7 @@ import { saveAs } from "file-saver";
 
 import type { ImportDepartmentRow } from "@/features/organization/types";
 
-const HEADERS = ["code", "name", "parentCode", "levelCode", "sortOrder", "isActive"] as const;
+const HEADERS = ["code", "name", "levelCode", "parentCode", "sortOrder", "isActive"] as const;
 
 function cellText(value: ExcelJS.CellValue): string {
   if (value == null) return "";

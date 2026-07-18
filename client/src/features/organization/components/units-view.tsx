@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  ChevronDown,
-  ChevronRight,
   Expand,
   FolderTree,
+  MinusSquare,
   Network,
   Pencil,
   Plus,
+  PlusSquare,
   Search,
   Shrink,
   Trash2,
@@ -39,7 +39,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -74,15 +73,35 @@ import { cn } from "@/lib/utils";
 
 function levelBadgeClass(rank?: number) {
   if (rank == null) return "bg-slate-600 text-white border-transparent";
-  if (rank <= 1) return "bg-[#0f4c9c] text-white border-transparent";
-  if (rank === 2) return "bg-blue-600 text-white border-transparent";
-  if (rank === 3) return "bg-slate-800 text-white border-transparent";
-  return "bg-slate-500 text-white border-transparent";
+  switch (rank) {
+    case 1:
+      return "bg-[#0f4c9c] text-white border-transparent"; // CAT
+    case 2:
+      return "bg-blue-600 text-white border-transparent"; // PHONG
+    case 3:
+      return "bg-slate-800 text-white border-transparent"; // DOI
+    case 4:
+      return "bg-emerald-700 text-white border-transparent"; // XA
+    case 5:
+      return "bg-teal-600 text-white border-transparent"; // PHUONG
+    case 6:
+      return "bg-amber-700 text-white border-transparent"; // DON
+    case 7:
+      return "bg-violet-700 text-white border-transparent"; // DK
+    default:
+      return "bg-slate-500 text-white border-transparent";
+  }
 }
+
+/** Cột indent cố định — đường dọc neo tại left = 10px (giữa ô 20px) */
+const TREE_COL = "relative w-5 shrink-0 self-stretch";
+const TREE_LINE = "pointer-events-none absolute left-[10px] w-px bg-muted-foreground/35";
 
 function TreeItem({
   node,
   depth,
+  isLast,
+  guides,
   selectedId,
   expanded,
   onToggle,
@@ -90,6 +109,9 @@ function TreeItem({
 }: {
   node: UnitTreeNode;
   depth: number;
+  isLast: boolean;
+  /** Cột hướng dẫn: true = còn vẽ đường dọc xuống các anh/em sau */
+  guides: boolean[];
   selectedId: string;
   expanded: Set<string>;
   onToggle: (id: string) => void;
@@ -101,50 +123,75 @@ function TreeItem({
   const selected = selectedId === node.id;
 
   return (
-    <div>
+    <div className="relative">
       <button
         type="button"
         onClick={() => onSelect(node.id)}
         className={cn(
-          "flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+          "flex w-max min-w-full items-stretch rounded-md py-0.5 pr-2 text-left text-sm transition-colors",
           selected ? "bg-primary/10 text-foreground" : "hover:bg-muted/80",
         )}
-        style={{ paddingLeft: 8 + depth * 14 }}
       >
-        <span
-          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground"
-          onClick={(e) => {
-            if (!hasChildren) return;
-            e.stopPropagation();
-            onToggle(node.id);
-          }}
-        >
-          {hasChildren ? (
-            isOpen ? (
-              <ChevronDown className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
-            )
-          ) : (
-            <span className="h-3.5 w-3.5" />
-          )}
+        {/* Indent + đường nối: gap-0 để các cột thẳng hàng tuyệt đối */}
+        <span className="flex shrink-0 items-stretch">
+          {guides.map((continueLine, i) => (
+            <span key={i} className={TREE_COL}>
+              {continueLine ? <span className={cn(TREE_LINE, "inset-y-0")} /> : null}
+            </span>
+          ))}
+
+          {depth > 0 ? (
+            <span className={TREE_COL}>
+              <span
+                className={cn(TREE_LINE, "top-0", isLast ? "h-1/2" : "bottom-0")}
+              />
+              <span className="pointer-events-none absolute top-1/2 left-[10px] h-px w-2.5 bg-muted-foreground/35" />
+            </span>
+          ) : null}
+
+          {/* Luôn giữ slot icon để badge các hàng thẳng cột */}
+          <span className="flex w-5 shrink-0 items-center justify-center self-stretch">
+            {hasChildren ? (
+              <span
+                role="button"
+                tabIndex={-1}
+                className="inline-flex size-4 items-center justify-center text-muted-foreground hover:text-foreground"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle(node.id);
+                }}
+              >
+                {isOpen ? (
+                  <MinusSquare className="size-3.5" strokeWidth={1.75} />
+                ) : (
+                  <PlusSquare className="size-3.5" strokeWidth={1.75} />
+                )}
+              </span>
+            ) : null}
+          </span>
         </span>
-        <Badge
-          className={cn(
-            "min-w-[2.75rem] justify-center px-1.5 py-0 text-[10px] font-bold tracking-wide",
-            levelBadgeClass(level?.rank),
-          )}
-        >
-          {node.department.code}
-        </Badge>
-        <span className="truncate">{node.department.name}</span>
+
+        <span className="flex min-h-7 items-center gap-1.5 pl-0.5">
+          <Badge
+            className={cn(
+              "min-w-[2.75rem] shrink-0 justify-center rounded px-1.5 py-0 text-[10px] font-bold tracking-wide",
+              levelBadgeClass(level?.rank),
+            )}
+          >
+            {node.department.code}
+          </Badge>
+          <span className="whitespace-nowrap">{node.department.name}</span>
+        </span>
       </button>
+
       {hasChildren && isOpen
-        ? node.children.map((child) => (
+        ? node.children.map((child, index) => (
             <TreeItem
               key={child.id}
               node={child}
               depth={depth + 1}
+              isLast={index === node.children.length - 1}
+              guides={depth === 0 ? [] : [...guides, !isLast]}
               selectedId={selectedId}
               expanded={expanded}
               onToggle={onToggle}
@@ -323,9 +370,9 @@ export function UnitsView() {
         </Card>
       ) : null}
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[320px_1fr]">
-        {/* Tree */}
-        <Card className="flex min-h-0 flex-col overflow-hidden border-border/80 shadow-sm">
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(260px,320px)_1fr] lg:grid-rows-[minmax(0,1fr)]">
+        {/* Tree — cuộn dọc/ngang trong panel, không kéo cả trang */}
+        <Card className="flex h-full min-h-0 max-h-full flex-col overflow-hidden border-border/80 shadow-sm">
           <div className="space-y-2 border-b bg-muted/30 p-3">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -359,30 +406,34 @@ export function UnitsView() {
               </Button>
             </div>
           </div>
-          <ScrollArea className="min-h-0 flex-1 p-2">
+          <div className="min-h-0 flex-1 overflow-auto p-2">
             {deptLoading ? (
               <p className="p-4 text-sm text-muted-foreground">Đang tải...</p>
             ) : filteredTree.length === 0 ? (
               <p className="p-4 text-sm text-muted-foreground">Chưa có đơn vị.</p>
             ) : (
-              filteredTree.map((node) => (
-                <TreeItem
-                  key={node.id}
-                  node={node}
-                  depth={0}
-                  selectedId={effectiveSelectedId}
-                  expanded={expanded}
-                  onToggle={toggleExpand}
-                  onSelect={setSelectedId}
-                />
-              ))
+              <div className="min-w-max">
+                {filteredTree.map((node, index) => (
+                  <TreeItem
+                    key={node.id}
+                    node={node}
+                    depth={0}
+                    isLast={index === filteredTree.length - 1}
+                    guides={[]}
+                    selectedId={effectiveSelectedId}
+                    expanded={expanded}
+                    onToggle={toggleExpand}
+                    onSelect={setSelectedId}
+                  />
+                ))}
+              </div>
             )}
-          </ScrollArea>
+          </div>
         </Card>
 
         {/* Detail */}
-        <Card className="min-h-0 overflow-auto border-border/80 shadow-sm">
-          <CardContent className="p-5 md:p-6">
+        <Card className="flex h-full min-h-0 max-h-full flex-col overflow-hidden border-border/80 shadow-sm">
+          <CardContent className="min-h-0 flex-1 overflow-auto p-5 md:p-6">
             {!selected ? (
               <div className="flex flex-col items-center justify-center gap-2 py-20 text-muted-foreground">
                 <FolderTree className="h-10 w-10 opacity-40" />
