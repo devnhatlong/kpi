@@ -72,24 +72,24 @@ import { DEFAULT_PAGE_SIZE, rowIndex } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 
 function levelBadgeClass(rank?: number) {
-  if (rank == null) return "bg-slate-600 text-white border-transparent";
+  if (rank == null) return "bg-sky-600 text-white border-transparent";
   switch (rank) {
     case 1:
       return "bg-[#0f4c9c] text-white border-transparent"; // CAT
     case 2:
       return "bg-blue-600 text-white border-transparent"; // PHONG
     case 3:
-      return "bg-slate-800 text-white border-transparent"; // DOI
+      return "bg-cyan-700 text-white border-transparent"; // DOI
     case 4:
-      return "bg-emerald-700 text-white border-transparent"; // XA
+      return "bg-emerald-600 text-white border-transparent"; // XA
     case 5:
       return "bg-teal-600 text-white border-transparent"; // PHUONG
     case 6:
-      return "bg-amber-700 text-white border-transparent"; // DON
+      return "bg-amber-600 text-white border-transparent"; // DON
     case 7:
-      return "bg-violet-700 text-white border-transparent"; // DK
+      return "bg-orange-600 text-white border-transparent"; // DK
     default:
-      return "bg-slate-500 text-white border-transparent";
+      return "bg-blue-500 text-white border-transparent";
   }
 }
 
@@ -477,7 +477,7 @@ export function UnitsView() {
                           {selectedLevel.name}
                         </Badge>
                       ) : (
-                        <Badge variant="secondary">Chưa gán cấp</Badge>
+                        <Badge className="border-0 bg-sky-100 text-sky-800">Chưa gán cấp</Badge>
                       )}
                       <h2 className="font-display text-xl font-semibold tracking-tight md:text-2xl">
                         {selected.name}
@@ -530,16 +530,22 @@ export function UnitsView() {
                 </div>
 
                 <Tabs defaultValue="children">
-                  <TabsList>
-                    <TabsTrigger value="children">
+                  <TabsList className="bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
+                    <TabsTrigger
+                      value="children"
+                      className="group data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                    >
                       Đơn vị con
-                      <Badge variant="secondary" className="ml-1.5 h-5 px-1.5">
+                      <Badge className="ml-1.5 h-5 border-0 bg-blue-100 px-1.5 text-blue-700 group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white dark:bg-blue-900/50 dark:text-blue-200">
                         {children.length}
                       </Badge>
                     </TabsTrigger>
-                    <TabsTrigger value="accounts">
+                    <TabsTrigger
+                      value="accounts"
+                      className="group data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                    >
                       Tài khoản
-                      <Badge variant="secondary" className="ml-1.5 h-5 px-1.5">
+                      <Badge className="ml-1.5 h-5 border-0 bg-blue-100 px-1.5 text-blue-700 group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white dark:bg-blue-900/50 dark:text-blue-200">
                         {unitUsers.length}
                       </Badge>
                     </TabsTrigger>
