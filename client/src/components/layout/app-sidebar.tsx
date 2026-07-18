@@ -5,12 +5,17 @@ import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 
 import { NAV_ITEMS, SIDEBAR_BRAND, type NavItem } from "@/constants/navigation";
-import { cn } from "@/lib/utils";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +28,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 function isPathActive(pathname: string, href: string) {
@@ -38,15 +44,21 @@ function hasActiveChild(pathname: string, item: NavItem) {
 
 function NavGroup({ item }: { item: NavItem }) {
   const pathname = usePathname();
+  const { state, isMobile } = useSidebar();
+  const Icon = item.icon;
 
   if (!item.children?.length) {
     const href = item.href ?? "#";
     const active = isPathActive(pathname, href);
-    const Icon = item.icon;
 
     return (
       <SidebarMenuItem>
-        <SidebarMenuButton asChild isActive={active} tooltip={item.title}>
+        <SidebarMenuButton
+          asChild
+          isActive={active}
+          tooltip={item.title}
+          className="h-10 [&>svg]:size-5"
+        >
           <Link href={href}>
             <Icon />
             <span>{item.title}</span>
@@ -56,16 +68,52 @@ function NavGroup({ item }: { item: NavItem }) {
     );
   }
 
-  const Icon = item.icon;
+  // Icon mode: floating dropdown like the reference UI
+  if (state === "collapsed" && !isMobile) {
+    return (
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              tooltip={item.title}
+              isActive={hasActiveChild(pathname, item)}
+              className="h-10 [&>svg]:size-5 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            >
+              <Icon />
+              <span>{item.title}</span>
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            side="right"
+            align="start"
+            sideOffset={10}
+            className="min-w-52 rounded-xl p-2 shadow-lg"
+          >
+            {item.children.map((child) => {
+              const ChildIcon = child.icon;
+              return (
+                <DropdownMenuItem key={child.href} asChild className="gap-2.5 rounded-lg px-3 py-2.5">
+                  <Link href={child.href}>
+                    <ChildIcon className="size-4 text-muted-foreground" />
+                    <span>{child.title}</span>
+                  </Link>
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    );
+  }
 
   return (
-    <Collapsible defaultOpen={false} className="group/collapsible">
+    <Collapsible defaultOpen={hasActiveChild(pathname, item)} className="group/collapsible">
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
           <SidebarMenuButton
             tooltip={item.title}
             isActive={hasActiveChild(pathname, item)}
-            className="data-[state=open]:bg-sidebar-accent/60"
+            className="h-10 [&>svg]:size-5 data-[state=open]:bg-sidebar-accent/60"
           >
             <Icon />
             <span>{item.title}</span>
@@ -76,10 +124,14 @@ function NavGroup({ item }: { item: NavItem }) {
           <SidebarMenuSub className="mx-0 border-l-0 px-0 translate-x-0">
             {item.children.map((child) => {
               const active = isPathActive(pathname, child.href);
+              const ChildIcon = child.icon;
               return (
                 <SidebarMenuSubItem key={child.href}>
-                  <SidebarMenuSubButton asChild isActive={active} className="pl-8">
-                    <Link href={child.href}>{child.title}</Link>
+                  <SidebarMenuSubButton asChild isActive={active} className="gap-2 pl-8">
+                    <Link href={child.href}>
+                      <ChildIcon />
+                      <span>{child.title}</span>
+                    </Link>
                   </SidebarMenuSubButton>
                 </SidebarMenuSubItem>
               );
@@ -93,28 +145,34 @@ function NavGroup({ item }: { item: NavItem }) {
 
 export function AppSidebar() {
   return (
-    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
-        <Link href="/dashboard" className="flex items-center gap-3 overflow-hidden">
-          <div
-            className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-primary-foreground",
-            )}
-            style={{ background: "var(--gradient-hero)" }}
-          >
-            K
-          </div>
-          <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-            <div className="truncate font-display text-sm font-semibold text-foreground">
-              {SIDEBAR_BRAND.title}
-            </div>
-            <div className="truncate text-xs text-muted-foreground">{SIDEBAR_BRAND.subtitle}</div>
-          </div>
-        </Link>
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="border-b border-sidebar-border">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" asChild tooltip={SIDEBAR_BRAND.title}>
+              <Link href="/dashboard">
+                <div
+                  className="flex aspect-square size-8 items-center justify-center rounded-lg text-sm font-bold text-primary-foreground"
+                  style={{ background: "var(--gradient-hero)" }}
+                >
+                  K
+                </div>
+                <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-display font-semibold">
+                    {SIDEBAR_BRAND.title}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {SIDEBAR_BRAND.subtitle}
+                  </span>
+                </div>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
 
-      <SidebarContent className="px-2 py-3">
-        <SidebarGroup className="p-0">
+      <SidebarContent>
+        <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
               {NAV_ITEMS.map((item) => (

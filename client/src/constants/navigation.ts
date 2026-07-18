@@ -1,17 +1,22 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
+  ClipboardCheck,
+  ContactRound,
   FileText,
   Gauge,
   Network,
   Settings,
+  Settings2,
   Target,
   Trophy,
+  Users,
 } from "lucide-react";
 
 export type NavSubItem = {
   title: string;
   href: string;
+  icon: LucideIcon;
 };
 
 export type NavItem = {
@@ -36,18 +41,18 @@ export const NAV_ITEMS: NavItem[] = [
     title: "Tổ chức",
     icon: Network,
     children: [
-      { title: "Đơn vị", href: "/organization/units" },
-      { title: "Người dùng", href: "/users" },
-      { title: "Nhân viên", href: "/organization/employees" },
+      { title: "Đơn vị", href: "/organization/units", icon: Network },
+      { title: "Người dùng", href: "/users", icon: ContactRound },
+      { title: "Nhân viên", href: "/organization/employees", icon: Users },
     ],
   },
   {
     title: "Quản lý KPI",
     icon: Trophy,
     children: [
-      { title: "Cấu hình & giao KPI", href: "/kpi/config" },
-      { title: "Theo dõi KPI", href: "/kpi/tracking" },
-      { title: "Chấm điểm KPI", href: "/kpi/scoring" },
+      { title: "Cấu hình & giao KPI", href: "/kpi/config", icon: Settings2 },
+      { title: "Theo dõi KPI", href: "/kpi/tracking", icon: Target },
+      { title: "Chấm điểm KPI", href: "/kpi/scoring", icon: ClipboardCheck },
     ],
   },
   {
@@ -76,5 +81,5 @@ export const SIDEBAR_BRAND = {
 export const CURRENT_USER = {
   name: "Nguyễn Nhật Long",
   role: "Cán bộ",
-  initials: "NA",
+  initials: "NL",
 } as const;
