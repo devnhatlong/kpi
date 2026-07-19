@@ -1,13 +1,11 @@
 import type { Metadata } from "next";
 
-import { PlaceholderPage } from "@/components/common/placeholder-page";
+import { EmployeesView } from "@/features/organization/components/employees-view";
 
 export const metadata: Metadata = {
-  title: "Nhân viên",
+  title: "Người dùng",
 };
 
 export default function EmployeesPage() {
-  return (
-    <PlaceholderPage title="Nhân viên" description="Danh sách và hồ sơ nhân viên." />
-  );
+  return <EmployeesView />;
 }

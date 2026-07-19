@@ -5,6 +5,10 @@ import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { AuthsModule } from '../auth/auth.module';
 import { RolesModule } from '../roles/roles.module';
+import {
+  Department,
+  DepartmentSchema,
+} from '../departments/schemas/department.schema';
 
 @Module({
   imports: [
@@ -12,6 +16,10 @@ import { RolesModule } from '../roles/roles.module';
       {
         name: User.name,
         schema: UserSchema,
+      },
+      {
+        name: Department.name,
+        schema: DepartmentSchema,
       },
     ]),
     forwardRef(() => AuthsModule),

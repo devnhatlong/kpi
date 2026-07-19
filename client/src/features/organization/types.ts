@@ -159,14 +159,63 @@ export type RoleAssignment = {
 
 export type UserAccount = {
   id: string;
+  _id?: string;
   username: string;
   fullName?: string;
   email?: string;
   phone?: string;
-  departmentId?: string;
+  departmentId?: string | { _id?: string; id?: string; code?: string; name?: string };
   roleAssignments: RoleAssignment[];
   isActive: boolean;
   lastLoginAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CreateUserInput = {
+  username: string;
+  password: string;
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  departmentId?: string;
+  roleAssignments?: RoleAssignment[];
+  isActive?: boolean;
+};
+
+export type UpdateUserInput = {
+  password?: string;
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  departmentId?: string | null;
+  roleAssignments?: RoleAssignment[];
+  isActive?: boolean;
+};
+
+export type ImportUserRow = {
+  username: string;
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  departmentCode?: string;
+  roleCodes?: string;
+  isActive?: boolean;
+};
+
+export type ImportUsersResult = {
+  summary: {
+    total: number;
+    created: number;
+    skipped: number;
+    errors: number;
+  };
+  results: Array<{
+    row: number;
+    code: string;
+    status: "created" | "skipped" | "error";
+    message: string;
+  }>;
 };
 
 export function entityId(entity: { _id?: string; id?: string } | string | null | undefined): string {

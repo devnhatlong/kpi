@@ -13,7 +13,9 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { AdminCreateUserDto } from './dto/admin-create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ImportUsersDto } from './dto/import-users.dto';
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import { PermissionsGuard } from '@/common/guards/permissions.guard';
 import { Permissions } from '@/common/decorators';
@@ -29,6 +31,24 @@ export class UsersController {
   @Post('register')
   register(@Body() createUserDto: CreateUserDto) {
     return this.usersService.register(createUserDto);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Thêm người dùng (admin)' })
+  @UseGuards(JwtGuard, PermissionsGuard)
+  @Permissions(Permission.USER_MANAGE)
+  @Post()
+  create(@Body() dto: AdminCreateUserDto) {
+    return this.usersService.create(dto);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Import người dùng từ Excel (JSON rows)' })
+  @UseGuards(JwtGuard, PermissionsGuard)
+  @Permissions(Permission.USER_MANAGE)
+  @Post('import')
+  importMany(@Body() dto: ImportUsersDto) {
+    return this.usersService.importMany(dto.rows);
   }
 
   @ApiBearerAuth()

@@ -6,10 +6,13 @@ import type {
   CreateDepartmentLevelInput,
   CreatePermissionInput,
   CreateRoleInput,
+  CreateUserInput,
   Department,
   DepartmentLevel,
   ImportDepartmentRow,
   ImportDepartmentsResult,
+  ImportUserRow,
+  ImportUsersResult,
   ListQueryParams,
   PaginatedResult,
   Role,
@@ -17,6 +20,7 @@ import type {
   UpdateDepartmentLevelInput,
   UpdatePermissionInput,
   UpdateRoleInput,
+  UpdateUserInput,
   UserAccount,
 } from "@/features/organization/types";
 
@@ -48,6 +52,12 @@ export const permissionKeys = {
   all: ["permissions"] as const,
   list: (params: ListQueryParams) =>
     ["permissions", params.page, params.limit, params.q ?? "", params.all ?? false] as const,
+};
+
+export const userKeys = {
+  all: ["users"] as const,
+  list: (params: ListQueryParams) =>
+    ["users", params.page, params.limit, params.q ?? "", params.all ?? false] as const,
 };
 
 export async function fetchDepartments() {
@@ -135,6 +145,15 @@ export async function fetchRolesPage(
   );
 }
 
+export async function fetchRoles() {
+  const result = await unwrapPaginated(
+    api.get<ApiResponse<Role[]>>("/roles/all", {
+      params: buildListQuery({ all: true }),
+    }),
+  );
+  return result.data;
+}
+
 export async function createRole(input: CreateRoleInput) {
   return unwrapData(api.post<ApiResponse<Role>>("/roles", input));
 }
@@ -200,5 +219,24 @@ export async function fetchUsersPage(
     api.get<ApiResponse<UserAccount[]>>("/users/all", {
       params: buildListQuery(params),
     }),
+  );
+}
+
+export async function createUser(input: CreateUserInput) {
+  return unwrapData(api.post<ApiResponse<UserAccount>>("/users", input));
+}
+
+export async function updateUser(id: string, input: UpdateUserInput) {
+  return unwrapData(api.patch<ApiResponse<UserAccount>>(`/users/${id}`, input));
+}
+
+export async function deleteUser(id: string) {
+  const { data } = await api.delete<ApiResponse<unknown>>(`/users/${id}`);
+  return data;
+}
+
+export async function importUsers(rows: ImportUserRow[]) {
+  return unwrapData(
+    api.post<ApiResponse<ImportUsersResult>>("/users/import", { rows }),
   );
 }
