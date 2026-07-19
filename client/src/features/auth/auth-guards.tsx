@@ -5,6 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useAuth } from "@/features/auth/auth-provider";
 import { DEFAULT_APP_PATH } from "@/features/auth/constants";
+import { isSuperAdmin } from "@/features/auth/types";
+import { isSuperAdminPath } from "@/constants/navigation";
 
 function AuthLoading() {
   return (
@@ -40,19 +42,42 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Chặn các trang quản trị (/organization, /kpi, /settings)
+ * nếu user không phải SUPER_ADMIN.
+ */
+export function RestrictSuperAdminRoutes({ children }: { children: ReactNode }) {
+  const { user, status } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const blocked = status === "authenticated" && isSuperAdminPath(pathname) && !isSuperAdmin(user);
+
+  useEffect(() => {
+    if (!blocked) return;
+    router.replace(DEFAULT_APP_PATH);
+  }, [blocked, router]);
+
+  if (blocked) return null;
+  return <>{children}</>;
+}
+
 /** Đã đăng nhập thì không cho ở lại trang login. */
 export function RedirectIfAuthenticated({ children }: { children: ReactNode }) {
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    if (status !== "authenticated") return;
+    if (status !== "authenticated" || !user) return;
     const next = searchParams.get("next");
-    const target =
-      next && next.startsWith("/") && !next.startsWith("//") ? next : DEFAULT_APP_PATH;
+    let target = DEFAULT_APP_PATH;
+    if (next && next.startsWith("/") && !next.startsWith("//")) {
+      target =
+        isSuperAdminPath(next) && !isSuperAdmin(user) ? DEFAULT_APP_PATH : next;
+    }
     router.replace(target);
-  }, [status, router, searchParams]);
+  }, [status, user, router, searchParams]);
 
   if (status === "loading") return <AuthLoading />;
   if (status === "authenticated") return null;

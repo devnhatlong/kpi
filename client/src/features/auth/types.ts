@@ -76,3 +76,16 @@ export function primaryRoleLabel(user: AuthUser): string {
   if (!code) return "Người dùng";
   return ROLE_LABELS[code] ?? code;
 }
+
+export function userHasAnyRole(
+  user: AuthUser | null | undefined,
+  roles: readonly string[],
+): boolean {
+  if (!user?.roleAssignments?.length || roles.length === 0) return false;
+  const set = new Set(user.roleAssignments.map((r) => r.roleCode));
+  return roles.some((role) => set.has(role));
+}
+
+export function isSuperAdmin(user: AuthUser | null | undefined): boolean {
+  return userHasAnyRole(user, ["SUPER_ADMIN"]);
+}

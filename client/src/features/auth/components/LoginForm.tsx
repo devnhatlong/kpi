@@ -7,7 +7,19 @@ import { toast } from "sonner";
 
 import { useAuth } from "@/features/auth/auth-provider";
 import { DEFAULT_APP_PATH } from "@/features/auth/constants";
+import { isSuperAdmin } from "@/features/auth/types";
+import { isSuperAdminPath } from "@/constants/navigation";
 import { getApiErrorMessage } from "@/lib/api-client";
+
+function resolvePostLoginPath(next: string | null, user: { roleAssignments: { roleCode: string }[] }) {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+    return DEFAULT_APP_PATH;
+  }
+  if (isSuperAdminPath(next) && !isSuperAdmin(user)) {
+    return DEFAULT_APP_PATH;
+  }
+  return next;
+}
 
 export function LoginForm() {
   const router = useRouter();
@@ -22,12 +34,9 @@ export function LoginForm() {
     e.preventDefault();
     setLoading(true);
     try {
-      await login(username, password);
+      const user = await login(username, password);
       toast.success("Đăng nhập thành công.");
-      const next = searchParams.get("next");
-      const target =
-        next && next.startsWith("/") && !next.startsWith("//") ? next : DEFAULT_APP_PATH;
-      router.replace(target);
+      router.replace(resolvePostLoginPath(searchParams.get("next"), user));
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Tài khoản hoặc mật khẩu không đúng."));
     } finally {

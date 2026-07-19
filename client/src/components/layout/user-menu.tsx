@@ -6,7 +6,12 @@ import { LogOut, Settings, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/features/auth/auth-provider";
-import { displayNameOf, initialsOf, primaryRoleLabel } from "@/features/auth/types";
+import {
+  displayNameOf,
+  initialsOf,
+  isSuperAdmin,
+  primaryRoleLabel,
+} from "@/features/auth/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -23,6 +28,7 @@ export function UserMenu() {
   const name = user ? displayNameOf(user) : "Người dùng";
   const role = user ? primaryRoleLabel(user) : "";
   const initials = user ? initialsOf(user) : "?";
+  const showSettings = isSuperAdmin(user);
 
   const handleLogout = async () => {
     await logout();
@@ -62,12 +68,14 @@ export function UserMenu() {
             Hồ sơ
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/settings">
-            <Settings />
-            Cài đặt
-          </Link>
-        </DropdownMenuItem>
+        {showSettings ? (
+          <DropdownMenuItem asChild>
+            <Link href="/settings">
+              <Settings />
+              Cài đặt
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={handleLogout}

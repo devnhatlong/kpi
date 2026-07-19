@@ -179,10 +179,8 @@ export function EmployeesView() {
                         <TableCell className="text-muted-foreground">
                           {rowIndex(meta.page, meta.limit, index)}
                         </TableCell>
-                        <TableCell>
-                          <Badge className={`font-mono ${codeBadgeClass(user.username)}`}>
-                            {user.username}
-                          </Badge>
+                        <TableCell className="font-mono text-sm">
+                          {user.username}
                         </TableCell>
                         <TableCell className="font-medium">
                           {user.fullName || "-"}
@@ -198,8 +196,7 @@ export function EmployeesView() {
                               user.roleAssignments.map((r) => (
                                 <Badge
                                   key={`${entityId(user)}-${r.roleCode}`}
-                                  variant="outline"
-                                  className="font-mono text-xs"
+                                  className={`font-mono text-xs ${codeBadgeClass(r.roleCode)}`}
                                 >
                                   {r.roleCode}
                                 </Badge>

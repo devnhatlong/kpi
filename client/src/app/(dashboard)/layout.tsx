@@ -2,7 +2,10 @@
 
 import { Suspense, type ReactNode } from "react";
 
-import { RequireAuth } from "@/features/auth/auth-guards";
+import {
+  RequireAuth,
+  RestrictSuperAdminRoutes,
+} from "@/features/auth/auth-guards";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 
 export default function DashboardLayout({
@@ -19,7 +22,9 @@ export default function DashboardLayout({
       }
     >
       <RequireAuth>
-        <DashboardShell>{children}</DashboardShell>
+        <RestrictSuperAdminRoutes>
+          <DashboardShell>{children}</DashboardShell>
+        </RestrictSuperAdminRoutes>
       </RequireAuth>
     </Suspense>
   );

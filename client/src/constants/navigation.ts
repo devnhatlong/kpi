@@ -27,7 +27,25 @@ export type NavItem = {
   href?: string;
   icon: LucideIcon;
   children?: NavSubItem[];
+  /** Nếu có: chỉ hiện khi user có ít nhất một trong các role này. */
+  roles?: string[];
 };
+
+/** Chỉ SUPER_ADMIN được vào các khu vực quản trị. */
+export const SUPER_ADMIN_ONLY = ["SUPER_ADMIN"] as const;
+
+/** Prefix đường dẫn chỉ dành cho SUPER_ADMIN (chặn truy cập trực tiếp URL). */
+export const SUPER_ADMIN_PATH_PREFIXES = [
+  "/organization",
+  "/kpi",
+  "/settings",
+] as const;
+
+export function isSuperAdminPath(pathname: string): boolean {
+  return SUPER_ADMIN_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
 
 export const NAV_ITEMS: NavItem[] = [
   {
@@ -43,6 +61,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     title: "Tổ chức",
     icon: Network,
+    roles: [...SUPER_ADMIN_ONLY],
     children: [
       { title: "Đơn vị", href: "/organization/units", icon: Network },
       { title: "Cấp đơn vị", href: "/organization/levels", icon: Layers },
@@ -54,6 +73,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     title: "Quản lý KPI",
     icon: Trophy,
+    roles: [...SUPER_ADMIN_ONLY],
     children: [
       { title: "Cấu hình & giao KPI", href: "/kpi/config", icon: Settings2 },
       { title: "Theo dõi KPI", href: "/kpi/tracking", icon: Target },
@@ -74,6 +94,7 @@ export const NAV_ITEMS: NavItem[] = [
     title: "Cài đặt",
     href: "/settings",
     icon: Settings,
+    roles: [...SUPER_ADMIN_ONLY],
   },
 ];
 

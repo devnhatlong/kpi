@@ -1,10 +1,13 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 
 import { NAV_ITEMS, SIDEBAR_BRAND, type NavItem } from "@/constants/navigation";
+import { useAuth } from "@/features/auth/auth-provider";
+import { userHasAnyRole } from "@/features/auth/types";
 import {
   Collapsible,
   CollapsibleContent,
@@ -148,6 +151,16 @@ function NavGroup({ item }: { item: NavItem }) {
 }
 
 export function AppSidebar() {
+  const { user } = useAuth();
+
+  const visibleItems = useMemo(
+    () =>
+      NAV_ITEMS.filter(
+        (item) => !item.roles?.length || userHasAnyRole(user, item.roles),
+      ),
+    [user],
+  );
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border">
@@ -179,7 +192,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
-              {NAV_ITEMS.map((item) => (
+              {visibleItems.map((item) => (
                 <NavGroup key={item.title} item={item} />
               ))}
             </SidebarMenu>
