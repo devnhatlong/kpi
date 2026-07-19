@@ -36,6 +36,12 @@ import {
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/common/table-pagination";
 import {
+  activeBadgeClass,
+  codeBadgeClass,
+  moduleBadgeClass,
+  systemBadgeClass,
+} from "@/features/organization/badge-styles";
+import {
   deletePermission,
   fetchPermissionsPage,
   permissionKeys,
@@ -157,7 +163,7 @@ export function PermissionsView() {
                         {rowIndex(meta.page, meta.limit, index)}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="font-mono">
+                        <Badge className={`font-mono ${codeBadgeClass(permission.code)}`}>
                           {permission.code}
                         </Badge>
                       </TableCell>
@@ -170,23 +176,21 @@ export function PermissionsView() {
                         ) : null}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{permission.module}</Badge>
+                        <Badge className={moduleBadgeClass(permission.module)}>
+                          {permission.module}
+                        </Badge>
                       </TableCell>
                       <TableCell>{permission.sortOrder ?? 0}</TableCell>
                       <TableCell>
                         {permission.isSystem ? (
-                          <Badge className="bg-slate-700 text-white border-transparent">
-                            Hệ thống
-                          </Badge>
+                          <Badge className={systemBadgeClass}>Hệ thống</Badge>
                         ) : (
                           <Badge variant="outline">Tuỳ chỉnh</Badge>
                         )}
                       </TableCell>
                       <TableCell>
                         {permission.isActive ? (
-                          <Badge className="bg-emerald-600 text-white border-transparent">
-                            Hoạt động
-                          </Badge>
+                          <Badge className={activeBadgeClass}>Hoạt động</Badge>
                         ) : (
                           <Badge variant="outline">Ngừng</Badge>
                         )}

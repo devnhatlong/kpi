@@ -36,6 +36,10 @@ import {
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/common/table-pagination";
 import {
+  activeBadgeClass,
+  levelBadgeClass,
+} from "@/features/organization/badge-styles";
+import {
   deleteDepartmentLevel,
   departmentKeys,
   fetchDepartmentLevelsPage,
@@ -155,7 +159,7 @@ export function LevelsView() {
                         {rowIndex(meta.page, meta.limit, index)}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="font-mono">
+                        <Badge className={`font-mono ${levelBadgeClass(level.rank)}`}>
                           {level.code}
                         </Badge>
                       </TableCell>
@@ -163,9 +167,7 @@ export function LevelsView() {
                       <TableCell>{level.rank}</TableCell>
                       <TableCell>
                         {level.isActive ? (
-                          <Badge className="bg-emerald-600 text-white border-transparent">
-                            Hoạt động
-                          </Badge>
+                          <Badge className={activeBadgeClass}>Hoạt động</Badge>
                         ) : (
                           <Badge variant="outline">Ngừng</Badge>
                         )}

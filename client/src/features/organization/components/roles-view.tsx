@@ -35,6 +35,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TablePagination } from "@/components/common/table-pagination";
+import {
+  activeBadgeClass,
+  codeBadgeClass,
+  systemBadgeClass,
+} from "@/features/organization/badge-styles";
 import { deleteRole, fetchRolesPage, roleKeys } from "@/features/organization/api";
 import { RoleFormDialog } from "@/features/organization/components/role-form-dialog";
 import type { Role } from "@/features/organization/types";
@@ -153,7 +158,7 @@ export function RolesView() {
                         {rowIndex(meta.page, meta.limit, index)}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="font-mono">
+                        <Badge className={`font-mono ${codeBadgeClass(role.code)}`}>
                           {role.code}
                         </Badge>
                       </TableCell>
@@ -164,18 +169,14 @@ export function RolesView() {
                       <TableCell>{role.sortOrder ?? 0}</TableCell>
                       <TableCell>
                         {role.isSystem ? (
-                          <Badge className="bg-slate-700 text-white border-transparent">
-                            Hệ thống
-                          </Badge>
+                          <Badge className={systemBadgeClass}>Hệ thống</Badge>
                         ) : (
                           <Badge variant="outline">Tuỳ chỉnh</Badge>
                         )}
                       </TableCell>
                       <TableCell>
                         {role.isActive ? (
-                          <Badge className="bg-emerald-600 text-white border-transparent">
-                            Hoạt động
-                          </Badge>
+                          <Badge className={activeBadgeClass}>Hoạt động</Badge>
                         ) : (
                           <Badge variant="outline">Ngừng</Badge>
                         )}

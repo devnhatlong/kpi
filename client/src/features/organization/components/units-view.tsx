@@ -67,31 +67,10 @@ import {
 } from "@/features/organization/tree-utils";
 import type { Department } from "@/features/organization/types";
 import { entityId, levelOf } from "@/features/organization/types";
+import { levelBadgeClass } from "@/features/organization/badge-styles";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { DEFAULT_PAGE_SIZE, rowIndex } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
-
-function levelBadgeClass(rank?: number) {
-  if (rank == null) return "bg-sky-600 text-white border-transparent";
-  switch (rank) {
-    case 1:
-      return "bg-[#0f4c9c] text-white border-transparent"; // CAT
-    case 2:
-      return "bg-blue-600 text-white border-transparent"; // PHONG
-    case 3:
-      return "bg-cyan-700 text-white border-transparent"; // DOI
-    case 4:
-      return "bg-emerald-600 text-white border-transparent"; // XA
-    case 5:
-      return "bg-teal-600 text-white border-transparent"; // PHUONG
-    case 6:
-      return "bg-amber-600 text-white border-transparent"; // DON
-    case 7:
-      return "bg-orange-600 text-white border-transparent"; // DK
-    default:
-      return "bg-blue-500 text-white border-transparent";
-  }
-}
 
 /** Cột indent — khoảng cách rõ với cha. Node lá không có slot icon → sát trục hơn. */
 const TREE_COL = 24;
@@ -477,7 +456,9 @@ export function UnitsView() {
                           {selectedLevel.name}
                         </Badge>
                       ) : (
-                        <Badge className="border-0 bg-sky-100 text-sky-800">Chưa gán cấp</Badge>
+                        <Badge className="border-0 bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200">
+                          Chưa gán cấp
+                        </Badge>
                       )}
                       <h2 className="font-display text-xl font-semibold tracking-tight md:text-2xl">
                         {selected.name}
