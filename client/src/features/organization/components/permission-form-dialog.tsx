@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { createPermission, updatePermission } from "@/features/organization/api";
 import type { AppPermission } from "@/features/organization/types";
 import { entityId } from "@/features/organization/types";
@@ -100,14 +101,14 @@ export function PermissionFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{edit ? "Sửa quyền" : "Thêm quyền"}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-4 py-2">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-1 space-y-2">
+        <div className="grid gap-5 py-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
               <Label htmlFor="perm-code">Mã quyền</Label>
               <Input
                 id="perm-code"
@@ -117,7 +118,7 @@ export function PermissionFormDialog({
                 disabled={!!edit?.isSystem}
               />
             </div>
-            <div className="col-span-2 space-y-2">
+            <div className="space-y-2">
               <Label htmlFor="perm-name">Tên quyền</Label>
               <Input
                 id="perm-name"
@@ -128,27 +129,16 @@ export function PermissionFormDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="perm-module">Nhóm / module</Label>
-            <Input
-              id="perm-module"
-              value={module}
-              onChange={(e) => setModule(e.target.value.toLowerCase())}
-              placeholder="user"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="perm-desc">Mô tả</Label>
-            <Input
-              id="perm-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Mô tả ngắn (tuỳ chọn)"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 items-end">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="perm-module">Nhóm / module</Label>
+              <Input
+                id="perm-module"
+                value={module}
+                onChange={(e) => setModule(e.target.value.toLowerCase())}
+                placeholder="user"
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="perm-sort">Thứ tự</Label>
               <Input
@@ -159,10 +149,22 @@ export function PermissionFormDialog({
                 onChange={(e) => setSortOrder(e.target.value)}
               />
             </div>
-            <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-              <Label htmlFor="perm-active">Đang hoạt động</Label>
-              <Switch id="perm-active" checked={isActive} onCheckedChange={setIsActive} />
-            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="perm-desc">Mô tả</Label>
+            <Textarea
+              id="perm-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Mô tả ngắn (tuỳ chọn)"
+              rows={3}
+            />
+          </div>
+
+          <div className="flex h-9 items-center justify-between rounded-lg border px-3">
+            <Label htmlFor="perm-active">Đang hoạt động</Label>
+            <Switch id="perm-active" checked={isActive} onCheckedChange={setIsActive} />
           </div>
         </div>
 

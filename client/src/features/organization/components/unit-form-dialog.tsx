@@ -139,14 +139,14 @@ export function UnitFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{edit ? "Sửa đơn vị" : "Thêm đơn vị"}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-4 py-2">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-1 space-y-2">
+        <div className="grid gap-5 py-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
               <Label htmlFor="unit-code">Mã đơn vị</Label>
               <Input
                 id="unit-code"
@@ -155,7 +155,7 @@ export function UnitFormDialog({
                 placeholder="VD: CNTT"
               />
             </div>
-            <div className="col-span-2 space-y-2">
+            <div className="space-y-2">
               <Label htmlFor="unit-name">Tên đơn vị</Label>
               <Input
                 id="unit-name"
@@ -166,7 +166,7 @@ export function UnitFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Cấp đơn vị</Label>
               <SearchableSelect
@@ -189,7 +189,7 @@ export function UnitFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 items-end gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="unit-sort">Thứ tự</Label>
               <Input
@@ -199,9 +199,11 @@ export function UnitFormDialog({
                 onChange={(e) => setSortOrder(e.target.value)}
               />
             </div>
-            <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-              <Label htmlFor="unit-active">Đang hoạt động</Label>
-              <Switch id="unit-active" checked={isActive} onCheckedChange={setIsActive} />
+            <div className="flex h-full items-end">
+              <div className="flex h-9 w-full items-center justify-between rounded-lg border px-3">
+                <Label htmlFor="unit-active">Đang hoạt động</Label>
+                <Switch id="unit-active" checked={isActive} onCheckedChange={setIsActive} />
+              </div>
             </div>
           </div>
         </div>

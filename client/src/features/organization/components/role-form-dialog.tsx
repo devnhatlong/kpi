@@ -134,13 +134,13 @@ export function RoleFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{edit ? "Sửa vai trò" : "Thêm vai trò"}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-4 py-2">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-5 py-2">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="role-code">Mã vai trò</Label>
               <Input
@@ -162,7 +162,7 @@ export function RoleFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 items-end">
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="role-sort">Thứ tự</Label>
               <Input
@@ -173,15 +173,17 @@ export function RoleFormDialog({
                 onChange={(e) => setSortOrder(e.target.value)}
               />
             </div>
-            <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-              <Label htmlFor="role-active">Đang hoạt động</Label>
-              <Switch id="role-active" checked={isActive} onCheckedChange={setIsActive} />
+            <div className="flex h-full items-end">
+              <div className="flex h-9 w-full items-center justify-between rounded-lg border px-3">
+                <Label htmlFor="role-active">Đang hoạt động</Label>
+                <Switch id="role-active" checked={isActive} onCheckedChange={setIsActive} />
+              </div>
             </div>
           </div>
 
           <div className="space-y-2">
             <Label>Quyền hạn (từ DB)</Label>
-            <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border p-3">
+            <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg border p-3">
               {activePermissions.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Chưa có quyền nào. Thêm ở mục Quyền trước.

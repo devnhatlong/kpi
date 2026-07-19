@@ -95,14 +95,14 @@ export function LevelFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{edit ? "Sửa cấp đơn vị" : "Thêm cấp đơn vị"}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-4 py-2">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-1 space-y-2">
+        <div className="grid gap-5 py-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
               <Label htmlFor="level-code">Mã cấp</Label>
               <Input
                 id="level-code"
@@ -111,7 +111,7 @@ export function LevelFormDialog({
                 placeholder="VD: CAT"
               />
             </div>
-            <div className="col-span-2 space-y-2">
+            <div className="space-y-2">
               <Label htmlFor="level-name">Tên cấp</Label>
               <Input
                 id="level-name"
@@ -122,22 +122,21 @@ export function LevelFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 items-end">
-            <div className="space-y-2">
-              <Label htmlFor="level-rank">Thứ tự cấp</Label>
-              <Input
-                id="level-rank"
-                type="number"
-                min={0}
-                value={rank}
-                onChange={(e) => setRank(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">1 = cấp cao nhất</p>
-            </div>
-            <div className="flex items-center justify-between rounded-lg border px-3 py-2">
-              <Label htmlFor="level-active">Đang hoạt động</Label>
-              <Switch id="level-active" checked={isActive} onCheckedChange={setIsActive} />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="level-rank">Thứ tự cấp</Label>
+            <Input
+              id="level-rank"
+              type="number"
+              min={0}
+              value={rank}
+              onChange={(e) => setRank(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">1 = cấp cao nhất</p>
+          </div>
+
+          <div className="flex h-9 items-center justify-between rounded-lg border px-3">
+            <Label htmlFor="level-active">Đang hoạt động</Label>
+            <Switch id="level-active" checked={isActive} onCheckedChange={setIsActive} />
           </div>
         </div>
 
