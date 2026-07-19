@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useAuth } from "@/features/auth/auth-provider";
+import { DEFAULT_APP_PATH } from "@/features/auth/constants";
 
 function AuthLoading() {
   return (
@@ -49,7 +50,7 @@ export function RedirectIfAuthenticated({ children }: { children: ReactNode }) {
     if (status !== "authenticated") return;
     const next = searchParams.get("next");
     const target =
-      next && next.startsWith("/") && !next.startsWith("//") ? next : "/organization/units";
+      next && next.startsWith("/") && !next.startsWith("//") ? next : DEFAULT_APP_PATH;
     router.replace(target);
   }, [status, router, searchParams]);
 

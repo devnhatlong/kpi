@@ -6,6 +6,7 @@ import { Eye, EyeOff, KeyRound, Lock, User } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/features/auth/auth-provider";
+import { DEFAULT_APP_PATH } from "@/features/auth/constants";
 import { getApiErrorMessage } from "@/lib/api-client";
 
 export function LoginForm() {
@@ -25,7 +26,7 @@ export function LoginForm() {
       toast.success("Đăng nhập thành công.");
       const next = searchParams.get("next");
       const target =
-        next && next.startsWith("/") && !next.startsWith("//") ? next : "/organization/units";
+        next && next.startsWith("/") && !next.startsWith("//") ? next : DEFAULT_APP_PATH;
       router.replace(target);
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Tài khoản hoặc mật khẩu không đúng."));
