@@ -38,6 +38,7 @@ import { TablePagination } from "@/components/common/table-pagination";
 import {
   activeBadgeClass,
   codeBadgeClass,
+  inactiveBadgeClass,
 } from "@/features/organization/badge-styles";
 import {
   deleteUser,
@@ -206,9 +207,13 @@ export function EmployeesView() {
                         </TableCell>
                         <TableCell>
                           {user.isActive ? (
-                            <Badge className={activeBadgeClass}>Hoạt động</Badge>
+                            <Badge variant="outline" className={activeBadgeClass}>
+                              Hoạt động
+                            </Badge>
                           ) : (
-                            <Badge variant="outline">Ngừng</Badge>
+                            <Badge variant="outline" className={inactiveBadgeClass}>
+                              Ngừng
+                            </Badge>
                           )}
                         </TableCell>
                         <TableCell className="text-right">

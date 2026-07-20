@@ -38,6 +38,7 @@ import { TablePagination } from "@/components/common/table-pagination";
 import {
   activeBadgeClass,
   codeBadgeClass,
+  inactiveBadgeClass,
   systemBadgeClass,
 } from "@/features/organization/badge-styles";
 import { deleteRole, fetchRolesPage, roleKeys } from "@/features/organization/api";
@@ -176,9 +177,13 @@ export function RolesView() {
                       </TableCell>
                       <TableCell>
                         {role.isActive ? (
-                          <Badge className={activeBadgeClass}>Hoạt động</Badge>
+                          <Badge variant="outline" className={activeBadgeClass}>
+                            Hoạt động
+                          </Badge>
                         ) : (
-                          <Badge variant="outline">Ngừng</Badge>
+                          <Badge variant="outline" className={inactiveBadgeClass}>
+                            Ngừng
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-right">

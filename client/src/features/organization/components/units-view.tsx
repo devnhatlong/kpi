@@ -67,7 +67,11 @@ import {
 } from "@/features/organization/tree-utils";
 import type { Department } from "@/features/organization/types";
 import { entityId, levelOf } from "@/features/organization/types";
-import { levelBadgeClass } from "@/features/organization/badge-styles";
+import {
+  activeBadgeClass,
+  inactiveBadgeClass,
+  levelBadgeClass,
+} from "@/features/organization/badge-styles";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { DEFAULT_PAGE_SIZE, rowIndex } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
@@ -583,9 +587,13 @@ export function UnitsView() {
                                   <TableCell>{childLevel?.name ?? "-"}</TableCell>
                                   <TableCell>
                                     {child.isActive ? (
-                                      <Badge variant="secondary">Hoạt động</Badge>
+                                      <Badge variant="outline" className={activeBadgeClass}>
+                                        Hoạt động
+                                      </Badge>
                                     ) : (
-                                      <Badge variant="outline">Ngưng</Badge>
+                                      <Badge variant="outline" className={inactiveBadgeClass}>
+                                        Ngưng
+                                      </Badge>
                                     )}
                                   </TableCell>
                                   <TableCell className="text-right">
@@ -672,9 +680,13 @@ export function UnitsView() {
                                 </TableCell>
                                 <TableCell>
                                   {user.isActive ? (
-                                    <Badge variant="secondary">Hoạt động</Badge>
+                                    <Badge variant="outline" className={activeBadgeClass}>
+                                      Hoạt động
+                                    </Badge>
                                   ) : (
-                                    <Badge variant="outline">Ngưng</Badge>
+                                    <Badge variant="outline" className={inactiveBadgeClass}>
+                                      Ngưng
+                                    </Badge>
                                   )}
                                 </TableCell>
                               </TableRow>

@@ -38,6 +38,7 @@ import { TablePagination } from "@/components/common/table-pagination";
 import {
   activeBadgeClass,
   codeBadgeClass,
+  inactiveBadgeClass,
   moduleBadgeClass,
   systemBadgeClass,
 } from "@/features/organization/badge-styles";
@@ -190,9 +191,13 @@ export function PermissionsView() {
                       </TableCell>
                       <TableCell>
                         {permission.isActive ? (
-                          <Badge className={activeBadgeClass}>Hoạt động</Badge>
+                          <Badge variant="outline" className={activeBadgeClass}>
+                            Hoạt động
+                          </Badge>
                         ) : (
-                          <Badge variant="outline">Ngừng</Badge>
+                          <Badge variant="outline" className={inactiveBadgeClass}>
+                            Ngừng
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-right">

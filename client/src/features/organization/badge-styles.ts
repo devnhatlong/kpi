@@ -62,11 +62,13 @@ export function moduleBadgeClass(module: string) {
   return MODULE_PALETTE[hashSeed(module.toLowerCase()) % MODULE_PALETTE.length];
 }
 
+/** Trạng thái hoạt động — nền nhạt + chữ đậm (light), nền tối + chữ sáng (dark). */
 export const activeBadgeClass =
-  "border-transparent bg-emerald-600 text-white dark:bg-emerald-500";
+  "border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
+
+/** Trạng thái ngừng — neutral, tương phản ổn định cả hai mode. */
+export const inactiveBadgeClass =
+  "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400";
 
 export const systemBadgeClass =
   "border-transparent bg-blue-700 text-white dark:bg-blue-600";
-
-export const inactiveBadgeClass =
-  "border-border bg-transparent text-muted-foreground";

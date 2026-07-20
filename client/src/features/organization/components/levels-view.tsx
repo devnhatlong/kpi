@@ -37,6 +37,7 @@ import {
 import { TablePagination } from "@/components/common/table-pagination";
 import {
   activeBadgeClass,
+  inactiveBadgeClass,
   levelBadgeClass,
 } from "@/features/organization/badge-styles";
 import {
@@ -167,9 +168,13 @@ export function LevelsView() {
                       <TableCell>{level.rank}</TableCell>
                       <TableCell>
                         {level.isActive ? (
-                          <Badge className={activeBadgeClass}>Hoạt động</Badge>
+                          <Badge variant="outline" className={activeBadgeClass}>
+                            Hoạt động
+                          </Badge>
                         ) : (
-                          <Badge variant="outline">Ngừng</Badge>
+                          <Badge variant="outline" className={inactiveBadgeClass}>
+                            Ngừng
+                          </Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
