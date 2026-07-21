@@ -8,10 +8,11 @@ import { toast } from "sonner";
 import { useAuth } from "@/features/auth/auth-provider";
 import { DEFAULT_APP_PATH } from "@/features/auth/constants";
 import { isSuperAdmin } from "@/features/auth/types";
+import type { AuthUser } from "@/features/auth/types";
 import { isSuperAdminPath } from "@/constants/navigation";
 import { getApiErrorMessage } from "@/lib/api-client";
 
-function resolvePostLoginPath(next: string | null, user: { roleAssignments: { roleCode: string }[] }) {
+function resolvePostLoginPath(next: string | null, user: AuthUser) {
   if (!next || !next.startsWith("/") || next.startsWith("//")) {
     return DEFAULT_APP_PATH;
   }

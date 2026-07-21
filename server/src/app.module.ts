@@ -1,4 +1,9 @@
-import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -9,13 +14,14 @@ import { DepartmentsModule } from './modules/departments/departments.module';
 import { DepartmentLevelsModule } from './modules/department-levels/department-levels.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
+import { KpiConfigModule } from './modules/kpi-config/kpi-config.module';
 import { mongooseConfig } from './config/database.config';
 import { JwtModule } from '@nestjs/jwt';
 import type { SignOptions } from 'jsonwebtoken';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, }),
+    ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
@@ -27,7 +33,9 @@ import type { SignOptions } from 'jsonwebtoken';
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN') as SignOptions['expiresIn'],
+          expiresIn: configService.get<string>(
+            'JWT_EXPIRES_IN',
+          ) as SignOptions['expiresIn'],
         },
       }),
       global: true,
@@ -38,6 +46,7 @@ import type { SignOptions } from 'jsonwebtoken';
     DepartmentLevelsModule,
     RolesModule,
     PermissionsModule,
+    KpiConfigModule,
   ],
 })
 export class AppModule implements NestModule {
