@@ -50,8 +50,9 @@ import {
 } from "@/features/organization/types";
 import type { WorkContent } from "../types";
 
-type InputRole = "ASSIGNER" | "ASSIGNEE" | "APPROVER" | "CALCULATED";
-type DataType = "text" | "number" | "percent" | "date";
+const CALCULATED_INPUT = "CALCULATED";
+
+type DataType = "text" | "number" | "text_file";
 type VisibilityScope = "ALL" | "ROLES" | "USERS";
 
 type HeaderGroup = {
@@ -67,7 +68,7 @@ type TemplateColumn = {
   headerPath: string[];
   width: number;
   visible: boolean;
-  inputRole: InputRole;
+  inputRoleCode: string;
   dataType: DataType;
 };
 
@@ -85,25 +86,17 @@ type TemplateDraft = {
   assignedUserIds: string[];
 };
 
-const inputRoleLabels: Record<InputRole, string> = {
-  ASSIGNER: "Người giao việc",
-  ASSIGNEE: "Người thực hiện",
-  APPROVER: "Người thẩm định",
-  CALCULATED: "Công thức tự động",
-};
-
 const dataTypeLabels: Record<DataType, string> = {
   text: "Văn bản",
   number: "Số",
-  percent: "Phần trăm",
-  date: "Ngày",
+  text_file: "Văn bản + upload file",
 };
 
 function column(
   key: string,
   title: string,
   width: number,
-  inputRole: InputRole,
+  inputRoleCode: string,
   dataType: DataType,
 ): TemplateColumn {
   return {
@@ -113,7 +106,7 @@ function column(
     headerPath: [],
     width,
     visible: true,
-    inputRole,
+    inputRoleCode,
     dataType,
   };
 }
@@ -667,9 +660,16 @@ export function TemplateConfigView({
 
   const addCustomColumn = () => {
     const suffix = Date.now().toString(36);
+    const defaultRoleCode = roles[0]?.code ?? "";
     setColumns((current) => [
       ...current,
-      column(`custom_${suffix}`, "Cột tùy chỉnh", 140, "ASSIGNEE", "text"),
+      column(
+        `custom_${suffix}`,
+        "Cột tùy chỉnh",
+        140,
+        defaultRoleCode,
+        "text",
+      ),
     ]);
   };
 
@@ -861,6 +861,10 @@ export function TemplateConfigView({
       toast.error("Mã trường phải duy nhất trong biểu mẫu.");
       return;
     }
+    if (columns.some((item) => !item.inputRoleCode)) {
+      toast.error("Mỗi cột phải chọn role nhập hoặc công thức tự động.");
+      return;
+    }
     toast.success("Đã lưu cấu hình bản nháp trên giao diện demo.");
   };
 
@@ -1025,7 +1029,8 @@ export function TemplateConfigView({
                     </div>
                     <div className="text-xs text-muted-foreground">
                       Biểu mẫu bắt đầu trống. Lớp header gộp chọn ở Nhóm header;
-                      tên cột cuối cùng nhập ở Nhãn cột.
+                      tên cột cuối cùng nhập ở Nhãn cột. Role nhập lấy từ danh
+                      mục role để dùng chung nhiều đơn vị.
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -1055,7 +1060,7 @@ export function TemplateConfigView({
                       <span>Nhóm header</span>
                       <span>Kiểu dữ liệu</span>
                       <span>Rộng</span>
-                      <span>Ai nhập</span>
+                      <span>Role nhập</span>
                       <span className="text-right">Thứ tự</span>
                     </div>
                     {!columns.length ? (
@@ -1141,24 +1146,31 @@ export function TemplateConfigView({
                           }
                         />
                         <Select
-                          value={item.inputRole}
-                          onValueChange={(inputRole) =>
+                          value={item.inputRoleCode || "__NONE__"}
+                          onValueChange={(inputRoleCode) =>
                             updateColumn(item.id, {
-                              inputRole: inputRole as InputRole,
+                              inputRoleCode:
+                                inputRoleCode === "__NONE__"
+                                  ? ""
+                                  : inputRoleCode,
                             })
                           }
                         >
                           <SelectTrigger className="h-9">
-                            <SelectValue />
+                            <SelectValue placeholder="Chọn role" />
                           </SelectTrigger>
                           <SelectContent>
-                            {Object.entries(inputRoleLabels).map(
-                              ([value, label]) => (
-                                <SelectItem key={value} value={value}>
-                                  {label}
-                                </SelectItem>
-                              ),
-                            )}
+                            <SelectItem value="__NONE__">
+                              Chưa chọn role
+                            </SelectItem>
+                            {roles.map((role) => (
+                              <SelectItem key={role.code} value={role.code}>
+                                {role.name} ({role.code})
+                              </SelectItem>
+                            ))}
+                            <SelectItem value={CALCULATED_INPUT}>
+                              Công thức tự động
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                         <div className="flex justify-end gap-0.5">
