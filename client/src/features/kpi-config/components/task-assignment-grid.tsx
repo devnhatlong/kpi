@@ -264,7 +264,7 @@ export function TaskAssignmentGrid({
           Cỡ chữ nội dung
           <input
             type="range"
-            min={10}
+            min={4}
             max={16}
             value={fontSize}
             onChange={(event) => setFontSize(Number(event.target.value))}
@@ -275,8 +275,8 @@ export function TaskAssignmentGrid({
           Cỡ chữ tiêu đề
           <input
             type="range"
-            min={9}
-            max={14}
+            min={4}
+            max={16}
             value={headerFontSize}
             onChange={(event) => setHeaderFontSize(Number(event.target.value))}
           />

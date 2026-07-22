@@ -75,8 +75,6 @@ type TemplateDraft = {
   id: string;
   name: string;
   code: string;
-  effectiveFrom: string;
-  legalBasis: string;
   columns: TemplateColumn[];
   headerGroups: HeaderGroup[];
   includedContentIds: string[];
@@ -185,6 +183,213 @@ function headerPathLabel(groups: HeaderGroup[], path: string[]): string {
   return names.length ? names.join(" → ") : "Không nhóm";
 }
 
+function resolvePathLabels(
+  groups: HeaderGroup[],
+  path: string[],
+): string[] {
+  const names: string[] = [];
+  let current = groups;
+  for (const id of path) {
+    const node = current.find((item) => item.id === id);
+    if (!node) break;
+    names.push(node.name);
+    current = node.children;
+  }
+  return names;
+}
+
+type HeaderPreviewCell = {
+  key: string;
+  label: string;
+  colSpan: number;
+  rowSpan: number;
+  minWidth?: number;
+};
+
+function pathPrefixEqual(
+  left: string[],
+  right: string[],
+  level: number,
+): boolean {
+  for (let index = 0; index <= level; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+function buildHeaderPreviewRows(
+  columns: TemplateColumn[],
+  groups: HeaderGroup[],
+): { rows: HeaderPreviewCell[][]; widths: number[] } | null {
+  const visible = columns.filter((item) => item.visible);
+  if (!visible.length) return null;
+
+  const enriched = visible.map((item) => ({
+    id: item.id,
+    title: item.title.trim() || "(Chưa đặt nhãn)",
+    width: item.width,
+    pathLabels: resolvePathLabels(groups, item.headerPath),
+  }));
+  const maxDepth = Math.max(0, ...enriched.map((item) => item.pathLabels.length));
+  const totalRows = maxDepth + 1;
+  const occupied = Array.from({ length: totalRows }, () =>
+    Array.from({ length: enriched.length }, () => false),
+  );
+  const rows: HeaderPreviewCell[][] = Array.from(
+    { length: totalRows },
+    () => [],
+  );
+
+  for (let level = 0; level < maxDepth; level += 1) {
+    let index = 0;
+    while (index < enriched.length) {
+      if (occupied[level]![index]) {
+        index += 1;
+        continue;
+      }
+
+      const column = enriched[index]!;
+      if (column.pathLabels.length <= level) {
+        const rowSpan = totalRows - level;
+        rows[level]!.push({
+          key: `title-${column.id}-${level}`,
+          label: column.title,
+          colSpan: 1,
+          rowSpan,
+          minWidth: column.width,
+        });
+        for (let row = level; row < totalRows; row += 1) {
+          occupied[row]![index] = true;
+        }
+        index += 1;
+        continue;
+      }
+
+      let end = index + 1;
+      while (
+        end < enriched.length &&
+        !occupied[level]![end] &&
+        enriched[end]!.pathLabels.length > level &&
+        pathPrefixEqual(
+          column.pathLabels,
+          enriched[end]!.pathLabels,
+          level,
+        )
+      ) {
+        end += 1;
+      }
+
+      const run = enriched.slice(index, end);
+      rows[level]!.push({
+        key: `group-${level}-${index}-${column.pathLabels[level]}`,
+        label: column.pathLabels[level]!,
+        colSpan: run.length,
+        rowSpan: 1,
+        minWidth: run.reduce((sum, item) => sum + item.width, 0),
+      });
+      for (let cursor = index; cursor < end; cursor += 1) {
+        occupied[level]![cursor] = true;
+      }
+      index = end;
+    }
+  }
+
+  const leafLevel = maxDepth;
+  for (let index = 0; index < enriched.length; index += 1) {
+    if (occupied[leafLevel]![index]) continue;
+    const column = enriched[index]!;
+    rows[leafLevel]!.push({
+      key: `leaf-${column.id}`,
+      label: column.title,
+      colSpan: 1,
+      rowSpan: 1,
+      minWidth: column.width,
+    });
+    occupied[leafLevel]![index] = true;
+  }
+
+  return {
+    rows,
+    widths: enriched.map((item) => item.width),
+  };
+}
+
+function HeaderPreviewTable({
+  columns,
+  groups,
+}: {
+  columns: TemplateColumn[];
+  groups: HeaderGroup[];
+}) {
+  const preview = buildHeaderPreviewRows(columns, groups);
+
+  if (!preview) {
+    return (
+      <div className="rounded-md border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+        Bật ít nhất một cột để xem trước header.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-md border bg-background">
+      <table className="w-max min-w-full border-collapse text-xs">
+        <colgroup>
+          {preview.widths.map((width, index) => (
+            <col key={`col-${index}`} style={{ width }} />
+          ))}
+        </colgroup>
+        <thead>
+          {preview.rows.map((row, rowIndex) => (
+            <tr key={`header-row-${rowIndex}`} className="bg-muted/40">
+              {row.map((cell) => (
+                <th
+                  key={cell.key}
+                  colSpan={cell.colSpan}
+                  rowSpan={cell.rowSpan}
+                  className="border px-2 py-2 text-center align-middle font-semibold leading-snug"
+                  style={
+                    cell.minWidth ? { minWidth: cell.minWidth } : undefined
+                  }
+                >
+                  {cell.label}
+                </th>
+              ))}
+            </tr>
+          ))}
+        </thead>
+      </table>
+    </div>
+  );
+}
+
+function flattenHeaderOptions(
+  groups: HeaderGroup[],
+  ancestors: HeaderGroup[] = [],
+): Array<{
+  value: string;
+  path: string[];
+  label: string;
+  depth: number;
+}> {
+  return groups.flatMap((group) => {
+    const path = [...ancestors.map((item) => item.id), group.id];
+    const label = [...ancestors.map((item) => item.name), group.name].join(
+      " → ",
+    );
+    const option = {
+      value: path.join("/"),
+      path,
+      label,
+      depth: ancestors.length,
+    };
+    return [
+      option,
+      ...flattenHeaderOptions(group.children, [...ancestors, group]),
+    ];
+  });
+}
+
 function HeaderPathSelects({
   groups,
   path,
@@ -194,51 +399,46 @@ function HeaderPathSelects({
   path: string[];
   onChange: (path: string[]) => void;
 }) {
-  const levels: HeaderGroup[][] = [];
-  let options = groups;
-  let depth = 0;
-
-  while (true) {
-    levels.push(options);
-    const selectedId = path[depth];
-    if (!selectedId) break;
-    const node = options.find((item) => item.id === selectedId);
-    if (!node?.children.length) break;
-    options = node.children;
-    depth += 1;
-  }
+  const options = flattenHeaderOptions(groups);
+  const value = path.length ? path.join("/") : "__NONE__";
 
   return (
     <div className="space-y-1">
-      {levels.map((levelOptions, index) => (
-        <Select
-          key={`header-level-${index}`}
-          value={path[index] ?? "__NONE__"}
-          onValueChange={(selected) => {
-            if (selected === "__NONE__") {
-              onChange(path.slice(0, index));
-              return;
-            }
-            onChange([...path.slice(0, index), selected]);
-          }}
-        >
-          <SelectTrigger className="h-9">
-            <SelectValue
-              placeholder={index === 0 ? "Không nhóm" : "Chọn nhóm con"}
-            />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__NONE__">
-              {index === 0 ? "Không nhóm" : "Không chọn sâu hơn"}
+      <Select
+        value={value}
+        onValueChange={(selected) => {
+          if (selected === "__NONE__") {
+            onChange([]);
+            return;
+          }
+          const option = options.find((item) => item.value === selected);
+          onChange(option?.path ?? []);
+        }}
+      >
+        <SelectTrigger className="h-9">
+          <SelectValue placeholder="Chọn nhóm header">
+            {headerPathLabel(groups, path)}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__NONE__">Không nhóm</SelectItem>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              <span
+                className="block truncate"
+                style={{ paddingLeft: `${option.depth * 12}px` }}
+              >
+                {option.depth > 0 ? "↳ " : ""}
+                {option.label.split(" → ").at(-1)}
+              </span>
             </SelectItem>
-            {levelOptions.map((option) => (
-              <SelectItem key={option.id} value={option.id}>
-                {option.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ))}
+          ))}
+        </SelectContent>
+      </Select>
+      <div className="text-[10px] leading-snug text-muted-foreground">
+        Chọn lớp gộp cuối cùng (vd: Kết quả KPI tiến độ). Tên cột cuối nhập ở
+        Nhãn cột.
+      </div>
     </div>
   );
 }
@@ -349,7 +549,7 @@ function newTemplateId(): string {
   return `template_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function newTemplateCode(): string {
+function generateTemplateCode(): string {
   return `KPI_${Date.now().toString(36).toUpperCase()}`;
 }
 
@@ -360,9 +560,7 @@ function createBlankTemplate(
   return {
     id: newTemplateId(),
     name,
-    code: newTemplateCode(),
-    effectiveFrom: "",
-    legalBasis: "",
+    code: generateTemplateCode(),
     columns: [],
     headerGroups: [],
     includedContentIds,
@@ -388,6 +586,7 @@ export function TemplateConfigView({
     "create" | "copy" | "edit" | null
   >(null);
   const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateCode, setNewTemplateCode] = useState("");
   const [newVisibilityScope, setNewVisibilityScope] =
     useState<VisibilityScope>("ALL");
   const [newAssignedRoleIds, setNewAssignedRoleIds] = useState<string[]>([]);
@@ -397,7 +596,6 @@ export function TemplateConfigView({
       ...createBlankTemplate("Biểu mẫu KPI mặc định", contents.map(entityId)),
       id: "template_default",
       code: "KPI_DEFAULT",
-      effectiveFrom: "2026-08-01",
     },
   ]);
   const [selectedTemplateId, setSelectedTemplateId] =
@@ -429,22 +627,12 @@ export function TemplateConfigView({
   const columns = activeTemplate?.columns ?? [];
   const templateName = activeTemplate?.name ?? "";
   const templateCode = activeTemplate?.code ?? "";
-  const effectiveFrom = activeTemplate?.effectiveFrom ?? "";
-  const legalBasis = activeTemplate?.legalBasis ?? "";
   const includedContentIds = activeTemplate?.includedContentIds ?? [];
   const progressWeight = activeTemplate?.progressWeight ?? "50";
   const qualityWeight = activeTemplate?.qualityWeight ?? "50";
   const headerGroups = activeTemplate?.headerGroups ?? [];
   const setColumns = (action: SetStateAction<TemplateColumn[]>) =>
     setTemplateField("columns", action);
-  const setTemplateName = (action: SetStateAction<string>) =>
-    setTemplateField("name", action);
-  const setTemplateCode = (action: SetStateAction<string>) =>
-    setTemplateField("code", action);
-  const setEffectiveFrom = (action: SetStateAction<string>) =>
-    setTemplateField("effectiveFrom", action);
-  const setLegalBasis = (action: SetStateAction<string>) =>
-    setTemplateField("legalBasis", action);
   const setIncludedContentIds = (action: SetStateAction<string[]>) =>
     setTemplateField("includedContentIds", action);
   const setProgressWeight = (action: SetStateAction<string>) =>
@@ -552,6 +740,11 @@ export function TemplateConfigView({
           ? template.name
           : "",
     );
+    setNewTemplateCode(
+      mode === "edit" && template
+        ? template.code
+        : generateTemplateCode(),
+    );
     setNewVisibilityScope(template?.visibilityScope ?? "ALL");
     setNewAssignedRoleIds(template?.assignedRoleIds ?? []);
     setNewAssignedUserIds(template?.assignedUserIds ?? []);
@@ -559,8 +752,13 @@ export function TemplateConfigView({
 
   const submitTemplateDialog = () => {
     const name = newTemplateName.trim();
+    const code = newTemplateCode.trim().toUpperCase();
     if (!name) {
       toast.error("Vui lòng nhập tên biểu mẫu.");
+      return;
+    }
+    if (!code) {
+      toast.error("Vui lòng nhập mã biểu mẫu.");
       return;
     }
     if (newVisibilityScope === "ROLES" && !newAssignedRoleIds.length) {
@@ -579,6 +777,7 @@ export function TemplateConfigView({
             ? {
                 ...template,
                 name,
+                code,
                 visibilityScope: newVisibilityScope,
                 assignedRoleIds: newAssignedRoleIds,
                 assignedUserIds: newAssignedUserIds,
@@ -588,7 +787,8 @@ export function TemplateConfigView({
       );
       setTemplateDialogMode(null);
       setNewTemplateName("");
-      toast.success("Đã cập nhật tên biểu mẫu.");
+      setNewTemplateCode("");
+      toast.success("Đã cập nhật biểu mẫu.");
       return;
     }
 
@@ -598,7 +798,7 @@ export function TemplateConfigView({
             ...activeTemplate,
             id: newTemplateId(),
             name,
-            code: newTemplateCode(),
+            code,
             columns: activeTemplate.columns.map((item) => ({
               ...item,
               headerPath: [...item.headerPath],
@@ -611,6 +811,7 @@ export function TemplateConfigView({
           }
         : {
             ...createBlankTemplate(name),
+            code,
             visibilityScope: newVisibilityScope,
             assignedRoleIds: [...newAssignedRoleIds],
             assignedUserIds: [...newAssignedUserIds],
@@ -620,6 +821,7 @@ export function TemplateConfigView({
     setSelectedTemplateId(nextTemplate.id);
     setTemplateDialogMode(null);
     setNewTemplateName("");
+    setNewTemplateCode("");
     toast.success(
       templateDialogMode === "copy"
         ? "Đã sao chép toàn bộ biểu mẫu."
@@ -788,6 +990,13 @@ export function TemplateConfigView({
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
+                    onClick={() => openTemplateDialog("edit")}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Chỉnh sửa
+                  </Button>
+                  <Button
+                    variant="outline"
                     onClick={() => openTemplateDialog("copy")}
                   >
                     <Copy className="h-4 w-4" />
@@ -797,41 +1006,6 @@ export function TemplateConfigView({
                     <Save className="h-4 w-4" />
                     Lưu bản nháp
                   </Button>
-                </div>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <div className="space-y-1.5">
-                  <Label>Tên biểu mẫu</Label>
-                  <Input
-                    value={templateName}
-                    onChange={(event) => setTemplateName(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Mã biểu mẫu</Label>
-                  <Input
-                    value={templateCode}
-                    onChange={(event) =>
-                      setTemplateCode(event.target.value.toUpperCase())
-                    }
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Hiệu lực từ</Label>
-                  <Input
-                    type="date"
-                    value={effectiveFrom}
-                    onChange={(event) => setEffectiveFrom(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Căn cứ ban hành</Label>
-                  <Input
-                    value={legalBasis}
-                    onChange={(event) => setLegalBasis(event.target.value)}
-                    placeholder="Đang soạn, chưa ban hành"
-                  />
                 </div>
               </div>
             </div>
@@ -850,8 +1024,8 @@ export function TemplateConfigView({
                       Cột hiển thị trên bảng nhập liệu
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Biểu mẫu bắt đầu trống. Tự tạo và cấu hình toàn bộ các cột
-                      cần dùng.
+                      Biểu mẫu bắt đầu trống. Lớp header gộp chọn ở Nhóm header;
+                      tên cột cuối cùng nhập ở Nhãn cột.
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -955,13 +1129,13 @@ export function TemplateConfigView({
                         <Input
                           className="h-9"
                           type="number"
-                          min={50}
+                          min={10}
                           value={item.width}
                           onChange={(event) =>
                             updateColumn(item.id, {
                               width: Math.max(
-                                50,
-                                Number(event.target.value) || 50,
+                                10,
+                                Number(event.target.value) || 10,
                               ),
                             })
                           }
@@ -1021,26 +1195,17 @@ export function TemplateConfigView({
                 </div>
 
                 <div className="rounded-md border bg-muted/20 p-3">
-                  <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-                    Tóm tắt header đang cấu hình
+                  <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+                    Xem trước header
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {columns
-                      .filter((item) => item.visible)
-                      .map((item) => (
-                        <div
-                          key={item.id}
-                          className="rounded border bg-background p-2"
-                        >
-                          <div className="font-medium">{item.title}</div>
-                          <div className="mt-1 text-[11px] text-muted-foreground">
-                            {headerPathLabel(headerGroups, item.headerPath)}
-                            {" · "}
-                            {item.width}px
-                          </div>
-                        </div>
-                      ))}
+                  <div className="mb-3 text-xs text-muted-foreground">
+                    Header sẽ hiển thị trên bảng nhập liệu theo cấu hình hiện
+                    tại (nhiều lớp gộp + nhãn cột).
                   </div>
+                  <HeaderPreviewTable
+                    columns={columns}
+                    groups={headerGroups}
+                  />
                 </div>
               </TabsContent>
 
@@ -1199,6 +1364,19 @@ export function TemplateConfigView({
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="new-template-code">Mã biểu mẫu</Label>
+              <Input
+                id="new-template-code"
+                value={newTemplateCode}
+                onChange={(event) =>
+                  setNewTemplateCode(event.target.value.toUpperCase())
+                }
+                placeholder="KPI_DEFAULT"
+                className="font-mono"
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label>Ai được xem biểu mẫu</Label>
               <Select
                 value={newVisibilityScope}
@@ -1348,8 +1526,9 @@ export function TemplateConfigView({
 
           <div className="space-y-3">
             <div className="text-xs text-muted-foreground">
-              Có thể tạo bao nhiêu lớp nhóm con cũng được (ví dụ: Điểm tự chấm →
-              Kết quả KPI tiến độ → lớp sâu hơn nếu cần).
+              Chỉ tạo các lớp gộp header (vd: Điểm tự chấm → Kết quả KPI tiến
+              độ). Tên cột cuối như “Thực tế hoàn thành %” nhập ở Nhãn cột, không
+              cần tạo thành nhóm con.
             </div>
 
             {headerGroups.map((group) => (
