@@ -27,6 +27,8 @@ import {
   WorkContentListQueryDto,
 } from './dto/kpi-list-query.dto';
 import { KpiConfigService } from './kpi-config.service';
+import { CreateKpiTemplateDto } from './dto/create-kpi-template.dto';
+import { UpdateKpiTemplateDto } from './dto/update-kpi-template.dto';
 
 @ApiTags('KPI Configuration')
 @ApiBearerAuth()
@@ -109,5 +111,32 @@ export class KpiConfigController {
   @Delete('tasks/:id')
   deleteTask(@Param('id') id: string) {
     return this.service.deleteTask(id);
+  }
+
+  @ApiOperation({ summary: 'Tạo biểu mẫu KPI' })
+  @Post('templates')
+  createTemplate(@Body() dto: CreateKpiTemplateDto) {
+    return this.service.createTemplate(dto);
+  }
+
+  @ApiOperation({ summary: 'Danh sách biểu mẫu KPI' })
+  @Get('templates/all')
+  listTemplates(@Query() query: PaginationQueryDto) {
+    return this.service.listTemplates(query);
+  }
+
+  @ApiOperation({ summary: 'Cập nhật biểu mẫu KPI' })
+  @Patch('templates/:id')
+  updateTemplate(
+    @Param('id') id: string,
+    @Body() dto: UpdateKpiTemplateDto,
+  ) {
+    return this.service.updateTemplate(id, dto);
+  }
+
+  @ApiOperation({ summary: 'Xoá biểu mẫu KPI' })
+  @Delete('templates/:id')
+  deleteTemplate(@Param('id') id: string) {
+    return this.service.deleteTemplate(id);
   }
 }

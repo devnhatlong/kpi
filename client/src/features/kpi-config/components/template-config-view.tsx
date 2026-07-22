@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type SetStateAction } from "react";
+import useSWR from "swr";
 import {
   ArrowDown,
   ArrowUp,
@@ -44,52 +45,46 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  activeBadgeClass,
+  inactiveBadgeClass,
+} from "@/features/organization/badge-styles";
+import {
   entityId,
   type Role,
   type UserAccount,
 } from "@/features/organization/types";
-import type { WorkContent } from "../types";
+import { getApiErrorMessage } from "@/lib/api-client";
+import {
+  createKpiTemplate,
+  deleteKpiTemplate,
+  fetchKpiTemplates,
+  kpiConfigKeys,
+  updateKpiTemplate,
+} from "../api";
+import {
+  createBlankTemplateDraft,
+  toTemplateDraft,
+  toTemplateInput,
+  type TemplateDraft,
+} from "../template-mappers";
+import {
+  isAutoIncrementColumn,
+  type TemplateColumn,
+  type TemplateColumnDataType,
+  type TemplateHeaderGroup,
+  type TemplateVisibilityScope,
+  type WorkContent,
+} from "../types";
 
 const CALCULATED_INPUT = "CALCULATED";
 
-type DataType = "text" | "number" | "text_file";
-type VisibilityScope = "ALL" | "ROLES" | "USERS";
-
-type HeaderGroup = {
-  id: string;
-  name: string;
-  children: HeaderGroup[];
-};
-
-type TemplateColumn = {
-  id: string;
-  key: string;
-  title: string;
-  headerPath: string[];
-  width: number;
-  visible: boolean;
-  inputRoleCode: string;
-  dataType: DataType;
-};
-
-type TemplateDraft = {
-  id: string;
-  name: string;
-  code: string;
-  columns: TemplateColumn[];
-  headerGroups: HeaderGroup[];
-  includedContentIds: string[];
-  progressWeight: string;
-  qualityWeight: string;
-  visibilityScope: VisibilityScope;
-  assignedRoleIds: string[];
-  assignedUserIds: string[];
-};
+type DataType = TemplateColumnDataType;
 
 const dataTypeLabels: Record<DataType, string> = {
   text: "Văn bản",
   number: "Số",
   text_file: "Văn bản + upload file",
+  auto_increment: "STT tự tăng",
 };
 
 function column(
@@ -111,29 +106,29 @@ function column(
   };
 }
 
-function newHeaderGroupId(prefix = "GROUP"): string {
+function newTemplateHeaderGroupId(prefix = "GROUP"): string {
   return `${prefix}_${Date.now().toString(36).toUpperCase()}_${Math.random()
     .toString(36)
     .slice(2, 5)
     .toUpperCase()}`;
 }
 
-function cloneHeaderGroups(groups: HeaderGroup[]): HeaderGroup[] {
+function cloneTemplateHeaderGroups(groups: TemplateHeaderGroup[]): TemplateHeaderGroup[] {
   return groups.map((group) => ({
     ...group,
-    children: cloneHeaderGroups(group.children),
+    children: cloneTemplateHeaderGroups(group.children),
   }));
 }
 
-function collectDescendantIds(group: HeaderGroup): string[] {
+function collectDescendantIds(group: TemplateHeaderGroup): string[] {
   return [group.id, ...group.children.flatMap(collectDescendantIds)];
 }
 
 function updateHeaderNode(
-  groups: HeaderGroup[],
+  groups: TemplateHeaderGroup[],
   id: string,
-  updater: (node: HeaderGroup) => HeaderGroup,
-): HeaderGroup[] {
+  updater: (node: TemplateHeaderGroup) => TemplateHeaderGroup,
+): TemplateHeaderGroup[] {
   return groups.map((group) => {
     if (group.id === id) return updater(group);
     return {
@@ -144,10 +139,10 @@ function updateHeaderNode(
 }
 
 function removeHeaderNode(
-  groups: HeaderGroup[],
+  groups: TemplateHeaderGroup[],
   id: string,
-): { groups: HeaderGroup[]; removedIds: string[] } {
-  const next: HeaderGroup[] = [];
+): { groups: TemplateHeaderGroup[]; removedIds: string[] } {
+  const next: TemplateHeaderGroup[] = [];
   const removedIds: string[] = [];
 
   for (const group of groups) {
@@ -163,7 +158,7 @@ function removeHeaderNode(
   return { groups: next, removedIds };
 }
 
-function headerPathLabel(groups: HeaderGroup[], path: string[]): string {
+function headerPathLabel(groups: TemplateHeaderGroup[], path: string[]): string {
   if (!path.length) return "Không nhóm";
   const names: string[] = [];
   let current = groups;
@@ -177,7 +172,7 @@ function headerPathLabel(groups: HeaderGroup[], path: string[]): string {
 }
 
 function resolvePathLabels(
-  groups: HeaderGroup[],
+  groups: TemplateHeaderGroup[],
   path: string[],
 ): string[] {
   const names: string[] = [];
@@ -212,7 +207,7 @@ function pathPrefixEqual(
 
 function buildHeaderPreviewRows(
   columns: TemplateColumn[],
-  groups: HeaderGroup[],
+  groups: TemplateHeaderGroup[],
 ): { rows: HeaderPreviewCell[][]; widths: number[] } | null {
   const visible = columns.filter((item) => item.visible);
   if (!visible.length) return null;
@@ -312,7 +307,7 @@ function HeaderPreviewTable({
   groups,
 }: {
   columns: TemplateColumn[];
-  groups: HeaderGroup[];
+  groups: TemplateHeaderGroup[];
 }) {
   const preview = buildHeaderPreviewRows(columns, groups);
 
@@ -357,8 +352,8 @@ function HeaderPreviewTable({
 }
 
 function flattenHeaderOptions(
-  groups: HeaderGroup[],
-  ancestors: HeaderGroup[] = [],
+  groups: TemplateHeaderGroup[],
+  ancestors: TemplateHeaderGroup[] = [],
 ): Array<{
   value: string;
   path: string[];
@@ -388,7 +383,7 @@ function HeaderPathSelects({
   path,
   onChange,
 }: {
-  groups: HeaderGroup[];
+  groups: TemplateHeaderGroup[];
   path: string[];
   onChange: (path: string[]) => void;
 }) {
@@ -436,14 +431,14 @@ function HeaderPathSelects({
   );
 }
 
-function HeaderGroupNodeEditor({
+function TemplateHeaderGroupNodeEditor({
   node,
   depth,
   onRename,
   onRemove,
   onAddChild,
 }: {
-  node: HeaderGroup;
+  node: TemplateHeaderGroup;
   depth: number;
   onRename: (id: string, name: string) => void;
   onRemove: (id: string) => void;
@@ -499,7 +494,7 @@ function HeaderGroupNodeEditor({
       {expanded ? (
         <div className="mt-2 space-y-2 border-l pl-4">
           {node.children.map((child) => (
-            <HeaderGroupNodeEditor
+            <TemplateHeaderGroupNodeEditor
               key={child.id}
               node={child}
               depth={depth + 1}
@@ -538,31 +533,8 @@ function normalizeFieldKey(value: string): string {
   return /^\d/.test(normalized) ? `field_${normalized}` : normalized;
 }
 
-function newTemplateId(): string {
-  return `template_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-}
-
 function generateTemplateCode(): string {
   return `KPI_${Date.now().toString(36).toUpperCase()}`;
-}
-
-function createBlankTemplate(
-  name: string,
-  includedContentIds: string[] = [],
-): TemplateDraft {
-  return {
-    id: newTemplateId(),
-    name,
-    code: generateTemplateCode(),
-    columns: [],
-    headerGroups: [],
-    includedContentIds,
-    progressWeight: "50",
-    qualityWeight: "50",
-    visibilityScope: "ALL",
-    assignedRoleIds: [],
-    assignedUserIds: [],
-  };
 }
 
 export function TemplateConfigView({
@@ -580,19 +552,25 @@ export function TemplateConfigView({
   >(null);
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplateCode, setNewTemplateCode] = useState("");
-  const [newVisibilityScope, setNewVisibilityScope] =
-    useState<VisibilityScope>("ALL");
+  const [newTemplateVisibilityScope, setNewTemplateVisibilityScope] =
+    useState<TemplateVisibilityScope>("ALL");
   const [newAssignedRoleIds, setNewAssignedRoleIds] = useState<string[]>([]);
   const [newAssignedUserIds, setNewAssignedUserIds] = useState<string[]>([]);
-  const [templates, setTemplates] = useState<TemplateDraft[]>(() => [
-    {
-      ...createBlankTemplate("Biểu mẫu KPI mặc định", contents.map(entityId)),
-      id: "template_default",
-      code: "KPI_DEFAULT",
-    },
-  ]);
-  const [selectedTemplateId, setSelectedTemplateId] =
-    useState("template_default");
+  const [newIsActive, setNewIsActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [templates, setTemplates] = useState<TemplateDraft[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const templatesQuery = useSWR(kpiConfigKeys.templates, fetchKpiTemplates);
+  const templatesHydratedRef = useRef(false);
+
+  useEffect(() => {
+    const data = templatesQuery.data;
+    if (!data || templatesHydratedRef.current) return;
+    setTemplates(data.map(toTemplateDraft));
+    setSelectedTemplateId(data[0]?.id ?? "");
+    templatesHydratedRef.current = true;
+  }, [templatesQuery.data]);
+
   const activeTemplate = templates.find(
     (template) => template.id === selectedTemplateId,
   );
@@ -632,7 +610,7 @@ export function TemplateConfigView({
     setTemplateField("progressWeight", action);
   const setQualityWeight = (action: SetStateAction<string>) =>
     setTemplateField("qualityWeight", action);
-  const setHeaderGroups = (action: SetStateAction<HeaderGroup[]>) =>
+  const setTemplateHeaderGroups = (action: SetStateAction<TemplateHeaderGroup[]>) =>
     setTemplateField("headerGroups", action);
 
   const totalWidth = columns
@@ -643,9 +621,26 @@ export function TemplateConfigView({
     id: string,
     patch: Partial<Omit<TemplateColumn, "id">>,
   ) => {
-    setColumns((current) =>
-      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-    );
+    setColumns((current) => {
+      if (patch.dataType === "auto_increment") {
+        const hasOther = current.some(
+          (item) => item.id !== id && isAutoIncrementColumn(item),
+        );
+        if (hasOther) {
+          toast.error("Mỗi biểu mẫu chỉ được có một cột STT tự tăng.");
+          return current;
+        }
+      }
+
+      return current.map((item) => {
+        if (item.id !== id) return item;
+        const next = { ...item, ...patch };
+        if (patch.dataType === "auto_increment") {
+          next.inputRoleCode = CALCULATED_INPUT;
+        }
+        return next;
+      });
+    });
   };
 
   const moveColumn = (index: number, direction: -1 | 1) => {
@@ -679,28 +674,28 @@ export function TemplateConfigView({
     );
   };
 
-  const addHeaderGroup = () => {
+  const addTemplateHeaderGroup = () => {
     const name = newGroupName.trim();
     if (!name) {
       toast.error("Vui lòng nhập tên nhóm header.");
       return;
     }
-    setHeaderGroups((current) => [
+    setTemplateHeaderGroups((current) => [
       ...current,
-      { id: newHeaderGroupId(), name, children: [] },
+      { id: newTemplateHeaderGroupId(), name, children: [] },
     ]);
     setNewGroupName("");
   };
 
-  const renameHeaderGroup = (groupId: string, name: string) => {
-    setHeaderGroups((current) =>
+  const renameTemplateHeaderGroup = (groupId: string, name: string) => {
+    setTemplateHeaderGroups((current) =>
       updateHeaderNode(current, groupId, (node) => ({ ...node, name })),
     );
   };
 
-  const removeHeaderGroup = (groupId: string) => {
+  const removeTemplateHeaderGroup = (groupId: string) => {
     const result = removeHeaderNode(headerGroups, groupId);
-    setHeaderGroups(result.groups);
+    setTemplateHeaderGroups(result.groups);
     setColumns((current) =>
       current.map((item) => {
         const cut = item.headerPath.findIndex((id) =>
@@ -713,13 +708,13 @@ export function TemplateConfigView({
   };
 
   const addHeaderChild = (parentId: string) => {
-    setHeaderGroups((current) =>
+    setTemplateHeaderGroups((current) =>
       updateHeaderNode(current, parentId, (node) => ({
         ...node,
         children: [
           ...node.children,
           {
-            id: newHeaderGroupId("SUB"),
+            id: newTemplateHeaderGroupId("SUB"),
             name: "Nhóm header con mới",
             children: [],
           },
@@ -745,12 +740,15 @@ export function TemplateConfigView({
         ? template.code
         : generateTemplateCode(),
     );
-    setNewVisibilityScope(template?.visibilityScope ?? "ALL");
+    setNewTemplateVisibilityScope(template?.visibilityScope ?? "ALL");
     setNewAssignedRoleIds(template?.assignedRoleIds ?? []);
     setNewAssignedUserIds(template?.assignedUserIds ?? []);
+    setNewIsActive(
+      mode === "create" ? true : (template?.isActive ?? true),
+    );
   };
 
-  const submitTemplateDialog = () => {
+  const submitTemplateDialog = async () => {
     const name = newTemplateName.trim();
     const code = newTemplateCode.trim().toUpperCase();
     if (!name) {
@@ -761,111 +759,178 @@ export function TemplateConfigView({
       toast.error("Vui lòng nhập mã biểu mẫu.");
       return;
     }
-    if (newVisibilityScope === "ROLES" && !newAssignedRoleIds.length) {
+    if (newTemplateVisibilityScope === "ROLES" && !newAssignedRoleIds.length) {
       toast.error("Vui lòng chọn ít nhất một role.");
       return;
     }
-    if (newVisibilityScope === "USERS" && !newAssignedUserIds.length) {
+    if (newTemplateVisibilityScope === "USERS" && !newAssignedUserIds.length) {
       toast.error("Vui lòng chọn ít nhất một tài khoản.");
       return;
     }
 
-    if (templateDialogMode === "edit") {
-      setTemplates((current) =>
-        current.map((template) =>
-          template.id === selectedTemplateId
+    setSaving(true);
+    try {
+      if (templateDialogMode === "edit") {
+        if (!selectedTemplateId) return;
+        const updated = await updateKpiTemplate(selectedTemplateId, {
+          name,
+          code,
+          visibilityScope: newTemplateVisibilityScope,
+          assignedRoleIds: newAssignedRoleIds,
+          assignedUserIds: newAssignedUserIds,
+          isActive: newIsActive,
+        });
+        setTemplates((current) =>
+          current.map((template) =>
+            template.id === selectedTemplateId
+              ? toTemplateDraft(updated)
+              : template,
+          ),
+        );
+        toast.success("Đã cập nhật biểu mẫu.");
+      } else {
+        const draft =
+          templateDialogMode === "copy" && activeTemplate
             ? {
-                ...template,
+                ...activeTemplate,
+                id: "",
                 name,
                 code,
-                visibilityScope: newVisibilityScope,
-                assignedRoleIds: newAssignedRoleIds,
-                assignedUserIds: newAssignedUserIds,
+                columns: activeTemplate.columns.map((item) => ({
+                  ...item,
+                  headerPath: [...item.headerPath],
+                })),
+                headerGroups: cloneTemplateHeaderGroups(
+                  activeTemplate.headerGroups,
+                ),
+                includedContentIds: [...activeTemplate.includedContentIds],
+                visibilityScope: newTemplateVisibilityScope,
+                assignedRoleIds: [...newAssignedRoleIds],
+                assignedUserIds: [...newAssignedUserIds],
+                isActive: newIsActive,
               }
-            : template,
-        ),
-      );
+            : {
+                ...createBlankTemplateDraft(name, code),
+                visibilityScope: newTemplateVisibilityScope,
+                assignedRoleIds: [...newAssignedRoleIds],
+                assignedUserIds: [...newAssignedUserIds],
+                isActive: newIsActive,
+              };
+        const created = await createKpiTemplate(toTemplateInput(draft));
+        const nextTemplate = toTemplateDraft(created);
+        setTemplates((current) => [...current, nextTemplate]);
+        setSelectedTemplateId(nextTemplate.id);
+        toast.success(
+          templateDialogMode === "copy"
+            ? "Đã sao chép toàn bộ biểu mẫu."
+            : "Đã tạo biểu mẫu mới.",
+        );
+      }
+
+      await templatesQuery.mutate();
       setTemplateDialogMode(null);
       setNewTemplateName("");
       setNewTemplateCode("");
-      toast.success("Đã cập nhật biểu mẫu.");
-      return;
+      setNewIsActive(true);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không lưu được biểu mẫu."));
+    } finally {
+      setSaving(false);
     }
-
-    const nextTemplate =
-      templateDialogMode === "copy" && activeTemplate
-        ? {
-            ...activeTemplate,
-            id: newTemplateId(),
-            name,
-            code,
-            columns: activeTemplate.columns.map((item) => ({
-              ...item,
-              headerPath: [...item.headerPath],
-            })),
-            headerGroups: cloneHeaderGroups(activeTemplate.headerGroups),
-            includedContentIds: [...activeTemplate.includedContentIds],
-            visibilityScope: newVisibilityScope,
-            assignedRoleIds: [...newAssignedRoleIds],
-            assignedUserIds: [...newAssignedUserIds],
-          }
-        : {
-            ...createBlankTemplate(name),
-            code,
-            visibilityScope: newVisibilityScope,
-            assignedRoleIds: [...newAssignedRoleIds],
-            assignedUserIds: [...newAssignedUserIds],
-          };
-
-    setTemplates((current) => [...current, nextTemplate]);
-    setSelectedTemplateId(nextTemplate.id);
-    setTemplateDialogMode(null);
-    setNewTemplateName("");
-    setNewTemplateCode("");
-    toast.success(
-      templateDialogMode === "copy"
-        ? "Đã sao chép toàn bộ biểu mẫu."
-        : "Đã tạo biểu mẫu mới.",
-    );
   };
 
-  const deleteTemplate = () => {
-    const remaining = templates.filter(
-      (template) => template.id !== selectedTemplateId,
-    );
-    setTemplates(remaining);
-    setSelectedTemplateId(remaining[0]?.id ?? "");
-    setDeleteDialogOpen(false);
-    toast.success("Đã xoá biểu mẫu.");
+  const deleteTemplate = async () => {
+    if (!selectedTemplateId) return;
+    setSaving(true);
+    try {
+      await deleteKpiTemplate(selectedTemplateId);
+      const remaining = templates.filter(
+        (template) => template.id !== selectedTemplateId,
+      );
+      setTemplates(remaining);
+      setSelectedTemplateId(remaining[0]?.id ?? "");
+      setDeleteDialogOpen(false);
+      await templatesQuery.mutate();
+      toast.success("Đã xoá biểu mẫu.");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không xoá được biểu mẫu."));
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const saveDraft = () => {
+  const saveDraft = async () => {
+    if (!activeTemplate) return;
     if (!templateName.trim() || !templateCode.trim()) {
       toast.error("Vui lòng nhập tên và mã biểu mẫu.");
       return;
     }
-    if (!columns.length) {
-      toast.error("Biểu mẫu phải có ít nhất một cột.");
-      return;
+    if (columns.length) {
+      if (columns.some((item) => !item.title.trim())) {
+        toast.error("Nhãn cột không được để trống.");
+        return;
+      }
+      const keys = columns.map((item) => item.key.trim());
+      if (keys.some((key) => !key)) {
+        toast.error("Mã trường không được để trống.");
+        return;
+      }
+      if (new Set(keys).size !== keys.length) {
+        toast.error("Mã trường phải duy nhất trong biểu mẫu.");
+        return;
+      }
+      if (columns.some((item) => !item.inputRoleCode && !isAutoIncrementColumn(item))) {
+        toast.error("Mỗi cột phải chọn role nhập hoặc công thức tự động.");
+        return;
+      }
     }
-    if (columns.some((item) => !item.title.trim())) {
-      toast.error("Nhãn cột không được để trống.");
-      return;
+
+    setSaving(true);
+    try {
+      const updated = await updateKpiTemplate(
+        selectedTemplateId,
+        toTemplateInput(activeTemplate),
+      );
+      setTemplates((current) =>
+        current.map((template) =>
+          template.id === selectedTemplateId
+            ? toTemplateDraft(updated)
+            : template,
+        ),
+      );
+      await templatesQuery.mutate();
+      toast.success("Đã lưu cấu hình biểu mẫu.");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không lưu được cấu hình biểu mẫu."));
+    } finally {
+      setSaving(false);
     }
-    const keys = columns.map((item) => item.key.trim());
-    if (keys.some((key) => !key)) {
-      toast.error("Mã trường không được để trống.");
-      return;
+  };
+
+  const saveHeaderGroups = async () => {
+    if (!activeTemplate || !selectedTemplateId) return;
+
+    setSaving(true);
+    try {
+      const updated = await updateKpiTemplate(selectedTemplateId, {
+        headerGroups: activeTemplate.headerGroups,
+        columns: activeTemplate.columns,
+      });
+      setTemplates((current) =>
+        current.map((template) =>
+          template.id === selectedTemplateId
+            ? toTemplateDraft(updated)
+            : template,
+        ),
+      );
+      await templatesQuery.mutate();
+      setGroupDialogOpen(false);
+      toast.success("Đã lưu nhóm header.");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không lưu được nhóm header."));
+    } finally {
+      setSaving(false);
     }
-    if (new Set(keys).size !== keys.length) {
-      toast.error("Mã trường phải duy nhất trong biểu mẫu.");
-      return;
-    }
-    if (columns.some((item) => !item.inputRoleCode)) {
-      toast.error("Mỗi cột phải chọn role nhập hoặc công thức tự động.");
-      return;
-    }
-    toast.success("Đã lưu cấu hình bản nháp trên giao diện demo.");
   };
 
   return (
@@ -887,7 +952,11 @@ export function TemplateConfigView({
             </Button>
           </div>
           <div className="space-y-2 p-2">
-            {templates.length ? (
+            {templatesQuery.isLoading ? (
+              <div className="p-3 text-sm text-muted-foreground">
+                Đang tải biểu mẫu...
+              </div>
+            ) : templates.length ? (
               templates.map((template) => (
                 <div
                   key={template.id}
@@ -904,6 +973,16 @@ export function TemplateConfigView({
                   >
                     <div className="font-semibold">{template.name}</div>
                     <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                      <Badge
+                        variant="outline"
+                        className={
+                          template.isActive
+                            ? activeBadgeClass
+                            : inactiveBadgeClass
+                        }
+                      >
+                        {template.isActive ? "Hoạt động" : "Ngưng"}
+                      </Badge>
                       <Badge
                         variant="outline"
                         className="h-5 bg-amber-50 text-amber-700"
@@ -988,7 +1067,8 @@ export function TemplateConfigView({
                   </div>
                   <h2 className="mt-1 text-xl font-semibold">{templateName}</h2>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    Mã: {templateCode} · Tổng rộng {totalWidth}px
+                    Mã: {templateCode} · Tổng rộng {totalWidth}px ·{" "}
+                    {activeTemplate?.isActive ? "Đang hoạt động" : "Đang ngưng"}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -1006,9 +1086,9 @@ export function TemplateConfigView({
                     <Copy className="h-4 w-4" />
                     Sao chép biểu mẫu
                   </Button>
-                  <Button onClick={saveDraft}>
+                  <Button onClick={saveDraft} disabled={saving || !activeTemplate}>
                     <Save className="h-4 w-4" />
-                    Lưu bản nháp
+                    {saving ? "Đang lưu..." : "Lưu cấu hình"}
                   </Button>
                 </div>
               </div>
@@ -1134,13 +1214,13 @@ export function TemplateConfigView({
                         <Input
                           className="h-9"
                           type="number"
-                          min={10}
+                          min={1}
                           value={item.width}
                           onChange={(event) =>
                             updateColumn(item.id, {
                               width: Math.max(
-                                10,
-                                Number(event.target.value) || 10,
+                                1,
+                                Number(event.target.value) || 1,
                               ),
                             })
                           }
@@ -1155,22 +1235,37 @@ export function TemplateConfigView({
                                   : inputRoleCode,
                             })
                           }
+                          disabled={isAutoIncrementColumn(item)}
                         >
                           <SelectTrigger className="h-9">
-                            <SelectValue placeholder="Chọn role" />
+                            <SelectValue
+                              placeholder={
+                                isAutoIncrementColumn(item)
+                                  ? "Tự động"
+                                  : "Chọn role"
+                              }
+                            />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="__NONE__">
-                              Chưa chọn role
-                            </SelectItem>
-                            {roles.map((role) => (
-                              <SelectItem key={role.code} value={role.code}>
-                                {role.name} ({role.code})
+                            {isAutoIncrementColumn(item) ? (
+                              <SelectItem value={CALCULATED_INPUT}>
+                                Tự động theo thứ tự dòng
                               </SelectItem>
-                            ))}
-                            <SelectItem value={CALCULATED_INPUT}>
-                              Công thức tự động
-                            </SelectItem>
+                            ) : (
+                              <>
+                                <SelectItem value="__NONE__">
+                                  Chưa chọn role
+                                </SelectItem>
+                                {roles.map((role) => (
+                                  <SelectItem key={role.code} value={role.code}>
+                                    {role.name} ({role.code})
+                                  </SelectItem>
+                                ))}
+                                <SelectItem value={CALCULATED_INPUT}>
+                                  Công thức tự động
+                                </SelectItem>
+                              </>
+                            )}
                           </SelectContent>
                         </Select>
                         <div className="flex justify-end gap-0.5">
@@ -1391,9 +1486,9 @@ export function TemplateConfigView({
             <div className="space-y-2">
               <Label>Ai được xem biểu mẫu</Label>
               <Select
-                value={newVisibilityScope}
+                value={newTemplateVisibilityScope}
                 onValueChange={(value) =>
-                  setNewVisibilityScope(value as VisibilityScope)
+                  setNewTemplateVisibilityScope(value as TemplateVisibilityScope)
                 }
               >
                 <SelectTrigger className="h-9">
@@ -1407,7 +1502,21 @@ export function TemplateConfigView({
               </Select>
             </div>
 
-            {newVisibilityScope === "ROLES" ? (
+            <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
+              <div>
+                <div className="text-sm font-medium">Kích hoạt biểu mẫu</div>
+                <div className="text-xs text-muted-foreground">
+                  Tắt để ẩn biểu mẫu khỏi danh sách dùng khi giao KPI.
+                </div>
+              </div>
+              <Switch
+                checked={newIsActive}
+                onCheckedChange={setNewIsActive}
+                aria-label="Kích hoạt biểu mẫu"
+              />
+            </div>
+
+            {newTemplateVisibilityScope === "ROLES" ? (
               <div className="space-y-2">
                 <Label>Chọn role</Label>
                 <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border p-2">
@@ -1445,7 +1554,7 @@ export function TemplateConfigView({
               </div>
             ) : null}
 
-            {newVisibilityScope === "USERS" ? (
+            {newTemplateVisibilityScope === "USERS" ? (
               <div className="space-y-2">
                 <Label>Chọn tài khoản</Label>
                 <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border p-2">
@@ -1497,12 +1606,14 @@ export function TemplateConfigView({
             >
               Huỷ
             </Button>
-            <Button onClick={submitTemplateDialog}>
-              {templateDialogMode === "copy"
-                ? "Sao chép"
-                : templateDialogMode === "edit"
-                  ? "Lưu thay đổi"
-                  : "Tạo biểu mẫu"}
+            <Button onClick={submitTemplateDialog} disabled={saving}>
+              {saving
+                ? "Đang lưu..."
+                : templateDialogMode === "copy"
+                  ? "Sao chép"
+                  : templateDialogMode === "edit"
+                    ? "Lưu thay đổi"
+                    : "Tạo biểu mẫu"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1523,7 +1634,7 @@ export function TemplateConfigView({
             >
               Huỷ
             </Button>
-            <Button variant="destructive" onClick={deleteTemplate}>
+            <Button variant="destructive" onClick={deleteTemplate} disabled={saving}>
               Xoá biểu mẫu
             </Button>
           </DialogFooter>
@@ -1544,12 +1655,12 @@ export function TemplateConfigView({
             </div>
 
             {headerGroups.map((group) => (
-              <HeaderGroupNodeEditor
+              <TemplateHeaderGroupNodeEditor
                 key={group.id}
                 node={group}
                 depth={0}
-                onRename={renameHeaderGroup}
-                onRemove={removeHeaderGroup}
+                onRename={renameTemplateHeaderGroup}
+                onRemove={removeTemplateHeaderGroup}
                 onAddChild={addHeaderChild}
               />
             ))}
@@ -1560,10 +1671,10 @@ export function TemplateConfigView({
                 onChange={(event) => setNewGroupName(event.target.value)}
                 placeholder="Tên nhóm header mới"
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") addHeaderGroup();
+                  if (event.key === "Enter") addTemplateHeaderGroup();
                 }}
               />
-              <Button onClick={addHeaderGroup}>
+              <Button onClick={addTemplateHeaderGroup}>
                 <Plus className="h-4 w-4" />
                 Thêm nhóm
               </Button>
@@ -1571,7 +1682,16 @@ export function TemplateConfigView({
           </div>
 
           <DialogFooter>
-            <Button onClick={() => setGroupDialogOpen(false)}>Xong</Button>
+            <Button
+              variant="outline"
+              onClick={() => setGroupDialogOpen(false)}
+              disabled={saving}
+            >
+              Huỷ
+            </Button>
+            <Button onClick={saveHeaderGroups} disabled={saving}>
+              {saving ? "Đang lưu..." : "Lưu và đóng"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

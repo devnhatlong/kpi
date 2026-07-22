@@ -11,6 +11,8 @@ import {
   TaskAssignment,
   TaskAssignmentSchema,
 } from './schemas/task-assignment.schema';
+import { KpiTemplate, KpiTemplateSchema } from './schemas/kpi-template.schema';
+import { Role, RoleSchema } from '../roles/schemas/role.schema';
 
 @Module({
   imports: [
@@ -18,7 +20,9 @@ import {
       { name: WorkGroup.name, schema: WorkGroupSchema },
       { name: WorkContent.name, schema: WorkContentSchema },
       { name: TaskAssignment.name, schema: TaskAssignmentSchema },
+      { name: KpiTemplate.name, schema: KpiTemplateSchema },
       { name: User.name, schema: UserSchema },
+      { name: Role.name, schema: RoleSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),

@@ -1,6 +1,8 @@
 import { api, buildListQuery, unwrapData, unwrapPaginated } from "@/lib/api-client";
 import type { ApiResponse } from "@/features/auth/types";
 import type {
+  KpiTemplate,
+  KpiTemplateInput,
   TaskAssignment,
   TaskAssignmentInput,
   WorkContent,
@@ -13,6 +15,7 @@ export const kpiConfigKeys = {
   groups: ["kpi-config", "groups"] as const,
   contents: ["kpi-config", "contents"] as const,
   tasks: ["kpi-config", "tasks"] as const,
+  templates: ["kpi-config", "templates"] as const,
 };
 
 async function fetchAll<T>(path: string): Promise<T[]> {
@@ -75,4 +78,25 @@ export function updateTaskAssignment(
 
 export async function deleteTaskAssignment(id: string) {
   return (await api.delete<ApiResponse<unknown>>(`/kpi-config/tasks/${id}`)).data;
+}
+
+export function fetchKpiTemplates() {
+  return fetchAll<KpiTemplate>("/kpi-config/templates/all");
+}
+
+export function createKpiTemplate(input: KpiTemplateInput) {
+  return unwrapData(
+    api.post<ApiResponse<KpiTemplate>>("/kpi-config/templates", input),
+  );
+}
+
+export function updateKpiTemplate(id: string, input: Partial<KpiTemplateInput>) {
+  return unwrapData(
+    api.patch<ApiResponse<KpiTemplate>>(`/kpi-config/templates/${id}`, input),
+  );
+}
+
+export async function deleteKpiTemplate(id: string) {
+  return (await api.delete<ApiResponse<unknown>>(`/kpi-config/templates/${id}`))
+    .data;
 }

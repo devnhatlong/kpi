@@ -27,6 +27,18 @@ import {
   TaskAssignment,
   TaskAssignmentDocument,
 } from './schemas/task-assignment.schema';
+import {
+  KpiTemplate,
+  KpiTemplateDocument,
+  TemplateColumnDataType,
+  TemplateHeaderGroup,
+  TemplateVisibilityScope,
+} from './schemas/kpi-template.schema';
+import { Role, RoleDocument } from '../roles/schemas/role.schema';
+import { CreateKpiTemplateDto } from './dto/create-kpi-template.dto';
+import { UpdateKpiTemplateDto } from './dto/update-kpi-template.dto';
+import { TemplateColumnDto } from './dto/template-column.dto';
+import { TemplateHeaderGroupDto } from './dto/template-header-group.dto';
 
 @Injectable()
 export class KpiConfigService {
@@ -37,8 +49,12 @@ export class KpiConfigService {
     private readonly workContentModel: Model<WorkContentDocument>,
     @InjectModel(TaskAssignment.name)
     private readonly taskModel: Model<TaskAssignmentDocument>,
+    @InjectModel(KpiTemplate.name)
+    private readonly templateModel: Model<KpiTemplateDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    @InjectModel(Role.name)
+    private readonly roleModel: Model<RoleDocument>,
   ) {}
 
   async createGroup(dto: CreateWorkGroupDto) {
@@ -252,6 +268,249 @@ export class KpiConfigService {
     );
     await task.deleteOne();
     return { message: 'Xoá nhiệm vụ thành công.' };
+  }
+
+  async createTemplate(dto: CreateKpiTemplateDto) {
+    const code = dto.code.trim().toUpperCase();
+    await this.ensureUniqueCode(this.templateModel, code, 'Mã biểu mẫu');
+    await this.validateTemplateRelations(dto);
+    this.validateTemplateColumns(dto.columns ?? []);
+
+    const data = await this.templateModel.create(
+      this.normalizeTemplateInput({ ...dto, code }),
+    );
+    return { message: 'Tạo biểu mẫu KPI thành công.', data };
+  }
+
+  async listTemplates(query: PaginationQueryDto) {
+    const filter = this.searchFilter(query.q, ['code', 'name']);
+    return this.paginate(this.templateModel, filter, query, {
+      updatedAt: -1,
+      name: 1,
+    });
+  }
+
+  async updateTemplate(id: string, dto: UpdateKpiTemplateDto) {
+    const template = await this.requireById(
+      this.templateModel,
+      id,
+      'Không tìm thấy biểu mẫu.',
+    );
+    if (dto.code !== undefined) {
+      const code = dto.code.trim().toUpperCase();
+      await this.ensureUniqueCode(
+        this.templateModel,
+        code,
+        'Mã biểu mẫu',
+        template._id,
+      );
+      template.code = code;
+    }
+    if (dto.name !== undefined) template.name = dto.name.trim();
+    if (dto.columns !== undefined) {
+      this.validateTemplateColumns(dto.columns);
+      template.columns = dto.columns.map((item) => ({
+        id: item.id.trim(),
+        key: item.key.trim(),
+        title: item.title.trim(),
+        headerPath: item.headerPath ?? [],
+        width: item.width,
+        visible: item.visible ?? true,
+        inputRoleCode:
+          item.dataType === TemplateColumnDataType.AUTO_INCREMENT
+            ? 'CALCULATED'
+            : (item.inputRoleCode?.trim() ?? ''),
+        dataType: item.dataType,
+      }));
+    }
+    if (dto.headerGroups !== undefined) {
+      template.headerGroups = this.normalizeHeaderGroups(dto.headerGroups);
+    }
+    if (dto.includedContentIds !== undefined) {
+      await this.validateContentIds(dto.includedContentIds);
+      template.includedContentIds = dto.includedContentIds.map(
+        (value) => new Types.ObjectId(value),
+      );
+    }
+    if (dto.progressWeight !== undefined) {
+      template.progressWeight = dto.progressWeight;
+    }
+    if (dto.qualityWeight !== undefined) {
+      template.qualityWeight = dto.qualityWeight;
+    }
+    if (dto.visibilityScope !== undefined) {
+      template.visibilityScope = dto.visibilityScope;
+    }
+    if (dto.assignedRoleIds !== undefined) {
+      await this.validateRoleIds(dto.assignedRoleIds);
+      template.assignedRoleIds = dto.assignedRoleIds.map(
+        (value) => new Types.ObjectId(value),
+      );
+    }
+    if (dto.assignedUserIds !== undefined) {
+      await this.validateUserIds(dto.assignedUserIds);
+      template.assignedUserIds = dto.assignedUserIds.map(
+        (value) => new Types.ObjectId(value),
+      );
+    }
+    if (dto.isActive !== undefined) template.isActive = dto.isActive;
+
+    const merged = {
+      visibilityScope: template.visibilityScope,
+      assignedRoleIds: template.assignedRoleIds.map((value) => String(value)),
+      assignedUserIds: template.assignedUserIds.map((value) => String(value)),
+    };
+    await this.validateTemplateRelations(merged);
+    await template.save();
+    return { message: 'Cập nhật biểu mẫu KPI thành công.', data: template };
+  }
+
+  async deleteTemplate(id: string) {
+    const template = await this.requireById(
+      this.templateModel,
+      id,
+      'Không tìm thấy biểu mẫu.',
+    );
+    await template.deleteOne();
+    return { message: 'Xoá biểu mẫu KPI thành công.' };
+  }
+
+  private normalizeTemplateInput(dto: CreateKpiTemplateDto) {
+    return {
+      name: dto.name.trim(),
+      code: dto.code.trim().toUpperCase(),
+      columns: (dto.columns ?? []).map((item) => ({
+        id: item.id.trim(),
+        key: item.key.trim(),
+        title: item.title.trim(),
+        headerPath: item.headerPath ?? [],
+        width: item.width,
+        visible: item.visible ?? true,
+        inputRoleCode:
+          item.dataType === TemplateColumnDataType.AUTO_INCREMENT
+            ? 'CALCULATED'
+            : (item.inputRoleCode?.trim() ?? ''),
+        dataType: item.dataType,
+      })),
+      headerGroups: this.normalizeHeaderGroups(dto.headerGroups ?? []),
+      includedContentIds: (dto.includedContentIds ?? []).map(
+        (value) => new Types.ObjectId(value),
+      ),
+      progressWeight: dto.progressWeight ?? 50,
+      qualityWeight: dto.qualityWeight ?? 50,
+      visibilityScope: dto.visibilityScope ?? TemplateVisibilityScope.ALL,
+      assignedRoleIds: (dto.assignedRoleIds ?? []).map(
+        (value) => new Types.ObjectId(value),
+      ),
+      assignedUserIds: (dto.assignedUserIds ?? []).map(
+        (value) => new Types.ObjectId(value),
+      ),
+      isActive: dto.isActive ?? true,
+    };
+  }
+
+  private normalizeHeaderGroups(
+    groups: TemplateHeaderGroupDto[],
+  ): TemplateHeaderGroup[] {
+    return groups.map((group) => ({
+      id: group.id.trim(),
+      name: group.name.trim(),
+      children: this.normalizeHeaderGroups(group.children ?? []),
+    }));
+  }
+
+  private validateTemplateColumns(columns: TemplateColumnDto[]) {
+    if (!columns.length) return;
+    const keys = columns.map((item) => item.key.trim());
+    if (keys.some((key) => !key)) {
+      throw new BadRequestException('Mã trường không được để trống.');
+    }
+    if (new Set(keys).size !== keys.length) {
+      throw new BadRequestException('Mã trường phải duy nhất trong biểu mẫu.');
+    }
+    if (columns.some((item) => !item.title.trim())) {
+      throw new BadRequestException('Nhãn cột không được để trống.');
+    }
+    const autoIncrementCount = columns.filter(
+      (item) => item.dataType === TemplateColumnDataType.AUTO_INCREMENT,
+    ).length;
+    if (autoIncrementCount > 1) {
+      throw new BadRequestException(
+        'Mỗi biểu mẫu chỉ được có một cột STT tự tăng.',
+      );
+    }
+    if (
+      columns.some(
+        (item) =>
+          item.dataType !== TemplateColumnDataType.AUTO_INCREMENT &&
+          !item.inputRoleCode?.trim(),
+      )
+    ) {
+      throw new BadRequestException(
+        'Mỗi cột phải chọn role nhập hoặc công thức tự động.',
+      );
+    }
+  }
+
+  private async validateTemplateRelations(dto: {
+    visibilityScope?: TemplateVisibilityScope;
+    assignedRoleIds?: string[];
+    assignedUserIds?: string[];
+    includedContentIds?: string[];
+  }) {
+    if (
+      dto.visibilityScope === TemplateVisibilityScope.ROLES &&
+      !dto.assignedRoleIds?.length
+    ) {
+      throw new BadRequestException('Vui lòng chọn ít nhất một role.');
+    }
+    if (
+      dto.visibilityScope === TemplateVisibilityScope.USERS &&
+      !dto.assignedUserIds?.length
+    ) {
+      throw new BadRequestException('Vui lòng chọn ít nhất một tài khoản.');
+    }
+    if (dto.includedContentIds?.length) {
+      await this.validateContentIds(dto.includedContentIds);
+    }
+    if (dto.assignedRoleIds?.length) {
+      await this.validateRoleIds(dto.assignedRoleIds);
+    }
+    if (dto.assignedUserIds?.length) {
+      await this.validateUserIds(dto.assignedUserIds);
+    }
+  }
+
+  private async validateContentIds(ids: string[]) {
+    for (const id of ids) {
+      await this.requireById(
+        this.workContentModel,
+        id,
+        'Không tìm thấy nội dung công việc.',
+      );
+    }
+  }
+
+  private async validateRoleIds(ids: string[]) {
+    for (const id of ids) {
+      if (!Types.ObjectId.isValid(id)) {
+        throw new BadRequestException('Role không hợp lệ.');
+      }
+      const role = await this.roleModel.exists({ _id: id, isActive: true });
+      if (!role) throw new BadRequestException('Role không tồn tại hoặc đã ngừng.');
+    }
+  }
+
+  private async validateUserIds(ids: string[]) {
+    for (const id of ids) {
+      if (!Types.ObjectId.isValid(id)) {
+        throw new BadRequestException('Tài khoản không hợp lệ.');
+      }
+      const user = await this.userModel.exists({ _id: id, isActive: true });
+      if (!user) {
+        throw new BadRequestException('Tài khoản không tồn tại hoặc đã ngừng.');
+      }
+    }
   }
 
   private normalizeTaskInput(
