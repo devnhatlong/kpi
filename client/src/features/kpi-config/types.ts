@@ -78,6 +78,27 @@ export type TemplateColumnDataType =
   | "text_file"
   | "auto_increment";
 
+export type TemplateColumnSourceField =
+  | "content_name"
+  | "task_title"
+  | "assignee"
+  | "due_date"
+  | "report_due_date"
+  | "product"
+  | "actual_product"
+  | "standard_score"
+  | "self_progress_percent"
+  | "self_progress_score"
+  | "self_quality_percent"
+  | "self_quality_score"
+  | "proposed_adjustment"
+  | "proposed_adjustment_reason"
+  | "appraisal_progress_percent"
+  | "appraisal_progress_score"
+  | "appraisal_quality_percent"
+  | "appraisal_quality_score"
+  | "note";
+
 export type TemplateColumn = {
   id: string;
   key: string;
@@ -87,6 +108,7 @@ export type TemplateColumn = {
   visible: boolean;
   inputRoleCode: string;
   dataType: TemplateColumnDataType;
+  sourceField?: TemplateColumnSourceField | "";
 };
 
 export type TemplateHeaderGroup = {

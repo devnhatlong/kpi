@@ -16,6 +16,28 @@ export enum TemplateColumnDataType {
   AUTO_INCREMENT = 'auto_increment',
 }
 
+export enum TemplateColumnSourceField {
+  CONTENT_NAME = 'content_name',
+  TASK_TITLE = 'task_title',
+  ASSIGNEE = 'assignee',
+  DUE_DATE = 'due_date',
+  REPORT_DUE_DATE = 'report_due_date',
+  PRODUCT = 'product',
+  ACTUAL_PRODUCT = 'actual_product',
+  STANDARD_SCORE = 'standard_score',
+  SELF_PROGRESS_PERCENT = 'self_progress_percent',
+  SELF_PROGRESS_SCORE = 'self_progress_score',
+  SELF_QUALITY_PERCENT = 'self_quality_percent',
+  SELF_QUALITY_SCORE = 'self_quality_score',
+  PROPOSED_ADJUSTMENT = 'proposed_adjustment',
+  PROPOSED_ADJUSTMENT_REASON = 'proposed_adjustment_reason',
+  APPRAISAL_PROGRESS_PERCENT = 'appraisal_progress_percent',
+  APPRAISAL_PROGRESS_SCORE = 'appraisal_progress_score',
+  APPRAISAL_QUALITY_PERCENT = 'appraisal_quality_percent',
+  APPRAISAL_QUALITY_SCORE = 'appraisal_quality_score',
+  NOTE = 'note',
+}
+
 @Schema({ _id: false })
 export class TemplateColumn {
   @Prop({ required: true, trim: true })
@@ -45,6 +67,13 @@ export class TemplateColumn {
     default: TemplateColumnDataType.TEXT,
   })
   dataType!: TemplateColumnDataType;
+
+  @Prop({
+    trim: true,
+    enum: [...Object.values(TemplateColumnSourceField), ''],
+    default: '',
+  })
+  sourceField!: TemplateColumnSourceField | '';
 }
 
 export const TemplateColumnSchema =

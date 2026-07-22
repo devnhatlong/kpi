@@ -9,7 +9,7 @@ import {
   Min,
 } from 'class-validator';
 import { StringRequired } from '@/common/decorators';
-import { TemplateColumnDataType } from '../schemas/kpi-template.schema';
+import { TemplateColumnDataType, TemplateColumnSourceField } from '../schemas/kpi-template.schema';
 
 export class TemplateColumnDto {
   @StringRequired('ID cột')
@@ -45,4 +45,9 @@ export class TemplateColumnDto {
   @ApiProperty({ enum: TemplateColumnDataType })
   @IsEnum(TemplateColumnDataType, { message: 'Kiểu dữ liệu không hợp lệ.' })
   dataType!: TemplateColumnDataType;
+
+  @ApiPropertyOptional({ enum: TemplateColumnSourceField })
+  @IsOptional()
+  @IsEnum(TemplateColumnSourceField, { message: 'Trường nguồn không hợp lệ.' })
+  sourceField?: TemplateColumnSourceField;
 }

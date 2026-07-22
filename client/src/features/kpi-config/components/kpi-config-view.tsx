@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { ClipboardList, Layers3, Pencil, Plus, Trash2 } from "lucide-react";
 import useSWR from "swr";
@@ -49,6 +49,7 @@ import {
   deleteTaskAssignment,
   deleteWorkContent,
   deleteWorkGroup,
+  fetchKpiTemplates,
   fetchTaskAssignments,
   fetchWorkContents,
   fetchWorkGroups,
@@ -69,6 +70,12 @@ import { TaskAssignmentGrid } from "./task-assignment-grid";
 import { TemplateConfigView } from "./template-config-view";
 
 type TabValue = "tasks" | "contents" | "groups" | "template";
+
+const SELECTED_TEMPLATE_KEY = "kpi-selected-template-id";
+
+function relationId(value: object | string): string {
+  return entityId(value as { _id?: string; id?: string } | string);
+}
 
 function groupOf(content: WorkContent | null): WorkGroup | null {
   return !content || typeof content.groupId === "string"
@@ -107,8 +114,11 @@ export function KpiConfigView() {
   const groupsQuery = useSWR(kpiConfigKeys.groups, fetchWorkGroups);
   const contentsQuery = useSWR(kpiConfigKeys.contents, fetchWorkContents);
   const tasksQuery = useSWR(kpiConfigKeys.tasks, fetchTaskAssignments);
+  const templatesQuery = useSWR(kpiConfigKeys.templates, fetchKpiTemplates);
   const usersQuery = useSWR(["organization", "users", "all"], fetchUsers);
   const rolesQuery = useSWR(["organization", "roles", "all"], fetchRoles);
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   const [groupDialog, setGroupDialog] = useState(false);
   const [contentDialog, setContentDialog] = useState(false);
@@ -124,8 +134,43 @@ export function KpiConfigView() {
   const groups = groupsQuery.data ?? [];
   const contents = contentsQuery.data ?? [];
   const tasks = tasksQuery.data ?? [];
+  const templates = templatesQuery.data ?? [];
   const users = usersQuery.data?.filter((user) => user.isActive) ?? [];
   const roles = rolesQuery.data?.filter((role) => role.isActive) ?? [];
+
+  useEffect(() => {
+    if (!templates.length || selectedTemplateId) return;
+    const saved = localStorage.getItem(SELECTED_TEMPLATE_KEY);
+    if (saved && templates.some((item) => entityId(item) === saved)) {
+      setSelectedTemplateId(saved);
+      return;
+    }
+    const preferred =
+      templates.find((item) => item.isActive) ?? templates[0] ?? null;
+    if (preferred) setSelectedTemplateId(entityId(preferred));
+  }, [templates, selectedTemplateId]);
+
+  const selectedTemplate =
+    templates.find((item) => entityId(item) === selectedTemplateId) ?? null;
+
+  const scopedContents = useMemo(() => {
+    if (!selectedTemplate) return [];
+    const activeContents = contents.filter((item) => item.isActive);
+    const includedIds = selectedTemplate.includedContentIds ?? [];
+    if (!includedIds.length) return activeContents;
+    const allowed = new Set(includedIds);
+    return activeContents.filter((item) => allowed.has(entityId(item)));
+  }, [contents, selectedTemplate]);
+
+  const scopedTasks = useMemo(() => {
+    const contentIds = new Set(scopedContents.map((item) => entityId(item)));
+    return tasks.filter((item) => contentIds.has(relationId(item.contentId)));
+  }, [tasks, scopedContents]);
+
+  const selectTemplate = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    localStorage.setItem(SELECTED_TEMPLATE_KEY, templateId);
+  };
 
   const openCreate = () => {
     if (tab === "template") return;
@@ -140,8 +185,14 @@ export function KpiConfigView() {
       setEditingContent(null);
       setContentDialog(true);
     } else {
-      if (!contents.length) {
-        toast.error("Hãy tạo nội dung công việc trước.");
+      if (!selectedTemplate) {
+        toast.error("Hãy chọn biểu mẫu KPI trước.");
+        return;
+      }
+      if (!scopedContents.length) {
+        toast.error(
+          "Biểu mẫu chưa có nội dung công việc. Hãy chọn nội dung trong tab Cấu hình biểu mẫu.",
+        );
         return;
       }
       setEditingTask(null);
@@ -208,14 +259,59 @@ export function KpiConfigView() {
           <TabsTrigger value="template">Cấu hình biểu mẫu</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="tasks" className="mt-4">
+        <TabsContent value="tasks" className="mt-4 space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3 rounded-md border bg-muted/20 px-4 py-3">
+            <div className="space-y-2">
+              <Label>Biểu mẫu KPI</Label>
+              <Select
+                value={selectedTemplateId || undefined}
+                onValueChange={selectTemplate}
+              >
+                <SelectTrigger className="w-[280px]">
+                  <SelectValue placeholder="Chọn biểu mẫu" />
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((template) => (
+                    <SelectItem key={entityId(template)} value={entityId(template)}>
+                      {template.name} ({template.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedTemplate ? (
+                <p className="text-xs text-muted-foreground">
+                  {scopedContents.length} nội dung công việc ·{" "}
+                  {selectedTemplate.columns.filter((item) => item.visible).length}{" "}
+                  cột hiển thị
+                  {!selectedTemplate.includedContentIds.length
+                    ? " · chưa chọn nội dung trong biểu mẫu"
+                    : ""}
+                </p>
+              ) : null}
+            </div>
+            {templatesQuery.isLoading ? (
+              <span className="text-sm text-muted-foreground">
+                Đang tải biểu mẫu...
+              </span>
+            ) : !templates.length ? (
+              <Button variant="outline" onClick={() => setTab("template")}>
+                Tạo biểu mẫu đầu tiên
+              </Button>
+            ) : null}
+          </div>
+
           <Card>
             <CardContent className="pt-6">
               <TaskAssignmentGrid
+                template={selectedTemplate}
                 groups={groups}
-                contents={contents}
-                tasks={tasks}
-                loading={tasksQuery.isLoading}
+                contents={scopedContents}
+                tasks={scopedTasks}
+                loading={
+                  tasksQuery.isLoading ||
+                  contentsQuery.isLoading ||
+                  templatesQuery.isLoading
+                }
                 onAddTask={(content) => {
                   setEditingTask(null);
                   setCreatingForContent(content);
@@ -402,7 +498,7 @@ export function KpiConfigView() {
           onOpenChange={setTaskDialog}
           edit={editingTask}
           initialContent={creatingForContent}
-          contents={contents}
+          contents={scopedContents}
           users={users}
           onSuccess={() => tasksQuery.mutate()}
         />

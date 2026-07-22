@@ -321,6 +321,7 @@ export class KpiConfigService {
             ? 'CALCULATED'
             : (item.inputRoleCode?.trim() ?? ''),
         dataType: item.dataType,
+        sourceField: item.sourceField ?? '',
       }));
     }
     if (dto.headerGroups !== undefined) {

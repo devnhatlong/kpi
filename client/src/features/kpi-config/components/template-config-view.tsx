@@ -71,10 +71,12 @@ import {
   isAutoIncrementColumn,
   type TemplateColumn,
   type TemplateColumnDataType,
+  type TemplateColumnSourceField,
   type TemplateHeaderGroup,
   type TemplateVisibilityScope,
   type WorkContent,
 } from "../types";
+import { TEMPLATE_SOURCE_FIELD_LABELS, inferSourceFieldFromTitle } from "../template-field-resolver";
 
 const CALCULATED_INPUT = "CALCULATED";
 
@@ -103,6 +105,7 @@ function column(
     visible: true,
     inputRoleCode,
     dataType,
+    sourceField: "",
   };
 }
 
@@ -637,6 +640,10 @@ export function TemplateConfigView({
         const next = { ...item, ...patch };
         if (patch.dataType === "auto_increment") {
           next.inputRoleCode = CALCULATED_INPUT;
+          next.sourceField = "";
+        }
+        if (patch.title !== undefined && !next.sourceField) {
+          next.sourceField = inferSourceFieldFromTitle(patch.title);
         }
         return next;
       });
@@ -1134,11 +1141,12 @@ export function TemplateConfigView({
 
                 <div className="overflow-x-auto rounded-md border">
                   <div className="min-w-[1180px]">
-                    <div className="grid grid-cols-[70px_1fr_210px_140px_90px_170px_90px] gap-2 border-b bg-muted/50 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                    <div className="grid grid-cols-[70px_1fr_210px_140px_180px_90px_170px_90px] gap-2 border-b bg-muted/50 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
                       <span>Hiện</span>
                       <span>Nhãn và mã trường</span>
                       <span>Nhóm header</span>
                       <span>Kiểu dữ liệu</span>
+                      <span>Trường nguồn</span>
                       <span>Rộng</span>
                       <span>Role nhập</span>
                       <span className="text-right">Thứ tự</span>
@@ -1152,7 +1160,7 @@ export function TemplateConfigView({
                     {columns.map((item, index) => (
                       <div
                         key={item.id}
-                        className="grid grid-cols-[70px_1fr_210px_140px_90px_170px_90px] items-start gap-2 border-b px-3 py-2 last:border-b-0"
+                        className="grid grid-cols-[70px_1fr_210px_140px_180px_90px_170px_90px] items-start gap-2 border-b px-3 py-2 last:border-b-0"
                       >
                         <Switch
                           className="mt-1.5"
@@ -1203,6 +1211,40 @@ export function TemplateConfigView({
                           </SelectTrigger>
                           <SelectContent>
                             {Object.entries(dataTypeLabels).map(
+                              ([value, label]) => (
+                                <SelectItem key={value} value={value}>
+                                  {label}
+                                </SelectItem>
+                              ),
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <Select
+                          value={item.sourceField || "__NONE__"}
+                          onValueChange={(sourceField) =>
+                            updateColumn(item.id, {
+                              sourceField:
+                                sourceField === "__NONE__"
+                                  ? ""
+                                  : (sourceField as TemplateColumnSourceField),
+                            })
+                          }
+                          disabled={isAutoIncrementColumn(item)}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue
+                              placeholder={
+                                isAutoIncrementColumn(item)
+                                  ? "Tự động"
+                                  : "Chọn trường"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__NONE__">
+                              Không liên kết
+                            </SelectItem>
+                            {Object.entries(TEMPLATE_SOURCE_FIELD_LABELS).map(
                               ([value, label]) => (
                                 <SelectItem key={value} value={value}>
                                   {label}

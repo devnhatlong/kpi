@@ -8,20 +8,20 @@ import { Button } from "@/components/ui/button";
 import { entityId } from "@/features/organization/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { updateTaskAssignment } from "../api";
-import type { TaskAssignment, WorkContent, WorkGroup } from "../types";
-
-type EditableField =
-  | "actualProduct"
-  | "selfProgressPercent"
-  | "selfProgressScore"
-  | "selfQualityPercent"
-  | "selfQualityScore"
-  | "proposedAdjustment"
-  | "appraisalProgressPercent"
-  | "appraisalProgressScore"
-  | "appraisalQualityPercent"
-  | "appraisalQualityScore"
-  | "note";
+import { buildHeaderPreviewRows } from "../template-header-preview";
+import {
+  getColumnEditableField,
+  resolveColumnSourceField,
+  resolveTaskColumnValue,
+  type TaskEditableField,
+} from "../template-field-resolver";
+import type {
+  KpiTemplate,
+  TaskAssignment,
+  TemplateColumn,
+  WorkContent,
+  WorkGroup,
+} from "../types";
 
 type TableRow =
   | { id: string; kind: "group"; label: string }
@@ -35,6 +35,7 @@ type TableRow =
     };
 
 type TaskAssignmentGridProps = {
+  template: KpiTemplate | null;
   groups: WorkGroup[];
   contents: WorkContent[];
   tasks: TaskAssignment[];
@@ -45,14 +46,17 @@ type TaskAssignmentGridProps = {
   onSaved: () => void;
 };
 
-const COLUMN_COUNT = 18;
-const percentFields = new Set<EditableField>([
+const percentFields = new Set<TaskEditableField>([
   "selfProgressPercent",
   "selfQualityPercent",
   "appraisalProgressPercent",
   "appraisalQualityPercent",
 ]);
-const textFields = new Set<EditableField>(["actualProduct", "note"]);
+const textFields = new Set<TaskEditableField>([
+  "actualProduct",
+  "note",
+  "proposedAdjustmentReason",
+]);
 
 function relationId(value: object | string): string {
   return entityId(value as { _id?: string; id?: string } | string);
@@ -91,7 +95,7 @@ function buildRows(
     rows.push({
       id: `group-${entityId(group)}`,
       kind: "group",
-      label: `${group.code} — ${group.name}`,
+      label: group.name,
     });
     contents
       .filter((content) => relationId(content.groupId) === entityId(group))
@@ -105,7 +109,7 @@ function buildRows(
     rows.push({
       id: "group-other",
       kind: "group",
-      label: "KHÁC — Nội dung chưa xác định nhóm",
+      label: "Nội dung chưa xác định nhóm",
     });
     orphanContents.forEach(appendContent);
   }
@@ -130,16 +134,19 @@ function HeaderCell({
   rowSpan,
   colSpan,
   className = "",
+  style,
 }: {
   children: React.ReactNode;
   rowSpan?: number;
   colSpan?: number;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   return (
     <th
       rowSpan={rowSpan}
       colSpan={colSpan}
+      style={style}
       className={`border border-slate-300 bg-slate-100 px-2 py-2 text-center align-middle font-semibold leading-tight text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 ${className}`}
     >
       {children}
@@ -171,12 +178,12 @@ function EditableCell({
   onSave,
 }: {
   task: TaskAssignment;
-  field: EditableField;
+  field: TaskEditableField;
   type?: "number" | "text";
   value: string | number | undefined;
   onSave: (
     task: TaskAssignment,
-    field: EditableField,
+    field: TaskEditableField,
     rawValue: string,
   ) => Promise<boolean>;
 }) {
@@ -200,7 +207,74 @@ function EditableCell({
   );
 }
 
+function TaskColumnCell({
+  column,
+  row,
+  onSave,
+}: {
+  column: TemplateColumn;
+  row: Extract<TableRow, { kind: "task" }>;
+  onSave: (
+    task: TaskAssignment,
+    field: TaskEditableField,
+    rawValue: string,
+  ) => Promise<boolean>;
+}) {
+  const value = resolveTaskColumnValue(column, {
+    rowIndex: row.index - 1,
+    contentName: row.contentName,
+    task: row.task,
+  });
+  const editableField = getColumnEditableField(column);
+  const sourceField = resolveColumnSourceField(column);
+
+  if (editableField) {
+    return (
+      <EditableCell
+        task={row.task}
+        field={editableField}
+        type={textFields.has(editableField) ? "text" : "number"}
+        value={value}
+        onSave={onSave}
+      />
+    );
+  }
+
+  const overdue =
+    sourceField === "due_date" &&
+    dayjs(row.task.dueDate).isBefore(dayjs(), "day") &&
+    row.task.status !== "APPRAISED";
+
+  return (
+    <DataCell
+      className={
+        sourceField === "standard_score"
+          ? "text-center font-semibold"
+          : sourceField === "due_date"
+            ? overdue
+              ? "text-center font-semibold text-red-600"
+              : "text-center"
+            : sourceField === "task_title"
+              ? ""
+              : "text-center text-muted-foreground"
+      }
+    >
+      {sourceField === "task_title" ? (
+        <>
+          <div className="font-medium">{row.task.title}</div>
+          <div className="mt-0.5 text-[0.9em] text-muted-foreground">
+            {row.task.assigneeId.fullName || row.task.assigneeId.username}
+          </div>
+        </>
+      ) : (
+        (value ?? "")
+      )}
+    </DataCell>
+  );
+}
+
 export function TaskAssignmentGrid({
+  template,
   groups,
   contents,
   tasks,
@@ -212,14 +286,30 @@ export function TaskAssignmentGrid({
 }: TaskAssignmentGridProps) {
   const [fontSize, setFontSize] = useState(12);
   const [headerFontSize, setHeaderFontSize] = useState(11);
+  const visibleColumns = useMemo(
+    () => template?.columns.filter((item) => item.visible) ?? [],
+    [template],
+  );
+  const headerPreview = useMemo(
+    () =>
+      template
+        ? buildHeaderPreviewRows(visibleColumns, template.headerGroups)
+        : null,
+    [template, visibleColumns],
+  );
   const rows = useMemo(
     () => buildRows(groups, contents, tasks),
     [groups, contents, tasks],
   );
+  const columnCount = visibleColumns.length + 1;
+  const minTableWidth = Math.max(
+    960,
+    visibleColumns.reduce((sum, item) => sum + item.width, 0) + 96,
+  );
 
   const saveCell = async (
     task: TaskAssignment,
-    field: EditableField,
+    field: TaskEditableField,
     rawValue: string,
   ): Promise<boolean> => {
     let value: string | number | undefined = rawValue.trim();
@@ -257,6 +347,23 @@ export function TaskAssignmentGrid({
     }
   };
 
+  if (!template) {
+    return (
+      <div className="rounded-md border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
+        Chọn biểu mẫu KPI để bắt đầu cấu hình và giao nhiệm vụ.
+      </div>
+    );
+  }
+
+  if (!visibleColumns.length) {
+    return (
+      <div className="rounded-md border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
+        Biểu mẫu “{template.name}” chưa có cột hiển thị. Hãy cấu hình cột ở tab
+        Cấu hình biểu mẫu.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-4 rounded-md border bg-muted/30 px-3 py-2">
@@ -286,72 +393,47 @@ export function TaskAssignmentGrid({
 
       <div className="max-h-[70vh] overflow-auto rounded-md border">
         <table
-          className="min-w-[2300px] border-collapse bg-background"
-          style={{ fontSize }}
+          className="border-collapse bg-background"
+          style={{ fontSize, minWidth: minTableWidth }}
         >
+          {headerPreview ? (
+            <colgroup>
+              {headerPreview.widths.map((width, index) => (
+                <col key={`col-${index}`} style={{ width }} />
+              ))}
+              <col style={{ width: 96 }} />
+            </colgroup>
+          ) : null}
           <thead
             className="sticky top-0 z-20"
             style={{ fontSize: headerFontSize }}
           >
-            <tr>
-              <HeaderCell rowSpan={3} className="w-14">
-                STT
-              </HeaderCell>
-              <HeaderCell rowSpan={3} className="w-64">
-                Nội dung công việc
-              </HeaderCell>
-              <HeaderCell rowSpan={3} className="w-64">
-                Nhiệm vụ
-              </HeaderCell>
-              <HeaderCell rowSpan={3} className="w-28">
-                Thời hạn hoàn thành
-              </HeaderCell>
-              <HeaderCell rowSpan={3} className="w-44">
-                Sản phẩm dự kiến
-              </HeaderCell>
-              <HeaderCell rowSpan={3} className="w-44">
-                Sản phẩm sau khi thực hiện
-              </HeaderCell>
-              <HeaderCell rowSpan={3} className="w-20">
-                Điểm chuẩn
-              </HeaderCell>
-              <HeaderCell colSpan={4}>Điểm tự chấm</HeaderCell>
-              <HeaderCell rowSpan={3} className="w-36">
-                Đề nghị cộng/trừ điểm của các phòng
-              </HeaderCell>
-              <HeaderCell colSpan={4}>
-                Kết quả thẩm định của PV01 (Chỉ huy)
-              </HeaderCell>
-              <HeaderCell rowSpan={3} className="w-44">
-                Ghi chú
-              </HeaderCell>
-              <HeaderCell rowSpan={3} className="w-24">
-                Thao tác
-              </HeaderCell>
-            </tr>
-            <tr>
-              <HeaderCell colSpan={2}>Kết quả KPI tiến độ (B)</HeaderCell>
-              <HeaderCell colSpan={2}>Kết quả KPI chất lượng (C)</HeaderCell>
-              <HeaderCell colSpan={2}>Kết quả KPI tiến độ (B)</HeaderCell>
-              <HeaderCell colSpan={2}>Kết quả KPI chất lượng (C)</HeaderCell>
-            </tr>
-            <tr>
-              <HeaderCell>Thực tế hoàn thành %</HeaderCell>
-              <HeaderCell>Điểm tự chấm</HeaderCell>
-              <HeaderCell>Thực tế hoàn thành %</HeaderCell>
-              <HeaderCell>Điểm tự chấm</HeaderCell>
-              <HeaderCell>Thực tế hoàn thành %</HeaderCell>
-              <HeaderCell>Điểm thẩm định</HeaderCell>
-              <HeaderCell>Thực tế hoàn thành %</HeaderCell>
-              <HeaderCell>Điểm thẩm định</HeaderCell>
-            </tr>
+            {headerPreview?.rows.map((headerRow, rowIndex) => (
+              <tr key={`header-row-${rowIndex}`}>
+                {headerRow.map((cell) => (
+                  <HeaderCell
+                    key={cell.key}
+                    rowSpan={cell.rowSpan}
+                    colSpan={cell.colSpan}
+                    style={cell.minWidth ? { minWidth: cell.minWidth } : undefined}
+                  >
+                    {cell.label}
+                  </HeaderCell>
+                ))}
+                {rowIndex === 0 ? (
+                  <HeaderCell rowSpan={headerPreview.rows.length}>
+                    Thao tác
+                  </HeaderCell>
+                ) : null}
+              </tr>
+            ))}
           </thead>
 
           <tbody>
             {loading ? (
               <tr>
                 <td
-                  colSpan={COLUMN_COUNT}
+                  colSpan={columnCount}
                   className="h-28 border text-center text-muted-foreground"
                 >
                   Đang tải dữ liệu...
@@ -360,10 +442,10 @@ export function TaskAssignmentGrid({
             ) : rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={COLUMN_COUNT}
+                  colSpan={columnCount}
                   className="h-28 border text-center text-muted-foreground"
                 >
-                  Chưa có dữ liệu cấu hình KPI.
+                  Chưa có dữ liệu trong phạm vi biểu mẫu này.
                 </td>
               </tr>
             ) : (
@@ -372,8 +454,8 @@ export function TaskAssignmentGrid({
                   return (
                     <tr key={row.id}>
                       <td
-                        colSpan={COLUMN_COUNT}
-                        className="border border-slate-700 bg-slate-800 px-3 py-2 font-bold uppercase text-white dark:bg-slate-950"
+                        colSpan={columnCount}
+                        className="border border-slate-700 bg-slate-800 px-3 py-2 text-center font-bold uppercase text-white dark:bg-slate-950"
                       >
                         {row.label}
                       </td>
@@ -384,133 +466,44 @@ export function TaskAssignmentGrid({
                   return (
                     <tr key={row.id}>
                       <td
-                        colSpan={COLUMN_COUNT}
-                        className="border border-slate-300 bg-slate-100 px-3 py-1.5 font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                        colSpan={columnCount}
+                        className="relative border border-slate-300 bg-slate-100 px-3 py-1.5 text-center font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <span>{row.content.name}</span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => onAddTask(row.content)}
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            Thêm nhiệm vụ
-                          </Button>
-                        </div>
+                        <span>{row.content.name}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="absolute right-3 top-1/2 h-7 -translate-y-1/2 px-2 text-xs"
+                          onClick={() => onAddTask(row.content)}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Thêm nhiệm vụ
+                        </Button>
                       </td>
                     </tr>
                   );
                 }
 
-                const { task } = row;
-                const overdue =
-                  dayjs(task.dueDate).isBefore(dayjs(), "day") &&
-                  task.status !== "APPRAISED";
                 return (
                   <tr
                     key={row.id}
                     className="even:bg-slate-50/70 hover:bg-blue-50/60 dark:even:bg-slate-900/30 dark:hover:bg-blue-950/30"
                   >
-                    <DataCell className="text-center text-muted-foreground">
-                      {row.index}
-                    </DataCell>
-                    <DataCell>{row.contentName}</DataCell>
-                    <DataCell>
-                      <div className="font-medium">{task.title}</div>
-                      <div className="mt-0.5 text-[0.9em] text-muted-foreground">
-                        {task.assigneeId.fullName || task.assigneeId.username}
-                      </div>
-                    </DataCell>
-                    <DataCell
-                      className={
-                        overdue
-                          ? "text-center font-semibold text-red-600"
-                          : "text-center"
-                      }
-                    >
-                      {dayjs(task.dueDate).format("DD/MM/YYYY")}
-                    </DataCell>
-                    <DataCell>{task.product}</DataCell>
-                    <EditableCell
-                      task={task}
-                      field="actualProduct"
-                      type="text"
-                      value={task.actualProduct}
-                      onSave={saveCell}
-                    />
-                    <DataCell className="text-center font-semibold">
-                      {task.standardScore}
-                    </DataCell>
-                    <EditableCell
-                      task={task}
-                      field="selfProgressPercent"
-                      value={task.selfProgressPercent}
-                      onSave={saveCell}
-                    />
-                    <EditableCell
-                      task={task}
-                      field="selfProgressScore"
-                      value={task.selfProgressScore}
-                      onSave={saveCell}
-                    />
-                    <EditableCell
-                      task={task}
-                      field="selfQualityPercent"
-                      value={task.selfQualityPercent}
-                      onSave={saveCell}
-                    />
-                    <EditableCell
-                      task={task}
-                      field="selfQualityScore"
-                      value={task.selfQualityScore}
-                      onSave={saveCell}
-                    />
-                    <EditableCell
-                      task={task}
-                      field="proposedAdjustment"
-                      value={task.proposedAdjustment}
-                      onSave={saveCell}
-                    />
-                    <EditableCell
-                      task={task}
-                      field="appraisalProgressPercent"
-                      value={task.appraisalProgressPercent}
-                      onSave={saveCell}
-                    />
-                    <EditableCell
-                      task={task}
-                      field="appraisalProgressScore"
-                      value={task.appraisalProgressScore}
-                      onSave={saveCell}
-                    />
-                    <EditableCell
-                      task={task}
-                      field="appraisalQualityPercent"
-                      value={task.appraisalQualityPercent}
-                      onSave={saveCell}
-                    />
-                    <EditableCell
-                      task={task}
-                      field="appraisalQualityScore"
-                      value={task.appraisalQualityScore}
-                      onSave={saveCell}
-                    />
-                    <EditableCell
-                      task={task}
-                      field="note"
-                      type="text"
-                      value={task.note}
-                      onSave={saveCell}
-                    />
+                    {visibleColumns.map((column) => (
+                      <TaskColumnCell
+                        key={`${row.id}-${column.id}`}
+                        column={column}
+                        row={row}
+                        onSave={saveCell}
+                      />
+                    ))}
                     <DataCell className="sticky right-0 bg-background p-1 text-center">
                       <div className="inline-flex gap-1">
                         <Button
                           size="icon"
                           variant="ghost"
                           className="h-7 w-7"
-                          onClick={() => onEditTask(task)}
+                          onClick={() => onEditTask(row.task)}
                           aria-label="Sửa"
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -519,7 +512,7 @@ export function TaskAssignmentGrid({
                           size="icon"
                           variant="ghost"
                           className="h-7 w-7"
-                          onClick={() => onDeleteTask(task)}
+                          onClick={() => onDeleteTask(row.task)}
                           aria-label="Xoá"
                         >
                           <Trash2 className="h-3.5 w-3.5 text-destructive" />
@@ -534,8 +527,8 @@ export function TaskAssignmentGrid({
         </table>
       </div>
       <p className="text-xs text-muted-foreground">
-        Bảng HTML thuần: cuộn ngang để xem toàn bộ cột; nhấp vào ô nhập liệu và
-        rời ô để lưu.
+        Biểu mẫu: {template.name} ({template.code}) · cuộn ngang để xem toàn bộ
+        cột; nhấp vào ô nhập liệu và rời ô để lưu.
       </p>
     </div>
   );

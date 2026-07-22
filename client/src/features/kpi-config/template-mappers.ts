@@ -37,6 +37,7 @@ export function toTemplateDraft(template: KpiTemplate): TemplateDraft {
     columns: template.columns.map((item) => ({
       ...item,
       headerPath: [...item.headerPath],
+      sourceField: item.sourceField ?? "",
     })),
     headerGroups: cloneHeaderGroups(template.headerGroups),
     includedContentIds: template.includedContentIds.map(String),
