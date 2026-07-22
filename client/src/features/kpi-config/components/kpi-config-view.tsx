@@ -39,7 +39,7 @@ import {
   activeBadgeClass,
   inactiveBadgeClass,
 } from "@/features/organization/badge-styles";
-import { fetchUsers } from "@/features/organization/api";
+import { fetchRoles, fetchUsers } from "@/features/organization/api";
 import { entityId } from "@/features/organization/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import {
@@ -66,11 +66,14 @@ import {
   type WorkGroup,
 } from "../types";
 import { TaskAssignmentGrid } from "./task-assignment-grid";
+import { TemplateConfigView } from "./template-config-view";
 
-type TabValue = "tasks" | "contents" | "groups";
+type TabValue = "tasks" | "contents" | "groups" | "template";
 
 function groupOf(content: WorkContent | null): WorkGroup | null {
-  return !content || typeof content.groupId === "string" ? null : content.groupId;
+  return !content || typeof content.groupId === "string"
+    ? null
+    : content.groupId;
 }
 
 function numberOrUndefined(value: string): number | undefined {
@@ -105,23 +108,27 @@ export function KpiConfigView() {
   const contentsQuery = useSWR(kpiConfigKeys.contents, fetchWorkContents);
   const tasksQuery = useSWR(kpiConfigKeys.tasks, fetchTaskAssignments);
   const usersQuery = useSWR(["organization", "users", "all"], fetchUsers);
+  const rolesQuery = useSWR(["organization", "roles", "all"], fetchRoles);
 
   const [groupDialog, setGroupDialog] = useState(false);
   const [contentDialog, setContentDialog] = useState(false);
   const [taskDialog, setTaskDialog] = useState(false);
   const [editingGroup, setEditingGroup] = useState<WorkGroup | null>(null);
-  const [editingContent, setEditingContent] = useState<WorkContent | null>(null);
-  const [editingTask, setEditingTask] = useState<TaskAssignment | null>(null);
-  const [creatingForContent, setCreatingForContent] = useState<WorkContent | null>(
+  const [editingContent, setEditingContent] = useState<WorkContent | null>(
     null,
   );
+  const [editingTask, setEditingTask] = useState<TaskAssignment | null>(null);
+  const [creatingForContent, setCreatingForContent] =
+    useState<WorkContent | null>(null);
 
   const groups = groupsQuery.data ?? [];
   const contents = contentsQuery.data ?? [];
   const tasks = tasksQuery.data ?? [];
   const users = usersQuery.data?.filter((user) => user.isActive) ?? [];
+  const roles = rolesQuery.data?.filter((role) => role.isActive) ?? [];
 
   const openCreate = () => {
+    if (tab === "template") return;
     if (tab === "groups") {
       setEditingGroup(null);
       setGroupDialog(true);
@@ -144,7 +151,8 @@ export function KpiConfigView() {
   };
 
   const remove = async (kind: TabValue, id: string, name: string) => {
-    if (!window.confirm(`Xoá “${name}”? Thao tác này không thể hoàn tác.`)) return;
+    if (!window.confirm(`Xoá “${name}”? Thao tác này không thể hoàn tác.`))
+      return;
     try {
       if (kind === "groups") {
         await deleteWorkGroup(id);
@@ -170,7 +178,7 @@ export function KpiConfigView() {
         : "Giao nhiệm vụ";
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight">
@@ -180,20 +188,27 @@ export function KpiConfigView() {
             Quản lý danh mục công việc, giao nhiệm vụ và kết quả đánh giá.
           </p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          {buttonLabel}
-        </Button>
+        {tab !== "template" ? (
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            {buttonLabel}
+          </Button>
+        ) : null}
       </div>
 
-      <Tabs value={tab} onValueChange={(value) => setTab(value as TabValue)}>
-        <TabsList className="h-auto flex-wrap">
+      <Tabs
+        value={tab}
+        onValueChange={(value) => setTab(value as TabValue)}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <TabsList className="h-auto w-fit flex-wrap">
           <TabsTrigger value="tasks">Nhiệm vụ được giao</TabsTrigger>
           <TabsTrigger value="contents">Nội dung công việc</TabsTrigger>
           <TabsTrigger value="groups">Nhóm công việc</TabsTrigger>
+          <TabsTrigger value="template">Cấu hình biểu mẫu</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="tasks">
+        <TabsContent value="tasks" className="mt-4">
           <Card>
             <CardContent className="pt-6">
               <TaskAssignmentGrid
@@ -220,7 +235,7 @@ export function KpiConfigView() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="contents">
+        <TabsContent value="contents" className="mt-4">
           <Card>
             <CardContent className="pt-6">
               <div className="rounded-md border">
@@ -231,14 +246,19 @@ export function KpiConfigView() {
                       <TableHead>Nội dung công việc</TableHead>
                       <TableHead>Nhóm công việc</TableHead>
                       <TableHead className="w-28">Trạng thái</TableHead>
-                      <TableHead className="w-24 text-right">Thao tác</TableHead>
+                      <TableHead className="w-24 text-right">
+                        Thao tác
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {contentsQuery.isLoading ? (
                       <EmptyRow colSpan={5} text="Đang tải nội dung..." />
                     ) : contents.length === 0 ? (
-                      <EmptyRow colSpan={5} text="Chưa có nội dung công việc." />
+                      <EmptyRow
+                        colSpan={5}
+                        text="Chưa có nội dung công việc."
+                      />
                     ) : (
                       contents.map((content) => (
                         <TableRow key={entityId(content)}>
@@ -266,7 +286,11 @@ export function KpiConfigView() {
                                 setContentDialog(true);
                               }}
                               onDelete={() =>
-                                remove("contents", entityId(content), content.name)
+                                remove(
+                                  "contents",
+                                  entityId(content),
+                                  content.name,
+                                )
                               }
                             />
                           </TableCell>
@@ -280,7 +304,7 @@ export function KpiConfigView() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="groups">
+        <TabsContent value="groups" className="mt-4">
           <Card>
             <CardContent className="pt-6">
               <div className="rounded-md border">
@@ -291,7 +315,9 @@ export function KpiConfigView() {
                       <TableHead>Nhóm công việc</TableHead>
                       <TableHead className="w-24 text-center">Thứ tự</TableHead>
                       <TableHead className="w-28">Trạng thái</TableHead>
-                      <TableHead className="w-24 text-right">Thao tác</TableHead>
+                      <TableHead className="w-24 text-right">
+                        Thao tác
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -315,7 +341,9 @@ export function KpiConfigView() {
                               </div>
                             ) : null}
                           </TableCell>
-                          <TableCell className="text-center">{group.sortOrder}</TableCell>
+                          <TableCell className="text-center">
+                            {group.sortOrder}
+                          </TableCell>
                           <TableCell>
                             <ActiveBadge active={group.isActive} />
                           </TableCell>
@@ -338,6 +366,13 @@ export function KpiConfigView() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent
+          value="template"
+          className="mt-4 flex min-h-0 flex-1 flex-col"
+        >
+          <TemplateConfigView contents={contents} roles={roles} users={users} />
         </TabsContent>
       </Tabs>
 
@@ -379,7 +414,10 @@ export function KpiConfigView() {
 function EmptyRow({ colSpan, text }: { colSpan: number; text: string }) {
   return (
     <TableRow>
-      <TableCell colSpan={colSpan} className="h-28 text-center text-muted-foreground">
+      <TableCell
+        colSpan={colSpan}
+        className="h-28 text-center text-muted-foreground"
+      >
         <ClipboardList className="mx-auto mb-2 h-7 w-7 opacity-40" />
         {text}
       </TableCell>
@@ -424,7 +462,12 @@ type GroupDialogProps = {
   onSuccess: () => void;
 };
 
-function GroupDialog({ open, onOpenChange, edit, onSuccess }: GroupDialogProps) {
+function GroupDialog({
+  open,
+  onOpenChange,
+  edit,
+  onSuccess,
+}: GroupDialogProps) {
   const [code, setCode] = useState(edit?.code ?? "");
   const [name, setName] = useState(edit?.name ?? "");
   const [description, setDescription] = useState(edit?.description ?? "");
@@ -448,7 +491,9 @@ function GroupDialog({ open, onOpenChange, edit, onSuccess }: GroupDialogProps) 
       };
       if (edit) await updateWorkGroup(entityId(edit), input);
       else await createWorkGroup(input);
-      toast.success(edit ? "Đã cập nhật nhóm công việc." : "Đã tạo nhóm công việc.");
+      toast.success(
+        edit ? "Đã cập nhật nhóm công việc." : "Đã tạo nhóm công việc.",
+      );
       onOpenChange(false);
       onSuccess();
     } catch (error) {
@@ -462,15 +507,23 @@ function GroupDialog({ open, onOpenChange, edit, onSuccess }: GroupDialogProps) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{edit ? "Sửa nhóm công việc" : "Thêm nhóm công việc"}</DialogTitle>
+          <DialogTitle>
+            {edit ? "Sửa nhóm công việc" : "Thêm nhóm công việc"}
+          </DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-2">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Mã nhóm" required>
-              <Input value={code} onChange={(event) => setCode(event.target.value)} />
+              <Input
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+              />
             </Field>
             <Field label="Tên nhóm" required>
-              <Input value={name} onChange={(event) => setName(event.target.value)} />
+              <Input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
             </Field>
           </div>
           <Field label="Mô tả">
@@ -547,11 +600,15 @@ function ContentDialog({
       };
       if (edit) await updateWorkContent(entityId(edit), input);
       else await createWorkContent(input);
-      toast.success(edit ? "Đã cập nhật nội dung." : "Đã tạo nội dung công việc.");
+      toast.success(
+        edit ? "Đã cập nhật nội dung." : "Đã tạo nội dung công việc.",
+      );
       onOpenChange(false);
       onSuccess();
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Không lưu được nội dung công việc."));
+      toast.error(
+        getApiErrorMessage(error, "Không lưu được nội dung công việc."),
+      );
     } finally {
       setSaving(false);
     }
@@ -568,7 +625,10 @@ function ContentDialog({
         <div className="grid gap-4 py-2">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Mã nội dung" required>
-              <Input value={code} onChange={(event) => setCode(event.target.value)} />
+              <Input
+                value={code}
+                onChange={(event) => setCode(event.target.value)}
+              />
             </Field>
             <Field label="Nhóm công việc" required>
               <Select value={groupId} onValueChange={setGroupId}>
@@ -586,7 +646,10 @@ function ContentDialog({
             </Field>
           </div>
           <Field label="Tên nội dung công việc" required>
-            <Textarea value={name} onChange={(event) => setName(event.target.value)} />
+            <Textarea
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
           </Field>
           <Field label="Mô tả">
             <Textarea
@@ -736,12 +799,17 @@ function TaskDialog({
   );
   const [saving, setSaving] = useState(false);
   const activeContents = useMemo(
-    () => contents.filter((content) => content.isActive || entityId(content) === form.contentId),
+    () =>
+      contents.filter(
+        (content) => content.isActive || entityId(content) === form.contentId,
+      ),
     [contents, form.contentId],
   );
 
-  const set = <K extends keyof TaskFormState>(key: K, value: TaskFormState[K]) =>
-    setForm((current) => ({ ...current, [key]: value }));
+  const set = <K extends keyof TaskFormState>(
+    key: K,
+    value: TaskFormState[K],
+  ) => setForm((current) => ({ ...current, [key]: value }));
 
   const submit = async () => {
     if (
@@ -751,7 +819,9 @@ function TaskDialog({
       !form.dueDate ||
       !form.product.trim()
     ) {
-      toast.error("Vui lòng nhập đủ nội dung, nhiệm vụ, người thực hiện, thời hạn và sản phẩm.");
+      toast.error(
+        "Vui lòng nhập đủ nội dung, nhiệm vụ, người thực hiện, thời hạn và sản phẩm.",
+      );
       return;
     }
     const standardScore = Number(form.standardScore);
@@ -776,7 +846,9 @@ function TaskDialog({
       selfQualityScore: numberOrUndefined(form.selfQualityScore),
       proposedAdjustment: numberOrUndefined(form.proposedAdjustment),
       proposedAdjustmentReason: form.proposedAdjustmentReason.trim(),
-      appraisalProgressPercent: numberOrUndefined(form.appraisalProgressPercent),
+      appraisalProgressPercent: numberOrUndefined(
+        form.appraisalProgressPercent,
+      ),
       appraisalProgressScore: numberOrUndefined(form.appraisalProgressScore),
       appraisalQualityPercent: numberOrUndefined(form.appraisalQualityPercent),
       appraisalQualityScore: numberOrUndefined(form.appraisalQualityScore),
@@ -800,20 +872,28 @@ function TaskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>{edit ? "Cập nhật nhiệm vụ" : "Giao nhiệm vụ KPI"}</DialogTitle>
+          <DialogTitle>
+            {edit ? "Cập nhật nhiệm vụ" : "Giao nhiệm vụ KPI"}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6 py-2">
           <FormSection title="Thông tin giao nhiệm vụ">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Nội dung công việc" required>
-                <Select value={form.contentId} onValueChange={(value) => set("contentId", value)}>
+                <Select
+                  value={form.contentId}
+                  onValueChange={(value) => set("contentId", value)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Chọn nội dung" />
                   </SelectTrigger>
                   <SelectContent>
                     {activeContents.map((content) => (
-                      <SelectItem key={entityId(content)} value={entityId(content)}>
+                      <SelectItem
+                        key={entityId(content)}
+                        value={entityId(content)}
+                      >
                         {content.code} - {content.name}
                       </SelectItem>
                     ))}
@@ -1023,8 +1103,7 @@ function AssessmentFields({
   onChange: (key: AssessmentKey, value: string) => void;
   prefix: "self" | "appraisal";
 }) {
-  const key = (suffix: string) =>
-    `${prefix}${suffix}` as AssessmentKey;
+  const key = (suffix: string) => `${prefix}${suffix}` as AssessmentKey;
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <Field label="Tiến độ hoàn thành %">
@@ -1033,7 +1112,9 @@ function AssessmentFields({
           min={0}
           max={100}
           value={progressPercent}
-          onChange={(event) => onChange(key("ProgressPercent"), event.target.value)}
+          onChange={(event) =>
+            onChange(key("ProgressPercent"), event.target.value)
+          }
         />
       </Field>
       <Field label="Điểm tiến độ">
@@ -1041,7 +1122,9 @@ function AssessmentFields({
           type="number"
           min={0}
           value={progressScore}
-          onChange={(event) => onChange(key("ProgressScore"), event.target.value)}
+          onChange={(event) =>
+            onChange(key("ProgressScore"), event.target.value)
+          }
         />
       </Field>
       <Field label="Chất lượng hoàn thành %">
@@ -1050,7 +1133,9 @@ function AssessmentFields({
           min={0}
           max={100}
           value={qualityPercent}
-          onChange={(event) => onChange(key("QualityPercent"), event.target.value)}
+          onChange={(event) =>
+            onChange(key("QualityPercent"), event.target.value)
+          }
         />
       </Field>
       <Field label="Điểm chất lượng">
@@ -1058,7 +1143,9 @@ function AssessmentFields({
           type="number"
           min={0}
           value={qualityScore}
-          onChange={(event) => onChange(key("QualityScore"), event.target.value)}
+          onChange={(event) =>
+            onChange(key("QualityScore"), event.target.value)
+          }
         />
       </Field>
     </div>
