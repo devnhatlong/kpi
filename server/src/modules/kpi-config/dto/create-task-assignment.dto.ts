@@ -3,6 +3,7 @@ import {
   IsDateString,
   IsEnum,
   IsMongoId,
+  IsObject,
   IsOptional,
   Max,
   Min,
@@ -101,4 +102,13 @@ export class CreateTaskAssignmentDto {
 
   @StringNotRequired('Ghi chú')
   note?: string;
+
+  @ApiPropertyOptional({
+    description: 'Giá trị theo mã cột của biểu mẫu',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsOptional()
+  @IsObject()
+  fieldValues?: Record<string, string | number>;
 }

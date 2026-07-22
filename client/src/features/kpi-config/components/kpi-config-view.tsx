@@ -40,6 +40,7 @@ import {
   inactiveBadgeClass,
 } from "@/features/organization/badge-styles";
 import { fetchRoles, fetchUsers } from "@/features/organization/api";
+import { useAuth } from "@/features/auth/auth-provider";
 import { entityId } from "@/features/organization/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import {
@@ -60,6 +61,7 @@ import {
 } from "../api";
 import {
   TASK_STATUSES,
+  type KpiTemplate,
   type TaskAssignment,
   type TaskAssignmentInput,
   type TaskStatus,
@@ -68,6 +70,15 @@ import {
 } from "../types";
 import { TaskAssignmentGrid } from "./task-assignment-grid";
 import { TemplateConfigView } from "./template-config-view";
+import {
+  buildFieldValuesFromTemplate,
+  getAssignmentDialogColumns,
+  getColumnSemanticField,
+  getTemplateColumnValue,
+  readFieldValueBySemantic,
+  taskValueSourceFromAssignment,
+  type TaskValueSource,
+} from "../template-column-utils";
 
 type TabValue = "tasks" | "contents" | "groups" | "template";
 
@@ -83,23 +94,19 @@ function groupOf(content: WorkContent | null): WorkGroup | null {
     : content.groupId;
 }
 
-function numberOrUndefined(value: string): number | undefined {
-  if (value.trim() === "") return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
 function Field({
   label,
   children,
   required,
+  className,
 }: {
   label: string;
   children: React.ReactNode;
   required?: boolean;
+  className?: string;
 }) {
   return (
-    <div className="space-y-2">
+    <div className={className ? `space-y-2 ${className}` : "space-y-2"}>
       <Label>
         {label}
         {required ? <span className="ml-1 text-destructive">*</span> : null}
@@ -110,6 +117,7 @@ function Field({
 }
 
 export function KpiConfigView() {
+  const { user } = useAuth();
   const [tab, setTab] = useState<TabValue>("tasks");
   const groupsQuery = useSWR(kpiConfigKeys.groups, fetchWorkGroups);
   const contentsQuery = useSWR(kpiConfigKeys.contents, fetchWorkContents);
@@ -135,7 +143,9 @@ export function KpiConfigView() {
   const contents = contentsQuery.data ?? [];
   const tasks = tasksQuery.data ?? [];
   const templates = templatesQuery.data ?? [];
-  const users = usersQuery.data?.filter((user) => user.isActive) ?? [];
+  const userRoleCodes =
+    user?.roleAssignments.map((item) => item.roleCode) ?? [];
+  const users = usersQuery.data?.filter((item) => item.isActive) ?? [];
   const roles = rolesQuery.data?.filter((role) => role.isActive) ?? [];
 
   useEffect(() => {
@@ -312,6 +322,7 @@ export function KpiConfigView() {
                   contentsQuery.isLoading ||
                   templatesQuery.isLoading
                 }
+                userRoleCodes={userRoleCodes}
                 onAddTask={(content) => {
                   setEditingTask(null);
                   setCreatingForContent(content);
@@ -498,6 +509,7 @@ export function KpiConfigView() {
           onOpenChange={setTaskDialog}
           edit={editingTask}
           initialContent={creatingForContent}
+          template={selectedTemplate}
           contents={scopedContents}
           users={users}
           onSuccess={() => tasksQuery.mutate()}
@@ -783,91 +795,51 @@ function ContentDialog({
   );
 }
 
-type TaskFormState = {
+type TaskDialogForm = {
   contentId: string;
-  title: string;
-  description: string;
   assigneeId: string;
-  dueDate: string;
-  reportDueDate: string;
-  product: string;
-  actualProduct: string;
-  standardScore: string;
   status: TaskStatus;
-  selfProgressPercent: string;
-  selfProgressScore: string;
-  selfQualityPercent: string;
-  selfQualityScore: string;
-  proposedAdjustment: string;
-  proposedAdjustmentReason: string;
-  appraisalProgressPercent: string;
-  appraisalProgressScore: string;
-  appraisalQualityPercent: string;
-  appraisalQualityScore: string;
-  note: string;
+  fieldValues: Record<string, string>;
 };
 
-const emptyTaskForm: TaskFormState = {
-  contentId: "",
-  title: "",
-  description: "",
-  assigneeId: "",
-  dueDate: "",
-  reportDueDate: "",
-  product: "",
-  actualProduct: "",
-  standardScore: "10",
-  status: "ASSIGNED",
-  selfProgressPercent: "",
-  selfProgressScore: "",
-  selfQualityPercent: "",
-  selfQualityScore: "",
-  proposedAdjustment: "",
-  proposedAdjustmentReason: "",
-  appraisalProgressPercent: "",
-  appraisalProgressScore: "",
-  appraisalQualityPercent: "",
-  appraisalQualityScore: "",
-  note: "",
-};
-
-function taskFormFrom(
+function taskDialogFormFrom(
   edit: TaskAssignment | null,
   contents: WorkContent[],
   initialContent: WorkContent | null,
-): TaskFormState {
-  if (!edit) {
-    return {
-      ...emptyTaskForm,
-      contentId:
-        entityId(initialContent) ||
-        entityId(contents.find((content) => content.isActive)),
-    };
+  template: KpiTemplate | null,
+): TaskDialogForm {
+  const contentId =
+    edit
+      ? entityId(edit.contentId)
+      : entityId(initialContent) ||
+        entityId(contents.find((content) => content.isActive));
+  const contentName =
+    contents.find((item) => entityId(item) === contentId)?.name ?? "";
+
+  const seeded = edit
+    ? buildFieldValuesFromTemplate(
+        template,
+        taskValueSourceFromAssignment(edit, contentName),
+        edit.fieldValues ?? {},
+      )
+    : {};
+
+  const fieldValues: Record<string, string> = {};
+  for (const column of getAssignmentDialogColumns(template)) {
+    const raw =
+      seeded[column.key] ??
+      edit?.fieldValues?.[column.key] ??
+      (edit
+        ? getTemplateColumnValue(column, edit, 0, template, contentName)
+        : "");
+    fieldValues[column.key] = raw == null ? "" : String(raw);
   }
+
   return {
-    contentId: entityId(edit.contentId),
-    title: edit.title,
-    description: edit.description ?? "",
-    assigneeId: entityId(edit.assigneeId),
-    dueDate: dayjs(edit.dueDate).format("YYYY-MM-DD"),
-    reportDueDate: edit.reportDueDate
-      ? dayjs(edit.reportDueDate).format("YYYY-MM-DD")
-      : "",
-    product: edit.product,
-    actualProduct: edit.actualProduct ?? "",
-    standardScore: String(edit.standardScore),
-    status: edit.status,
-    selfProgressPercent: String(edit.selfProgressPercent ?? ""),
-    selfProgressScore: String(edit.selfProgressScore ?? ""),
-    selfQualityPercent: String(edit.selfQualityPercent ?? ""),
-    selfQualityScore: String(edit.selfQualityScore ?? ""),
-    proposedAdjustment: String(edit.proposedAdjustment ?? ""),
-    proposedAdjustmentReason: edit.proposedAdjustmentReason ?? "",
-    appraisalProgressPercent: String(edit.appraisalProgressPercent ?? ""),
-    appraisalProgressScore: String(edit.appraisalProgressScore ?? ""),
-    appraisalQualityPercent: String(edit.appraisalQualityPercent ?? ""),
-    appraisalQualityScore: String(edit.appraisalQualityScore ?? ""),
-    note: edit.note ?? "",
+    contentId,
+    assigneeId: edit ? entityId(edit.assigneeId) : "",
+    status: edit?.status ?? "ASSIGNED",
+    fieldValues,
   };
 }
 
@@ -876,6 +848,7 @@ type TaskDialogProps = {
   onOpenChange: (open: boolean) => void;
   edit: TaskAssignment | null;
   initialContent: WorkContent | null;
+  template: KpiTemplate | null;
   contents: WorkContent[];
   users: Awaited<ReturnType<typeof fetchUsers>>;
   onSuccess: () => void;
@@ -886,14 +859,21 @@ function TaskDialog({
   onOpenChange,
   edit,
   initialContent,
+  template,
   contents,
   users,
   onSuccess,
 }: TaskDialogProps) {
-  const [form, setForm] = useState<TaskFormState>(() =>
-    taskFormFrom(edit, contents, initialContent),
+  const [form, setForm] = useState<TaskDialogForm>(() =>
+    taskDialogFormFrom(edit, contents, initialContent, template),
   );
   const [saving, setSaving] = useState(false);
+
+  const dialogColumns = useMemo(
+    () => getAssignmentDialogColumns(template),
+    [template],
+  );
+
   const activeContents = useMemo(
     () =>
       contents.filter(
@@ -902,54 +882,118 @@ function TaskDialog({
     [contents, form.contentId],
   );
 
-  const set = <K extends keyof TaskFormState>(
-    key: K,
-    value: TaskFormState[K],
-  ) => setForm((current) => ({ ...current, [key]: value }));
+  const setFieldValue = (key: string, value: string) => {
+    setForm((current) => ({
+      ...current,
+      fieldValues: { ...current.fieldValues, [key]: value },
+    }));
+  };
 
   const submit = async () => {
-    if (
-      !form.contentId ||
-      !form.title.trim() ||
-      !form.assigneeId ||
-      !form.dueDate ||
-      !form.product.trim()
-    ) {
+    if (!form.contentId || !form.assigneeId) {
+      toast.error("Vui lòng chọn nội dung công việc và người thực hiện.");
+      return;
+    }
+    if (!template || !dialogColumns.length) {
       toast.error(
-        "Vui lòng nhập đủ nội dung, nhiệm vụ, người thực hiện, thời hạn và sản phẩm.",
+        "Biểu mẫu chưa có cột giao nhiệm vụ. Hãy cấu hình cột ở tab Cấu hình biểu mẫu.",
       );
       return;
     }
-    const standardScore = Number(form.standardScore);
+
+    for (const column of dialogColumns) {
+      const semantic = getColumnSemanticField(column, template);
+      if (
+        semantic === "content_name" ||
+        semantic === "assignee" ||
+        isAutoIncrementLike(column)
+      ) {
+        continue;
+      }
+      if (!form.fieldValues[column.key]?.trim()) {
+        toast.error(`Vui lòng nhập “${column.title}”.`);
+        return;
+      }
+    }
+
+    const title =
+      readFieldValueBySemantic(template, form.fieldValues, "task_title") ||
+      firstTextFieldValue(dialogColumns, form.fieldValues, template) ||
+      "Nhiệm vụ mới";
+    const dueDate =
+      toIsoDate(
+        readFieldValueBySemantic(template, form.fieldValues, "due_date"),
+      ) || dayjs().format("YYYY-MM-DD");
+    const reportDueDate =
+      toIsoDate(
+        readFieldValueBySemantic(template, form.fieldValues, "report_due_date"),
+      ) || undefined;
+    const product =
+      readFieldValueBySemantic(template, form.fieldValues, "product") || "—";
+    const standardRaw = readFieldValueBySemantic(
+      template,
+      form.fieldValues,
+      "standard_score",
+    );
+    const standardScore = Number(standardRaw || 0);
     if (!Number.isFinite(standardScore) || standardScore < 0) {
       toast.error("Điểm chuẩn không hợp lệ.");
       return;
     }
+
+    const selectedContent = contents.find(
+      (item) => entityId(item) === form.contentId,
+    );
+    const selectedUser = users.find(
+      (item) => entityId(item) === form.assigneeId,
+    );
+    const numericFieldValues: Record<string, string | number> = {
+      ...(edit?.fieldValues ?? {}),
+    };
+    for (const column of dialogColumns) {
+      const raw = form.fieldValues[column.key]?.trim() ?? "";
+      if (!raw) continue;
+      numericFieldValues[column.key] =
+        column.dataType === "number" ? Number(raw) || 0 : raw;
+    }
+
     const payload: TaskAssignmentInput = {
       contentId: form.contentId,
-      title: form.title.trim(),
-      description: form.description.trim(),
+      title,
+      description: edit?.description ?? "",
       assigneeId: form.assigneeId,
-      dueDate: form.dueDate,
-      reportDueDate: form.reportDueDate || undefined,
-      product: form.product.trim(),
-      actualProduct: form.actualProduct.trim(),
+      dueDate,
+      reportDueDate,
+      product,
+      actualProduct: edit?.actualProduct ?? "",
       standardScore,
       status: form.status,
-      selfProgressPercent: numberOrUndefined(form.selfProgressPercent),
-      selfProgressScore: numberOrUndefined(form.selfProgressScore),
-      selfQualityPercent: numberOrUndefined(form.selfQualityPercent),
-      selfQualityScore: numberOrUndefined(form.selfQualityScore),
-      proposedAdjustment: numberOrUndefined(form.proposedAdjustment),
-      proposedAdjustmentReason: form.proposedAdjustmentReason.trim(),
-      appraisalProgressPercent: numberOrUndefined(
-        form.appraisalProgressPercent,
-      ),
-      appraisalProgressScore: numberOrUndefined(form.appraisalProgressScore),
-      appraisalQualityPercent: numberOrUndefined(form.appraisalQualityPercent),
-      appraisalQualityScore: numberOrUndefined(form.appraisalQualityScore),
-      note: form.note.trim(),
+      fieldValues: numericFieldValues,
     };
+
+    const valueSource: TaskValueSource = {
+      contentName: selectedContent?.name ?? "",
+      assigneeName:
+        selectedUser?.fullName?.trim() ||
+        selectedUser?.username ||
+        edit?.assigneeId.fullName ||
+        edit?.assigneeId.username ||
+        "",
+      title: payload.title,
+      description: payload.description ?? "",
+      dueDate: payload.dueDate,
+      reportDueDate: payload.reportDueDate,
+      product: payload.product,
+      actualProduct: payload.actualProduct,
+      standardScore: payload.standardScore,
+      note: edit?.note,
+    };
+    payload.fieldValues = buildFieldValuesFromTemplate(
+      template,
+      valueSource,
+      numericFieldValues,
+    );
+
     setSaving(true);
     try {
       if (edit) await updateTaskAssignment(entityId(edit), payload);
@@ -966,7 +1010,7 @@ function TaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {edit ? "Cập nhật nhiệm vụ" : "Giao nhiệm vụ KPI"}
@@ -975,172 +1019,229 @@ function TaskDialog({
 
         <div className="space-y-6 py-2">
           <FormSection title="Thông tin giao nhiệm vụ">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Nội dung công việc" required>
-                <Select
-                  value={form.contentId}
-                  onValueChange={(value) => set("contentId", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn nội dung" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {activeContents.map((content) => (
-                      <SelectItem
-                        key={entityId(content)}
-                        value={entityId(content)}
-                      >
-                        {content.code} - {content.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Trạng thái">
-                <Select
-                  value={form.status}
-                  onValueChange={(value) => set("status", value as TaskStatus)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(TASK_STATUSES).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            </div>
-            <Field label="Nhiệm vụ cụ thể" required>
-              <Textarea
-                value={form.title}
-                onChange={(event) => set("title", event.target.value)}
-                placeholder="Nhập nhiệm vụ cần thực hiện..."
-              />
-            </Field>
-            <Field label="Mô tả/yêu cầu">
-              <Textarea
-                value={form.description}
-                onChange={(event) => set("description", event.target.value)}
-              />
-            </Field>
-            <Field label="Người thực hiện" required>
-              <Select
-                value={form.assigneeId}
-                onValueChange={(value) => set("assigneeId", value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn người thực hiện" />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((user) => (
-                    <SelectItem key={entityId(user)} value={entityId(user)}>
-                      {user.fullName || user.username} ({user.username})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Thời hạn hoàn thành" required>
-                <Input
-                  type="date"
-                  value={form.dueDate}
-                  onChange={(event) => set("dueDate", event.target.value)}
-                />
-              </Field>
-              <Field label="Thời hạn báo cáo">
-                <Input
-                  type="date"
-                  value={form.reportDueDate}
-                  onChange={(event) => set("reportDueDate", event.target.value)}
-                />
-              </Field>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Sản phẩm dự kiến" required>
-                <Input
-                  value={form.product}
-                  onChange={(event) => set("product", event.target.value)}
-                />
-              </Field>
-              <Field label="Sản phẩm sau khi thực hiện">
-                <Input
-                  value={form.actualProduct}
-                  onChange={(event) => set("actualProduct", event.target.value)}
-                />
-              </Field>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-[180px_1fr]">
-              <Field label="Điểm chuẩn" required>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.standardScore}
-                  onChange={(event) => set("standardScore", event.target.value)}
-                />
-              </Field>
-              <div />
-            </div>
-          </FormSection>
+            {!template ? (
+              <p className="text-sm text-muted-foreground">
+                Hãy chọn biểu mẫu trước khi giao nhiệm vụ.
+              </p>
+            ) : !dialogColumns.length ? (
+              <p className="text-sm text-muted-foreground">
+                Biểu mẫu chưa có cột để giao nhiệm vụ. Thêm cột và gán Role nhập
+                (SUPER_ADMIN) ở tab Cấu hình biểu mẫu.
+              </p>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {dialogColumns.map((column) => {
+                  const semantic = getColumnSemanticField(column, template);
+                  const label = column.title;
 
-          {edit ? (
-            <>
-              <FormSection title="Điểm tự chấm">
-                <AssessmentFields
-                  progressPercent={form.selfProgressPercent}
-                  progressScore={form.selfProgressScore}
-                  qualityPercent={form.selfQualityPercent}
-                  qualityScore={form.selfQualityScore}
-                  onChange={(key, value) => set(key, value)}
-                  prefix="self"
-                />
-              </FormSection>
+                  if (semantic === "content_name") {
+                    return (
+                      <Field key={column.id} label={label} required>
+                        <Select
+                          value={form.contentId}
+                          onValueChange={(value) =>
+                            setForm((current) => ({
+                              ...current,
+                              contentId: value,
+                            }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn nội dung" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {activeContents.map((content) => (
+                              <SelectItem
+                                key={entityId(content)}
+                                value={entityId(content)}
+                              >
+                                {content.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    );
+                  }
 
-              <FormSection title="Đề nghị cộng/trừ điểm của các phòng">
-                <div className="grid gap-4 sm:grid-cols-[180px_1fr]">
-                  <Field label="Điểm cộng/trừ">
-                    <Input
-                      type="number"
-                      value={form.proposedAdjustment}
-                      onChange={(event) =>
-                        set("proposedAdjustment", event.target.value)
+                  if (semantic === "assignee") {
+                    return (
+                      <Field key={column.id} label={label} required>
+                        <Select
+                          value={form.assigneeId}
+                          onValueChange={(value) =>
+                            setForm((current) => ({
+                              ...current,
+                              assigneeId: value,
+                            }))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Chọn người thực hiện" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {users.map((user) => (
+                              <SelectItem
+                                key={entityId(user)}
+                                value={entityId(user)}
+                              >
+                                {user.fullName || user.username} ({user.username})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    );
+                  }
+
+                  if (
+                    semantic === "due_date" ||
+                    semantic === "report_due_date"
+                  ) {
+                    return (
+                      <Field key={column.id} label={label} required>
+                        <Input
+                          type="date"
+                          value={toIsoDate(form.fieldValues[column.key] ?? "")}
+                          onChange={(event) =>
+                            setFieldValue(column.key, event.target.value)
+                          }
+                        />
+                      </Field>
+                    );
+                  }
+
+                  if (column.dataType === "number") {
+                    return (
+                      <Field key={column.id} label={label} required>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={form.fieldValues[column.key] ?? ""}
+                          onChange={(event) =>
+                            setFieldValue(column.key, event.target.value)
+                          }
+                        />
+                      </Field>
+                    );
+                  }
+
+                  return (
+                    <Field
+                      key={column.id}
+                      label={label}
+                      required
+                      className={
+                        semantic === "task_title" ? "sm:col-span-2" : undefined
                       }
-                      placeholder="VD: -1 hoặc 2"
-                    />
-                  </Field>
-                  <Field label="Lý do đề nghị">
-                    <Textarea
-                      value={form.proposedAdjustmentReason}
-                      onChange={(event) =>
-                        set("proposedAdjustmentReason", event.target.value)
-                      }
-                    />
-                  </Field>
-                </div>
-              </FormSection>
+                    >
+                      {semantic === "task_title" ? (
+                        <Textarea
+                          value={form.fieldValues[column.key] ?? ""}
+                          onChange={(event) =>
+                            setFieldValue(column.key, event.target.value)
+                          }
+                          placeholder={`Nhập ${label.toLowerCase()}...`}
+                        />
+                      ) : (
+                        <Input
+                          value={form.fieldValues[column.key] ?? ""}
+                          onChange={(event) =>
+                            setFieldValue(column.key, event.target.value)
+                          }
+                        />
+                      )}
+                    </Field>
+                  );
+                })}
 
-              <FormSection title="Kết quả thẩm định của PV01 (Chỉ huy)">
-                <AssessmentFields
-                  progressPercent={form.appraisalProgressPercent}
-                  progressScore={form.appraisalProgressScore}
-                  qualityPercent={form.appraisalQualityPercent}
-                  qualityScore={form.appraisalQualityScore}
-                  onChange={(key, value) => set(key, value)}
-                  prefix="appraisal"
-                />
-                <Field label="Ghi chú">
-                  <Textarea
-                    value={form.note}
-                    onChange={(event) => set("note", event.target.value)}
-                  />
+                {!dialogColumns.some(
+                  (column) =>
+                    getColumnSemanticField(column, template) === "content_name",
+                ) ? (
+                  <Field label="Nội dung công việc" required>
+                    <Select
+                      value={form.contentId}
+                      onValueChange={(value) =>
+                        setForm((current) => ({
+                          ...current,
+                          contentId: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn nội dung" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {activeContents.map((content) => (
+                          <SelectItem
+                            key={entityId(content)}
+                            value={entityId(content)}
+                          >
+                            {content.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                ) : null}
+
+                {!dialogColumns.some(
+                  (column) =>
+                    getColumnSemanticField(column, template) === "assignee",
+                ) ? (
+                  <Field label="Người thực hiện" required>
+                    <Select
+                      value={form.assigneeId}
+                      onValueChange={(value) =>
+                        setForm((current) => ({
+                          ...current,
+                          assigneeId: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Chọn người thực hiện" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {users.map((user) => (
+                          <SelectItem
+                            key={entityId(user)}
+                            value={entityId(user)}
+                          >
+                            {user.fullName || user.username} ({user.username})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                ) : null}
+
+                <Field label="Trạng thái">
+                  <Select
+                    value={form.status}
+                    onValueChange={(value) =>
+                      setForm((current) => ({
+                        ...current,
+                        status: value as TaskStatus,
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(TASK_STATUSES).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
-              </FormSection>
-            </>
-          ) : null}
+              </div>
+            )}
+          </FormSection>
         </div>
 
         <DialogFooter>
@@ -1154,6 +1255,42 @@ function TaskDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function isAutoIncrementLike(column: { dataType: string }) {
+  return column.dataType === "auto_increment";
+}
+
+function firstTextFieldValue(
+  columns: { key: string; dataType: string }[],
+  fieldValues: Record<string, string>,
+  template: KpiTemplate,
+): string {
+  for (const column of columns) {
+    const full = template.columns.find((item) => item.key === column.key);
+    if (!full) continue;
+    const semantic = getColumnSemanticField(full, template);
+    if (semantic === "content_name" || semantic === "assignee") continue;
+    if (column.dataType === "number" || column.dataType === "auto_increment") {
+      continue;
+    }
+    const value = fieldValues[column.key]?.trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function toIsoDate(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const slash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) {
+    const [, day, month, year] = slash;
+    return `${year}-${month!.padStart(2, "0")}-${day!.padStart(2, "0")}`;
+  }
+  const parsed = dayjs(trimmed);
+  return parsed.isValid() ? parsed.format("YYYY-MM-DD") : "";
 }
 
 function FormSection({
@@ -1171,79 +1308,5 @@ function FormSection({
       </div>
       {children}
     </section>
-  );
-}
-
-type AssessmentKey =
-  | "selfProgressPercent"
-  | "selfProgressScore"
-  | "selfQualityPercent"
-  | "selfQualityScore"
-  | "appraisalProgressPercent"
-  | "appraisalProgressScore"
-  | "appraisalQualityPercent"
-  | "appraisalQualityScore";
-
-function AssessmentFields({
-  progressPercent,
-  progressScore,
-  qualityPercent,
-  qualityScore,
-  onChange,
-  prefix,
-}: {
-  progressPercent: string;
-  progressScore: string;
-  qualityPercent: string;
-  qualityScore: string;
-  onChange: (key: AssessmentKey, value: string) => void;
-  prefix: "self" | "appraisal";
-}) {
-  const key = (suffix: string) => `${prefix}${suffix}` as AssessmentKey;
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Field label="Tiến độ hoàn thành %">
-        <Input
-          type="number"
-          min={0}
-          max={100}
-          value={progressPercent}
-          onChange={(event) =>
-            onChange(key("ProgressPercent"), event.target.value)
-          }
-        />
-      </Field>
-      <Field label="Điểm tiến độ">
-        <Input
-          type="number"
-          min={0}
-          value={progressScore}
-          onChange={(event) =>
-            onChange(key("ProgressScore"), event.target.value)
-          }
-        />
-      </Field>
-      <Field label="Chất lượng hoàn thành %">
-        <Input
-          type="number"
-          min={0}
-          max={100}
-          value={qualityPercent}
-          onChange={(event) =>
-            onChange(key("QualityPercent"), event.target.value)
-          }
-        />
-      </Field>
-      <Field label="Điểm chất lượng">
-        <Input
-          type="number"
-          min={0}
-          value={qualityScore}
-          onChange={(event) =>
-            onChange(key("QualityScore"), event.target.value)
-          }
-        />
-      </Field>
-    </div>
   );
 }

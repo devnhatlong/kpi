@@ -214,6 +214,7 @@ export class KpiConfigService {
     await this.validateTaskReferences(dto.contentId, dto.assigneeId);
     const data = await this.taskModel.create({
       ...this.normalizeTaskInput(dto),
+      fieldValues: dto.fieldValues ?? {},
       createdBy: new Types.ObjectId(createdBy),
     });
     await this.populateTask(data);
@@ -254,7 +255,15 @@ export class KpiConfigService {
     const contentId = dto.contentId ?? String(task.contentId);
     const assigneeId = dto.assigneeId ?? String(task.assigneeId);
     await this.validateTaskReferences(contentId, assigneeId);
-    Object.assign(task, this.normalizeTaskInput(dto));
+    const normalized = this.normalizeTaskInput(dto);
+    if (dto.fieldValues !== undefined) {
+      task.fieldValues = {
+        ...(task.fieldValues ?? {}),
+        ...dto.fieldValues,
+      };
+      delete normalized.fieldValues;
+    }
+    Object.assign(task, normalized);
     await task.save();
     await this.populateTask(task);
     return { message: 'Cập nhật nhiệm vụ thành công.', data: task };
@@ -321,7 +330,6 @@ export class KpiConfigService {
             ? 'CALCULATED'
             : (item.inputRoleCode?.trim() ?? ''),
         dataType: item.dataType,
-        sourceField: item.sourceField ?? '',
       }));
     }
     if (dto.headerGroups !== undefined) {

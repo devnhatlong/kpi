@@ -29,16 +29,27 @@ function cloneHeaderGroups(groups: TemplateHeaderGroup[]): TemplateHeaderGroup[]
   }));
 }
 
+function serializeTemplateColumn(
+  item: TemplateColumn & { sourceField?: unknown },
+): TemplateColumn {
+  return {
+    id: item.id,
+    key: item.key,
+    title: item.title,
+    headerPath: [...item.headerPath],
+    width: item.width,
+    visible: item.visible,
+    inputRoleCode: item.inputRoleCode,
+    dataType: item.dataType,
+  };
+}
+
 export function toTemplateDraft(template: KpiTemplate): TemplateDraft {
   return {
     id: entityId(template),
     name: template.name,
     code: template.code,
-    columns: template.columns.map((item) => ({
-      ...item,
-      headerPath: [...item.headerPath],
-      sourceField: item.sourceField ?? "",
-    })),
+    columns: template.columns.map(serializeTemplateColumn),
     headerGroups: cloneHeaderGroups(template.headerGroups),
     includedContentIds: template.includedContentIds.map(String),
     progressWeight: String(template.progressWeight),
@@ -54,7 +65,7 @@ export function toTemplateInput(template: TemplateDraft): KpiTemplateInput {
   return {
     name: template.name.trim(),
     code: template.code.trim().toUpperCase(),
-    columns: template.columns,
+    columns: template.columns.map(serializeTemplateColumn),
     headerGroups: template.headerGroups,
     includedContentIds: template.includedContentIds,
     progressWeight: Number(template.progressWeight) || 0,

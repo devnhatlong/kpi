@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import dayjs from "dayjs";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,11 +9,10 @@ import { getApiErrorMessage } from "@/lib/api-client";
 import { updateTaskAssignment } from "../api";
 import { buildHeaderPreviewRows } from "../template-header-preview";
 import {
-  getColumnEditableField,
-  resolveColumnSourceField,
-  resolveTaskColumnValue,
-  type TaskEditableField,
-} from "../template-field-resolver";
+  canInlineEditTemplateColumn,
+  getTemplateColumnValue,
+  normalizeCellInput,
+} from "../template-column-utils";
 import type {
   KpiTemplate,
   TaskAssignment,
@@ -40,23 +38,12 @@ type TaskAssignmentGridProps = {
   contents: WorkContent[];
   tasks: TaskAssignment[];
   loading: boolean;
+  userRoleCodes: string[];
   onAddTask: (content: WorkContent) => void;
   onEditTask: (task: TaskAssignment) => void;
   onDeleteTask: (task: TaskAssignment) => void;
   onSaved: () => void;
 };
-
-const percentFields = new Set<TaskEditableField>([
-  "selfProgressPercent",
-  "selfQualityPercent",
-  "appraisalProgressPercent",
-  "appraisalQualityPercent",
-]);
-const textFields = new Set<TaskEditableField>([
-  "actualProduct",
-  "note",
-  "proposedAdjustmentReason",
-]);
 
 function relationId(value: object | string): string {
   return entityId(value as { _id?: string; id?: string } | string);
@@ -133,13 +120,11 @@ function HeaderCell({
   children,
   rowSpan,
   colSpan,
-  className = "",
   style,
 }: {
   children: React.ReactNode;
   rowSpan?: number;
   colSpan?: number;
-  className?: string;
   style?: React.CSSProperties;
 }) {
   return (
@@ -147,7 +132,7 @@ function HeaderCell({
       rowSpan={rowSpan}
       colSpan={colSpan}
       style={style}
-      className={`border border-slate-300 bg-slate-100 px-2 py-2 text-center align-middle font-semibold leading-tight text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 ${className}`}
+      className="border border-slate-300 bg-slate-100 px-2 py-2 text-center align-middle font-semibold leading-tight text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
     >
       {children}
     </th>
@@ -163,113 +148,86 @@ function DataCell({
 }) {
   return (
     <td
-      className={`border border-slate-200 px-2 py-1.5 align-middle dark:border-slate-700 ${className}`}
+      className={`border border-slate-200 px-2 py-1.5 align-middle break-words whitespace-normal dark:border-slate-700 ${className}`}
     >
       {children}
     </td>
   );
 }
 
-function EditableCell({
-  task,
-  field,
-  type = "number",
-  value,
-  onSave,
-}: {
-  task: TaskAssignment;
-  field: TaskEditableField;
-  type?: "number" | "text";
-  value: string | number | undefined;
-  onSave: (
-    task: TaskAssignment,
-    field: TaskEditableField,
-    rawValue: string,
-  ) => Promise<boolean>;
-}) {
-  const original = value == null ? "" : String(value);
-  return (
-    <DataCell className="p-1">
-      <input
-        key={`${entityId(task)}-${field}-${original}`}
-        type={type}
-        min={type === "number" && field !== "proposedAdjustment" ? 0 : undefined}
-        max={percentFields.has(field) ? 100 : undefined}
-        defaultValue={original}
-        className="h-7 w-full min-w-16 rounded border border-transparent bg-transparent px-1.5 text-center outline-none hover:border-input focus:border-primary focus:bg-background"
-        onBlur={async (event) => {
-          if (event.currentTarget.value === original) return;
-          const saved = await onSave(task, field, event.currentTarget.value);
-          if (!saved) event.currentTarget.value = original;
-        }}
-      />
-    </DataCell>
-  );
-}
-
-function TaskColumnCell({
+function TemplateColumnCell({
   column,
   row,
+  template,
+  userRoleCodes,
   onSave,
 }: {
   column: TemplateColumn;
   row: Extract<TableRow, { kind: "task" }>;
+  template: KpiTemplate;
+  userRoleCodes: string[];
   onSave: (
     task: TaskAssignment,
-    field: TaskEditableField,
+    column: TemplateColumn,
     rawValue: string,
   ) => Promise<boolean>;
 }) {
-  const value = resolveTaskColumnValue(column, {
-    rowIndex: row.index - 1,
-    contentName: row.contentName,
-    task: row.task,
-  });
-  const editableField = getColumnEditableField(column);
-  const sourceField = resolveColumnSourceField(column);
+  const value = getTemplateColumnValue(
+    column,
+    row.task,
+    row.index - 1,
+    template,
+    row.contentName,
+  );
+  const editable = canInlineEditTemplateColumn(
+    column,
+    userRoleCodes,
+    template,
+  );
 
-  if (editableField) {
+  if (editable) {
+    const isNumber = column.dataType === "number";
     return (
-      <EditableCell
-        task={row.task}
-        field={editableField}
-        type={textFields.has(editableField) ? "text" : "number"}
-        value={value}
-        onSave={onSave}
-      />
+      <DataCell className="p-1">
+        {isNumber ? (
+          <input
+            key={`${entityId(row.task)}-${column.key}-${value}`}
+            type="number"
+            defaultValue={value}
+            className="h-7 w-full min-w-16 rounded border border-transparent bg-transparent px-1.5 text-center outline-none hover:border-input focus:border-primary focus:bg-background"
+            onBlur={async (event) => {
+              if (event.currentTarget.value === value) return;
+              const saved = await onSave(
+                row.task,
+                column,
+                event.currentTarget.value,
+              );
+              if (!saved) event.currentTarget.value = value;
+            }}
+          />
+        ) : (
+          <textarea
+            key={`${entityId(row.task)}-${column.key}-${value}`}
+            rows={2}
+            defaultValue={value}
+            className="min-h-7 w-full min-w-16 resize-y rounded border border-transparent bg-transparent px-1.5 py-1 text-left outline-none hover:border-input focus:border-primary focus:bg-background"
+            onBlur={async (event) => {
+              if (event.currentTarget.value === value) return;
+              const saved = await onSave(
+                row.task,
+                column,
+                event.currentTarget.value,
+              );
+              if (!saved) event.currentTarget.value = value;
+            }}
+          />
+        )}
+      </DataCell>
     );
   }
 
-  const overdue =
-    sourceField === "due_date" &&
-    dayjs(row.task.dueDate).isBefore(dayjs(), "day") &&
-    row.task.status !== "APPRAISED";
-
   return (
-    <DataCell
-      className={
-        sourceField === "standard_score"
-          ? "text-center font-semibold"
-          : sourceField === "due_date"
-            ? overdue
-              ? "text-center font-semibold text-red-600"
-              : "text-center"
-            : sourceField === "task_title"
-              ? ""
-              : "text-center text-muted-foreground"
-      }
-    >
-      {sourceField === "task_title" ? (
-        <>
-          <div className="font-medium">{row.task.title}</div>
-          <div className="mt-0.5 text-[0.9em] text-muted-foreground">
-            {row.task.assigneeId.fullName || row.task.assigneeId.username}
-          </div>
-        </>
-      ) : (
-        (value ?? "")
-      )}
-    </DataCell>
+    <DataCell className="text-center text-muted-foreground">{value || "—"}</DataCell>
   );
 }
 
@@ -279,6 +237,7 @@ export function TaskAssignmentGrid({
   contents,
   tasks,
   loading,
+  userRoleCodes,
   onAddTask,
   onEditTask,
   onDeleteTask,
@@ -309,36 +268,29 @@ export function TaskAssignmentGrid({
 
   const saveCell = async (
     task: TaskAssignment,
-    field: TaskEditableField,
+    column: TemplateColumn,
     rawValue: string,
   ): Promise<boolean> => {
-    let value: string | number | undefined = rawValue.trim();
-    if (!textFields.has(field)) {
-      value = rawValue.trim() === "" ? undefined : Number(rawValue);
-      if (typeof value === "number" && !Number.isFinite(value)) {
-        toast.error("Giá trị nhập không hợp lệ.");
-        return false;
-      }
-      if (
-        typeof value === "number" &&
-        percentFields.has(field) &&
-        (value < 0 || value > 100)
-      ) {
-        toast.error("Phần trăm phải nằm trong khoảng 0 đến 100.");
-        return false;
-      }
-      if (
-        typeof value === "number" &&
-        field !== "proposedAdjustment" &&
-        value < 0
-      ) {
-        toast.error("Điểm không được nhỏ hơn 0.");
-        return false;
-      }
+    if (!canInlineEditTemplateColumn(column, userRoleCodes, template)) {
+      toast.error(
+        "Cột này chỉ sửa trong form giao nhiệm vụ, hoặc bạn không có quyền.",
+      );
+      return false;
+    }
+
+    const value = normalizeCellInput(column, rawValue);
+    if (column.dataType === "number" && rawValue.trim() && value === undefined) {
+      toast.error("Giá trị số không hợp lệ.");
+      return false;
     }
 
     try {
-      await updateTaskAssignment(entityId(task), { [field]: value });
+      await updateTaskAssignment(entityId(task), {
+        fieldValues: {
+          ...(task.fieldValues ?? {}),
+          [column.key]: value ?? "",
+        },
+      });
       onSaved();
       return true;
     } catch (error) {
@@ -467,18 +419,23 @@ export function TaskAssignmentGrid({
                     <tr key={row.id}>
                       <td
                         colSpan={columnCount}
-                        className="relative border border-slate-300 bg-slate-100 px-3 py-1.5 text-center font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                        className="border border-slate-300 bg-slate-100 px-3 py-1.5 font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                       >
-                        <span>{row.content.name}</span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="absolute right-3 top-1/2 h-7 -translate-y-1/2 px-2 text-xs"
-                          onClick={() => onAddTask(row.content)}
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          Thêm nhiệm vụ
-                        </Button>
+                        <div className="flex items-center gap-3">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 shrink-0 px-2 text-xs"
+                            onClick={() => onAddTask(row.content)}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Thêm nhiệm vụ
+                          </Button>
+                          <span className="min-w-0 flex-1 text-center break-words whitespace-normal">
+                            {row.content.name}
+                          </span>
+                          <span className="w-[7.5rem] shrink-0" aria-hidden />
+                        </div>
                       </td>
                     </tr>
                   );
@@ -490,10 +447,12 @@ export function TaskAssignmentGrid({
                     className="even:bg-slate-50/70 hover:bg-blue-50/60 dark:even:bg-slate-900/30 dark:hover:bg-blue-950/30"
                   >
                     {visibleColumns.map((column) => (
-                      <TaskColumnCell
+                      <TemplateColumnCell
                         key={`${row.id}-${column.id}`}
                         column={column}
                         row={row}
+                        template={template}
+                        userRoleCodes={userRoleCodes}
                         onSave={saveCell}
                       />
                     ))}
@@ -527,8 +486,9 @@ export function TaskAssignmentGrid({
         </table>
       </div>
       <p className="text-xs text-muted-foreground">
-        Biểu mẫu: {template.name} ({template.code}) · cuộn ngang để xem toàn bộ
-        cột; nhấp vào ô nhập liệu và rời ô để lưu.
+        Biểu mẫu: {template.name} ({template.code}) · thông tin giao nhiệm vụ
+        sửa bằng biểu tượng bút · các cột còn lại nhập trên bảng theo role ·
+        nhấp ô và rời để lưu.
       </p>
     </div>
   );

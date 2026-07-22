@@ -81,6 +81,9 @@ export class TaskAssignment {
   @Prop({ trim: true, default: '' })
   note?: string;
 
+  @Prop({ type: Object, default: {} })
+  fieldValues!: Record<string, string | number>;
+
   @Prop({ required: true, type: Types.ObjectId, ref: 'User', index: true })
   createdBy!: Types.ObjectId;
 }
