@@ -545,10 +545,14 @@ export function TemplateConfigView({
   contents,
   roles,
   users,
+  initialTemplateId,
+  initialConfigTab = "columns",
 }: {
   contents: WorkContent[];
   roles: Role[];
   users: UserAccount[];
+  initialTemplateId?: string;
+  initialConfigTab?: "columns" | "contents" | "formula";
 }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [templateDialogMode, setTemplateDialogMode] = useState<
@@ -564,17 +568,34 @@ export function TemplateConfigView({
   const [saving, setSaving] = useState(false);
   const [templates, setTemplates] = useState<TemplateDraft[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [configTab, setConfigTab] = useState(initialConfigTab);
   const templatesQuery = useSWR(kpiConfigKeys.templates, fetchKpiTemplates);
   const templatesHydratedRef = useRef(false);
+
+  useEffect(() => {
+    setConfigTab(initialConfigTab);
+  }, [initialConfigTab]);
 
   useEffect(() => {
     const data = templatesQuery.data;
     if (!data || templatesHydratedRef.current) return;
     setTemplates(data.map(toTemplateDraft));
-    setSelectedTemplateId(data[0]?.id ?? "");
+    const preferred =
+      (initialTemplateId &&
+        data.find((item) => entityId(item) === initialTemplateId) &&
+        initialTemplateId) ||
+      data[0]?.id ||
+      "";
+    setSelectedTemplateId(preferred);
     templatesHydratedRef.current = true;
-  }, [templatesQuery.data]);
+  }, [initialTemplateId, templatesQuery.data]);
 
+  useEffect(() => {
+    if (!initialTemplateId || !templates.length) return;
+    if (templates.some((item) => item.id === initialTemplateId)) {
+      setSelectedTemplateId(initialTemplateId);
+    }
+  }, [initialTemplateId, templates]);
   const activeTemplate = templates.find(
     (template) => template.id === selectedTemplateId,
   );
@@ -1101,7 +1122,13 @@ export function TemplateConfigView({
               </div>
             </div>
 
-            <Tabs defaultValue="columns" className="p-4">
+            <Tabs
+              value={configTab}
+              onValueChange={(value) =>
+                setConfigTab(value as "columns" | "contents" | "formula")
+              }
+              className="p-4"
+            >
               <TabsList className="h-auto flex-wrap">
                 <TabsTrigger value="columns">Cột & header</TabsTrigger>
                 <TabsTrigger value="contents">Nội dung công việc</TabsTrigger>
@@ -1337,12 +1364,39 @@ export function TemplateConfigView({
               </TabsContent>
 
               <TabsContent value="contents" className="space-y-3">
-                <div>
-                  <div className="font-semibold">
-                    Nội dung dùng trong biểu mẫu
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">
+                      Nội dung dùng trong biểu mẫu
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Bật nội dung công việc sẽ xuất hiện khi giao KPI. Phải
+                      chọn ít nhất một nội dung rồi bấm Lưu cấu hình.
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    Chọn những nội dung công việc sẽ xuất hiện khi giao KPI.
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!contents.length}
+                      onClick={() =>
+                        setIncludedContentIds(
+                          contents.map((content) => entityId(content)),
+                        )
+                      }
+                    >
+                      Chọn tất cả
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!includedContentIds.length}
+                      onClick={() => setIncludedContentIds([])}
+                    >
+                      Bỏ chọn
+                    </Button>
                   </div>
                 </div>
                 <div className="divide-y rounded-md border">
@@ -1380,6 +1434,17 @@ export function TemplateConfigView({
                     </div>
                   )}
                 </div>
+                {!includedContentIds.length ? (
+                  <p className="text-sm text-amber-700 dark:text-amber-400">
+                    Chưa chọn nội dung nào — Unit Admin sẽ không thấy dòng để
+                    giao nhiệm vụ trên biểu mẫu này.
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Đã chọn {includedContentIds.length} nội dung. Nhớ bấm{" "}
+                    <strong>Lưu cấu hình</strong>.
+                  </p>
+                )}
               </TabsContent>
 
               <TabsContent value="formula" className="space-y-4">

@@ -132,6 +132,9 @@ export function KpiConfigView() {
   ]);
   const canManageTemplate = isSuperAdmin(user);
   const [tab, setTab] = useState<TabValue>("tasks");
+  const [templateConfigTab, setTemplateConfigTab] = useState<
+    "columns" | "contents" | "formula"
+  >("columns");
   const groupsQuery = useSWR(kpiConfigKeys.groups, fetchWorkGroups);
   const contentsQuery = useSWR(kpiConfigKeys.contents, fetchWorkContents);
   const tasksQuery = useSWR(kpiConfigKeys.tasks, fetchTaskAssignments);
@@ -185,17 +188,29 @@ export function KpiConfigView() {
 
   const scopedContents = useMemo(() => {
     if (!selectedTemplate) return [];
-    const activeContents = contents.filter((item) => item.isActive);
-    const includedIds = selectedTemplate.includedContentIds ?? [];
-    if (!includedIds.length) return activeContents;
+    const includedIds = (selectedTemplate.includedContentIds ?? []).map(String);
+    // Rỗng = không cho chọn nội dung nào (Super Admin phải tick trong biểu mẫu).
+    if (!includedIds.length) return [];
     const allowed = new Set(includedIds);
-    return activeContents.filter((item) => allowed.has(entityId(item)));
+    return contents.filter(
+      (item) => item.isActive && allowed.has(entityId(item)),
+    );
   }, [contents, selectedTemplate]);
 
   const scopedTasks = useMemo(() => {
     const contentIds = new Set(scopedContents.map((item) => entityId(item)));
     return tasks.filter((item) => contentIds.has(relationId(item.contentId)));
   }, [tasks, scopedContents]);
+
+  const taskDialogContents = useMemo(() => {
+    if (!editingTask) return scopedContents;
+    const currentId = relationId(editingTask.contentId);
+    if (scopedContents.some((item) => entityId(item) === currentId)) {
+      return scopedContents;
+    }
+    const current = contents.find((item) => entityId(item) === currentId);
+    return current ? [...scopedContents, current] : scopedContents;
+  }, [contents, editingTask, scopedContents]);
 
   const selectTemplate = (templateId: string) => {
     setSelectedTemplateId(templateId);
@@ -338,6 +353,31 @@ export function KpiConfigView() {
             ) : null}
           </div>
 
+          {selectedTemplate && !scopedContents.length ? (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+              <p className="font-medium">
+                Biểu mẫu chưa gắn nội dung công việc — chưa có dòng để thao tác.
+              </p>
+              <p className="mt-1 text-amber-900/80 dark:text-amber-100/80">
+                Super Admin cần vào{" "}
+                <strong>Cấu hình biểu mẫu → Nội dung công việc</strong>, bật nội
+                dung muốn dùng, rồi bấm <strong>Lưu cấu hình</strong>.
+              </p>
+              {canManageTemplate ? (
+                <Button
+                  className="mt-3"
+                  size="sm"
+                  onClick={() => {
+                    setTemplateConfigTab("contents");
+                    setTab("template");
+                  }}
+                >
+                  Chọn nội dung cho biểu mẫu
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+
           <Card>
             <CardContent className="pt-6">
               <TaskAssignmentGrid
@@ -350,7 +390,6 @@ export function KpiConfigView() {
                   contentsQuery.isLoading ||
                   templatesQuery.isLoading
                 }
-                userRoleCodes={userRoleCodes}
                 onAddTask={(content) => {
                   setEditingTask(null);
                   setCreatingForContent(content);
@@ -364,7 +403,6 @@ export function KpiConfigView() {
                 onDeleteTask={(task) =>
                   remove("tasks", entityId(task), task.title)
                 }
-                onSaved={() => void tasksQuery.mutate()}
               />
             </CardContent>
           </Card>
@@ -507,7 +545,13 @@ export function KpiConfigView() {
           value="template"
           className="mt-4 flex min-h-0 flex-1 flex-col"
         >
-          <TemplateConfigView contents={contents} roles={roles} users={users} />
+          <TemplateConfigView
+            contents={contents}
+            roles={roles}
+            users={users}
+            initialTemplateId={selectedTemplateId}
+            initialConfigTab={templateConfigTab}
+          />
         </TabsContent>
       </Tabs>
 
@@ -538,7 +582,7 @@ export function KpiConfigView() {
           edit={editingTask}
           initialContent={creatingForContent}
           template={selectedTemplate}
-          contents={scopedContents}
+          contents={taskDialogContents}
           users={users}
           userRoleCodes={userRoleCodes}
           onSuccess={() => tasksQuery.mutate()}

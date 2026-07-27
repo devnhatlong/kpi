@@ -288,6 +288,14 @@ export class KpiWorkflowService {
       'Không tìm thấy nội dung công việc.',
     );
 
+    const template = await this.templateModel.findById(sheet.templateId).lean();
+    const allowedIds = (template?.includedContentIds ?? []).map(String);
+    if (!allowedIds.includes(String(body.contentId))) {
+      throw new BadRequestException(
+        'Nội dung công việc không thuộc biểu mẫu KPI này.',
+      );
+    }
+
     const data = await this.taskModel.create({
       sheetId: sheet._id,
       ownerDepartmentId: sheet.departmentId,

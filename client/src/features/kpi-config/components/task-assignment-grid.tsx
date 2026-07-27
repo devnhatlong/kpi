@@ -2,23 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { entityId } from "@/features/organization/types";
-import { getApiErrorMessage } from "@/lib/api-client";
-import { updateTaskAssignment } from "../api";
 import { buildHeaderPreviewRows } from "../template-header-preview";
 import {
-  canInlineEditTemplateColumn,
   formatDateDisplay,
   formatDateTimeDisplay,
   getColumnSemanticField,
   getTemplateColumnValue,
   isNumericTemplateColumn,
-  normalizeCellInput,
-  toDateInputValue,
-  toDateTimeInputValue,
-  toTimeInputValue,
 } from "../template-column-utils";
 import type {
   KpiTemplate,
@@ -45,11 +37,9 @@ type TaskAssignmentGridProps = {
   contents: WorkContent[];
   tasks: TaskAssignment[];
   loading: boolean;
-  userRoleCodes: string[];
   onAddTask: (content: WorkContent) => void;
   onEditTask: (task: TaskAssignment) => void;
   onDeleteTask: (task: TaskAssignment) => void;
-  onSaved: () => void;
   /** Nút sửa — mặc định "Sửa". Form 1 dùng "Giao". */
   editAriaLabel?: string;
   showDelete?: boolean;
@@ -172,14 +162,17 @@ function DataCell({
   children,
   className = "",
   title,
+  rowSpan,
 }: {
   children?: React.ReactNode;
   className?: string;
   title?: string;
+  rowSpan?: number;
 }) {
   return (
     <td
       title={title}
+      rowSpan={rowSpan}
       className={`border border-slate-200 px-2 py-1.5 align-middle break-words whitespace-normal dark:border-slate-700 ${className}`}
     >
       {children}
@@ -187,22 +180,53 @@ function DataCell({
   );
 }
 
+/** Gộp cột nội dung công việc theo từng cụm task cùng contentId. */
+function buildContentNameMerge(
+  rows: TableRow[],
+): Map<string, { rowSpan: number; skip: boolean }> {
+  const map = new Map<string, { rowSpan: number; skip: boolean }>();
+  let i = 0;
+  while (i < rows.length) {
+    const row = rows[i];
+    if (!row || row.kind !== "task") {
+      i += 1;
+      continue;
+    }
+    const contentId = relationId(row.task.contentId);
+    let j = i + 1;
+    while (j < rows.length) {
+      const next = rows[j];
+      if (
+        !next ||
+        next.kind !== "task" ||
+        relationId(next.task.contentId) !== contentId
+      ) {
+        break;
+      }
+      j += 1;
+    }
+    const span = j - i;
+    for (let k = i; k < j; k++) {
+      const taskRow = rows[k];
+      if (!taskRow || taskRow.kind !== "task") continue;
+      map.set(taskRow.id, {
+        rowSpan: k === i ? span : 0,
+        skip: k !== i,
+      });
+    }
+    i = j;
+  }
+  return map;
+}
+
 function TemplateColumnCell({
   column,
   row,
   template,
-  userRoleCodes,
-  onSave,
 }: {
   column: TemplateColumn;
   row: Extract<TableRow, { kind: "task" }>;
   template: KpiTemplate;
-  userRoleCodes: string[];
-  onSave: (
-    task: TaskAssignment,
-    column: TemplateColumn,
-    rawValue: string,
-  ) => Promise<boolean>;
 }) {
   const value = getTemplateColumnValue(
     column,
@@ -210,11 +234,6 @@ function TemplateColumnCell({
     row.index - 1,
     template,
     row.contentName,
-  );
-  const editable = canInlineEditTemplateColumn(
-    column,
-    userRoleCodes,
-    template,
   );
 
   const isNumber = isNumericTemplateColumn(column, template);
@@ -235,115 +254,10 @@ function TemplateColumnCell({
       ? formatDateDisplay(value)
       : value;
 
-  if (editable) {
-    const inputClassName =
-      "h-7 w-full min-w-16 rounded border border-transparent bg-transparent px-1.5 outline-none hover:border-input focus:border-primary focus:bg-background";
-
-    if (isNumber) {
-      return (
-        <DataCell className={`p-1 ${alignClass}`}>
-          <input
-            key={`${entityId(row.task)}-${column.key}-${value}`}
-            type="number"
-            inputMode="decimal"
-            defaultValue={value}
-            className={`${inputClassName} text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
-            onBlur={async (event) => {
-              if (event.currentTarget.value === value) return;
-              const saved = await onSave(
-                row.task,
-                column,
-                event.currentTarget.value,
-              );
-              if (!saved) event.currentTarget.value = value;
-            }}
-          />
-        </DataCell>
-      );
-    }
-
-    if (isDate) {
-      return (
-        <DataCell className={`p-1 ${alignClass}`}>
-          <input
-            key={`${entityId(row.task)}-${column.key}-${value}`}
-            type="date"
-            defaultValue={toDateInputValue(value)}
-            className={`${inputClassName} text-center`}
-            onBlur={async (event) => {
-              const next = event.currentTarget.value;
-              if (next === toDateInputValue(value)) return;
-              const saved = await onSave(row.task, column, next);
-              if (!saved) event.currentTarget.value = toDateInputValue(value);
-            }}
-          />
-        </DataCell>
-      );
-    }
-
-    if (isTime) {
-      return (
-        <DataCell className={`p-1 ${alignClass}`}>
-          <input
-            key={`${entityId(row.task)}-${column.key}-${value}`}
-            type="time"
-            defaultValue={toTimeInputValue(value)}
-            className={`${inputClassName} text-center`}
-            onBlur={async (event) => {
-              const next = event.currentTarget.value;
-              if (next === toTimeInputValue(value)) return;
-              const saved = await onSave(row.task, column, next);
-              if (!saved) event.currentTarget.value = toTimeInputValue(value);
-            }}
-          />
-        </DataCell>
-      );
-    }
-
-    if (isDateTime) {
-      return (
-        <DataCell className={`p-1 ${alignClass}`}>
-          <input
-            key={`${entityId(row.task)}-${column.key}-${value}`}
-            type="datetime-local"
-            defaultValue={toDateTimeInputValue(value)}
-            className={`${inputClassName} text-center`}
-            onBlur={async (event) => {
-              const next = event.currentTarget.value;
-              if (next === toDateTimeInputValue(value)) return;
-              const saved = await onSave(row.task, column, next);
-              if (!saved)
-                event.currentTarget.value = toDateTimeInputValue(value);
-            }}
-          />
-        </DataCell>
-      );
-    }
-
-    return (
-      <DataCell className={`p-1 ${alignClass}`}>
-        <textarea
-          key={`${entityId(row.task)}-${column.key}-${value}`}
-          rows={2}
-          defaultValue={value}
-          className="min-h-7 w-full min-w-16 resize-y rounded border border-transparent bg-transparent px-1.5 py-1 text-left outline-none hover:border-input focus:border-primary focus:bg-background"
-          onBlur={async (event) => {
-            if (event.currentTarget.value === value) return;
-            const saved = await onSave(
-              row.task,
-              column,
-              event.currentTarget.value,
-            );
-            if (!saved) event.currentTarget.value = value;
-          }}
-        />
-      </DataCell>
-    );
-  }
-
   return (
     <DataCell
       className={`${alignClass} ${displayValue ? "" : "text-muted-foreground"}`}
+      title={displayValue || undefined}
     >
       {displayValue || "—"}
     </DataCell>
@@ -356,11 +270,9 @@ export function TaskAssignmentGrid({
   contents,
   tasks,
   loading,
-  userRoleCodes,
   onAddTask,
   onEditTask,
   onDeleteTask,
-  onSaved,
   editAriaLabel = "Sửa",
   showDelete = true,
 }: TaskAssignmentGridProps) {
@@ -381,6 +293,7 @@ export function TaskAssignmentGrid({
     () => buildRows(groups, contents, tasks),
     [groups, contents, tasks],
   );
+  const contentNameMerge = useMemo(() => buildContentNameMerge(rows), [rows]);
   const columnCount = visibleColumns.length + 2;
   const minTableWidth = Math.max(
     960,
@@ -388,76 +301,6 @@ export function TaskAssignmentGrid({
       ASSIGNEE_COL_WIDTH +
       96,
   );
-
-  const saveCell = async (
-    task: TaskAssignment,
-    column: TemplateColumn,
-    rawValue: string,
-  ): Promise<boolean> => {
-    if (
-      !canInlineEditTemplateColumn(
-        column,
-        userRoleCodes,
-        template,
-      )
-    ) {
-      toast.error("Bạn không có quyền nhập cột này (ROLE NHẬP).");
-      return false;
-    }
-
-    const value = normalizeCellInput(column, rawValue, template);
-    if (
-      isNumericTemplateColumn(column, template) &&
-      rawValue.trim() &&
-      value === undefined
-    ) {
-      toast.error("Giá trị số không hợp lệ.");
-      return false;
-    }
-    if (column.dataType === "date" && rawValue.trim() && value === undefined) {
-      toast.error("Ngày không hợp lệ.");
-      return false;
-    }
-    if (column.dataType === "time" && rawValue.trim() && value === undefined) {
-      toast.error("Giờ không hợp lệ.");
-      return false;
-    }
-    if (
-      column.dataType === "datetime" &&
-      rawValue.trim() &&
-      value === undefined
-    ) {
-      toast.error("Ngày giờ không hợp lệ.");
-      return false;
-    }
-
-    try {
-      const nextFieldValues: Record<string, string | number> = {
-        ...(task.fieldValues ?? {}),
-      };
-      if (value === undefined) {
-        delete nextFieldValues[column.key];
-      } else {
-        nextFieldValues[column.key] = value;
-      }
-      const patch: Parameters<typeof updateTaskAssignment>[1] = {
-        fieldValues: nextFieldValues,
-      };
-      const semantic = getColumnSemanticField(column, template);
-      if (semantic === "standard_score") {
-        patch.standardScore = typeof value === "number" ? value : 0;
-      }
-      if (semantic === "proposed_adjustment") {
-        patch.proposedAdjustment = typeof value === "number" ? value : 0;
-      }
-      await updateTaskAssignment(entityId(task), patch);
-      onSaved();
-      return true;
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "Không cập nhật được ô dữ liệu."));
-      return false;
-    }
-  };
 
   if (!template) {
     return (
@@ -614,21 +457,43 @@ export function TaskAssignmentGrid({
                 }
 
                 const assignedTo = assigneeLabel(row.task);
+                const mergeInfo = contentNameMerge.get(row.id);
                 return (
                   <tr
                     key={row.id}
                     className="even:bg-slate-50/70 hover:bg-blue-50/60 dark:even:bg-slate-900/30 dark:hover:bg-blue-950/30"
                   >
-                    {visibleColumns.map((column) => (
-                      <TemplateColumnCell
-                        key={`${row.id}-${column.id}`}
-                        column={column}
-                        row={row}
-                        template={template}
-                        userRoleCodes={userRoleCodes}
-                        onSave={saveCell}
-                      />
-                    ))}
+                    {visibleColumns.map((column) => {
+                      const semantic = getColumnSemanticField(
+                        column,
+                        template,
+                      );
+                      if (semantic === "content_name") {
+                        if (mergeInfo?.skip) return null;
+                        const span =
+                          mergeInfo && mergeInfo.rowSpan > 1
+                            ? mergeInfo.rowSpan
+                            : undefined;
+                        return (
+                          <DataCell
+                            key={`${row.id}-${column.id}`}
+                            rowSpan={span}
+                            className="bg-background text-left font-medium align-middle"
+                            title={row.contentName}
+                          >
+                            {row.contentName}
+                          </DataCell>
+                        );
+                      }
+                      return (
+                        <TemplateColumnCell
+                          key={`${row.id}-${column.id}`}
+                          column={column}
+                          row={row}
+                          template={template}
+                        />
+                      );
+                    })}
                     <DataCell
                       className={`min-w-[8rem] text-left ${assignedTo ? "" : "text-muted-foreground"}`}
                       title={assignedTo || "Chưa giao"}
@@ -668,8 +533,8 @@ export function TaskAssignmentGrid({
         </table>
       </div>
       <p className="text-xs text-muted-foreground">
-        Biểu mẫu: {template.name} ({template.code}) · chỉ sửa được cột đúng
-        ROLE NHẬP của bạn · nhấp ô và rời để lưu.
+        Biểu mẫu: {template.name} ({template.code}) · xem trên bảng, chỉnh sửa
+        bằng nút Sửa / Giao nhiệm vụ (form).
       </p>
     </div>
   );

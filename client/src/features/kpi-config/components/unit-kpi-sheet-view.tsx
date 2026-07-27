@@ -24,7 +24,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useAuth } from "@/features/auth/auth-provider";
 import { fetchUsers } from "@/features/organization/api";
 import { entityId } from "@/features/organization/types";
 import { getApiErrorMessage } from "@/lib/api-client";
@@ -71,12 +70,6 @@ function matchSource(task: TaskAssignment, filter: SourceFilter): boolean {
 }
 
 export function UnitKpiSheetView() {
-  const { user } = useAuth();
-  const userRoleCodes = useMemo(
-    () => user?.roleAssignments.map((r) => r.roleCode) ?? [],
-    [user],
-  );
-
   const {
     workingDepartmentId,
     setWorkingDepartmentId,
@@ -120,11 +113,12 @@ export function UnitKpiSheetView() {
     templates.find((t) => entityId(t) === sheetTemplateId) ?? null;
 
   const templateContents = useMemo(() => {
-    if (!sheetTemplate) return contents;
-    const included = sheetTemplate.includedContentIds ?? [];
-    if (!included.length) return contents;
-    const set = new Set(included.map(String));
-    return contents.filter((c) => set.has(entityId(c)));
+    if (!sheetTemplate) return [];
+    const included = (sheetTemplate.includedContentIds ?? []).map(String);
+    // Rỗng = không cho chọn nội dung nào (Super Admin phải tick trong biểu mẫu).
+    if (!included.length) return [];
+    const set = new Set(included);
+    return contents.filter((c) => c.isActive && set.has(entityId(c)));
   }, [contents, sheetTemplate]);
 
   const {
@@ -446,16 +440,12 @@ export function UnitKpiSheetView() {
                   contents={templateContents}
                   tasks={filteredTasks}
                   loading={tasksLoading}
-                  userRoleCodes={userRoleCodes}
                   onAddTask={(content) => openCreateTask(content)}
                   onEditTask={(task) => openAssign(task)}
                   onDeleteTask={() => {
                     toast.message(
                       "Xoá nhiệm vụ Form 1 sẽ bổ sung sau — dùng giao dọc / tiếp nhận.",
                     );
-                  }}
-                  onSaved={() => {
-                    void mutateTasks();
                   }}
                   editAriaLabel="Giao nhiệm vụ"
                   showDelete={false}
