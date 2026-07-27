@@ -31,6 +31,7 @@ import {
   KpiTemplate,
   KpiTemplateDocument,
   TemplateColumnDataType,
+  TemplateColumnPhase,
   TemplateHeaderGroup,
   TemplateVisibilityScope,
 } from './schemas/kpi-template.schema';
@@ -125,7 +126,9 @@ export class KpiConfigService {
       dto.groupId,
       'Không tìm thấy nhóm công việc.',
     );
-    const code = dto.code.trim().toUpperCase();
+    const code = dto.code?.trim()
+      ? dto.code.trim().toUpperCase()
+      : await this.nextSequentialCode(this.workContentModel, 'ND');
     await this.ensureUniqueCode(
       this.workContentModel,
       code,
@@ -138,6 +141,7 @@ export class KpiConfigService {
       name: dto.name.trim(),
       description: dto.description?.trim() ?? '',
       sortOrder: dto.sortOrder ?? 0,
+      allowMultipleTasks: dto.allowMultipleTasks ?? true,
       isActive: dto.isActive ?? true,
     });
     await data.populate('groupId', 'code name');
@@ -211,7 +215,11 @@ export class KpiConfigService {
   }
 
   async createTask(dto: CreateTaskAssignmentDto, createdBy: string) {
+    if (!dto.contentId) {
+      throw new BadRequestException('Nội dung công việc là bắt buộc.');
+    }
     await this.validateTaskReferences(dto.contentId, dto.assigneeId);
+    await this.assertContentAllowsNewTask(dto.contentId);
     const data = await this.taskModel.create({
       ...this.normalizeTaskInput(dto),
       fieldValues: dto.fieldValues ?? {},
@@ -228,6 +236,10 @@ export class KpiConfigService {
     if (query.contentId) filter.contentId = new Types.ObjectId(query.contentId);
     if (query.assigneeId)
       filter.assigneeId = new Types.ObjectId(query.assigneeId);
+    if (query.sheetId) filter.sheetId = new Types.ObjectId(query.sheetId);
+    if (query.ownerDepartmentId) {
+      filter.ownerDepartmentId = new Types.ObjectId(query.ownerDepartmentId);
+    }
     if (query.status) filter.status = query.status;
     return this.paginate(
       this.taskModel,
@@ -237,7 +249,7 @@ export class KpiConfigService {
       [
         {
           path: 'contentId',
-          select: 'code name groupId',
+          select: 'code name groupId allowMultipleTasks',
           populate: { path: 'groupId', select: 'code name' },
         },
         { path: 'assigneeId', select: 'username fullName departmentId' },
@@ -252,9 +264,21 @@ export class KpiConfigService {
       id,
       'Không tìm thấy nhiệm vụ.',
     );
-    const contentId = dto.contentId ?? String(task.contentId);
-    const assigneeId = dto.assigneeId ?? String(task.assigneeId);
-    await this.validateTaskReferences(contentId, assigneeId);
+    const contentId =
+      dto.contentId ??
+      (task.contentId ? String(task.contentId) : undefined);
+    const assigneeId =
+      dto.assigneeId ??
+      (task.assigneeId ? String(task.assigneeId) : undefined);
+    if (contentId) {
+      await this.validateTaskReferences(contentId, assigneeId);
+    } else if (assigneeId) {
+      await this.validateTaskReferences(undefined, assigneeId);
+    }
+    const previousContentId = task.contentId ? String(task.contentId) : '';
+    if (dto.contentId && dto.contentId !== previousContentId) {
+      await this.assertContentAllowsNewTask(dto.contentId);
+    }
     const normalized = this.normalizeTaskInput(dto);
     if (dto.fieldValues !== undefined) {
       task.fieldValues = {
@@ -330,6 +354,7 @@ export class KpiConfigService {
             ? 'CALCULATED'
             : (item.inputRoleCode?.trim() ?? ''),
         dataType: item.dataType,
+        phase: item.phase ?? TemplateColumnPhase.ANY,
       }));
     }
     if (dto.headerGroups !== undefined) {
@@ -400,6 +425,7 @@ export class KpiConfigService {
             ? 'CALCULATED'
             : (item.inputRoleCode?.trim() ?? ''),
         dataType: item.dataType,
+        phase: item.phase ?? TemplateColumnPhase.ANY,
       })),
       headerGroups: this.normalizeHeaderGroups(dto.headerGroups ?? []),
       includedContentIds: (dto.includedContentIds ?? []).map(
@@ -528,6 +554,13 @@ export class KpiConfigService {
     const data: Record<string, unknown> = { ...dto };
     if (dto.contentId) data.contentId = new Types.ObjectId(dto.contentId);
     if (dto.assigneeId) data.assigneeId = new Types.ObjectId(dto.assigneeId);
+    if (dto.sheetId) data.sheetId = new Types.ObjectId(dto.sheetId);
+    if (dto.ownerDepartmentId) {
+      data.ownerDepartmentId = new Types.ObjectId(dto.ownerDepartmentId);
+    }
+    if (dto.targetDepartmentId) {
+      data.targetDepartmentId = new Types.ObjectId(dto.targetDepartmentId);
+    }
     if (dto.dueDate) data.dueDate = new Date(dto.dueDate);
     if (dto.reportDueDate !== undefined) {
       data.reportDueDate = dto.reportDueDate
@@ -547,12 +580,36 @@ export class KpiConfigService {
     return data;
   }
 
-  private async validateTaskReferences(contentId: string, assigneeId: string) {
-    await this.requireById(
+  private async assertContentAllowsNewTask(contentId: string) {
+    const content = await this.requireById(
       this.workContentModel,
       contentId,
       'Không tìm thấy nội dung công việc.',
     );
+    if (content.allowMultipleTasks === false) {
+      const existing = await this.taskModel.countDocuments({
+        contentId: new Types.ObjectId(contentId),
+      });
+      if (existing >= 1) {
+        throw new BadRequestException(
+          'Nội dung này chỉ cho phép một nhiệm vụ. Bật “Cho phép nhiều nhiệm vụ con” nếu cần thêm.',
+        );
+      }
+    }
+  }
+
+  private async validateTaskReferences(
+    contentId?: string,
+    assigneeId?: string,
+  ) {
+    if (contentId) {
+      await this.requireById(
+        this.workContentModel,
+        contentId,
+        'Không tìm thấy nội dung công việc.',
+      );
+    }
+    if (!assigneeId) return;
     const assignee = await this.userModel.exists({
       _id: new Types.ObjectId(assigneeId),
       isActive: true,
@@ -568,7 +625,7 @@ export class KpiConfigService {
     return task.populate([
       {
         path: 'contentId',
-        select: 'code name groupId',
+        select: 'code name groupId allowMultipleTasks',
         populate: { path: 'groupId', select: 'code name' },
       },
       { path: 'assigneeId', select: 'username fullName departmentId' },
@@ -619,6 +676,29 @@ export class KpiConfigService {
     if (await model.exists(filter)) {
       throw new BadRequestException(`${label} đã tồn tại.`);
     }
+  }
+
+  /** Sinh mã dạng PREFIX-0001, PREFIX-0002, ... */
+  private async nextSequentialCode(
+    model: Model<{ code: string }>,
+    prefix: string,
+    pad = 4,
+  ): Promise<string> {
+    const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`^${escaped}-(\\d+)$`, 'i');
+    const docs = await model
+      .find({ code: { $regex: `^${escaped}-\\d+$`, $options: 'i' } })
+      .select('code')
+      .lean()
+      .exec();
+    let max = 0;
+    for (const doc of docs) {
+      const match = pattern.exec(doc.code);
+      if (!match) continue;
+      const n = Number(match[1]);
+      if (!Number.isNaN(n)) max = Math.max(max, n);
+    }
+    return `${prefix}-${String(max + 1).padStart(pad, '0')}`;
   }
 
   private async requireById<T>(

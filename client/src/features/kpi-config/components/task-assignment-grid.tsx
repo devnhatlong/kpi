@@ -43,6 +43,9 @@ type TaskAssignmentGridProps = {
   onEditTask: (task: TaskAssignment) => void;
   onDeleteTask: (task: TaskAssignment) => void;
   onSaved: () => void;
+  /** Nút sửa — mặc định "Sửa". Form 1 dùng "Giao". */
+  editAriaLabel?: string;
+  showDelete?: boolean;
 };
 
 function relationId(value: object | string): string {
@@ -105,11 +108,17 @@ function buildRows(
     (item) => !usedTasks.has(entityId(item)),
   )) {
     index += 1;
+    const contentLabel =
+      typeof task.contentId === "object" && task.contentId && "name" in task.contentId
+        ? String((task.contentId as { name?: string }).name ?? "")
+        : task.indicatorCode
+          ? `${task.indicatorCode}${task.indicatorWeight != null ? ` (${task.indicatorWeight}%)` : ""}`
+          : "Chỉ tiêu / nhiệm vụ";
     rows.push({
       id: entityId(task),
       kind: "task",
       index,
-      contentName: "Chưa xác định",
+      contentName: contentLabel || "Chưa xác định",
       task,
     });
   }
@@ -142,12 +151,15 @@ function HeaderCell({
 function DataCell({
   children,
   className = "",
+  title,
 }: {
   children?: React.ReactNode;
   className?: string;
+  title?: string;
 }) {
   return (
     <td
+      title={title}
       className={`border border-slate-200 px-2 py-1.5 align-middle break-words whitespace-normal dark:border-slate-700 ${className}`}
     >
       {children}
@@ -227,7 +239,9 @@ function TemplateColumnCell({
   }
 
   return (
-    <DataCell className="text-center text-muted-foreground">{value || "—"}</DataCell>
+    <DataCell className="text-center text-muted-foreground">
+      {value || "—"}
+    </DataCell>
   );
 }
 
@@ -242,6 +256,8 @@ export function TaskAssignmentGrid({
   onEditTask,
   onDeleteTask,
   onSaved,
+  editAriaLabel = "Sửa",
+  showDelete = true,
 }: TaskAssignmentGridProps) {
   const [fontSize, setFontSize] = useState(12);
   const [headerFontSize, setHeaderFontSize] = useState(11);
@@ -271,10 +287,14 @@ export function TaskAssignmentGrid({
     column: TemplateColumn,
     rawValue: string,
   ): Promise<boolean> => {
-    if (!canInlineEditTemplateColumn(column, userRoleCodes, template)) {
-      toast.error(
-        "Cột này chỉ sửa trong form giao nhiệm vụ, hoặc bạn không có quyền.",
-      );
+    if (
+      !canInlineEditTemplateColumn(
+        column,
+        userRoleCodes,
+        template,
+      )
+    ) {
+      toast.error("Bạn không có quyền nhập cột này (ROLE NHẬP).");
       return false;
     }
 
@@ -415,6 +435,12 @@ export function TaskAssignmentGrid({
                   );
                 }
                 if (row.kind === "content") {
+                  const contentId = entityId(row.content);
+                  const taskCount = tasks.filter(
+                    (item) => relationId(item.contentId) === contentId,
+                  ).length;
+                  const canAddMore =
+                    row.content.allowMultipleTasks !== false || taskCount === 0;
                   return (
                     <tr key={row.id}>
                       <td
@@ -422,15 +448,24 @@ export function TaskAssignmentGrid({
                         className="border border-slate-300 bg-slate-100 px-3 py-1.5 font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                       >
                         <div className="flex items-center gap-3">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 shrink-0 px-2 text-xs"
-                            onClick={() => onAddTask(row.content)}
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            Thêm nhiệm vụ
-                          </Button>
+                          {canAddMore ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 shrink-0 px-2 text-xs"
+                              onClick={() => onAddTask(row.content)}
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              Thêm nhiệm vụ
+                            </Button>
+                          ) : (
+                            <span
+                              className="h-7 shrink-0 px-2 text-xs font-normal text-muted-foreground"
+                              title="Nội dung này chỉ cho phép một nhiệm vụ"
+                            >
+                              Đã đủ 1 nhiệm vụ
+                            </span>
+                          )}
                           <span className="min-w-0 flex-1 text-center break-words whitespace-normal">
                             {row.content.name}
                           </span>
@@ -463,19 +498,22 @@ export function TaskAssignmentGrid({
                           variant="ghost"
                           className="h-7 w-7"
                           onClick={() => onEditTask(row.task)}
-                          aria-label="Sửa"
+                          aria-label={editAriaLabel}
+                          title={editAriaLabel}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          onClick={() => onDeleteTask(row.task)}
-                          aria-label="Xoá"
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                        </Button>
+                        {showDelete ? (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7"
+                            onClick={() => onDeleteTask(row.task)}
+                            aria-label="Xoá"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        ) : null}
                       </div>
                     </DataCell>
                   </tr>
@@ -486,9 +524,8 @@ export function TaskAssignmentGrid({
         </table>
       </div>
       <p className="text-xs text-muted-foreground">
-        Biểu mẫu: {template.name} ({template.code}) · thông tin giao nhiệm vụ
-        sửa bằng biểu tượng bút · các cột còn lại nhập trên bảng theo role ·
-        nhấp ô và rời để lưu.
+        Biểu mẫu: {template.name} ({template.code}) · chỉ sửa được cột đúng
+        ROLE NHẬP của bạn · nhấp ô và rời để lưu.
       </p>
     </div>
   );

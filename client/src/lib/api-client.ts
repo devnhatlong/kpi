@@ -128,15 +128,20 @@ export function buildListQuery(params: {
   limit?: number;
   q?: string;
   all?: boolean;
+  [key: string]: string | number | boolean | undefined;
 }) {
   const query: Record<string, string | number | boolean> = {};
-  if (params.all) {
+  const { page, limit, q, all, ...rest } = params;
+  for (const [key, value] of Object.entries(rest)) {
+    if (value !== undefined && value !== "") query[key] = value;
+  }
+  if (all) {
     query.all = true;
-    if (params.q?.trim()) query.q = params.q.trim();
+    if (q?.trim()) query.q = q.trim();
     return query;
   }
-  query.page = params.page ?? 1;
-  query.limit = params.limit ?? 10;
-  if (params.q?.trim()) query.q = params.q.trim();
+  query.page = page ?? 1;
+  query.limit = limit ?? 10;
+  if (q?.trim()) query.q = q.trim();
   return query;
 }

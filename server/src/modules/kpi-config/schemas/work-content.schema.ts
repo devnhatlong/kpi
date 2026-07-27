@@ -20,6 +20,13 @@ export class WorkContent {
   @Prop({ default: 0 })
   sortOrder!: number;
 
+  /**
+   * true = 1 nội dung có thể có nhiều TaskAssignment (nhiệm vụ con).
+   * false = tối đa 1 nhiệm vụ.
+   */
+  @Prop({ default: true })
+  allowMultipleTasks!: boolean;
+
   @Prop({ default: true, index: true })
   isActive!: boolean;
 }

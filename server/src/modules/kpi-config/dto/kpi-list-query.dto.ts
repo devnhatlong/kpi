@@ -18,6 +18,14 @@ export class TaskAssignmentListQueryDto extends PaginationQueryDto {
   assigneeId?: string;
 
   @IsOptional()
+  @IsMongoId({ message: 'Sheet KPI không hợp lệ.' })
+  sheetId?: string;
+
+  @IsOptional()
+  @IsMongoId({ message: 'Đơn vị không hợp lệ.' })
+  ownerDepartmentId?: string;
+
+  @IsOptional()
   @IsEnum(TaskStatus, { message: 'Trạng thái nhiệm vụ không hợp lệ.' })
   status?: TaskStatus;
 }

@@ -8,8 +8,10 @@ import {
 } from '@/common/decorators';
 
 export class CreateWorkContentDto {
-  @StringRequired('Mã nội dung công việc', { example: 'TRUC_CHI_HUY' })
-  code!: string;
+  @StringNotRequired('Mã nội dung công việc (để trống sẽ tự sinh)', {
+    example: 'ND-0001',
+  })
+  code?: string;
 
   @StringRequired('Tên nội dung công việc', {
     example: 'Nhiệm vụ trọng tâm được Đảng uỷ, CATW, Bộ Công an giao',
@@ -25,6 +27,9 @@ export class CreateWorkContentDto {
 
   @NumberNotRequired('Thứ tự hiển thị', { example: 1 })
   sortOrder?: number;
+
+  @BooleanNotRequired('Cho phép nhiều nhiệm vụ con', { example: true })
+  allowMultipleTasks?: boolean;
 
   @BooleanNotRequired('Trạng thái hoạt động', { example: true })
   isActive?: boolean;

@@ -16,6 +16,24 @@ export enum TemplateColumnDataType {
   AUTO_INCREMENT = 'auto_increment',
 }
 
+/** Giai đoạn nhập liệu trên quy trình KPI */
+export enum TemplateColumnPhase {
+  /** Chỉ cấu hình form, không nhập trên bảng */
+  CONFIG = 'CONFIG',
+  /** Phát hành / phân bổ (nội dung, điểm chuẩn) */
+  ALLOCATE = 'ALLOCATE',
+  /** Phân rã nhiệm vụ con (manager) */
+  BREAKDOWN = 'BREAKDOWN',
+  /** Thực hiện / nộp (staff) */
+  EXECUTE = 'EXECUTE',
+  /** Vòng lấy ý kiến cộng/trừ điểm */
+  FEEDBACK = 'FEEDBACK',
+  /** Thẩm định */
+  APPRAISE = 'APPRAISE',
+  /** Nhập được ở mọi giai đoạn (vd. ghi chú) */
+  ANY = 'ANY',
+}
+
 @Schema({ _id: false })
 export class TemplateColumn {
   @Prop({ required: true, trim: true })
@@ -45,6 +63,13 @@ export class TemplateColumn {
     default: TemplateColumnDataType.TEXT,
   })
   dataType!: TemplateColumnDataType;
+
+  @Prop({
+    required: true,
+    enum: Object.values(TemplateColumnPhase),
+    default: TemplateColumnPhase.ANY,
+  })
+  phase!: TemplateColumnPhase;
 }
 
 export const TemplateColumnSchema =

@@ -2,13 +2,58 @@ import dayjs from "dayjs";
 import {
   getAutoIncrementValue,
   isAutoIncrementColumn,
+  WORKFLOW_PHASE_ORDER,
   type KpiTemplate,
   type TaskAssignment,
+  type TaskStatus,
   type TemplateColumn,
+  type TemplateColumnPhase,
   type TemplateHeaderGroup,
 } from "./types";
 
 export const CALCULATED_INPUT = "CALCULATED";
+
+/** @deprecated Giai đoạn đã bỏ khỏi UI — giữ hàm để tương thích dữ liệu cũ. */
+export function phaseIndex(phase: TemplateColumnPhase): number {
+  return WORKFLOW_PHASE_ORDER.indexOf(phase);
+}
+
+export function derivePhaseFromTaskStatus(
+  status: TaskStatus | undefined,
+): TemplateColumnPhase {
+  switch (status) {
+    case "ASSIGNED":
+      return "BREAKDOWN";
+    case "IN_PROGRESS":
+      return "EXECUTE";
+    case "SUBMITTED":
+      return "FEEDBACK";
+    case "APPRAISED":
+      return "APPRAISE";
+    case "CANCELLED":
+      return "BREAKDOWN";
+    default:
+      return "BREAKDOWN";
+  }
+}
+
+/** Giai đoạn đã bỏ — luôn mở nếu cột không phải CONFIG/calculated. */
+export function isColumnOpenInPhase(
+  column: TemplateColumn,
+  _currentPhase?: TemplateColumnPhase,
+): boolean {
+  if (isAutoIncrementColumn(column)) return false;
+  if (column.inputRoleCode === CALCULATED_INPUT) return false;
+  if (column.phase === "CONFIG") return false;
+  return true;
+}
+
+export function isColumnLockedAfterPhase(
+  _column: TemplateColumn,
+  _currentPhase?: TemplateColumnPhase,
+): boolean {
+  return false;
+}
 
 type SemanticField =
   | "content_name"
@@ -114,7 +159,7 @@ export type TaskValueSource = {
   assigneeName: string;
   title: string;
   description: string;
-  dueDate: string;
+  dueDate?: string;
   reportDueDate?: string;
   product: string;
   actualProduct?: string;
@@ -190,7 +235,10 @@ export function taskValueSourceFromAssignment(
 ): TaskValueSource {
   return {
     contentName,
-    assigneeName: task.assigneeId.fullName || task.assigneeId.username,
+    assigneeName:
+      typeof task.assigneeId === "object" && task.assigneeId
+        ? task.assigneeId.fullName || task.assigneeId.username || ""
+        : "",
     title: task.title,
     description: task.description ?? "",
     dueDate: task.dueDate,
@@ -231,8 +279,6 @@ export function buildFieldValuesFromTemplate(
   return next;
 }
 
-const ASSIGNMENT_DIALOG_ROLES = new Set(["SUPER_ADMIN", "UNIT_ADMIN", ""]);
-
 const DIALOG_MANAGED_FIELDS = new Set<SemanticField>([
   "content_name",
   "task_title",
@@ -243,17 +289,28 @@ const DIALOG_MANAGED_FIELDS = new Set<SemanticField>([
   "standard_score",
 ]);
 
-/** Cột hiện trong popup giao nhiệm vụ — lấy từ biểu mẫu, đúng nhãn header. */
+function columnMatchesUserRole(
+  column: TemplateColumn,
+  userRoleCodes: readonly string[],
+): boolean {
+  const role = column.inputRoleCode?.trim() ?? "";
+  if (!role || role === CALCULATED_INPUT) return false;
+  return userRoleCodes.includes(role);
+}
+
+/**
+ * Cột hiện trong popup giao/phân rã nhiệm vụ.
+ * Chỉ lọc theo ROLE NHẬP (đã bỏ giai đoạn).
+ */
 export function getAssignmentDialogColumns(
   template: KpiTemplate | null,
+  userRoleCodes: readonly string[] = [],
 ): TemplateColumn[] {
   if (!template) return [];
   return template.columns.filter((column) => {
     if (!column.visible || isAutoIncrementColumn(column)) return false;
     if (column.inputRoleCode === CALCULATED_INPUT) return false;
-    // Ưu tiên cột semantic giao nhiệm vụ; fallback theo Role nhập admin
-    if (isDialogManagedColumn(column, template)) return true;
-    return ASSIGNMENT_DIALOG_ROLES.has(column.inputRoleCode ?? "");
+    return columnMatchesUserRole(column, userRoleCodes);
   });
 }
 
@@ -277,8 +334,9 @@ export function isDialogManagedColumn(
 export function isAssignmentDialogColumn(
   column: TemplateColumn,
   template: KpiTemplate | null,
+  userRoleCodes: readonly string[] = [],
 ): boolean {
-  return getAssignmentDialogColumns(template).some(
+  return getAssignmentDialogColumns(template, userRoleCodes).some(
     (item) => item.id === column.id,
   );
 }
@@ -290,17 +348,25 @@ export function canEditTemplateColumn(
   if (isAutoIncrementColumn(column)) return false;
   if (column.inputRoleCode === CALCULATED_INPUT) return false;
   if (!column.inputRoleCode) return false;
-  if (userRoleCodes.includes("SUPER_ADMIN")) return true;
   return userRoleCodes.includes(column.inputRoleCode);
 }
 
-/** Chỉ cho sửa inline trên bảng; cột giao nhiệm vụ (popup) thì chỉ đọc. */
+/** Sửa trên bảng: chỉ cần đúng ROLE NHẬP. */
 export function canInlineEditTemplateColumn(
   column: TemplateColumn,
   userRoleCodes: readonly string[],
-  template: KpiTemplate | null,
+  _template: KpiTemplate | null = null,
+  _currentPhase?: TemplateColumnPhase,
 ): boolean {
-  if (isAssignmentDialogColumn(column, template)) return false;
+  return canEditTemplateColumn(column, userRoleCodes);
+}
+
+/** Popup giao nhiệm vụ: chỉ cần đúng ROLE NHẬP. */
+export function canEditDialogColumn(
+  column: TemplateColumn,
+  userRoleCodes: readonly string[],
+  _currentPhase?: TemplateColumnPhase,
+): boolean {
   return canEditTemplateColumn(column, userRoleCodes);
 }
 

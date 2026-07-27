@@ -41,6 +41,7 @@ import {
 } from "@/features/organization/badge-styles";
 import { fetchRoles, fetchUsers } from "@/features/organization/api";
 import { useAuth } from "@/features/auth/auth-provider";
+import { isSuperAdmin, userHasAnyRole } from "@/features/auth/types";
 import { entityId } from "@/features/organization/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import {
@@ -72,6 +73,7 @@ import { TaskAssignmentGrid } from "./task-assignment-grid";
 import { TemplateConfigView } from "./template-config-view";
 import {
   buildFieldValuesFromTemplate,
+  canEditDialogColumn,
   getAssignmentDialogColumns,
   getColumnSemanticField,
   getTemplateColumnValue,
@@ -118,6 +120,11 @@ function Field({
 
 export function KpiConfigView() {
   const { user } = useAuth();
+  const canManageCatalog = userHasAnyRole(user, [
+    "SUPER_ADMIN",
+    "UNIT_ADMIN",
+  ]);
+  const canManageTemplate = isSuperAdmin(user);
   const [tab, setTab] = useState<TabValue>("tasks");
   const groupsQuery = useSWR(kpiConfigKeys.groups, fetchWorkGroups);
   const contentsQuery = useSWR(kpiConfigKeys.contents, fetchWorkContents);
@@ -147,6 +154,13 @@ export function KpiConfigView() {
     user?.roleAssignments.map((item) => item.roleCode) ?? [];
   const users = usersQuery.data?.filter((item) => item.isActive) ?? [];
   const roles = rolesQuery.data?.filter((role) => role.isActive) ?? [];
+
+  useEffect(() => {
+    if (tab === "template" && !canManageTemplate) setTab("tasks");
+    if ((tab === "groups" || tab === "contents") && !canManageCatalog) {
+      setTab("tasks");
+    }
+  }, [tab, canManageTemplate, canManageCatalog]);
 
   useEffect(() => {
     if (!templates.length || selectedTemplateId) return;
@@ -201,7 +215,9 @@ export function KpiConfigView() {
       }
       if (!scopedContents.length) {
         toast.error(
-          "Biểu mẫu chưa có nội dung công việc. Hãy chọn nội dung trong tab Cấu hình biểu mẫu.",
+          canManageTemplate
+            ? "Biểu mẫu chưa có nội dung công việc. Hãy chọn nội dung trong tab Cấu hình biểu mẫu."
+            : "Biểu mẫu chưa có nội dung công việc. Liên hệ quản trị hệ thống để cấu hình biểu mẫu.",
         );
         return;
       }
@@ -264,9 +280,15 @@ export function KpiConfigView() {
       >
         <TabsList className="h-auto w-fit flex-wrap">
           <TabsTrigger value="tasks">Nhiệm vụ được giao</TabsTrigger>
-          <TabsTrigger value="contents">Nội dung công việc</TabsTrigger>
-          <TabsTrigger value="groups">Nhóm công việc</TabsTrigger>
-          <TabsTrigger value="template">Cấu hình biểu mẫu</TabsTrigger>
+          {canManageCatalog ? (
+            <TabsTrigger value="contents">Nội dung công việc</TabsTrigger>
+          ) : null}
+          {canManageCatalog ? (
+            <TabsTrigger value="groups">Nhóm công việc</TabsTrigger>
+          ) : null}
+          {canManageTemplate ? (
+            <TabsTrigger value="template">Cấu hình biểu mẫu</TabsTrigger>
+          ) : null}
         </TabsList>
 
         <TabsContent value="tasks" className="mt-4 space-y-4">
@@ -274,7 +296,7 @@ export function KpiConfigView() {
             <div className="space-y-2">
               <Label>Biểu mẫu KPI</Label>
               <Select
-                value={selectedTemplateId || undefined}
+                value={selectedTemplateId}
                 onValueChange={selectTemplate}
               >
                 <SelectTrigger className="w-[280px]">
@@ -352,6 +374,7 @@ export function KpiConfigView() {
                       <TableHead className="w-32">Mã</TableHead>
                       <TableHead>Nội dung công việc</TableHead>
                       <TableHead>Nhóm công việc</TableHead>
+                      <TableHead className="w-36">Nhiệm vụ con</TableHead>
                       <TableHead className="w-28">Trạng thái</TableHead>
                       <TableHead className="w-24 text-right">
                         Thao tác
@@ -360,10 +383,10 @@ export function KpiConfigView() {
                   </TableHeader>
                   <TableBody>
                     {contentsQuery.isLoading ? (
-                      <EmptyRow colSpan={5} text="Đang tải nội dung..." />
+                      <EmptyRow colSpan={6} text="Đang tải nội dung..." />
                     ) : contents.length === 0 ? (
                       <EmptyRow
-                        colSpan={5}
+                        colSpan={6}
                         text="Chưa có nội dung công việc."
                       />
                     ) : (
@@ -383,6 +406,13 @@ export function KpiConfigView() {
                             ) : null}
                           </TableCell>
                           <TableCell>{groupOf(content)?.name ?? "-"}</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">
+                              {content.allowMultipleTasks === false
+                                ? "Tối đa 1"
+                                : "Nhiều"}
+                            </Badge>
+                          </TableCell>
                           <TableCell>
                             <ActiveBadge active={content.isActive} />
                           </TableCell>
@@ -511,7 +541,9 @@ export function KpiConfigView() {
           initialContent={creatingForContent}
           template={selectedTemplate}
           contents={scopedContents}
+          tasks={scopedTasks}
           users={users}
+          userRoleCodes={userRoleCodes}
           onSuccess={() => tasksQuery.mutate()}
         />
       ) : null}
@@ -681,30 +713,34 @@ function ContentDialog({
   groups,
   onSuccess,
 }: ContentDialogProps) {
-  const [code, setCode] = useState(edit?.code ?? "");
+  const code = edit?.code ?? "";
   const [name, setName] = useState(edit?.name ?? "");
   const [groupId, setGroupId] = useState(
     edit ? entityId(edit.groupId) : entityId(groups[0]),
   );
   const [description, setDescription] = useState(edit?.description ?? "");
   const [sortOrder, setSortOrder] = useState(String(edit?.sortOrder ?? 0));
+  const [allowMultipleTasks, setAllowMultipleTasks] = useState(
+    edit?.allowMultipleTasks ?? true,
+  );
   const [isActive, setIsActive] = useState(edit?.isActive ?? true);
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
-    if (!code.trim() || !name.trim() || !groupId) {
-      toast.error("Vui lòng nhập mã, tên và chọn nhóm công việc.");
+    if (!name.trim() || !groupId) {
+      toast.error("Vui lòng nhập tên và chọn nhóm công việc.");
       return;
     }
     setSaving(true);
     try {
       const input = {
-        code: code.trim().toUpperCase(),
         name: name.trim(),
         groupId,
         description: description.trim(),
         sortOrder: Number(sortOrder) || 0,
+        allowMultipleTasks,
         isActive,
+        ...(edit ? { code: code.trim().toUpperCase() || edit.code } : {}),
       };
       if (edit) await updateWorkContent(entityId(edit), input);
       else await createWorkContent(input);
@@ -732,10 +768,12 @@ function ContentDialog({
         </DialogHeader>
         <div className="grid gap-4 py-2">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Mã nội dung" required>
+            <Field label="Mã nội dung">
               <Input
-                value={code}
-                onChange={(event) => setCode(event.target.value)}
+                value={edit ? code : ""}
+                placeholder="Tự sinh khi lưu (ND-0001…)"
+                disabled
+                readOnly
               />
             </Field>
             <Field label="Nhóm công việc" required>
@@ -781,6 +819,18 @@ function ContentDialog({
               </div>
             </div>
           </div>
+          <div className="flex w-full items-center justify-between gap-3 rounded-md border px-3 py-3">
+            <div className="min-w-0 space-y-0.5">
+              <Label>Cho phép nhiều nhiệm vụ con</Label>
+              <p className="text-xs text-muted-foreground">
+                Tắt = mỗi nội dung chỉ 1 nhiệm vụ
+              </p>
+            </div>
+            <Switch
+              checked={allowMultipleTasks}
+              onCheckedChange={setAllowMultipleTasks}
+            />
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -807,12 +857,12 @@ function taskDialogFormFrom(
   contents: WorkContent[],
   initialContent: WorkContent | null,
   template: KpiTemplate | null,
+  userRoleCodes: readonly string[] = [],
 ): TaskDialogForm {
-  const contentId =
-    edit
-      ? entityId(edit.contentId)
-      : entityId(initialContent) ||
-        entityId(contents.find((content) => content.isActive));
+  const contentId = edit
+    ? entityId(edit.contentId)
+    : entityId(initialContent) ||
+      entityId(contents.find((content) => content.isActive));
   const contentName =
     contents.find((item) => entityId(item) === contentId)?.name ?? "";
 
@@ -825,7 +875,7 @@ function taskDialogFormFrom(
     : {};
 
   const fieldValues: Record<string, string> = {};
-  for (const column of getAssignmentDialogColumns(template)) {
+  for (const column of getAssignmentDialogColumns(template, userRoleCodes)) {
     const raw =
       seeded[column.key] ??
       edit?.fieldValues?.[column.key] ??
@@ -837,7 +887,7 @@ function taskDialogFormFrom(
 
   return {
     contentId,
-    assigneeId: edit ? entityId(edit.assigneeId) : "",
+    assigneeId: edit?.assigneeId ? entityId(edit.assigneeId) : "",
     status: edit?.status ?? "ASSIGNED",
     fieldValues,
   };
@@ -850,7 +900,9 @@ type TaskDialogProps = {
   initialContent: WorkContent | null;
   template: KpiTemplate | null;
   contents: WorkContent[];
+  tasks: TaskAssignment[];
   users: Awaited<ReturnType<typeof fetchUsers>>;
+  userRoleCodes: string[];
   onSuccess: () => void;
 };
 
@@ -861,18 +913,41 @@ function TaskDialog({
   initialContent,
   template,
   contents,
+  tasks,
   users,
+  userRoleCodes,
   onSuccess,
 }: TaskDialogProps) {
   const [form, setForm] = useState<TaskDialogForm>(() =>
-    taskDialogFormFrom(edit, contents, initialContent, template),
+    taskDialogFormFrom(edit, contents, initialContent, template, userRoleCodes),
   );
   const [saving, setSaving] = useState(false);
 
   const dialogColumns = useMemo(
-    () => getAssignmentDialogColumns(template),
-    [template],
+    () => getAssignmentDialogColumns(template, userRoleCodes),
+    [template, userRoleCodes],
   );
+
+  const editableColumns = useMemo(
+    () =>
+      dialogColumns.filter((column) =>
+        canEditDialogColumn(column, userRoleCodes),
+      ),
+    [dialogColumns, userRoleCodes],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setForm(
+      taskDialogFormFrom(
+        edit,
+        contents,
+        initialContent,
+        template,
+        userRoleCodes,
+      ),
+    );
+  }, [open, edit, contents, initialContent, template, userRoleCodes]);
 
   const activeContents = useMemo(
     () =>
@@ -890,18 +965,52 @@ function TaskDialog({
   };
 
   const submit = async () => {
-    if (!form.contentId || !form.assigneeId) {
-      toast.error("Vui lòng chọn nội dung công việc và người thực hiện.");
+    const hasContentField = dialogColumns.some(
+      (column) => getColumnSemanticField(column, template) === "content_name",
+    );
+    const hasAssigneeField = dialogColumns.some(
+      (column) => getColumnSemanticField(column, template) === "assignee",
+    );
+
+    if (hasContentField && !form.contentId) {
+      toast.error("Vui lòng chọn nội dung công việc.");
+      return;
+    }
+    if (hasAssigneeField && !form.assigneeId) {
+      toast.error("Vui lòng chọn người thực hiện.");
+      return;
+    }
+    if (!form.contentId) {
+      toast.error(
+        "Thiếu nội dung công việc. Hãy gán ROLE NHẬP cột “Nội dung công việc” cho role của bạn.",
+      );
       return;
     }
     if (!template || !dialogColumns.length) {
       toast.error(
-        "Biểu mẫu chưa có cột giao nhiệm vụ. Hãy cấu hình cột ở tab Cấu hình biểu mẫu.",
+        "Không có cột nào thuộc ROLE NHẬP của bạn trên biểu mẫu. Kiểm tra cấu hình ROLE NHẬP.",
       );
       return;
     }
 
-    for (const column of dialogColumns) {
+    if (!edit) {
+      const content = contents.find(
+        (item) => entityId(item) === form.contentId,
+      );
+      if (content?.allowMultipleTasks === false) {
+        const existing = tasks.filter(
+          (item) => entityId(item.contentId) === form.contentId,
+        ).length;
+        if (existing >= 1) {
+          toast.error(
+            "Nội dung này chỉ cho phép một nhiệm vụ. Bật “Cho phép nhiều nhiệm vụ con” nếu cần thêm.",
+          );
+          return;
+        }
+      }
+    }
+
+    for (const column of editableColumns) {
       const semantic = getColumnSemanticField(column, template);
       if (
         semantic === "content_name" ||
@@ -920,10 +1029,21 @@ function TaskDialog({
       readFieldValueBySemantic(template, form.fieldValues, "task_title") ||
       firstTextFieldValue(dialogColumns, form.fieldValues, template) ||
       "Nhiệm vụ mới";
+    const hasDueDateField = editableColumns.some(
+      (column) => getColumnSemanticField(column, template) === "due_date",
+    );
+    const dueDateFromForm = toIsoDate(
+      readFieldValueBySemantic(template, form.fieldValues, "due_date"),
+    );
+    if (hasDueDateField && !dueDateFromForm) {
+      toast.error("Vui lòng chọn thời hạn hoàn thành.");
+      return;
+    }
+    // Chỉ lưu ngày khi user nhập, hoặc giữ ngày cũ khi sửa (không tự gán hôm nay).
     const dueDate =
-      toIsoDate(
-        readFieldValueBySemantic(template, form.fieldValues, "due_date"),
-      ) || dayjs().format("YYYY-MM-DD");
+      dueDateFromForm ||
+      (edit?.dueDate ? toIsoDate(String(edit.dueDate)) : undefined) ||
+      undefined;
     const reportDueDate =
       toIsoDate(
         readFieldValueBySemantic(template, form.fieldValues, "report_due_date"),
@@ -961,7 +1081,7 @@ function TaskDialog({
       contentId: form.contentId,
       title,
       description: edit?.description ?? "",
-      assigneeId: form.assigneeId,
+      assigneeId: form.assigneeId || undefined,
       dueDate,
       reportDueDate,
       product,
@@ -976,8 +1096,9 @@ function TaskDialog({
       assigneeName:
         selectedUser?.fullName?.trim() ||
         selectedUser?.username ||
-        edit?.assigneeId.fullName ||
-        edit?.assigneeId.username ||
+        (typeof edit?.assigneeId === "object" && edit?.assigneeId
+          ? edit.assigneeId.fullName || edit.assigneeId.username
+          : "") ||
         "",
       title: payload.title,
       description: payload.description ?? "",
@@ -1025,14 +1146,20 @@ function TaskDialog({
               </p>
             ) : !dialogColumns.length ? (
               <p className="text-sm text-muted-foreground">
-                Biểu mẫu chưa có cột để giao nhiệm vụ. Thêm cột và gán Role nhập
-                (SUPER_ADMIN) ở tab Cấu hình biểu mẫu.
+                Không có cột nào gán ROLE NHẬP khớp role hiện tại (
+                {userRoleCodes.join(", ") || "không có role"}). Chỉ hiện field
+                đúng role — hãy cấu hình lại ROLE NHẬP ở tab Cấu hình biểu mẫu.
               </p>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
                 {dialogColumns.map((column) => {
                   const semantic = getColumnSemanticField(column, template);
                   const label = column.title;
+                  const editable = canEditDialogColumn(
+                    column,
+                    userRoleCodes,
+                  );
+                  // Chỉ hiện field đúng ROLE NHẬP (đã lọc ở dialogColumns)
 
                   if (semantic === "content_name") {
                     return (
@@ -1045,6 +1172,7 @@ function TaskDialog({
                               contentId: value,
                             }))
                           }
+                          disabled={!editable && !!edit}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Chọn nội dung" />
@@ -1075,6 +1203,7 @@ function TaskDialog({
                               assigneeId: value,
                             }))
                           }
+                          disabled={!editable && !!edit}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Chọn người thực hiện" />
@@ -1106,6 +1235,7 @@ function TaskDialog({
                           onChange={(event) =>
                             setFieldValue(column.key, event.target.value)
                           }
+                          disabled={!editable && !!edit}
                         />
                       </Field>
                     );
@@ -1121,6 +1251,7 @@ function TaskDialog({
                           onChange={(event) =>
                             setFieldValue(column.key, event.target.value)
                           }
+                          disabled={!editable && !!edit}
                         />
                       </Field>
                     );
@@ -1142,6 +1273,7 @@ function TaskDialog({
                             setFieldValue(column.key, event.target.value)
                           }
                           placeholder={`Nhập ${label.toLowerCase()}...`}
+                          disabled={!editable && !!edit}
                         />
                       ) : (
                         <Input
@@ -1149,6 +1281,7 @@ function TaskDialog({
                           onChange={(event) =>
                             setFieldValue(column.key, event.target.value)
                           }
+                          disabled={!editable && !!edit}
                         />
                       )}
                     </Field>
@@ -1158,7 +1291,10 @@ function TaskDialog({
                 {!dialogColumns.some(
                   (column) =>
                     getColumnSemanticField(column, template) === "content_name",
-                ) ? (
+                ) &&
+                (userRoleCodes.includes("UNIT_ADMIN") ||
+                  userRoleCodes.includes("MANAGER") ||
+                  userRoleCodes.includes("SUPER_ADMIN")) ? (
                   <Field label="Nội dung công việc" required>
                     <Select
                       value={form.contentId}
@@ -1189,7 +1325,9 @@ function TaskDialog({
                 {!dialogColumns.some(
                   (column) =>
                     getColumnSemanticField(column, template) === "assignee",
-                ) ? (
+                ) &&
+                (userRoleCodes.includes("UNIT_ADMIN") ||
+                  userRoleCodes.includes("MANAGER")) ? (
                   <Field label="Người thực hiện" required>
                     <Select
                       value={form.assigneeId}

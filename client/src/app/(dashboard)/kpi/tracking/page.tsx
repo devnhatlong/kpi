@@ -1,13 +1,11 @@
 import type { Metadata } from "next";
 
-import { PlaceholderPage } from "@/components/common/placeholder-page";
+import { HandoffOutboundView } from "@/features/kpi-config/components/handoff-outbound-view";
 
 export const metadata: Metadata = {
-  title: "Theo dõi KPI",
+  title: "Chủ trì giao ngang",
 };
 
 export default function KpiTrackingPage() {
-  return (
-    <PlaceholderPage title="Theo dõi KPI" description="Giám sát tiến độ thực hiện KPI." />
-  );
+  return <HandoffOutboundView />;
 }

@@ -30,7 +30,7 @@ function cloneHeaderGroups(groups: TemplateHeaderGroup[]): TemplateHeaderGroup[]
 }
 
 function serializeTemplateColumn(
-  item: TemplateColumn & { sourceField?: unknown },
+  item: TemplateColumn & { sourceField?: unknown; phase?: string },
 ): TemplateColumn {
   return {
     id: item.id,
@@ -41,6 +41,7 @@ function serializeTemplateColumn(
     visible: item.visible,
     inputRoleCode: item.inputRoleCode,
     dataType: item.dataType,
+    phase: "ANY",
   };
 }
 

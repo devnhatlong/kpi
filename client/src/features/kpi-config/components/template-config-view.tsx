@@ -75,8 +75,7 @@ import {
   type TemplateVisibilityScope,
   type WorkContent,
 } from "../types";
-
-const CALCULATED_INPUT = "CALCULATED";
+import { CALCULATED_INPUT } from "../template-column-utils";
 
 type DataType = TemplateColumnDataType;
 
@@ -103,6 +102,7 @@ function column(
     visible: true,
     inputRoleCode,
     dataType,
+    phase: "ANY",
   };
 }
 
@@ -637,6 +637,7 @@ export function TemplateConfigView({
         const next = { ...item, ...patch };
         if (patch.dataType === "auto_increment") {
           next.inputRoleCode = CALCULATED_INPUT;
+          next.phase = "ANY";
         }
         return next;
       });
@@ -983,12 +984,6 @@ export function TemplateConfigView({
                       >
                         {template.isActive ? "Hoạt động" : "Ngưng"}
                       </Badge>
-                      <Badge
-                        variant="outline"
-                        className="h-5 bg-amber-50 text-amber-700"
-                      >
-                        Bản nháp
-                      </Badge>
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {template.columns.filter((item) => item.visible).length}/
@@ -1108,9 +1103,8 @@ export function TemplateConfigView({
                       Cột hiển thị trên bảng nhập liệu
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Biểu mẫu bắt đầu trống. Lớp header gộp chọn ở Nhóm header;
-                      tên cột cuối cùng nhập ở Nhãn cột. Role nhập quyết định
-                      ai được điền ô đó trên bảng giao nhiệm vụ.
+                      Role nhập = ai được điền field đó khi giao / cập nhật
+                      nhiệm vụ.
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -1133,8 +1127,8 @@ export function TemplateConfigView({
                 </div>
 
                 <div className="overflow-x-auto rounded-md border">
-                  <div className="min-w-[1180px]">
-                    <div className="grid grid-cols-[70px_1fr_210px_140px_90px_170px_90px] gap-2 border-b bg-muted/50 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                  <div className="min-w-[1100px]">
+                    <div className="grid grid-cols-[70px_1fr_180px_130px_80px_150px_90px] gap-2 border-b bg-muted/50 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
                       <span>Hiện</span>
                       <span>Nhãn và mã trường</span>
                       <span>Nhóm header</span>
@@ -1152,7 +1146,7 @@ export function TemplateConfigView({
                     {columns.map((item, index) => (
                       <div
                         key={item.id}
-                        className="grid grid-cols-[70px_1fr_210px_140px_90px_170px_90px] items-start gap-2 border-b px-3 py-2 last:border-b-0"
+                        className="grid grid-cols-[70px_1fr_180px_130px_80px_150px_90px] items-start gap-2 border-b px-3 py-2 last:border-b-0"
                       >
                         <Switch
                           className="mt-1.5"

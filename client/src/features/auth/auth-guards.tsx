@@ -5,8 +5,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useAuth } from "@/features/auth/auth-provider";
 import { DEFAULT_APP_PATH } from "@/features/auth/constants";
-import { isSuperAdmin } from "@/features/auth/types";
-import { isSuperAdminPath } from "@/constants/navigation";
+import { userHasAnyRole } from "@/features/auth/types";
+import { pathRequiresRoles } from "@/constants/navigation";
+import type { AuthUser } from "@/features/auth/types";
 
 function AuthLoading() {
   return (
@@ -42,16 +43,24 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+function canAccessPath(pathname: string, user: AuthUser | null | undefined): boolean {
+  const required = pathRequiresRoles(pathname);
+  if (!required) return true;
+  return userHasAnyRole(user, required);
+}
+
 /**
- * Chặn các trang quản trị (/organization, /kpi, /settings)
- * nếu user không phải SUPER_ADMIN.
+ * Chặn trang quản trị:
+ * - /organization, /settings → SUPER_ADMIN
+ * - /kpi → SUPER_ADMIN | UNIT_ADMIN | MANAGER
  */
 export function RestrictSuperAdminRoutes({ children }: { children: ReactNode }) {
   const { user, status } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
-  const blocked = status === "authenticated" && isSuperAdminPath(pathname) && !isSuperAdmin(user);
+  const blocked =
+    status === "authenticated" && !canAccessPath(pathname, user);
 
   useEffect(() => {
     if (!blocked) return;
@@ -73,8 +82,7 @@ export function RedirectIfAuthenticated({ children }: { children: ReactNode }) {
     const next = searchParams.get("next");
     let target = DEFAULT_APP_PATH;
     if (next && next.startsWith("/") && !next.startsWith("//")) {
-      target =
-        isSuperAdminPath(next) && !isSuperAdmin(user) ? DEFAULT_APP_PATH : next;
+      target = canAccessPath(next, user) ? next : DEFAULT_APP_PATH;
     }
     router.replace(target);
   }, [status, user, router, searchParams]);

@@ -11,15 +11,67 @@ export enum TaskStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export enum TaskOrigin {
+  OWN = 'OWN',
+  FROM_HANDOFF = 'FROM_HANDOFF',
+  FROM_PARENT = 'FROM_PARENT',
+  /** Chỉ tiêu từ form KPI cấp tỉnh phát hành. */
+  FROM_PROVINCE = 'FROM_PROVINCE',
+}
+
+export enum AssignmentTargetType {
+  UNASSIGNED = 'UNASSIGNED',
+  CHILD_DEPARTMENT = 'CHILD_DEPARTMENT',
+  USER = 'USER',
+}
+
 @Schema({ timestamps: true, toJSON: { virtuals: true } })
 export class TaskAssignment {
+  /** Form 1 sheet chứa nhiệm vụ (optional cho task cũ). */
+  @Prop({ type: Types.ObjectId, ref: 'UnitKpiSheet', index: true })
+  sheetId?: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Department', index: true })
+  ownerDepartmentId?: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'TaskAssignment', index: true })
+  parentTaskId?: Types.ObjectId;
+
+  @Prop({ enum: TaskOrigin, default: TaskOrigin.OWN, index: true })
+  origin!: TaskOrigin;
+
+  @Prop({ type: Types.ObjectId, ref: 'UnitHandoff', index: true })
+  sourceHandoffId?: Types.ObjectId;
+
+  /** Form mẫu cấp tỉnh (khi origin = FROM_PROVINCE). */
+  @Prop({ type: Types.ObjectId, ref: 'KpiMasterForm', index: true })
+  sourceMasterFormId?: Types.ObjectId;
+
+  /** Mã chỉ tiêu trên mẫu tỉnh (KPI-01…). */
+  @Prop({ trim: true, uppercase: true, index: true })
+  indicatorCode?: string;
+
+  @Prop({ min: 0, max: 100 })
+  indicatorWeight?: number;
+
   @Prop({
-    required: true,
+    enum: AssignmentTargetType,
+    default: AssignmentTargetType.UNASSIGNED,
+    index: true,
+  })
+  assignmentTargetType!: AssignmentTargetType;
+
+  /** Đội con được giao (khi assignmentTargetType = CHILD_DEPARTMENT). */
+  @Prop({ type: Types.ObjectId, ref: 'Department', index: true })
+  targetDepartmentId?: Types.ObjectId;
+
+  /** Optional khi chỉ tiêu FROM_PROVINCE (không gắn catalog). */
+  @Prop({
     type: Types.ObjectId,
     ref: 'WorkContent',
     index: true,
   })
-  contentId!: Types.ObjectId;
+  contentId?: Types.ObjectId;
 
   @Prop({ required: true, trim: true })
   title!: string;
@@ -27,11 +79,12 @@ export class TaskAssignment {
   @Prop({ trim: true, default: '' })
   description?: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
-  assigneeId!: Types.ObjectId;
+  /** Người thực hiện — optional đến khi giao USER. */
+  @Prop({ type: Types.ObjectId, ref: 'User', index: true })
+  assigneeId?: Types.ObjectId;
 
-  @Prop({ required: true, type: Date, index: true })
-  dueDate!: Date;
+  @Prop({ type: Date, index: true })
+  dueDate?: Date;
 
   @Prop({ type: Date })
   reportDueDate?: Date;
@@ -92,3 +145,5 @@ export const TaskAssignmentSchema =
   SchemaFactory.createForClass(TaskAssignment);
 TaskAssignmentSchema.index({ contentId: 1, dueDate: 1 });
 TaskAssignmentSchema.index({ assigneeId: 1, status: 1 });
+TaskAssignmentSchema.index({ sheetId: 1, status: 1 });
+TaskAssignmentSchema.index({ ownerDepartmentId: 1, status: 1 });
