@@ -6,6 +6,7 @@ import { DepartmentsModule } from '../departments/departments.module';
 import { DepartmentLevelsModule } from '../department-levels/department-levels.module';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { KpiConfigController } from './kpi-config.controller';
+import { ServerTimeController } from './server-time.controller';
 import { KpiConfigService } from './kpi-config.service';
 import { KpiWorkflowService } from './kpi-workflow.service';
 import { KpiMasterFormService } from './kpi-master-form.service';
@@ -50,7 +51,7 @@ import { Role, RoleSchema } from '../roles/schemas/role.schema';
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),
   ],
-  controllers: [KpiConfigController],
+  controllers: [KpiConfigController, ServerTimeController],
   providers: [KpiConfigService, KpiWorkflowService, KpiMasterFormService],
   exports: [KpiConfigService, KpiWorkflowService, KpiMasterFormService],
 })

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import dayjs from "dayjs";
+import { getDefaultDueDate } from "@/lib/server-time";
 import { Plus, XCircle } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -88,7 +89,7 @@ export function HandoffOutboundView() {
     contentId: "",
     title: "",
     description: "",
-    dueDate: dayjs().add(14, "day").format("YYYY-MM-DD"),
+    dueDate: "",
     product: "",
     standardScore: 10,
     note: "",
@@ -163,7 +164,11 @@ export function HandoffOutboundView() {
           <Button
             size="sm"
             disabled={!workingDepartmentId}
-            onClick={() => setOpen(true)}
+            onClick={async () => {
+              const dueDate = await getDefaultDueDate(14);
+              setForm((s) => ({ ...s, dueDate }));
+              setOpen(true);
+            }}
           >
             <Plus className="size-4" />
             Giao nhiệm vụ ngang

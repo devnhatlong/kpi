@@ -311,3 +311,12 @@ export async function deleteMasterForm(id: string) {
     await api.delete<ApiResponse<unknown>>(`/kpi-config/master-forms/${id}`)
   ).data;
 }
+
+export async function fetchServerTime(): Promise<{
+  serverTime: string;
+  timezone: string;
+}> {
+  return (
+    await api.get<{ serverTime: string; timezone: string }>("/system/server-time")
+  ).data;
+}

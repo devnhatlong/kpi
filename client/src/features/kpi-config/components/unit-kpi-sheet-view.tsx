@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import dayjs from "dayjs";
+import { getDefaultDueDate, getServerDayjs } from "@/lib/server-time";
 import { Plus } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -174,7 +174,7 @@ export function UnitKpiSheetView() {
     contentId: "",
     title: "",
     description: "",
-    dueDate: dayjs().add(14, "day").format("YYYY-MM-DD"),
+    dueDate: "",
     product: "",
     standardScore: 10,
     note: "",
@@ -190,12 +190,13 @@ export function UnitKpiSheetView() {
   const [assignDeptId, setAssignDeptId] = useState("");
   const [assigning, setAssigning] = useState(false);
 
-  function openCreateTask(content?: WorkContent) {
+  async function openCreateTask(content?: WorkContent) {
+    const dueDate = await getDefaultDueDate(14);
     setTaskForm({
       contentId: content ? entityId(content) : "",
       title: "",
       description: "",
-      dueDate: dayjs().add(14, "day").format("YYYY-MM-DD"),
+      dueDate,
       product: "",
       standardScore: 10,
       note: "",
@@ -492,7 +493,7 @@ export function UnitKpiSheetView() {
                   className="h-auto px-0 text-xs"
                   onClick={async () => {
                     try {
-                      const now = dayjs();
+                      const now = await getServerDayjs();
                       const quarter = Math.floor(now.month() / 3) + 1;
                       const code = `${now.year()}-Q${quarter}`;
                       const startMonth = (quarter - 1) * 3;
