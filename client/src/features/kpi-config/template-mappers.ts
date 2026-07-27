@@ -41,6 +41,7 @@ function serializeTemplateColumn(
     visible: item.visible,
     inputRoleCode: item.inputRoleCode,
     dataType: item.dataType,
+    required: item.required ?? false,
   };
 }
 

@@ -10,6 +10,12 @@ import {
 
 export const CALCULATED_INPUT = "CALCULATED";
 
+export function isTemplateColumnRequired(column: TemplateColumn): boolean {
+  if (isAutoIncrementColumn(column)) return false;
+  if (column.inputRoleCode === CALCULATED_INPUT) return false;
+  return column.required === true;
+}
+
 type SemanticField =
   | "content_name"
   | "task_title"
@@ -250,6 +256,17 @@ export function buildFieldValuesFromTemplate(
   for (const column of template.columns) {
     const semantic = inferSemanticField(column, template.headerGroups);
     if (!semantic) continue;
+    if (semantic === "due_date" && source.dueDate) {
+      next[column.key] = temporalInputValue(column, String(source.dueDate));
+      continue;
+    }
+    if (semantic === "report_due_date" && source.reportDueDate) {
+      next[column.key] = temporalInputValue(
+        column,
+        String(source.reportDueDate),
+      );
+      continue;
+    }
     const value = readSemanticValue(semantic, source);
     if (value == null || value === "") continue;
     // Không ghi sẵn 0 mặc định schema khi user chưa nhập.
@@ -403,6 +420,13 @@ export function getTemplateColumnValue(
   const semantic = inferSemanticField(column, template.headerGroups);
   if (!semantic) return "";
 
+  if (semantic === "due_date" && task.dueDate) {
+    return formatTemporalDisplay(column, String(task.dueDate));
+  }
+  if (semantic === "report_due_date" && task.reportDueDate) {
+    return formatTemporalDisplay(column, String(task.reportDueDate));
+  }
+
   const value = readSemanticValue(
     semantic,
     taskValueSourceFromAssignment(task, contentName),
@@ -498,4 +522,74 @@ export function formatDateTimeDisplay(value: string): string {
   const local = toDateTimeInputValue(value);
   if (!local) return value.trim();
   return dayjs(local).format("DD/MM/YYYY HH:mm");
+}
+
+export type TemporalInputKind = "date" | "time" | "datetime";
+
+export function getTemporalInputKind(
+  column: TemplateColumn,
+): TemporalInputKind | null {
+  if (
+    column.dataType === "date" ||
+    column.dataType === "time" ||
+    column.dataType === "datetime"
+  ) {
+    return column.dataType;
+  }
+  return null;
+}
+
+/** Giá trị cho input date/time/datetime-local. */
+export function temporalInputValue(
+  column: TemplateColumn,
+  raw: string,
+): string {
+  switch (column.dataType) {
+    case "datetime":
+      return toDateTimeInputValue(raw);
+    case "date":
+      return toDateInputValue(raw);
+    case "time":
+      return toTimeInputValue(raw);
+    default:
+      return raw;
+  }
+}
+
+/** Hiển thị trên bảng theo kiểu cột. */
+export function formatTemporalDisplay(
+  column: TemplateColumn,
+  raw: string,
+): string {
+  if (!raw.trim()) return "";
+  switch (column.dataType) {
+    case "datetime":
+      return formatDateTimeDisplay(raw);
+    case "date":
+      return formatDateDisplay(raw);
+    case "time":
+      return toTimeInputValue(raw) || raw;
+    default:
+      return raw;
+  }
+}
+
+/** Chuẩn hoá trước khi gửi API (dueDate, fieldValues…). */
+export function parseTemporalForApi(
+  column: TemplateColumn,
+  raw: string,
+): string | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (column.dataType === "datetime") {
+    const local = toDateTimeInputValue(trimmed);
+    return local ? `${local}:00` : undefined;
+  }
+  if (column.dataType === "date") {
+    return toDateInputValue(trimmed) || undefined;
+  }
+  if (column.dataType === "time") {
+    return toTimeInputValue(trimmed) || undefined;
+  }
+  return trimmed;
 }

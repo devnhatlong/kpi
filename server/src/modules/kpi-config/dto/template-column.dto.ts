@@ -45,4 +45,9 @@ export class TemplateColumnDto {
   @ApiProperty({ enum: TemplateColumnDataType })
   @IsEnum(TemplateColumnDataType, { message: 'Kiểu dữ liệu không hợp lệ.' })
   dataType!: TemplateColumnDataType;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  required?: boolean;
 }

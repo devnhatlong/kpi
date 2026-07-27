@@ -77,12 +77,14 @@ import {
   getAssignmentDialogColumns,
   getColumnSemanticField,
   getTemplateColumnValue,
+  getTemporalInputKind,
   isNumericTemplateColumn,
+  isTemplateColumnRequired,
+  parseTemporalForApi,
   readFieldValueBySemantic,
   taskValueSourceFromAssignment,
+  temporalInputValue,
   toDateInputValue,
-  toDateTimeInputValue,
-  toTimeInputValue,
   type TaskValueSource,
 } from "../template-column-utils";
 
@@ -378,7 +380,6 @@ export function KpiConfigView() {
                       <TableHead className="w-32">Mã</TableHead>
                       <TableHead>Nội dung công việc</TableHead>
                       <TableHead>Nhóm công việc</TableHead>
-                      <TableHead className="w-36">Nhiệm vụ con</TableHead>
                       <TableHead className="w-28">Trạng thái</TableHead>
                       <TableHead className="w-24 text-right">
                         Thao tác
@@ -387,10 +388,10 @@ export function KpiConfigView() {
                   </TableHeader>
                   <TableBody>
                     {contentsQuery.isLoading ? (
-                      <EmptyRow colSpan={6} text="Đang tải nội dung..." />
+                      <EmptyRow colSpan={5} text="Đang tải nội dung..." />
                     ) : contents.length === 0 ? (
                       <EmptyRow
-                        colSpan={6}
+                        colSpan={5}
                         text="Chưa có nội dung công việc."
                       />
                     ) : (
@@ -410,13 +411,6 @@ export function KpiConfigView() {
                             ) : null}
                           </TableCell>
                           <TableCell>{groupOf(content)?.name ?? "-"}</TableCell>
-                          <TableCell>
-                            <Badge variant="secondary">
-                              {content.allowMultipleTasks === false
-                                ? "Tối đa 1"
-                                : "Nhiều"}
-                            </Badge>
-                          </TableCell>
                           <TableCell>
                             <ActiveBadge active={content.isActive} />
                           </TableCell>
@@ -545,7 +539,6 @@ export function KpiConfigView() {
           initialContent={creatingForContent}
           template={selectedTemplate}
           contents={scopedContents}
-          tasks={scopedTasks}
           users={users}
           userRoleCodes={userRoleCodes}
           onSuccess={() => tasksQuery.mutate()}
@@ -724,9 +717,6 @@ function ContentDialog({
   );
   const [description, setDescription] = useState(edit?.description ?? "");
   const [sortOrder, setSortOrder] = useState(String(edit?.sortOrder ?? 0));
-  const [allowMultipleTasks, setAllowMultipleTasks] = useState(
-    edit?.allowMultipleTasks ?? true,
-  );
   const [isActive, setIsActive] = useState(edit?.isActive ?? true);
   const [saving, setSaving] = useState(false);
 
@@ -742,7 +732,6 @@ function ContentDialog({
         groupId,
         description: description.trim(),
         sortOrder: Number(sortOrder) || 0,
-        allowMultipleTasks,
         isActive,
         ...(edit ? { code: code.trim().toUpperCase() || edit.code } : {}),
       };
@@ -823,18 +812,6 @@ function ContentDialog({
               </div>
             </div>
           </div>
-          <div className="flex w-full items-center justify-between gap-3 rounded-md border px-3 py-3">
-            <div className="min-w-0 space-y-0.5">
-              <Label>Cho phép nhiều nhiệm vụ con</Label>
-              <p className="text-xs text-muted-foreground">
-                Tắt = mỗi nội dung chỉ 1 nhiệm vụ
-              </p>
-            </div>
-            <Switch
-              checked={allowMultipleTasks}
-              onCheckedChange={setAllowMultipleTasks}
-            />
-          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -904,7 +881,6 @@ type TaskDialogProps = {
   initialContent: WorkContent | null;
   template: KpiTemplate | null;
   contents: WorkContent[];
-  tasks: TaskAssignment[];
   users: Awaited<ReturnType<typeof fetchUsers>>;
   userRoleCodes: string[];
   onSuccess: () => void;
@@ -917,7 +893,6 @@ function TaskDialog({
   initialContent,
   template,
   contents,
-  tasks,
   users,
   userRoleCodes,
   onSuccess,
@@ -969,18 +944,19 @@ function TaskDialog({
   };
 
   const submit = async () => {
-    const hasContentField = dialogColumns.some(
-      (column) => getColumnSemanticField(column, template) === "content_name",
+    const contentColumn = editableColumns.find(
+      (column) =>
+        getColumnSemanticField(column, template) === "content_name",
     );
-    const hasAssigneeField = dialogColumns.some(
+    const assigneeColumn = editableColumns.find(
       (column) => getColumnSemanticField(column, template) === "assignee",
     );
 
-    if (hasContentField && !form.contentId) {
+    if (contentColumn && isTemplateColumnRequired(contentColumn) && !form.contentId) {
       toast.error("Vui lòng chọn nội dung công việc.");
       return;
     }
-    if (hasAssigneeField && !form.assigneeId) {
+    if (assigneeColumn && isTemplateColumnRequired(assigneeColumn) && !form.assigneeId) {
       toast.error("Vui lòng chọn người thực hiện.");
       return;
     }
@@ -997,29 +973,13 @@ function TaskDialog({
       return;
     }
 
-    if (!edit) {
-      const content = contents.find(
-        (item) => entityId(item) === form.contentId,
-      );
-      if (content?.allowMultipleTasks === false) {
-        const existing = tasks.filter(
-          (item) => entityId(item.contentId) === form.contentId,
-        ).length;
-        if (existing >= 1) {
-          toast.error(
-            "Nội dung này chỉ cho phép một nhiệm vụ. Bật “Cho phép nhiều nhiệm vụ con” nếu cần thêm.",
-          );
-          return;
-        }
-      }
-    }
-
     for (const column of editableColumns) {
       const semantic = getColumnSemanticField(column, template);
       if (
         semantic === "content_name" ||
         semantic === "assignee" ||
-        isAutoIncrementLike(column)
+        isAutoIncrementLike(column) ||
+        !isTemplateColumnRequired(column)
       ) {
         continue;
       }
@@ -1033,25 +993,46 @@ function TaskDialog({
       readFieldValueBySemantic(template, form.fieldValues, "task_title") ||
       firstTextFieldValue(dialogColumns, form.fieldValues, template) ||
       "Nhiệm vụ mới";
-    const hasDueDateField = editableColumns.some(
+    const dueDateColumn = editableColumns.find(
       (column) => getColumnSemanticField(column, template) === "due_date",
     );
-    const dueDateFromForm = toIsoDate(
-      readFieldValueBySemantic(template, form.fieldValues, "due_date"),
+    const dueDateRaw = readFieldValueBySemantic(
+      template,
+      form.fieldValues,
+      "due_date",
     );
-    if (hasDueDateField && !dueDateFromForm) {
+    const dueDateFromForm = dueDateColumn
+      ? parseTemporalForApi(dueDateColumn, dueDateRaw)
+      : toIsoDate(dueDateRaw) || undefined;
+    if (
+      dueDateColumn &&
+      isTemplateColumnRequired(dueDateColumn) &&
+      !dueDateFromForm
+    ) {
       toast.error("Vui lòng chọn thời hạn hoàn thành.");
       return;
     }
     // Chỉ lưu ngày khi user nhập, hoặc giữ ngày cũ khi sửa (không tự gán hôm nay).
     const dueDate =
       dueDateFromForm ||
-      (edit?.dueDate ? toIsoDate(String(edit.dueDate)) : undefined) ||
+      (edit?.dueDate
+        ? dueDateColumn
+          ? parseTemporalForApi(dueDateColumn, String(edit.dueDate))
+          : toIsoDate(String(edit.dueDate))
+        : undefined) ||
       undefined;
-    const reportDueDate =
-      toIsoDate(
-        readFieldValueBySemantic(template, form.fieldValues, "report_due_date"),
-      ) || undefined;
+    const reportDueColumn = dialogColumns.find(
+      (column) =>
+        getColumnSemanticField(column, template) === "report_due_date",
+    );
+    const reportDueRaw = readFieldValueBySemantic(
+      template,
+      form.fieldValues,
+      "report_due_date",
+    );
+    const reportDueDate = reportDueColumn
+      ? parseTemporalForApi(reportDueColumn, reportDueRaw)
+      : toIsoDate(reportDueRaw) || undefined;
     const product =
       readFieldValueBySemantic(template, form.fieldValues, "product") || "—";
     const standardRaw = readFieldValueBySemantic(
@@ -1176,6 +1157,7 @@ function TaskDialog({
                 {dialogColumns.map((column) => {
                   const semantic = getColumnSemanticField(column, template);
                   const label = column.title;
+                  const fieldRequired = isTemplateColumnRequired(column);
                   const editable = canEditDialogColumn(
                     column,
                     userRoleCodes,
@@ -1184,7 +1166,7 @@ function TaskDialog({
 
                   if (semantic === "content_name") {
                     return (
-                      <Field key={column.id} label={label} required>
+                      <Field key={column.id} label={label} required={fieldRequired}>
                         <Select
                           value={form.contentId}
                           onValueChange={(value) =>
@@ -1215,7 +1197,7 @@ function TaskDialog({
 
                   if (semantic === "assignee") {
                     return (
-                      <Field key={column.id} label={label} required>
+                      <Field key={column.id} label={label} required={fieldRequired}>
                         <Select
                           value={form.assigneeId}
                           onValueChange={(value) =>
@@ -1244,50 +1226,22 @@ function TaskDialog({
                     );
                   }
 
-                  if (
-                    column.dataType === "date" ||
-                    semantic === "due_date" ||
-                    semantic === "report_due_date"
-                  ) {
+                  const temporalKind = getTemporalInputKind(column);
+                  if (temporalKind) {
+                    const inputType =
+                      temporalKind === "datetime"
+                        ? "datetime-local"
+                        : temporalKind;
                     return (
-                      <Field key={column.id} label={label} required>
+                      <Field
+                        key={column.id}
+                        label={label}
+                        required={fieldRequired}
+                      >
                         <Input
-                          type="date"
-                          value={toDateInputValue(
-                            form.fieldValues[column.key] ?? "",
-                          )}
-                          onChange={(event) =>
-                            setFieldValue(column.key, event.target.value)
-                          }
-                          disabled={!editable && !!edit}
-                        />
-                      </Field>
-                    );
-                  }
-
-                  if (column.dataType === "time") {
-                    return (
-                      <Field key={column.id} label={label} required>
-                        <Input
-                          type="time"
-                          value={toTimeInputValue(
-                            form.fieldValues[column.key] ?? "",
-                          )}
-                          onChange={(event) =>
-                            setFieldValue(column.key, event.target.value)
-                          }
-                          disabled={!editable && !!edit}
-                        />
-                      </Field>
-                    );
-                  }
-
-                  if (column.dataType === "datetime") {
-                    return (
-                      <Field key={column.id} label={label} required>
-                        <Input
-                          type="datetime-local"
-                          value={toDateTimeInputValue(
+                          type={inputType}
+                          value={temporalInputValue(
+                            column,
                             form.fieldValues[column.key] ?? "",
                           )}
                           onChange={(event) =>
@@ -1301,7 +1255,7 @@ function TaskDialog({
 
                   if (isNumericTemplateColumn(column, template)) {
                     return (
-                      <Field key={column.id} label={label} required>
+                      <Field key={column.id} label={label} required={fieldRequired}>
                         <Input
                           type="number"
                           inputMode="decimal"
@@ -1321,7 +1275,7 @@ function TaskDialog({
                     <Field
                       key={column.id}
                       label={label}
-                      required
+                      required={fieldRequired}
                       className={
                         semantic === "task_title" ? "sm:col-span-2" : undefined
                       }
@@ -1355,7 +1309,7 @@ function TaskDialog({
                 (userRoleCodes.includes("UNIT_ADMIN") ||
                   userRoleCodes.includes("MANAGER") ||
                   userRoleCodes.includes("SUPER_ADMIN")) ? (
-                  <Field label="Nội dung công việc" required>
+                  <Field label="Nội dung công việc">
                     <Select
                       value={form.contentId}
                       onValueChange={(value) =>
@@ -1388,7 +1342,7 @@ function TaskDialog({
                 ) &&
                 (userRoleCodes.includes("UNIT_ADMIN") ||
                   userRoleCodes.includes("MANAGER")) ? (
-                  <Field label="Người thực hiện" required>
+                  <Field label="Người thực hiện">
                     <Select
                       value={form.assigneeId}
                       onValueChange={(value) =>

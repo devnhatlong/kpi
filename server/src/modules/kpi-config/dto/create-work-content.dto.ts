@@ -28,9 +28,6 @@ export class CreateWorkContentDto {
   @NumberNotRequired('Thứ tự hiển thị', { example: 1 })
   sortOrder?: number;
 
-  @BooleanNotRequired('Cho phép nhiều nhiệm vụ con', { example: true })
-  allowMultipleTasks?: boolean;
-
   @BooleanNotRequired('Trạng thái hoạt động', { example: true })
   isActive?: boolean;
 }

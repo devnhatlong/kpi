@@ -140,7 +140,6 @@ export class KpiConfigService {
       name: dto.name.trim(),
       description: dto.description?.trim() ?? '',
       sortOrder: dto.sortOrder ?? 0,
-      allowMultipleTasks: dto.allowMultipleTasks ?? true,
       isActive: dto.isActive ?? true,
     });
     await data.populate('groupId', 'code name');
@@ -189,9 +188,6 @@ export class KpiConfigService {
     if (dto.description !== undefined)
       content.description = dto.description.trim();
     if (dto.sortOrder !== undefined) content.sortOrder = dto.sortOrder;
-    if (dto.allowMultipleTasks !== undefined) {
-      content.allowMultipleTasks = dto.allowMultipleTasks;
-    }
     if (dto.isActive !== undefined) content.isActive = dto.isActive;
     await content.save();
     await content.populate('groupId', 'code name');
@@ -221,7 +217,6 @@ export class KpiConfigService {
       throw new BadRequestException('Nội dung công việc là bắt buộc.');
     }
     await this.validateTaskReferences(dto.contentId, dto.assigneeId);
-    await this.assertContentAllowsNewTask(dto.contentId);
     const data = await this.taskModel.create({
       ...this.normalizeTaskInput(dto),
       fieldValues: dto.fieldValues ?? {},
@@ -251,7 +246,7 @@ export class KpiConfigService {
       [
         {
           path: 'contentId',
-          select: 'code name groupId allowMultipleTasks',
+          select: 'code name groupId',
           populate: { path: 'groupId', select: 'code name' },
         },
         { path: 'assigneeId', select: 'username fullName departmentId' },
@@ -276,10 +271,6 @@ export class KpiConfigService {
       await this.validateTaskReferences(contentId, assigneeId);
     } else if (assigneeId) {
       await this.validateTaskReferences(undefined, assigneeId);
-    }
-    const previousContentId = task.contentId ? String(task.contentId) : '';
-    if (dto.contentId && dto.contentId !== previousContentId) {
-      await this.assertContentAllowsNewTask(dto.contentId);
     }
     const normalized = this.normalizeTaskInput(dto);
     if (dto.fieldValues !== undefined) {
@@ -356,6 +347,7 @@ export class KpiConfigService {
             ? 'CALCULATED'
             : (item.inputRoleCode?.trim() ?? ''),
         dataType: item.dataType,
+        required: item.required ?? false,
       }));
     }
     if (dto.headerGroups !== undefined) {
@@ -426,6 +418,7 @@ export class KpiConfigService {
             ? 'CALCULATED'
             : (item.inputRoleCode?.trim() ?? ''),
         dataType: item.dataType,
+        required: item.required ?? false,
       })),
       headerGroups: this.normalizeHeaderGroups(dto.headerGroups ?? []),
       includedContentIds: (dto.includedContentIds ?? []).map(
@@ -580,24 +573,6 @@ export class KpiConfigService {
     return data;
   }
 
-  private async assertContentAllowsNewTask(contentId: string) {
-    const content = await this.requireById(
-      this.workContentModel,
-      contentId,
-      'Không tìm thấy nội dung công việc.',
-    );
-    if (content.allowMultipleTasks === false) {
-      const existing = await this.taskModel.countDocuments({
-        contentId: new Types.ObjectId(contentId),
-      });
-      if (existing >= 1) {
-        throw new BadRequestException(
-          'Nội dung này chỉ cho phép một nhiệm vụ. Bật “Cho phép nhiều nhiệm vụ con” nếu cần thêm.',
-        );
-      }
-    }
-  }
-
   private async validateTaskReferences(
     contentId?: string,
     assigneeId?: string,
@@ -625,7 +600,7 @@ export class KpiConfigService {
     return task.populate([
       {
         path: 'contentId',
-        select: 'code name groupId allowMultipleTasks',
+        select: 'code name groupId',
         populate: { path: 'groupId', select: 'code name' },
       },
       { path: 'assigneeId', select: 'username fullName departmentId' },

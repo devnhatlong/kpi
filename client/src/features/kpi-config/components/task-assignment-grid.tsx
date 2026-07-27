@@ -59,6 +59,19 @@ function relationId(value: object | string): string {
   return entityId(value as { _id?: string; id?: string } | string);
 }
 
+function assigneeLabel(task: TaskAssignment): string {
+  if (typeof task.assigneeId === "object" && task.assigneeId) {
+    return (
+      task.assigneeId.fullName?.trim() ||
+      task.assigneeId.username ||
+      ""
+    );
+  }
+  return "";
+}
+
+const ASSIGNEE_COL_WIDTH = 140;
+
 function buildRows(
   groups: WorkGroup[],
   contents: WorkContent[],
@@ -368,10 +381,12 @@ export function TaskAssignmentGrid({
     () => buildRows(groups, contents, tasks),
     [groups, contents, tasks],
   );
-  const columnCount = visibleColumns.length + 1;
+  const columnCount = visibleColumns.length + 2;
   const minTableWidth = Math.max(
     960,
-    visibleColumns.reduce((sum, item) => sum + item.width, 0) + 96,
+    visibleColumns.reduce((sum, item) => sum + item.width, 0) +
+      ASSIGNEE_COL_WIDTH +
+      96,
   );
 
   const saveCell = async (
@@ -498,6 +513,7 @@ export function TaskAssignmentGrid({
               {headerPreview.widths.map((width, index) => (
                 <col key={`col-${index}`} style={{ width }} />
               ))}
+              <col style={{ width: ASSIGNEE_COL_WIDTH }} />
               <col style={{ width: 96 }} />
             </colgroup>
           ) : null}
@@ -518,9 +534,14 @@ export function TaskAssignmentGrid({
                   </HeaderCell>
                 ))}
                 {rowIndex === 0 ? (
-                  <HeaderCell rowSpan={headerPreview.rows.length}>
-                    Thao tác
-                  </HeaderCell>
+                  <>
+                    <HeaderCell rowSpan={headerPreview.rows.length}>
+                      Giao cho
+                    </HeaderCell>
+                    <HeaderCell rowSpan={headerPreview.rows.length}>
+                      Thao tác
+                    </HeaderCell>
+                  </>
                 ) : null}
               </tr>
             ))}
@@ -564,8 +585,6 @@ export function TaskAssignmentGrid({
                   const taskCount = tasks.filter(
                     (item) => relationId(item.contentId) === contentId,
                   ).length;
-                  const canAddMore =
-                    row.content.allowMultipleTasks !== false || taskCount === 0;
                   return (
                     <tr key={row.id}>
                       <td
@@ -573,34 +592,28 @@ export function TaskAssignmentGrid({
                         className="border border-slate-300 bg-slate-100 px-3 py-1.5 font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                       >
                         <div className="flex items-center gap-3">
-                          {canAddMore ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 shrink-0 px-2 text-xs"
-                              onClick={() => onAddTask(row.content)}
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                              Thêm nhiệm vụ
-                            </Button>
-                          ) : (
-                            <span
-                              className="h-7 shrink-0 px-2 text-xs font-normal text-muted-foreground"
-                              title="Nội dung này chỉ cho phép một nhiệm vụ"
-                            >
-                              Đã đủ 1 nhiệm vụ
-                            </span>
-                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 shrink-0 px-2 text-xs"
+                            onClick={() => onAddTask(row.content)}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Thêm nhiệm vụ
+                          </Button>
                           <span className="min-w-0 flex-1 text-center break-words whitespace-normal">
                             {row.content.name}
                           </span>
-                          <span className="w-[7.5rem] shrink-0" aria-hidden />
+                          <span className="w-[4.5rem] shrink-0 text-right text-xs font-normal text-muted-foreground tabular-nums">
+                            {taskCount} NV
+                          </span>
                         </div>
                       </td>
                     </tr>
                   );
                 }
 
+                const assignedTo = assigneeLabel(row.task);
                 return (
                   <tr
                     key={row.id}
@@ -616,6 +629,12 @@ export function TaskAssignmentGrid({
                         onSave={saveCell}
                       />
                     ))}
+                    <DataCell
+                      className={`min-w-[8rem] text-left ${assignedTo ? "" : "text-muted-foreground"}`}
+                      title={assignedTo || "Chưa giao"}
+                    >
+                      {assignedTo || "—"}
+                    </DataCell>
                     <DataCell className="sticky right-0 bg-background p-1 text-center">
                       <div className="inline-flex gap-1">
                         <Button

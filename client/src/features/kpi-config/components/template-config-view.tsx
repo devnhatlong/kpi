@@ -95,6 +95,7 @@ function column(
   width: number,
   inputRoleCode: string,
   dataType: DataType,
+  required = false,
 ): TemplateColumn {
   return {
     id: key,
@@ -105,6 +106,7 @@ function column(
     visible: true,
     inputRoleCode,
     dataType,
+    required,
   };
 }
 
@@ -639,6 +641,15 @@ export function TemplateConfigView({
         const next = { ...item, ...patch };
         if (patch.dataType === "auto_increment") {
           next.inputRoleCode = CALCULATED_INPUT;
+          next.required = false;
+        }
+        if (
+          patch.inputRoleCode === CALCULATED_INPUT ||
+          (patch.inputRoleCode !== undefined && patch.inputRoleCode === "")
+        ) {
+          if (patch.inputRoleCode === CALCULATED_INPUT) {
+            next.required = false;
+          }
         }
         return next;
       });
@@ -1128,13 +1139,14 @@ export function TemplateConfigView({
                 </div>
 
                 <div className="overflow-x-auto rounded-md border">
-                  <div className="min-w-[1100px]">
-                    <div className="grid grid-cols-[70px_1fr_180px_130px_80px_150px_90px] gap-2 border-b bg-muted/50 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+                  <div className="min-w-[1180px]">
+                    <div className="grid grid-cols-[70px_1fr_180px_130px_80px_70px_150px_90px] gap-2 border-b bg-muted/50 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
                       <span>Hiện</span>
                       <span>Nhãn và mã trường</span>
                       <span>Nhóm header</span>
                       <span>Kiểu dữ liệu</span>
                       <span>Rộng</span>
+                      <span>Bắt buộc</span>
                       <span>Role nhập</span>
                       <span className="text-right">Thứ tự</span>
                     </div>
@@ -1147,7 +1159,7 @@ export function TemplateConfigView({
                     {columns.map((item, index) => (
                       <div
                         key={item.id}
-                        className="grid grid-cols-[70px_1fr_180px_130px_80px_150px_90px] items-start gap-2 border-b px-3 py-2 last:border-b-0"
+                        className="grid grid-cols-[70px_1fr_180px_130px_80px_70px_150px_90px] items-start gap-2 border-b px-3 py-2 last:border-b-0"
                       >
                         <Switch
                           className="mt-1.5"
@@ -1220,6 +1232,19 @@ export function TemplateConfigView({
                             })
                           }
                         />
+                        <div className="flex h-9 items-center justify-center">
+                          <Switch
+                            checked={item.required ?? false}
+                            disabled={
+                              isAutoIncrementColumn(item) ||
+                              item.inputRoleCode === CALCULATED_INPUT
+                            }
+                            onCheckedChange={(required) =>
+                              updateColumn(item.id, { required })
+                            }
+                            aria-label="Bắt buộc nhập"
+                          />
+                        </div>
                         <Select
                           value={item.inputRoleCode || "__NONE__"}
                           onValueChange={(inputRoleCode) =>

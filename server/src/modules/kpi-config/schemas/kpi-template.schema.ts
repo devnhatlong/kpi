@@ -48,6 +48,9 @@ export class TemplateColumn {
     default: TemplateColumnDataType.TEXT,
   })
   dataType!: TemplateColumnDataType;
+
+  @Prop({ default: false })
+  required!: boolean;
 }
 
 export const TemplateColumnSchema =

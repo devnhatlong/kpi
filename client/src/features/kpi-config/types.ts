@@ -18,8 +18,6 @@ export type WorkContent = {
   groupId: WorkGroup | string;
   description?: string;
   sortOrder: number;
-  /** true = nhiều nhiệm vụ con; false = tối đa 1. Mặc định true. */
-  allowMultipleTasks?: boolean;
   isActive: boolean;
 };
 
@@ -338,6 +336,8 @@ export type TemplateColumn = {
   visible: boolean;
   inputRoleCode: string;
   dataType: TemplateColumnDataType;
+  /** Bắt buộc nhập khi giao/cập nhật nhiệm vụ. */
+  required?: boolean;
 };
 
 export type TemplateHeaderGroup = {
