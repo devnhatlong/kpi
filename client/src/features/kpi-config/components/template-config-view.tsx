@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import useSWR from "swr";
 import {
   ArrowDown,
@@ -69,6 +69,8 @@ import {
 } from "../template-mappers";
 import {
   isAutoIncrementColumn,
+  type CatalogScope,
+  type KpiTemplate,
   type TemplateColumn,
   type TemplateColumnDataType,
   type TemplateHeaderGroup,
@@ -76,6 +78,12 @@ import {
   type WorkContent,
 } from "../types";
 import { CALCULATED_INPUT } from "../template-column-utils";
+import { CatalogScopeBadge } from "./catalog-scope-badge";
+import { CatalogScopeFields } from "./catalog-scope-fields";
+import {
+  isDepartmentCatalog,
+  ownerDepartmentIdString,
+} from "../catalog-scope-utils";
 
 type DataType = TemplateColumnDataType;
 
@@ -386,10 +394,12 @@ function HeaderPathSelects({
   groups,
   path,
   onChange,
+  disabled,
 }: {
   groups: TemplateHeaderGroup[];
   path: string[];
   onChange: (path: string[]) => void;
+  disabled?: boolean;
 }) {
   const options = flattenHeaderOptions(groups);
   const value = path.length ? path.join("/") : "__NONE__";
@@ -398,6 +408,7 @@ function HeaderPathSelects({
     <div className="space-y-1">
       <Select
         value={value}
+        disabled={disabled}
         onValueChange={(selected) => {
           if (selected === "__NONE__") {
             onChange([]);
@@ -545,15 +556,27 @@ export function TemplateConfigView({
   contents,
   roles,
   users,
+  catalogScope,
+  allowMutateScope,
+  canMutateAllCatalog = false,
   initialTemplateId,
   initialConfigTab = "columns",
 }: {
   contents: WorkContent[];
   roles: Role[];
   users: UserAccount[];
+  /** Lọc danh sách biểu mẫu. Bỏ trống = Super Admin xem tất cả. */
+  catalogScope?: CatalogScope;
+  /** Phạm vi được phép tạo/sửa. Mặc định theo catalogScope. */
+  allowMutateScope?: CatalogScope;
+  /** Super Admin sửa được mọi biểu mẫu (hệ thống + đơn vị). */
+  canMutateAllCatalog?: boolean;
   initialTemplateId?: string;
   initialConfigTab?: "columns" | "contents" | "formula";
 }) {
+  const listScope = catalogScope;
+  const mutateScope = allowMutateScope ?? catalogScope ?? "SYSTEM";
+  const isDepartmentScope = mutateScope === "DEPARTMENT";
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [templateDialogMode, setTemplateDialogMode] = useState<
     "create" | "copy" | "edit" | null
@@ -565,12 +588,23 @@ export function TemplateConfigView({
   const [newAssignedRoleIds, setNewAssignedRoleIds] = useState<string[]>([]);
   const [newAssignedUserIds, setNewAssignedUserIds] = useState<string[]>([]);
   const [newIsActive, setNewIsActive] = useState(true);
+  const [newTemplateScope, setNewTemplateScope] = useState<CatalogScope>("SYSTEM");
+  const [newTemplateOwnerDepartmentId, setNewTemplateOwnerDepartmentId] =
+    useState("");
   const [saving, setSaving] = useState(false);
   const [templates, setTemplates] = useState<TemplateDraft[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [configTab, setConfigTab] = useState(initialConfigTab);
-  const templatesQuery = useSWR(kpiConfigKeys.templates, fetchKpiTemplates);
+  const templatesQuery = useSWR(kpiConfigKeys.templates(listScope), () =>
+    listScope ? fetchKpiTemplates(listScope) : fetchKpiTemplates(),
+  );
   const templatesHydratedRef = useRef(false);
+
+  useEffect(() => {
+    templatesHydratedRef.current = false;
+    setTemplates([]);
+    setSelectedTemplateId("");
+  }, [listScope]);
 
   useEffect(() => {
     setConfigTab(initialConfigTab);
@@ -588,7 +622,7 @@ export function TemplateConfigView({
       "";
     setSelectedTemplateId(preferred);
     templatesHydratedRef.current = true;
-  }, [initialTemplateId, templatesQuery.data]);
+  }, [initialTemplateId, templatesQuery.data, listScope]);
 
   useEffect(() => {
     if (!initialTemplateId || !templates.length) return;
@@ -599,6 +633,38 @@ export function TemplateConfigView({
   const activeTemplate = templates.find(
     (template) => template.id === selectedTemplateId,
   );
+  const templateCanMutate = (template: TemplateDraft) => {
+    if (canMutateAllCatalog) return true;
+    const item = { scope: template.scope ?? "SYSTEM" };
+    if (mutateScope === "SYSTEM") return !isDepartmentCatalog(item);
+    return isDepartmentCatalog(item);
+  };
+  const activeReadOnly = activeTemplate
+    ? !templateCanMutate(activeTemplate)
+    : false;
+  const templateMetaById = useMemo(() => {
+    const map = new Map<string, KpiTemplate>();
+    for (const item of templatesQuery.data ?? []) {
+      map.set(entityId(item), item);
+    }
+    return map;
+  }, [templatesQuery.data]);
+  const activeTemplateContents = useMemo(() => {
+    if (!activeTemplate) return contents;
+    const scope = activeTemplate.scope ?? "SYSTEM";
+    if (scope === "SYSTEM") {
+      return contents.filter((item) => !isDepartmentCatalog(item));
+    }
+    const ownerId = ownerDepartmentIdString(
+      templateMetaById.get(activeTemplate.id)?.ownerDepartmentId,
+    );
+    return contents.filter(
+      (item) =>
+        isDepartmentCatalog(item) &&
+        (!ownerId ||
+          ownerDepartmentIdString(item.ownerDepartmentId) === ownerId),
+    );
+  }, [activeTemplate, contents, templateMetaById]);
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
 
@@ -780,6 +846,16 @@ export function TemplateConfigView({
     setNewIsActive(
       mode === "create" ? true : (template?.isActive ?? true),
     );
+    if (mode === "create") {
+      setNewTemplateScope(isDepartmentScope ? "DEPARTMENT" : "SYSTEM");
+      setNewTemplateOwnerDepartmentId("");
+    } else if (mode === "copy" && template) {
+      setNewTemplateScope(template.scope ?? "SYSTEM");
+      setNewTemplateOwnerDepartmentId(template.ownerDepartmentId ?? "");
+    } else {
+      setNewTemplateScope(template?.scope ?? "SYSTEM");
+      setNewTemplateOwnerDepartmentId(template?.ownerDepartmentId ?? "");
+    }
   };
 
   const submitTemplateDialog = async () => {
@@ -799,6 +875,15 @@ export function TemplateConfigView({
     }
     if (newTemplateVisibilityScope === "USERS" && !newAssignedUserIds.length) {
       toast.error("Vui lòng chọn ít nhất một tài khoản.");
+      return;
+    }
+    if (
+      templateDialogMode !== "edit" &&
+      canMutateAllCatalog &&
+      newTemplateScope === "DEPARTMENT" &&
+      !newTemplateOwnerDepartmentId
+    ) {
+      toast.error("Vui lòng chọn đơn vị cho phạm vi Đơn vị.");
       return;
     }
 
@@ -842,9 +927,29 @@ export function TemplateConfigView({
                 assignedRoleIds: [...newAssignedRoleIds],
                 assignedUserIds: [...newAssignedUserIds],
                 isActive: newIsActive,
+                scope: canMutateAllCatalog
+                  ? newTemplateScope
+                  : activeTemplate.scope,
+                ownerDepartmentId: canMutateAllCatalog
+                  ? newTemplateScope === "DEPARTMENT"
+                    ? newTemplateOwnerDepartmentId
+                    : null
+                  : activeTemplate.ownerDepartmentId,
               }
             : {
-                ...createBlankTemplateDraft(name, code),
+                ...createBlankTemplateDraft(
+                  name,
+                  code,
+                  [],
+                  canMutateAllCatalog
+                    ? newTemplateScope
+                    : isDepartmentScope
+                      ? "DEPARTMENT"
+                      : "SYSTEM",
+                  canMutateAllCatalog && newTemplateScope === "DEPARTMENT"
+                    ? newTemplateOwnerDepartmentId
+                    : null,
+                ),
                 visibilityScope: newTemplateVisibilityScope,
                 assignedRoleIds: [...newAssignedRoleIds],
                 assignedUserIds: [...newAssignedUserIds],
@@ -866,6 +971,8 @@ export function TemplateConfigView({
       setNewTemplateName("");
       setNewTemplateCode("");
       setNewIsActive(true);
+      setNewTemplateScope("SYSTEM");
+      setNewTemplateOwnerDepartmentId("");
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không lưu được biểu mẫu."));
     } finally {
@@ -973,7 +1080,9 @@ export function TemplateConfigView({
         <aside className="min-h-0 overflow-y-auto border-b bg-muted/20 lg:border-b-0 lg:border-r">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <div className="text-xs font-bold uppercase tracking-wide">
-              Danh sách biểu mẫu
+              {isDepartmentScope
+                ? "Biểu mẫu nội bộ phòng"
+                : "Danh sách biểu mẫu"}
             </div>
             <Button
               size="sm"
@@ -1006,6 +1115,14 @@ export function TemplateConfigView({
                     onClick={() => setSelectedTemplateId(template.id)}
                   >
                     <div className="font-semibold">{template.name}</div>
+                    <div className="mt-1">
+                      <CatalogScopeBadge
+                        scope={template.scope}
+                        ownerDepartmentId={
+                          templateMetaById.get(template.id)?.ownerDepartmentId
+                        }
+                      />
+                    </div>
                     <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                       <Badge
                         variant="outline"
@@ -1030,6 +1147,7 @@ export function TemplateConfigView({
                           : `${template.assignedUserIds.length} tài khoản được xem`}
                     </div>
                   </button>
+                  {templateCanMutate(template) ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -1074,11 +1192,14 @@ export function TemplateConfigView({
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  ) : null}
                 </div>
               ))
             ) : (
               <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
-                Chưa có biểu mẫu
+                {isDepartmentScope
+                  ? "Chưa có biểu mẫu nội bộ. Tạo biểu mẫu rồi dùng ở trang Form KPI."
+                  : "Chưa có biểu mẫu"}
               </div>
             )}
           </div>
@@ -1094,12 +1215,26 @@ export function TemplateConfigView({
                     Biểu mẫu
                   </div>
                   <h2 className="mt-1 text-xl font-semibold">{templateName}</h2>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <CatalogScopeBadge
+                      scope={activeTemplate.scope}
+                      ownerDepartmentId={
+                        templateMetaById.get(activeTemplate.id)
+                          ?.ownerDepartmentId
+                      }
+                    />
+                    {activeReadOnly ? (
+                      <Badge variant="outline">Chỉ xem</Badge>
+                    ) : null}
+                  </div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     Mã: {templateCode} · Tổng rộng {totalWidth}px ·{" "}
                     {activeTemplate?.isActive ? "Đang hoạt động" : "Đang ngưng"}
                   </div>
                 </div>
                 <div className="flex gap-2">
+                  {!activeReadOnly ? (
+                    <>
                   <Button
                     variant="outline"
                     onClick={() => openTemplateDialog("edit")}
@@ -1118,6 +1253,8 @@ export function TemplateConfigView({
                     <Save className="h-4 w-4" />
                     {saving ? "Đang lưu..." : "Lưu cấu hình"}
                   </Button>
+                    </>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1147,6 +1284,8 @@ export function TemplateConfigView({
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    {!activeReadOnly ? (
+                      <>
                     <Button
                       size="sm"
                       variant="outline"
@@ -1162,6 +1301,8 @@ export function TemplateConfigView({
                       <Plus className="h-4 w-4" />
                       Thêm cột
                     </Button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
 
@@ -1191,6 +1332,7 @@ export function TemplateConfigView({
                         <Switch
                           className="mt-1.5"
                           checked={item.visible}
+                          disabled={activeReadOnly}
                           onCheckedChange={(visible) =>
                             updateColumn(item.id, { visible })
                           }
@@ -1199,6 +1341,7 @@ export function TemplateConfigView({
                           <Input
                             className="h-9"
                             value={item.title}
+                            disabled={activeReadOnly}
                             onChange={(event) =>
                               updateColumn(item.id, {
                                 title: event.target.value,
@@ -1208,6 +1351,7 @@ export function TemplateConfigView({
                           <Input
                             className="h-9 font-mono text-xs"
                             value={item.key}
+                            disabled={activeReadOnly}
                             onChange={(event) =>
                               updateColumn(item.id, {
                                 key: normalizeFieldKey(event.target.value),
@@ -1220,12 +1364,14 @@ export function TemplateConfigView({
                         <HeaderPathSelects
                           groups={headerGroups}
                           path={item.headerPath}
+                          disabled={activeReadOnly}
                           onChange={(headerPath) =>
                             updateColumn(item.id, { headerPath })
                           }
                         />
                         <Select
                           value={item.dataType}
+                          disabled={activeReadOnly}
                           onValueChange={(dataType) =>
                             updateColumn(item.id, {
                               dataType: dataType as DataType,
@@ -1249,6 +1395,7 @@ export function TemplateConfigView({
                           className="h-9"
                           type="number"
                           min={1}
+                          disabled={activeReadOnly}
                           value={item.width}
                           onChange={(event) =>
                             updateColumn(item.id, {
@@ -1263,6 +1410,7 @@ export function TemplateConfigView({
                           <Switch
                             checked={item.required ?? false}
                             disabled={
+                              activeReadOnly ||
                               isAutoIncrementColumn(item) ||
                               item.inputRoleCode === CALCULATED_INPUT
                             }
@@ -1282,7 +1430,9 @@ export function TemplateConfigView({
                                   : inputRoleCode,
                             })
                           }
-                          disabled={isAutoIncrementColumn(item)}
+                          disabled={
+                            activeReadOnly || isAutoIncrementColumn(item)
+                          }
                         >
                           <SelectTrigger className="h-9">
                             <SelectValue
@@ -1316,6 +1466,8 @@ export function TemplateConfigView({
                           </SelectContent>
                         </Select>
                         <div className="flex justify-end gap-0.5">
+                          {!activeReadOnly ? (
+                            <>
                           <Button
                             size="icon"
                             variant="ghost"
@@ -1342,6 +1494,8 @@ export function TemplateConfigView({
                           >
                             <Trash2 className="h-3.5 w-3.5 text-destructive" />
                           </Button>
+                            </>
+                          ) : null}
                         </div>
                       </div>
                     ))}
@@ -1375,14 +1529,18 @@ export function TemplateConfigView({
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    {!activeReadOnly ? (
+                      <>
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      disabled={!contents.length}
+                      disabled={!activeTemplateContents.length}
                       onClick={() =>
                         setIncludedContentIds(
-                          contents.map((content) => entityId(content)),
+                          activeTemplateContents.map((content) =>
+                            entityId(content),
+                          ),
                         )
                       }
                     >
@@ -1397,17 +1555,21 @@ export function TemplateConfigView({
                     >
                       Bỏ chọn
                     </Button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
                 <div className="divide-y rounded-md border">
-                  {contents.length ? (
-                    contents.map((content) => {
+                  {activeTemplateContents.length ? (
+                    activeTemplateContents.map((content) => {
                       const id = entityId(content);
                       const checked = includedContentIds.includes(id);
                       return (
                         <label
                           key={id}
-                          className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5"
+                          className={`flex items-center justify-between gap-3 px-3 py-2.5 ${
+                            activeReadOnly ? "" : "cursor-pointer"
+                          }`}
                         >
                           <div>
                             <div className="font-medium">{content.name}</div>
@@ -1417,6 +1579,7 @@ export function TemplateConfigView({
                           </div>
                           <Switch
                             checked={checked}
+                            disabled={activeReadOnly}
                             onCheckedChange={(nextChecked) =>
                               setIncludedContentIds((current) =>
                                 nextChecked
@@ -1430,7 +1593,9 @@ export function TemplateConfigView({
                     })
                   ) : (
                     <div className="p-8 text-center text-sm text-muted-foreground">
-                      Chưa có nội dung công việc.
+                      {isDepartmentScope
+                        ? "Chưa có nội dung nội bộ. Hãy tạo ở tab Nội dung nội bộ trước."
+                        : "Chưa có nội dung công việc."}
                     </div>
                   )}
                 </div>
@@ -1463,6 +1628,7 @@ export function TemplateConfigView({
                         type="number"
                         min={0}
                         max={100}
+                        disabled={activeReadOnly}
                         value={progressWeight}
                         onChange={(event) =>
                           setProgressWeight(event.target.value)
@@ -1480,6 +1646,7 @@ export function TemplateConfigView({
                         type="number"
                         min={0}
                         max={100}
+                        disabled={activeReadOnly}
                         value={qualityWeight}
                         onChange={(event) =>
                           setQualityWeight(event.target.value)
@@ -1567,6 +1734,16 @@ export function TemplateConfigView({
                 className="font-mono"
               />
             </div>
+
+            {templateDialogMode !== "edit" && canMutateAllCatalog ? (
+              <CatalogScopeFields
+                allowSelectScope
+                scope={newTemplateScope}
+                ownerDepartmentId={newTemplateOwnerDepartmentId}
+                onScopeChange={setNewTemplateScope}
+                onOwnerDepartmentIdChange={setNewTemplateOwnerDepartmentId}
+              />
+            ) : null}
 
             <div className="space-y-2">
               <Label>Ai được xem biểu mẫu</Label>

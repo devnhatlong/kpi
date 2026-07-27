@@ -78,8 +78,8 @@ export function MasterFormAdminView() {
   );
   const { data: periods = [] } = useSWR(kpiConfigKeys.periods, fetchKpiPeriods);
   const { data: templates = [] } = useSWR(
-    kpiConfigKeys.templates,
-    fetchKpiTemplates,
+    kpiConfigKeys.templates("SYSTEM"),
+    () => fetchKpiTemplates("SYSTEM"),
   );
   const { data: departments = [] } = useSWR(
     "departments-for-master-form",

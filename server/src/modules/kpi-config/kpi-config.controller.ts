@@ -26,6 +26,7 @@ import {
   TaskAssignmentListQueryDto,
   WorkContentListQueryDto,
 } from './dto/kpi-list-query.dto';
+import { CatalogListQueryDto } from './dto/catalog-list-query.dto';
 import { KpiConfigService } from './kpi-config.service';
 import { KpiWorkflowService } from './kpi-workflow.service';
 import { KpiMasterFormService } from './kpi-master-form.service';
@@ -82,55 +83,75 @@ export class KpiConfigController {
   @ApiOperation({ summary: 'Tạo nhóm công việc' })
   @Roles(...KPI_CATALOG_EDITORS)
   @Post('groups')
-  createGroup(@Body() dto: CreateWorkGroupDto) {
-    return this.service.createGroup(dto);
+  createGroup(
+    @Body() dto: CreateWorkGroupDto,
+    @CurrentUser() user: JwtPayloadUser,
+  ) {
+    return this.service.createGroup(dto, user);
   }
 
   @ApiOperation({ summary: 'Danh sách nhóm công việc' })
   @Get('groups/all')
-  listGroups(@Query() query: PaginationQueryDto) {
-    return this.service.listGroups(query);
+  listGroups(
+    @Query() query: CatalogListQueryDto,
+    @CurrentUser() user: JwtPayloadUser,
+  ) {
+    return this.service.listGroups(query, user);
   }
 
   @ApiOperation({ summary: 'Cập nhật nhóm công việc' })
   @Roles(...KPI_CATALOG_EDITORS)
   @Patch('groups/:id')
-  updateGroup(@Param('id') id: string, @Body() dto: UpdateWorkGroupDto) {
-    return this.service.updateGroup(id, dto);
+  updateGroup(
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkGroupDto,
+    @CurrentUser() user: JwtPayloadUser,
+  ) {
+    return this.service.updateGroup(id, dto, user);
   }
 
   @ApiOperation({ summary: 'Xoá nhóm công việc' })
   @Roles(...KPI_CATALOG_EDITORS)
   @Delete('groups/:id')
-  deleteGroup(@Param('id') id: string) {
-    return this.service.deleteGroup(id);
+  deleteGroup(@Param('id') id: string, @CurrentUser() user: JwtPayloadUser) {
+    return this.service.deleteGroup(id, user);
   }
 
   @ApiOperation({ summary: 'Tạo nội dung công việc' })
   @Roles(...KPI_CATALOG_EDITORS)
   @Post('contents')
-  createContent(@Body() dto: CreateWorkContentDto) {
-    return this.service.createContent(dto);
+  createContent(
+    @Body() dto: CreateWorkContentDto,
+    @CurrentUser() user: JwtPayloadUser,
+  ) {
+    return this.service.createContent(dto, user);
   }
 
   @ApiOperation({ summary: 'Danh sách nội dung công việc' })
   @Get('contents/all')
-  listContents(@Query() query: WorkContentListQueryDto) {
-    return this.service.listContents(query);
+  listContents(
+    @Query() query: WorkContentListQueryDto,
+    @CurrentUser() user: JwtPayloadUser,
+  ) {
+    return this.service.listContents(query, user);
   }
 
   @ApiOperation({ summary: 'Cập nhật nội dung công việc' })
   @Roles(...KPI_CATALOG_EDITORS)
   @Patch('contents/:id')
-  updateContent(@Param('id') id: string, @Body() dto: UpdateWorkContentDto) {
-    return this.service.updateContent(id, dto);
+  updateContent(
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkContentDto,
+    @CurrentUser() user: JwtPayloadUser,
+  ) {
+    return this.service.updateContent(id, dto, user);
   }
 
   @ApiOperation({ summary: 'Xoá nội dung công việc' })
   @Roles(...KPI_CATALOG_EDITORS)
   @Delete('contents/:id')
-  deleteContent(@Param('id') id: string) {
-    return this.service.deleteContent(id);
+  deleteContent(@Param('id') id: string, @CurrentUser() user: JwtPayloadUser) {
+    return this.service.deleteContent(id, user);
   }
 
   @ApiOperation({ summary: 'Giao nhiệm vụ KPI' })
@@ -171,33 +192,40 @@ export class KpiConfigController {
   }
 
   @ApiOperation({ summary: 'Tạo biểu mẫu KPI' })
-  @Roles(RoleCode.SUPER_ADMIN)
+  @Roles(...KPI_CATALOG_EDITORS)
   @Post('templates')
-  createTemplate(@Body() dto: CreateKpiTemplateDto) {
-    return this.service.createTemplate(dto);
+  createTemplate(
+    @Body() dto: CreateKpiTemplateDto,
+    @CurrentUser() user: JwtPayloadUser,
+  ) {
+    return this.service.createTemplate(dto, user);
   }
 
   @ApiOperation({ summary: 'Danh sách biểu mẫu KPI' })
   @Get('templates/all')
-  listTemplates(@Query() query: PaginationQueryDto) {
-    return this.service.listTemplates(query);
+  listTemplates(
+    @Query() query: CatalogListQueryDto,
+    @CurrentUser() user: JwtPayloadUser,
+  ) {
+    return this.service.listTemplates(query, user);
   }
 
   @ApiOperation({ summary: 'Cập nhật biểu mẫu KPI' })
-  @Roles(RoleCode.SUPER_ADMIN)
+  @Roles(...KPI_CATALOG_EDITORS)
   @Patch('templates/:id')
   updateTemplate(
     @Param('id') id: string,
     @Body() dto: UpdateKpiTemplateDto,
+    @CurrentUser() user: JwtPayloadUser,
   ) {
-    return this.service.updateTemplate(id, dto);
+    return this.service.updateTemplate(id, dto, user);
   }
 
   @ApiOperation({ summary: 'Xoá biểu mẫu KPI' })
-  @Roles(RoleCode.SUPER_ADMIN)
+  @Roles(...KPI_CATALOG_EDITORS)
   @Delete('templates/:id')
-  deleteTemplate(@Param('id') id: string) {
-    return this.service.deleteTemplate(id);
+  deleteTemplate(@Param('id') id: string, @CurrentUser() user: JwtPayloadUser) {
+    return this.service.deleteTemplate(id, user);
   }
 
   // ── Periods ──────────────────────────────────────────────

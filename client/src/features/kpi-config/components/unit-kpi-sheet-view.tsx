@@ -81,13 +81,15 @@ export function UnitKpiSheetView() {
     fetchKpiPeriods,
   );
   const { data: templates = [] } = useSWR(
-    kpiConfigKeys.templates,
-    fetchKpiTemplates,
+    kpiConfigKeys.templates("DEPARTMENT"),
+    () => fetchKpiTemplates("DEPARTMENT"),
   );
-  const { data: groups = [] } = useSWR(kpiConfigKeys.groups, fetchWorkGroups);
+  const { data: groups = [] } = useSWR(kpiConfigKeys.groups("DEPARTMENT"), () =>
+    fetchWorkGroups("DEPARTMENT"),
+  );
   const { data: contents = [] } = useSWR(
-    kpiConfigKeys.contents,
-    fetchWorkContents,
+    kpiConfigKeys.contents("DEPARTMENT"),
+    () => fetchWorkContents("DEPARTMENT"),
   );
   const { data: users = [] } = useSWR("users-for-kpi-assign", fetchUsers);
 
@@ -286,8 +288,7 @@ export function UnitKpiSheetView() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Form KPI</h1>
           <p className="text-sm text-muted-foreground">
-            KPI của đơn vị — hiển thị theo header/template Super Admin đã cấu
-            hình.
+            Form KPI nội bộ của phòng — dùng biểu mẫu do phòng tự cấu hình.
           </p>
         </div>
         <WorkingUnitSelect
@@ -326,8 +327,9 @@ export function UnitKpiSheetView() {
             <CardContent className="flex flex-wrap items-center gap-3">
               {sheets.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Chưa có Form KPI. Sau khi Super Admin phát hành, form phòng sẽ
-                  tự xuất hiện; đội nhận khi phòng giao xuống.
+                  Chưa có Form KPI. Tạo{" "}
+                  <strong>Nhóm nội bộ → Nội dung nội bộ → Biểu mẫu nội bộ</strong>{" "}
+                  ở Cấu hình KPI, rồi bấm Tạo Form KPI.
                 </p>
               ) : (
                 <Select
@@ -515,10 +517,10 @@ export function UnitKpiSheetView() {
               ) : null}
             </div>
             <div className="space-y-2">
-              <Label>Biểu mẫu (header đã tạo)</Label>
+              <Label>Biểu mẫu nội bộ</Label>
               <Select value={templateId} onValueChange={setTemplateId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Chọn template" />
+                  <SelectValue placeholder="Chọn biểu mẫu" />
                 </SelectTrigger>
                 <SelectContent>
                   {templates
@@ -530,6 +532,12 @@ export function UnitKpiSheetView() {
                     ))}
                 </SelectContent>
               </Select>
+              {!templates.length ? (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Chưa có biểu mẫu nội bộ. Vào Cấu hình KPI → Biểu mẫu nội bộ
+                  để tạo trước.
+                </p>
+              ) : null}
             </div>
           </div>
           <DialogFooter>

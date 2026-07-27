@@ -78,7 +78,9 @@ export function HandoffOutboundView() {
     workingDepartmentId ? ["kpi-peers", workingDepartmentId] : null,
     () => fetchPeerDepartments(workingDepartmentId),
   );
-  const { data: contents = [] } = useSWR(kpiConfigKeys.contents, fetchWorkContents);
+  const { data: contents = [] } = useSWR(kpiConfigKeys.contents("SYSTEM"), () =>
+    fetchWorkContents("SYSTEM"),
+  );
   const { data: periods = [] } = useSWR(kpiConfigKeys.periods, fetchKpiPeriods);
 
   const [open, setOpen] = useState(false);

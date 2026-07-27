@@ -77,7 +77,10 @@ export function HandoffInboundView() {
       }),
   );
   const { data: periods = [] } = useSWR(kpiConfigKeys.periods, fetchKpiPeriods);
-  const { data: templates = [] } = useSWR(kpiConfigKeys.templates, fetchKpiTemplates);
+  const { data: templates = [] } = useSWR(
+    kpiConfigKeys.templates("SYSTEM"),
+    () => fetchKpiTemplates("SYSTEM"),
+  );
   const { data: sheets = [] } = useSWR(
     workingDepartmentId
       ? [...kpiConfigKeys.sheets, "inbound", workingDepartmentId]

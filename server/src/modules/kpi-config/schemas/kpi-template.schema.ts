@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
+import { CatalogScope } from './catalog-scope.enum';
 
 export type KpiTemplateDocument = HydratedDocument<KpiTemplate>;
 
@@ -80,7 +81,7 @@ export class KpiTemplate {
   @Prop({ required: true, trim: true })
   name!: string;
 
-  @Prop({ required: true, unique: true, trim: true, uppercase: true })
+  @Prop({ required: true, trim: true, uppercase: true })
   code!: string;
 
   @Prop({ type: [TemplateColumnSchema], default: [] })
@@ -122,6 +123,24 @@ export class KpiTemplate {
 
   @Prop({ default: true, index: true })
   isActive!: boolean;
+
+  @Prop({
+    required: true,
+    enum: Object.values(CatalogScope),
+    default: CatalogScope.SYSTEM,
+    index: true,
+  })
+  scope!: CatalogScope;
+
+  @Prop({ type: Types.ObjectId, ref: 'Department', index: true, default: null })
+  ownerDepartmentId?: Types.ObjectId | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  createdBy?: Types.ObjectId;
 }
 
 export const KpiTemplateSchema = SchemaFactory.createForClass(KpiTemplate);
+KpiTemplateSchema.index(
+  { scope: 1, ownerDepartmentId: 1, code: 1 },
+  { unique: true },
+);

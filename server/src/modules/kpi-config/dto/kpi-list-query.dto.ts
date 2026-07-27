@@ -1,11 +1,20 @@
 import { IsEnum, IsMongoId, IsOptional } from 'class-validator';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 import { TaskStatus } from '../schemas/task-assignment.schema';
+import { CatalogScope } from '../schemas/catalog-scope.enum';
 
 export class WorkContentListQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsMongoId({ message: 'Nhóm công việc không hợp lệ.' })
   groupId?: string;
+
+  @IsOptional()
+  @IsEnum(CatalogScope, { message: 'Phạm vi danh mục không hợp lệ.' })
+  scope?: CatalogScope;
+
+  @IsOptional()
+  @IsMongoId({ message: 'Đơn vị không hợp lệ.' })
+  ownerDepartmentId?: string;
 }
 
 export class TaskAssignmentListQueryDto extends PaginationQueryDto {

@@ -1,5 +1,6 @@
 import { entityId } from "@/features/organization/types";
 import type {
+  CatalogScope,
   KpiTemplate,
   KpiTemplateInput,
   TemplateColumn,
@@ -20,6 +21,8 @@ export type TemplateDraft = {
   assignedRoleIds: string[];
   assignedUserIds: string[];
   isActive: boolean;
+  scope?: CatalogScope;
+  ownerDepartmentId?: string | null;
 };
 
 function cloneHeaderGroups(groups: TemplateHeaderGroup[]): TemplateHeaderGroup[] {
@@ -59,6 +62,14 @@ export function toTemplateDraft(template: KpiTemplate): TemplateDraft {
     assignedRoleIds: template.assignedRoleIds.map(String),
     assignedUserIds: template.assignedUserIds.map(String),
     isActive: template.isActive,
+    scope: template.scope,
+    ownerDepartmentId: template.ownerDepartmentId
+      ? String(
+          typeof template.ownerDepartmentId === "object"
+            ? entityId(template.ownerDepartmentId)
+            : template.ownerDepartmentId,
+        )
+      : null,
   };
 }
 
@@ -75,6 +86,10 @@ export function toTemplateInput(template: TemplateDraft): KpiTemplateInput {
     assignedRoleIds: template.assignedRoleIds,
     assignedUserIds: template.assignedUserIds,
     isActive: template.isActive,
+    ...(template.scope ? { scope: template.scope } : {}),
+    ...(template.ownerDepartmentId
+      ? { ownerDepartmentId: template.ownerDepartmentId }
+      : {}),
   };
 }
 
@@ -82,6 +97,8 @@ export function createBlankTemplateDraft(
   name: string,
   code: string,
   includedContentIds: string[] = [],
+  scope: CatalogScope = "SYSTEM",
+  ownerDepartmentId: string | null = null,
 ): TemplateDraft {
   return {
     id: "",
@@ -96,5 +113,7 @@ export function createBlankTemplateDraft(
     assignedRoleIds: [],
     assignedUserIds: [],
     isActive: true,
+    scope,
+    ownerDepartmentId,
   };
 }

@@ -4,6 +4,7 @@ import type { Department } from "@/features/organization/types";
 import type {
   AcceptHandoffInput,
   AssignTaskTargetInput,
+  CatalogScope,
   KpiMasterForm,
   KpiMasterFormInput,
   KpiPeriod,
@@ -26,10 +27,13 @@ import type {
 } from "./types";
 
 export const kpiConfigKeys = {
-  groups: ["kpi-config", "groups"] as const,
-  contents: ["kpi-config", "contents"] as const,
+  groups: (scope?: CatalogScope) =>
+    ["kpi-config", "groups", scope ?? "default"] as const,
+  contents: (scope?: CatalogScope) =>
+    ["kpi-config", "contents", scope ?? "default"] as const,
   tasks: ["kpi-config", "tasks"] as const,
-  templates: ["kpi-config", "templates"] as const,
+  templates: (scope?: CatalogScope | "all") =>
+    ["kpi-config", "templates", scope ?? "all"] as const,
   periods: ["kpi-config", "periods"] as const,
   sheets: ["kpi-config", "sheets"] as const,
   handoffs: ["kpi-config", "handoffs"] as const,
@@ -48,8 +52,11 @@ async function fetchAll<T>(
   return result.data;
 }
 
-export function fetchWorkGroups() {
-  return fetchAll<WorkGroup>("/kpi-config/groups/all");
+export function fetchWorkGroups(scope?: CatalogScope) {
+  return fetchAll<WorkGroup>(
+    "/kpi-config/groups/all",
+    scope ? { scope } : undefined,
+  );
 }
 
 export function createWorkGroup(input: WorkGroupInput) {
@@ -64,8 +71,11 @@ export async function deleteWorkGroup(id: string) {
   return (await api.delete<ApiResponse<unknown>>(`/kpi-config/groups/${id}`)).data;
 }
 
-export function fetchWorkContents() {
-  return fetchAll<WorkContent>("/kpi-config/contents/all");
+export function fetchWorkContents(scope?: CatalogScope) {
+  return fetchAll<WorkContent>(
+    "/kpi-config/contents/all",
+    scope ? { scope } : undefined,
+  );
 }
 
 export function createWorkContent(input: WorkContentInput) {
@@ -109,8 +119,11 @@ export function assignTaskTarget(id: string, input: AssignTaskTargetInput) {
   );
 }
 
-export function fetchKpiTemplates() {
-  return fetchAll<KpiTemplate>("/kpi-config/templates/all");
+export function fetchKpiTemplates(scope?: CatalogScope) {
+  return fetchAll<KpiTemplate>(
+    "/kpi-config/templates/all",
+    scope ? { scope } : undefined,
+  );
 }
 
 export function createKpiTemplate(input: KpiTemplateInput) {

@@ -17,6 +17,7 @@ import {
   StringRequired,
 } from '@/common/decorators';
 import { TemplateVisibilityScope } from '../schemas/kpi-template.schema';
+import { CatalogScope } from '../schemas/catalog-scope.enum';
 import { TemplateColumnDto } from './template-column.dto';
 import { TemplateHeaderGroupDto } from './template-header-group.dto';
 
@@ -82,4 +83,14 @@ export class CreateKpiTemplateDto {
 
   @BooleanNotRequired('Trạng thái hoạt động', { example: true })
   isActive?: boolean;
+
+  @ApiPropertyOptional({ enum: CatalogScope, description: 'Phạm vi danh mục' })
+  @IsOptional()
+  @IsEnum(CatalogScope, { message: 'Phạm vi danh mục không hợp lệ.' })
+  scope?: CatalogScope;
+
+  @ApiPropertyOptional({ description: 'Đơn vị khi scope=DEPARTMENT' })
+  @IsOptional()
+  @IsMongoId({ message: 'Đơn vị không hợp lệ.' })
+  ownerDepartmentId?: string;
 }

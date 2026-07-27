@@ -62,6 +62,7 @@ import {
 } from "../api";
 import {
   TASK_STATUSES,
+  type CatalogScope,
   type KpiTemplate,
   type TaskAssignment,
   type TaskAssignmentInput,
@@ -71,6 +72,14 @@ import {
 } from "../types";
 import { TaskAssignmentGrid } from "./task-assignment-grid";
 import { TemplateConfigView } from "./template-config-view";
+import { CatalogScopeBadge } from "./catalog-scope-badge";
+import { CatalogScopeFields } from "./catalog-scope-fields";
+import {
+  canUserMutateCatalogItem,
+  groupsForCatalogScope,
+  isDepartmentCatalog,
+  ownerDepartmentIdString,
+} from "../catalog-scope-utils";
 import {
   buildFieldValuesFromTemplate,
   canEditDialogColumn,
@@ -131,14 +140,29 @@ export function KpiConfigView() {
     "UNIT_ADMIN",
   ]);
   const canManageTemplate = isSuperAdmin(user);
+  const canManageDepartmentTemplate =
+    userHasAnyRole(user, ["UNIT_ADMIN"]) && !canManageTemplate;
+  const canAccessTemplateTab =
+    canManageTemplate || canManageDepartmentTemplate;
+  const templateCatalogScope = canManageTemplate ? undefined : "DEPARTMENT";
   const [tab, setTab] = useState<TabValue>("tasks");
   const [templateConfigTab, setTemplateConfigTab] = useState<
     "columns" | "contents" | "formula"
   >("columns");
-  const groupsQuery = useSWR(kpiConfigKeys.groups, fetchWorkGroups);
-  const contentsQuery = useSWR(kpiConfigKeys.contents, fetchWorkContents);
+  const catalogGroupsQuery = useSWR(kpiConfigKeys.groups(), () => fetchWorkGroups());
+  const catalogContentsQuery = useSWR(kpiConfigKeys.contents(), () =>
+    fetchWorkContents(),
+  );
+  const systemGroupsQuery = useSWR(kpiConfigKeys.groups("SYSTEM"), () =>
+    fetchWorkGroups("SYSTEM"),
+  );
+  const systemTemplatesQuery = useSWR(kpiConfigKeys.templates("SYSTEM"), () =>
+    fetchKpiTemplates("SYSTEM"),
+  );
+  const systemContentsQuery = useSWR(kpiConfigKeys.contents("SYSTEM"), () =>
+    fetchWorkContents("SYSTEM"),
+  );
   const tasksQuery = useSWR(kpiConfigKeys.tasks, fetchTaskAssignments);
-  const templatesQuery = useSWR(kpiConfigKeys.templates, fetchKpiTemplates);
   const usersQuery = useSWR(["organization", "users", "all"], fetchUsers);
   const rolesQuery = useSWR(["organization", "roles", "all"], fetchRoles);
 
@@ -155,21 +179,23 @@ export function KpiConfigView() {
   const [creatingForContent, setCreatingForContent] =
     useState<WorkContent | null>(null);
 
-  const groups = groupsQuery.data ?? [];
-  const contents = contentsQuery.data ?? [];
+  const catalogGroups = catalogGroupsQuery.data ?? [];
+  const catalogContents = catalogContentsQuery.data ?? [];
+  const systemGroups = systemGroupsQuery.data ?? [];
+  const systemContents = systemContentsQuery.data ?? [];
   const tasks = tasksQuery.data ?? [];
-  const templates = templatesQuery.data ?? [];
+  const templates = systemTemplatesQuery.data ?? [];
   const userRoleCodes =
     user?.roleAssignments.map((item) => item.roleCode) ?? [];
   const users = usersQuery.data?.filter((item) => item.isActive) ?? [];
   const roles = rolesQuery.data?.filter((role) => role.isActive) ?? [];
 
   useEffect(() => {
-    if (tab === "template" && !canManageTemplate) setTab("tasks");
+    if (tab === "template" && !canAccessTemplateTab) setTab("tasks");
     if ((tab === "groups" || tab === "contents") && !canManageCatalog) {
       setTab("tasks");
     }
-  }, [tab, canManageTemplate, canManageCatalog]);
+  }, [tab, canAccessTemplateTab, canManageCatalog]);
 
   useEffect(() => {
     if (!templates.length || selectedTemplateId) return;
@@ -192,10 +218,10 @@ export function KpiConfigView() {
     // Rỗng = không cho chọn nội dung nào (Super Admin phải tick trong biểu mẫu).
     if (!includedIds.length) return [];
     const allowed = new Set(includedIds);
-    return contents.filter(
+    return systemContents.filter(
       (item) => item.isActive && allowed.has(entityId(item)),
     );
-  }, [contents, selectedTemplate]);
+  }, [systemContents, selectedTemplate]);
 
   const scopedTasks = useMemo(() => {
     const contentIds = new Set(scopedContents.map((item) => entityId(item)));
@@ -208,9 +234,9 @@ export function KpiConfigView() {
     if (scopedContents.some((item) => entityId(item) === currentId)) {
       return scopedContents;
     }
-    const current = contents.find((item) => entityId(item) === currentId);
+    const current = systemContents.find((item) => entityId(item) === currentId);
     return current ? [...scopedContents, current] : scopedContents;
-  }, [contents, editingTask, scopedContents]);
+  }, [systemContents, editingTask, scopedContents]);
 
   const selectTemplate = (templateId: string) => {
     setSelectedTemplateId(templateId);
@@ -223,7 +249,7 @@ export function KpiConfigView() {
       setEditingGroup(null);
       setGroupDialog(true);
     } else if (tab === "contents") {
-      if (!groups.length) {
+      if (!catalogGroups.length) {
         toast.error("Hãy tạo nhóm công việc trước.");
         return;
       }
@@ -254,10 +280,10 @@ export function KpiConfigView() {
     try {
       if (kind === "groups") {
         await deleteWorkGroup(id);
-        await groupsQuery.mutate();
+        await catalogGroupsQuery.mutate();
       } else if (kind === "contents") {
         await deleteWorkContent(id);
-        await contentsQuery.mutate();
+        await catalogContentsQuery.mutate();
       } else {
         await deleteTaskAssignment(id);
         await tasksQuery.mutate();
@@ -302,13 +328,19 @@ export function KpiConfigView() {
         <TabsList className="h-auto w-fit flex-wrap">
           <TabsTrigger value="tasks">Nhiệm vụ được giao</TabsTrigger>
           {canManageCatalog ? (
-            <TabsTrigger value="contents">Nội dung công việc</TabsTrigger>
+            <TabsTrigger value="contents">
+              {canManageTemplate ? "Nội dung công việc" : "Nội dung nội bộ"}
+            </TabsTrigger>
           ) : null}
           {canManageCatalog ? (
-            <TabsTrigger value="groups">Nhóm công việc</TabsTrigger>
+            <TabsTrigger value="groups">
+              {canManageTemplate ? "Nhóm công việc" : "Nhóm nội bộ"}
+            </TabsTrigger>
           ) : null}
-          {canManageTemplate ? (
-            <TabsTrigger value="template">Cấu hình biểu mẫu</TabsTrigger>
+          {canAccessTemplateTab ? (
+            <TabsTrigger value="template">
+              {canManageTemplate ? "Cấu hình biểu mẫu" : "Biểu mẫu nội bộ"}
+            </TabsTrigger>
           ) : null}
         </TabsList>
 
@@ -342,7 +374,7 @@ export function KpiConfigView() {
                 </p>
               ) : null}
             </div>
-            {templatesQuery.isLoading ? (
+            {systemTemplatesQuery.isLoading ? (
               <span className="text-sm text-muted-foreground">
                 Đang tải biểu mẫu...
               </span>
@@ -382,13 +414,13 @@ export function KpiConfigView() {
             <CardContent className="pt-6">
               <TaskAssignmentGrid
                 template={selectedTemplate}
-                groups={groups}
+                groups={systemGroups}
                 contents={scopedContents}
                 tasks={scopedTasks}
                 loading={
                   tasksQuery.isLoading ||
-                  contentsQuery.isLoading ||
-                  templatesQuery.isLoading
+                  systemContentsQuery.isLoading ||
+                  systemTemplatesQuery.isLoading
                 }
                 onAddTask={(content) => {
                   setEditingTask(null);
@@ -416,6 +448,7 @@ export function KpiConfigView() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-32">Mã</TableHead>
+                      <TableHead className="w-36">Phạm vi</TableHead>
                       <TableHead>Nội dung công việc</TableHead>
                       <TableHead>Nhóm công việc</TableHead>
                       <TableHead className="w-28">Trạng thái</TableHead>
@@ -425,20 +458,30 @@ export function KpiConfigView() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {contentsQuery.isLoading ? (
-                      <EmptyRow colSpan={5} text="Đang tải nội dung..." />
-                    ) : contents.length === 0 ? (
+                    {catalogContentsQuery.isLoading ? (
+                      <EmptyRow colSpan={6} text="Đang tải nội dung..." />
+                    ) : catalogContents.length === 0 ? (
                       <EmptyRow
-                        colSpan={5}
-                        text="Chưa có nội dung công việc."
+                        colSpan={6}
+                        text={
+                          canManageTemplate
+                            ? "Chưa có nội dung công việc hệ thống."
+                            : "Chưa có nội dung nội bộ của phòng."
+                        }
                       />
                     ) : (
-                      contents.map((content) => (
+                      catalogContents.map((content) => (
                         <TableRow key={entityId(content)}>
                           <TableCell>
                             <Badge variant="outline" className="font-mono">
                               {content.code}
                             </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <CatalogScopeBadge
+                              scope={content.scope}
+                              ownerDepartmentId={content.ownerDepartmentId}
+                            />
                           </TableCell>
                           <TableCell>
                             <div className="font-medium">{content.name}</div>
@@ -453,19 +496,28 @@ export function KpiConfigView() {
                             <ActiveBadge active={content.isActive} />
                           </TableCell>
                           <TableCell className="text-right">
-                            <RowActions
-                              onEdit={() => {
-                                setEditingContent(content);
-                                setContentDialog(true);
-                              }}
-                              onDelete={() =>
-                                remove(
-                                  "contents",
-                                  entityId(content),
-                                  content.name,
-                                )
-                              }
-                            />
+                            {canUserMutateCatalogItem(
+                              canManageTemplate,
+                              content,
+                            ) ? (
+                              <RowActions
+                                onEdit={() => {
+                                  setEditingContent(content);
+                                  setContentDialog(true);
+                                }}
+                                onDelete={() =>
+                                  remove(
+                                    "contents",
+                                    entityId(content),
+                                    content.name,
+                                  )
+                                }
+                              />
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                Chỉ xem
+                              </span>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))
@@ -485,6 +537,7 @@ export function KpiConfigView() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-32">Mã</TableHead>
+                      <TableHead className="w-36">Phạm vi</TableHead>
                       <TableHead>Nhóm công việc</TableHead>
                       <TableHead className="w-24 text-center">Thứ tự</TableHead>
                       <TableHead className="w-28">Trạng thái</TableHead>
@@ -494,17 +547,23 @@ export function KpiConfigView() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {groupsQuery.isLoading ? (
-                      <EmptyRow colSpan={5} text="Đang tải nhóm..." />
-                    ) : groups.length === 0 ? (
-                      <EmptyRow colSpan={5} text="Chưa có nhóm công việc." />
+                    {catalogGroupsQuery.isLoading ? (
+                      <EmptyRow colSpan={6} text="Đang tải nhóm..." />
+                    ) : catalogGroups.length === 0 ? (
+                      <EmptyRow colSpan={6} text="Chưa có nhóm công việc." />
                     ) : (
-                      groups.map((group) => (
+                      catalogGroups.map((group) => (
                         <TableRow key={entityId(group)}>
                           <TableCell>
                             <Badge variant="outline" className="font-mono">
                               {group.code}
                             </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <CatalogScopeBadge
+                              scope={group.scope}
+                              ownerDepartmentId={group.ownerDepartmentId}
+                            />
                           </TableCell>
                           <TableCell>
                             <div className="font-medium">{group.name}</div>
@@ -521,15 +580,24 @@ export function KpiConfigView() {
                             <ActiveBadge active={group.isActive} />
                           </TableCell>
                           <TableCell className="text-right">
-                            <RowActions
-                              onEdit={() => {
-                                setEditingGroup(group);
-                                setGroupDialog(true);
-                              }}
-                              onDelete={() =>
-                                remove("groups", entityId(group), group.name)
-                              }
-                            />
+                            {canUserMutateCatalogItem(
+                              canManageTemplate,
+                              group,
+                            ) ? (
+                              <RowActions
+                                onEdit={() => {
+                                  setEditingGroup(group);
+                                  setGroupDialog(true);
+                                }}
+                                onDelete={() =>
+                                  remove("groups", entityId(group), group.name)
+                                }
+                              />
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                Chỉ xem
+                              </span>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))
@@ -546,7 +614,10 @@ export function KpiConfigView() {
           className="mt-4 flex min-h-0 flex-1 flex-col"
         >
           <TemplateConfigView
-            contents={contents}
+            catalogScope={templateCatalogScope}
+            allowMutateScope={canManageTemplate ? "SYSTEM" : "DEPARTMENT"}
+            canMutateAllCatalog={canManageTemplate}
+            contents={catalogContents}
             roles={roles}
             users={users}
             initialTemplateId={selectedTemplateId}
@@ -560,7 +631,8 @@ export function KpiConfigView() {
           open
           onOpenChange={setGroupDialog}
           edit={editingGroup}
-          onSuccess={() => groupsQuery.mutate()}
+          allowSelectScope={canManageTemplate}
+          onSuccess={() => catalogGroupsQuery.mutate()}
         />
       ) : null}
       {contentDialog ? (
@@ -568,9 +640,10 @@ export function KpiConfigView() {
           open
           onOpenChange={setContentDialog}
           edit={editingContent}
-          groups={groups}
+          groups={catalogGroups}
+          allowSelectScope={canManageTemplate}
           onSuccess={async () => {
-            await contentsQuery.mutate();
+            await catalogContentsQuery.mutate();
             await tasksQuery.mutate();
           }}
         />
@@ -640,6 +713,7 @@ type GroupDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   edit: WorkGroup | null;
+  allowSelectScope: boolean;
   onSuccess: () => void;
 };
 
@@ -647,6 +721,7 @@ function GroupDialog({
   open,
   onOpenChange,
   edit,
+  allowSelectScope,
   onSuccess,
 }: GroupDialogProps) {
   const [code, setCode] = useState(edit?.code ?? "");
@@ -654,11 +729,19 @@ function GroupDialog({
   const [description, setDescription] = useState(edit?.description ?? "");
   const [sortOrder, setSortOrder] = useState(String(edit?.sortOrder ?? 0));
   const [isActive, setIsActive] = useState(edit?.isActive ?? true);
+  const [scope, setScope] = useState<CatalogScope>(edit?.scope ?? "SYSTEM");
+  const [ownerDepartmentId, setOwnerDepartmentId] = useState(
+    ownerDepartmentIdString(edit?.ownerDepartmentId),
+  );
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
     if (!code.trim() || !name.trim()) {
       toast.error("Vui lòng nhập mã và tên nhóm công việc.");
+      return;
+    }
+    if (!edit && allowSelectScope && scope === "DEPARTMENT" && !ownerDepartmentId) {
+      toast.error("Vui lòng chọn đơn vị cho phạm vi Đơn vị.");
       return;
     }
     setSaving(true);
@@ -669,6 +752,12 @@ function GroupDialog({
         description: description.trim(),
         sortOrder: Number(sortOrder) || 0,
         isActive,
+        ...(!edit && allowSelectScope
+          ? {
+              scope,
+              ...(scope === "DEPARTMENT" ? { ownerDepartmentId } : {}),
+            }
+          : {}),
       };
       if (edit) await updateWorkGroup(entityId(edit), input);
       else await createWorkGroup(input);
@@ -693,6 +782,15 @@ function GroupDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-2">
+          <CatalogScopeFields
+            allowSelectScope={allowSelectScope}
+            scope={scope}
+            ownerDepartmentId={ownerDepartmentId}
+            onScopeChange={setScope}
+            onOwnerDepartmentIdChange={setOwnerDepartmentId}
+            readOnly={!!edit}
+            readOnlyOwnerDepartmentId={edit ?? undefined}
+          />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Mã nhóm" required>
               <Input
@@ -744,6 +842,7 @@ type ContentDialogProps = {
   onOpenChange: (open: boolean) => void;
   edit: WorkContent | null;
   groups: WorkGroup[];
+  allowSelectScope: boolean;
   onSuccess: () => void;
 };
 
@@ -752,21 +851,54 @@ function ContentDialog({
   onOpenChange,
   edit,
   groups,
+  allowSelectScope,
   onSuccess,
 }: ContentDialogProps) {
   const code = edit?.code ?? "";
   const [name, setName] = useState(edit?.name ?? "");
+  const [scope, setScope] = useState<CatalogScope>(edit?.scope ?? "SYSTEM");
+  const [ownerDepartmentId, setOwnerDepartmentId] = useState(
+    ownerDepartmentIdString(edit?.ownerDepartmentId),
+  );
+  const scopedGroups = useMemo(
+    () =>
+      allowSelectScope && !edit
+        ? groupsForCatalogScope(groups, scope, ownerDepartmentId)
+        : edit
+          ? groups.filter(
+              (group) =>
+                entityId(group) === entityId(edit.groupId) ||
+                (!isDepartmentCatalog(edit)
+                  ? !isDepartmentCatalog(group)
+                  : isDepartmentCatalog(group) &&
+                    ownerDepartmentIdString(group.ownerDepartmentId) ===
+                      ownerDepartmentIdString(edit.ownerDepartmentId)),
+            )
+          : groups.filter((group) => isDepartmentCatalog(group)),
+    [allowSelectScope, edit, groups, ownerDepartmentId, scope],
+  );
   const [groupId, setGroupId] = useState(
-    edit ? entityId(edit.groupId) : entityId(groups[0]),
+    edit ? entityId(edit.groupId) : entityId(scopedGroups[0]),
   );
   const [description, setDescription] = useState(edit?.description ?? "");
   const [sortOrder, setSortOrder] = useState(String(edit?.sortOrder ?? 0));
   const [isActive, setIsActive] = useState(edit?.isActive ?? true);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (edit) return;
+    if (!scopedGroups.some((group) => entityId(group) === groupId)) {
+      setGroupId(entityId(scopedGroups[0]));
+    }
+  }, [edit, groupId, scopedGroups]);
+
   const submit = async () => {
     if (!name.trim() || !groupId) {
       toast.error("Vui lòng nhập tên và chọn nhóm công việc.");
+      return;
+    }
+    if (!edit && allowSelectScope && scope === "DEPARTMENT" && !ownerDepartmentId) {
+      toast.error("Vui lòng chọn đơn vị cho phạm vi Đơn vị.");
       return;
     }
     setSaving(true);
@@ -778,6 +910,12 @@ function ContentDialog({
         sortOrder: Number(sortOrder) || 0,
         isActive,
         ...(edit ? { code: code.trim().toUpperCase() || edit.code } : {}),
+        ...(!edit && allowSelectScope
+          ? {
+              scope,
+              ...(scope === "DEPARTMENT" ? { ownerDepartmentId } : {}),
+            }
+          : {}),
       };
       if (edit) await updateWorkContent(entityId(edit), input);
       else await createWorkContent(input);
@@ -804,6 +942,15 @@ function ContentDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-2">
+          <CatalogScopeFields
+            allowSelectScope={allowSelectScope}
+            scope={scope}
+            ownerDepartmentId={ownerDepartmentId}
+            onScopeChange={setScope}
+            onOwnerDepartmentIdChange={setOwnerDepartmentId}
+            readOnly={!!edit}
+            readOnlyOwnerDepartmentId={edit ?? undefined}
+          />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Mã nội dung">
               <Input
@@ -819,7 +966,7 @@ function ContentDialog({
                   <SelectValue placeholder="Chọn nhóm" />
                 </SelectTrigger>
                 <SelectContent>
-                  {groups.map((group) => (
+                  {scopedGroups.map((group) => (
                     <SelectItem key={entityId(group)} value={entityId(group)}>
                       {group.name}
                     </SelectItem>

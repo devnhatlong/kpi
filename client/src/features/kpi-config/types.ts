@@ -1,5 +1,7 @@
 import type { UserAccount } from "@/features/organization/types";
 
+export type CatalogScope = "SYSTEM" | "DEPARTMENT";
+
 export type WorkGroup = {
   _id: string;
   id?: string;
@@ -8,6 +10,8 @@ export type WorkGroup = {
   description?: string;
   sortOrder: number;
   isActive: boolean;
+  scope?: CatalogScope;
+  ownerDepartmentId?: DepartmentRef | string | null;
 };
 
 export type WorkContent = {
@@ -19,6 +23,8 @@ export type WorkContent = {
   description?: string;
   sortOrder: number;
   isActive: boolean;
+  scope?: CatalogScope;
+  ownerDepartmentId?: DepartmentRef | string | null;
 };
 
 export const TASK_STATUSES = {
@@ -360,6 +366,8 @@ export type KpiTemplate = {
   assignedRoleIds: string[];
   assignedUserIds: string[];
   isActive: boolean;
+  scope?: CatalogScope;
+  ownerDepartmentId?: DepartmentRef | string | null;
   createdAt?: string;
   updatedAt?: string;
 };

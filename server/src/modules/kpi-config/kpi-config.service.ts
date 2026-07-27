@@ -39,6 +39,16 @@ import { CreateKpiTemplateDto } from './dto/create-kpi-template.dto';
 import { UpdateKpiTemplateDto } from './dto/update-kpi-template.dto';
 import { TemplateColumnDto } from './dto/template-column.dto';
 import { TemplateHeaderGroupDto } from './dto/template-header-group.dto';
+import { CatalogListQueryDto } from './dto/catalog-list-query.dto';
+import { CatalogScope } from './schemas/catalog-scope.enum';
+import {
+  assertCanMutateCatalog,
+  assertSameCatalogScope,
+  buildCatalogListFilter,
+  resolveCatalogScopeForCreateRequest,
+  scopedOwnerDepartmentId,
+} from './catalog-scope.util';
+import type { JwtPayloadUser } from '@/common/interfaces';
 
 @Injectable()
 export class KpiConfigService {
@@ -57,9 +67,20 @@ export class KpiConfigService {
     private readonly roleModel: Model<RoleDocument>,
   ) {}
 
-  async createGroup(dto: CreateWorkGroupDto) {
+  async createGroup(dto: CreateWorkGroupDto, user: JwtPayloadUser) {
+    const { scope, ownerDepartmentId } = resolveCatalogScopeForCreateRequest(
+      user,
+      dto.scope,
+      dto.ownerDepartmentId,
+    );
     const code = dto.code.trim().toUpperCase();
-    await this.ensureUniqueCode(this.workGroupModel, code, 'Mã nhóm công việc');
+    await this.ensureScopedUniqueCode(
+      this.workGroupModel,
+      code,
+      scope,
+      ownerDepartmentId,
+      'Mã nhóm công việc',
+    );
     const data = await this.workGroupModel.create({
       ...dto,
       code,
@@ -67,29 +88,38 @@ export class KpiConfigService {
       description: dto.description?.trim() ?? '',
       sortOrder: dto.sortOrder ?? 0,
       isActive: dto.isActive ?? true,
+      scope,
+      ownerDepartmentId,
+      createdBy: new Types.ObjectId(user.uid),
     });
     return { message: 'Tạo nhóm công việc thành công.', data };
   }
 
-  async listGroups(query: PaginationQueryDto) {
-    const filter = this.searchFilter(query.q, ['code', 'name', 'description']);
+  async listGroups(query: CatalogListQueryDto, user: JwtPayloadUser) {
+    const filter = {
+      ...buildCatalogListFilter(user, query.scope, query.ownerDepartmentId),
+      ...this.searchFilter(query.q, ['code', 'name', 'description']),
+    };
     return this.paginate(this.workGroupModel, filter, query, {
       sortOrder: 1,
       name: 1,
-    });
+    }, [{ path: 'ownerDepartmentId', select: 'code name' }]);
   }
 
-  async updateGroup(id: string, dto: UpdateWorkGroupDto) {
+  async updateGroup(id: string, dto: UpdateWorkGroupDto, user: JwtPayloadUser) {
     const group = await this.requireById(
       this.workGroupModel,
       id,
       'Không tìm thấy nhóm công việc.',
     );
+    assertCanMutateCatalog(user, group);
     if (dto.code !== undefined) {
       const code = dto.code.trim().toUpperCase();
-      await this.ensureUniqueCode(
+      await this.ensureScopedUniqueCode(
         this.workGroupModel,
         code,
+        group.scope,
+        group.ownerDepartmentId ?? null,
         'Mã nhóm công việc',
         group._id,
       );
@@ -104,12 +134,13 @@ export class KpiConfigService {
     return { message: 'Cập nhật nhóm công việc thành công.', data: group };
   }
 
-  async deleteGroup(id: string) {
+  async deleteGroup(id: string, user: JwtPayloadUser) {
     const group = await this.requireById(
       this.workGroupModel,
       id,
       'Không tìm thấy nhóm công việc.',
     );
+    assertCanMutateCatalog(user, group);
     if (await this.workContentModel.exists({ groupId: group._id })) {
       throw new BadRequestException(
         'Không thể xoá nhóm đang có nội dung công việc.',
@@ -119,18 +150,32 @@ export class KpiConfigService {
     return { message: 'Xoá nhóm công việc thành công.' };
   }
 
-  async createContent(dto: CreateWorkContentDto) {
-    await this.requireById(
+  async createContent(dto: CreateWorkContentDto, user: JwtPayloadUser) {
+    const { scope, ownerDepartmentId } = resolveCatalogScopeForCreateRequest(
+      user,
+      dto.scope,
+      dto.ownerDepartmentId,
+    );
+    const group = await this.requireById(
       this.workGroupModel,
       dto.groupId,
       'Không tìm thấy nhóm công việc.',
     );
+    assertSameCatalogScope('Nhóm công việc', { scope, ownerDepartmentId }, group);
     const code = dto.code?.trim()
       ? dto.code.trim().toUpperCase()
-      : await this.nextSequentialCode(this.workContentModel, 'ND');
-    await this.ensureUniqueCode(
+      : await this.nextSequentialCode(
+          this.workContentModel,
+          'ND',
+          4,
+          scope,
+          ownerDepartmentId,
+        );
+    await this.ensureScopedUniqueCode(
       this.workContentModel,
       code,
+      scope,
+      ownerDepartmentId,
       'Mã nội dung công việc',
     );
     const data = await this.workContentModel.create({
@@ -141,13 +186,17 @@ export class KpiConfigService {
       description: dto.description?.trim() ?? '',
       sortOrder: dto.sortOrder ?? 0,
       isActive: dto.isActive ?? true,
+      scope,
+      ownerDepartmentId,
+      createdBy: new Types.ObjectId(user.uid),
     });
     await data.populate('groupId', 'code name');
     return { message: 'Tạo nội dung công việc thành công.', data };
   }
 
-  async listContents(query: WorkContentListQueryDto) {
+  async listContents(query: WorkContentListQueryDto, user: JwtPayloadUser) {
     const filter: Record<string, unknown> = {
+      ...buildCatalogListFilter(user, query.scope, query.ownerDepartmentId),
       ...this.searchFilter(query.q, ['code', 'name', 'description']),
     };
     if (query.groupId) filter.groupId = new Types.ObjectId(query.groupId);
@@ -156,29 +205,47 @@ export class KpiConfigService {
       filter,
       query,
       { sortOrder: 1, name: 1 },
-      [{ path: 'groupId', select: 'code name' }],
+      [
+        { path: 'groupId', select: 'code name' },
+        { path: 'ownerDepartmentId', select: 'code name' },
+      ],
     );
   }
 
-  async updateContent(id: string, dto: UpdateWorkContentDto) {
+  async updateContent(
+    id: string,
+    dto: UpdateWorkContentDto,
+    user: JwtPayloadUser,
+  ) {
     const content = await this.requireById(
       this.workContentModel,
       id,
       'Không tìm thấy nội dung công việc.',
     );
+    assertCanMutateCatalog(user, content);
     if (dto.groupId !== undefined) {
-      await this.requireById(
+      const group = await this.requireById(
         this.workGroupModel,
         dto.groupId,
         'Không tìm thấy nhóm công việc.',
+      );
+      assertSameCatalogScope(
+        'Nhóm công việc',
+        {
+          scope: content.scope,
+          ownerDepartmentId: content.ownerDepartmentId ?? null,
+        },
+        group,
       );
       content.groupId = new Types.ObjectId(dto.groupId);
     }
     if (dto.code !== undefined) {
       const code = dto.code.trim().toUpperCase();
-      await this.ensureUniqueCode(
+      await this.ensureScopedUniqueCode(
         this.workContentModel,
         code,
+        content.scope,
+        content.ownerDepartmentId ?? null,
         'Mã nội dung công việc',
         content._id,
       );
@@ -197,12 +264,13 @@ export class KpiConfigService {
     };
   }
 
-  async deleteContent(id: string) {
+  async deleteContent(id: string, user: JwtPayloadUser) {
     const content = await this.requireById(
       this.workContentModel,
       id,
       'Không tìm thấy nội dung công việc.',
     );
+    assertCanMutateCatalog(user, content);
     if (await this.taskModel.exists({ contentId: content._id })) {
       throw new BadRequestException(
         'Không thể xoá nội dung đã được dùng để giao nhiệm vụ.',
@@ -296,37 +364,61 @@ export class KpiConfigService {
     return { message: 'Xoá nhiệm vụ thành công.' };
   }
 
-  async createTemplate(dto: CreateKpiTemplateDto) {
+  async createTemplate(dto: CreateKpiTemplateDto, user: JwtPayloadUser) {
+    const { scope, ownerDepartmentId } = resolveCatalogScopeForCreateRequest(
+      user,
+      dto.scope,
+      dto.ownerDepartmentId,
+    );
     const code = dto.code.trim().toUpperCase();
-    await this.ensureUniqueCode(this.templateModel, code, 'Mã biểu mẫu');
-    await this.validateTemplateRelations(dto);
+    await this.ensureScopedUniqueCode(
+      this.templateModel,
+      code,
+      scope,
+      ownerDepartmentId,
+      'Mã biểu mẫu',
+    );
+    await this.validateTemplateRelations(dto, scope, ownerDepartmentId);
     this.validateTemplateColumns(dto.columns ?? []);
 
-    const data = await this.templateModel.create(
-      this.normalizeTemplateInput({ ...dto, code }),
-    );
+    const data = await this.templateModel.create({
+      ...this.normalizeTemplateInput({ ...dto, code }),
+      scope,
+      ownerDepartmentId,
+      createdBy: new Types.ObjectId(user.uid),
+    });
     return { message: 'Tạo biểu mẫu KPI thành công.', data };
   }
 
-  async listTemplates(query: PaginationQueryDto) {
-    const filter = this.searchFilter(query.q, ['code', 'name']);
+  async listTemplates(query: CatalogListQueryDto, user: JwtPayloadUser) {
+    const filter = {
+      ...buildCatalogListFilter(user, query.scope, query.ownerDepartmentId),
+      ...this.searchFilter(query.q, ['code', 'name']),
+    };
     return this.paginate(this.templateModel, filter, query, {
       updatedAt: -1,
       name: 1,
-    });
+    }, [{ path: 'ownerDepartmentId', select: 'code name' }]);
   }
 
-  async updateTemplate(id: string, dto: UpdateKpiTemplateDto) {
+  async updateTemplate(
+    id: string,
+    dto: UpdateKpiTemplateDto,
+    user: JwtPayloadUser,
+  ) {
     const template = await this.requireById(
       this.templateModel,
       id,
       'Không tìm thấy biểu mẫu.',
     );
+    assertCanMutateCatalog(user, template);
     if (dto.code !== undefined) {
       const code = dto.code.trim().toUpperCase();
-      await this.ensureUniqueCode(
+      await this.ensureScopedUniqueCode(
         this.templateModel,
         code,
+        template.scope,
+        template.ownerDepartmentId ?? null,
         'Mã biểu mẫu',
         template._id,
       );
@@ -354,7 +446,11 @@ export class KpiConfigService {
       template.headerGroups = this.normalizeHeaderGroups(dto.headerGroups);
     }
     if (dto.includedContentIds !== undefined) {
-      await this.validateContentIds(dto.includedContentIds);
+      await this.validateContentIds(
+        dto.includedContentIds,
+        template.scope,
+        template.ownerDepartmentId ?? null,
+      );
       template.includedContentIds = dto.includedContentIds.map(
         (value) => new Types.ObjectId(value),
       );
@@ -392,12 +488,13 @@ export class KpiConfigService {
     return { message: 'Cập nhật biểu mẫu KPI thành công.', data: template };
   }
 
-  async deleteTemplate(id: string) {
+  async deleteTemplate(id: string, user: JwtPayloadUser) {
     const template = await this.requireById(
       this.templateModel,
       id,
       'Không tìm thấy biểu mẫu.',
     );
+    assertCanMutateCatalog(user, template);
     await template.deleteOne();
     return { message: 'Xoá biểu mẫu KPI thành công.' };
   }
@@ -480,12 +577,16 @@ export class KpiConfigService {
     }
   }
 
-  private async validateTemplateRelations(dto: {
-    visibilityScope?: TemplateVisibilityScope;
-    assignedRoleIds?: string[];
-    assignedUserIds?: string[];
-    includedContentIds?: string[];
-  }) {
+  private async validateTemplateRelations(
+    dto: {
+      visibilityScope?: TemplateVisibilityScope;
+      assignedRoleIds?: string[];
+      assignedUserIds?: string[];
+      includedContentIds?: string[];
+    },
+    scope: CatalogScope = CatalogScope.SYSTEM,
+    ownerDepartmentId: Types.ObjectId | null = null,
+  ) {
     if (
       dto.visibilityScope === TemplateVisibilityScope.ROLES &&
       !dto.assignedRoleIds?.length
@@ -499,7 +600,11 @@ export class KpiConfigService {
       throw new BadRequestException('Vui lòng chọn ít nhất một tài khoản.');
     }
     if (dto.includedContentIds?.length) {
-      await this.validateContentIds(dto.includedContentIds);
+      await this.validateContentIds(
+        dto.includedContentIds,
+        scope,
+        ownerDepartmentId,
+      );
     }
     if (dto.assignedRoleIds?.length) {
       await this.validateRoleIds(dto.assignedRoleIds);
@@ -509,12 +614,21 @@ export class KpiConfigService {
     }
   }
 
-  private async validateContentIds(ids: string[]) {
+  private async validateContentIds(
+    ids: string[],
+    scope: CatalogScope = CatalogScope.SYSTEM,
+    ownerDepartmentId: Types.ObjectId | null = null,
+  ) {
     for (const id of ids) {
-      await this.requireById(
+      const content = await this.requireById(
         this.workContentModel,
         id,
         'Không tìm thấy nội dung công việc.',
+      );
+      assertSameCatalogScope(
+        'Nội dung công việc',
+        { scope, ownerDepartmentId },
+        content,
       );
     }
   }
@@ -640,29 +754,41 @@ export class KpiConfigService {
     return buildPaginatedResponse(data, total, page, limit);
   }
 
-  private async ensureUniqueCode<T>(
+  private async ensureScopedUniqueCode<T>(
     model: Model<T>,
     code: string,
+    scope: CatalogScope,
+    ownerDepartmentId: Types.ObjectId | null,
     label: string,
     excludeId?: Types.ObjectId,
   ) {
-    const filter: Record<string, unknown> = { code };
+    const filter: Record<string, unknown> = {
+      code,
+      scope,
+      ownerDepartmentId: scopedOwnerDepartmentId(scope, ownerDepartmentId),
+    };
     if (excludeId) filter._id = { $ne: excludeId };
     if (await model.exists(filter)) {
       throw new BadRequestException(`${label} đã tồn tại.`);
     }
   }
 
-  /** Sinh mã dạng PREFIX-0001, PREFIX-0002, ... */
+  /** Sinh mã dạng PREFIX-0001, PREFIX-0002, ... trong cùng phạm vi danh mục. */
   private async nextSequentialCode(
     model: Model<{ code: string }>,
     prefix: string,
     pad = 4,
+    scope: CatalogScope = CatalogScope.SYSTEM,
+    ownerDepartmentId: Types.ObjectId | null = null,
   ): Promise<string> {
     const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pattern = new RegExp(`^${escaped}-(\\d+)$`, 'i');
     const docs = await model
-      .find({ code: { $regex: `^${escaped}-\\d+$`, $options: 'i' } })
+      .find({
+        scope,
+        ownerDepartmentId: scopedOwnerDepartmentId(scope, ownerDepartmentId),
+        code: { $regex: `^${escaped}-\\d+$`, $options: 'i' },
+      })
       .select('code')
       .lean()
       .exec();
