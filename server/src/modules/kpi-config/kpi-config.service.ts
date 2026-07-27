@@ -190,6 +190,9 @@ export class KpiConfigService {
     if (dto.description !== undefined)
       content.description = dto.description.trim();
     if (dto.sortOrder !== undefined) content.sortOrder = dto.sortOrder;
+    if (dto.allowMultipleTasks !== undefined) {
+      content.allowMultipleTasks = dto.allowMultipleTasks;
+    }
     if (dto.isActive !== undefined) content.isActive = dto.isActive;
     await content.save();
     await content.populate('groupId', 'code name');
