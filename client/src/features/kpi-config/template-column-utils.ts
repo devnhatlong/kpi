@@ -2,58 +2,13 @@ import dayjs from "dayjs";
 import {
   getAutoIncrementValue,
   isAutoIncrementColumn,
-  WORKFLOW_PHASE_ORDER,
   type KpiTemplate,
   type TaskAssignment,
-  type TaskStatus,
   type TemplateColumn,
-  type TemplateColumnPhase,
   type TemplateHeaderGroup,
 } from "./types";
 
 export const CALCULATED_INPUT = "CALCULATED";
-
-/** @deprecated Giai đoạn đã bỏ khỏi UI — giữ hàm để tương thích dữ liệu cũ. */
-export function phaseIndex(phase: TemplateColumnPhase): number {
-  return WORKFLOW_PHASE_ORDER.indexOf(phase);
-}
-
-export function derivePhaseFromTaskStatus(
-  status: TaskStatus | undefined,
-): TemplateColumnPhase {
-  switch (status) {
-    case "ASSIGNED":
-      return "BREAKDOWN";
-    case "IN_PROGRESS":
-      return "EXECUTE";
-    case "SUBMITTED":
-      return "FEEDBACK";
-    case "APPRAISED":
-      return "APPRAISE";
-    case "CANCELLED":
-      return "BREAKDOWN";
-    default:
-      return "BREAKDOWN";
-  }
-}
-
-/** Giai đoạn đã bỏ — luôn mở nếu cột không phải CONFIG/calculated. */
-export function isColumnOpenInPhase(
-  column: TemplateColumn,
-  _currentPhase?: TemplateColumnPhase,
-): boolean {
-  if (isAutoIncrementColumn(column)) return false;
-  if (column.inputRoleCode === CALCULATED_INPUT) return false;
-  if (column.phase === "CONFIG") return false;
-  return true;
-}
-
-export function isColumnLockedAfterPhase(
-  _column: TemplateColumn,
-  _currentPhase?: TemplateColumnPhase,
-): boolean {
-  return false;
-}
 
 type SemanticField =
   | "content_name"
@@ -75,6 +30,30 @@ type SemanticField =
   | "appraisal_quality_percent"
   | "appraisal_quality_score"
   | "note";
+
+const NUMERIC_SEMANTIC_FIELDS = new Set<SemanticField>([
+  "standard_score",
+  "self_progress_percent",
+  "self_progress_score",
+  "self_quality_percent",
+  "self_quality_score",
+  "proposed_adjustment",
+  "appraisal_progress_percent",
+  "appraisal_progress_score",
+  "appraisal_quality_percent",
+  "appraisal_quality_score",
+]);
+
+/** Cột số theo cấu hình, hoặc semantic điểm/% (kể cả khi lỡ để Văn bản). */
+export function isNumericTemplateColumn(
+  column: TemplateColumn,
+  template: KpiTemplate | null = null,
+): boolean {
+  if (column.dataType === "number") return true;
+  if (!template) return false;
+  const semantic = inferSemanticField(column, template.headerGroups);
+  return semantic != null && NUMERIC_SEMANTIC_FIELDS.has(semantic);
+}
 
 function resolvePathLabels(
   groups: TemplateHeaderGroup[],
@@ -163,7 +142,7 @@ export type TaskValueSource = {
   reportDueDate?: string;
   product: string;
   actualProduct?: string;
-  standardScore: number;
+  standardScore?: number;
   selfProgressPercent?: number;
   selfProgressScore?: number;
   selfQualityPercent?: number;
@@ -273,6 +252,15 @@ export function buildFieldValuesFromTemplate(
     if (!semantic) continue;
     const value = readSemanticValue(semantic, source);
     if (value == null || value === "") continue;
+    // Không ghi sẵn 0 mặc định schema khi user chưa nhập.
+    if (
+      typeof value === "number" &&
+      value === 0 &&
+      !(column.key in existing) &&
+      (semantic === "standard_score" || semantic === "proposed_adjustment")
+    ) {
+      continue;
+    }
     next[column.key] = value;
   }
 
@@ -356,7 +344,6 @@ export function canInlineEditTemplateColumn(
   column: TemplateColumn,
   userRoleCodes: readonly string[],
   _template: KpiTemplate | null = null,
-  _currentPhase?: TemplateColumnPhase,
 ): boolean {
   return canEditTemplateColumn(column, userRoleCodes);
 }
@@ -365,7 +352,6 @@ export function canInlineEditTemplateColumn(
 export function canEditDialogColumn(
   column: TemplateColumn,
   userRoleCodes: readonly string[],
-  _currentPhase?: TemplateColumnPhase,
 ): boolean {
   return canEditTemplateColumn(column, userRoleCodes);
 }
@@ -394,8 +380,21 @@ export function getTemplateColumnValue(
     return String(getAutoIncrementValue(rowIndex));
   }
 
-  const stored = task.fieldValues?.[column.key];
-  if (stored != null && stored !== "") {
+  const fieldValues = task.fieldValues ?? {};
+  const hasStored = Object.prototype.hasOwnProperty.call(fieldValues, column.key);
+  if (hasStored) {
+    const stored = fieldValues[column.key];
+    if (stored == null || stored === "") return "";
+    if (template && (stored === 0 || stored === "0")) {
+      const semantic = inferSemanticField(column, template.headerGroups);
+      // Ẩn 0 mặc định đã bị seed sẵn (điểm chuẩn / đề nghị).
+      if (
+        semantic === "standard_score" ||
+        semantic === "proposed_adjustment"
+      ) {
+        return "";
+      }
+    }
     return String(stored);
   }
 
@@ -408,18 +407,95 @@ export function getTemplateColumnValue(
     semantic,
     taskValueSourceFromAssignment(task, contentName),
   );
-  return value == null ? "" : String(value);
+  if (value == null || value === "") return "";
+  // Không hiện điểm chuẩn / đề nghị = 0 mặc định khi chưa từng nhập vào fieldValues.
+  if (
+    typeof value === "number" &&
+    value === 0 &&
+    (semantic === "standard_score" || semantic === "proposed_adjustment")
+  ) {
+    return "";
+  }
+  return String(value);
 }
 
 export function normalizeCellInput(
   column: TemplateColumn,
   rawValue: string,
+  template: KpiTemplate | null = null,
 ): string | number | undefined {
   const trimmed = rawValue.trim();
   if (!trimmed) return undefined;
-  if (column.dataType === "number") {
+  if (isNumericTemplateColumn(column, template)) {
     const parsed = Number(trimmed);
     return Number.isFinite(parsed) ? parsed : undefined;
   }
+  if (column.dataType === "date") {
+    return toDateInputValue(trimmed) || undefined;
+  }
+  if (column.dataType === "time") {
+    return toTimeInputValue(trimmed) || undefined;
+  }
+  if (column.dataType === "datetime") {
+    return toDateTimeInputValue(trimmed) || undefined;
+  }
   return trimmed;
+}
+
+/** Chuẩn hoá về YYYY-MM-DD cho input type=date. */
+export function toDateInputValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
+  const slash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) {
+    const [, day, month, year] = slash;
+    return `${year}-${month!.padStart(2, "0")}-${day!.padStart(2, "0")}`;
+  }
+  const parsed = dayjs(trimmed);
+  return parsed.isValid() ? parsed.format("YYYY-MM-DD") : "";
+}
+
+/** Hiển thị ngày DD/MM/YYYY. */
+export function formatDateDisplay(value: string): string {
+  const iso = toDateInputValue(value);
+  if (!iso) return value.trim();
+  return dayjs(iso).format("DD/MM/YYYY");
+}
+
+/** Chuẩn hoá HH:mm cho input type=time. */
+export function toTimeInputValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return "";
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return "";
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+/** Chuẩn hoá YYYY-MM-DDTHH:mm cho input type=datetime-local. */
+export function toDateTimeInputValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(trimmed)) {
+    return trimmed.slice(0, 16);
+  }
+  const slash = trimmed.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/,
+  );
+  if (slash) {
+    const [, day, month, year, hour = "0", minute = "0"] = slash;
+    return `${year}-${month!.padStart(2, "0")}-${day!.padStart(2, "0")}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  }
+  const parsed = dayjs(trimmed);
+  return parsed.isValid() ? parsed.format("YYYY-MM-DDTHH:mm") : "";
+}
+
+/** Hiển thị ngày giờ DD/MM/YYYY HH:mm. */
+export function formatDateTimeDisplay(value: string): string {
+  const local = toDateTimeInputValue(value);
+  if (!local) return value.trim();
+  return dayjs(local).format("DD/MM/YYYY HH:mm");
 }

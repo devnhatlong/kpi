@@ -82,6 +82,9 @@ type DataType = TemplateColumnDataType;
 const dataTypeLabels: Record<DataType, string> = {
   text: "Văn bản",
   number: "Số",
+  date: "Ngày",
+  time: "Giờ",
+  datetime: "Ngày giờ",
   text_file: "Văn bản + upload file",
   auto_increment: "STT tự tăng",
 };
@@ -102,7 +105,6 @@ function column(
     visible: true,
     inputRoleCode,
     dataType,
-    phase: "ANY",
   };
 }
 
@@ -637,7 +639,6 @@ export function TemplateConfigView({
         const next = { ...item, ...patch };
         if (patch.dataType === "auto_increment") {
           next.inputRoleCode = CALCULATED_INPUT;
-          next.phase = "ANY";
         }
         return next;
       });

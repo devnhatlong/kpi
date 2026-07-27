@@ -323,41 +323,11 @@ export type TemplateVisibilityScope = "ALL" | "ROLES" | "USERS";
 export type TemplateColumnDataType =
   | "text"
   | "number"
+  | "date"
+  | "time"
+  | "datetime"
   | "text_file"
   | "auto_increment";
-
-export const TEMPLATE_COLUMN_PHASES = {
-  CONFIG: "CONFIG",
-  ALLOCATE: "ALLOCATE",
-  BREAKDOWN: "BREAKDOWN",
-  EXECUTE: "EXECUTE",
-  FEEDBACK: "FEEDBACK",
-  APPRAISE: "APPRAISE",
-  ANY: "ANY",
-} as const;
-
-export type TemplateColumnPhase =
-  (typeof TEMPLATE_COLUMN_PHASES)[keyof typeof TEMPLATE_COLUMN_PHASES];
-
-export const TEMPLATE_COLUMN_PHASE_LABELS: Record<TemplateColumnPhase, string> =
-  {
-    CONFIG: "Cấu hình form",
-    ALLOCATE: "Phân bổ",
-    BREAKDOWN: "Phân rã nhiệm vụ",
-    EXECUTE: "Thực hiện / nộp",
-    FEEDBACK: "Lấy ý kiến",
-    APPRAISE: "Thẩm định",
-    ANY: "Mọi giai đoạn",
-  };
-
-/** Thứ tự giai đoạn vận hành (bỏ CONFIG). */
-export const WORKFLOW_PHASE_ORDER: TemplateColumnPhase[] = [
-  "ALLOCATE",
-  "BREAKDOWN",
-  "EXECUTE",
-  "FEEDBACK",
-  "APPRAISE",
-];
 
 export type TemplateColumn = {
   id: string;
@@ -368,7 +338,6 @@ export type TemplateColumn = {
   visible: boolean;
   inputRoleCode: string;
   dataType: TemplateColumnDataType;
-  phase: TemplateColumnPhase;
 };
 
 export type TemplateHeaderGroup = {

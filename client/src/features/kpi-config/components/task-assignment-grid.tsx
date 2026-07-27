@@ -10,8 +10,15 @@ import { updateTaskAssignment } from "../api";
 import { buildHeaderPreviewRows } from "../template-header-preview";
 import {
   canInlineEditTemplateColumn,
+  formatDateDisplay,
+  formatDateTimeDisplay,
+  getColumnSemanticField,
   getTemplateColumnValue,
+  isNumericTemplateColumn,
   normalizeCellInput,
+  toDateInputValue,
+  toDateTimeInputValue,
+  toTimeInputValue,
 } from "../template-column-utils";
 import type {
   KpiTemplate,
@@ -197,16 +204,37 @@ function TemplateColumnCell({
     template,
   );
 
+  const isNumber = isNumericTemplateColumn(column, template);
+  const isDate = column.dataType === "date";
+  const isTime = column.dataType === "time";
+  const isDateTime = column.dataType === "datetime";
+  const alignClass =
+    column.dataType === "auto_increment"
+      ? "text-center"
+      : isNumber
+        ? "text-right"
+        : isDate || isTime || isDateTime
+          ? "text-center"
+          : "text-left";
+  const displayValue = isDateTime && value
+    ? formatDateTimeDisplay(value)
+    : isDate && value
+      ? formatDateDisplay(value)
+      : value;
+
   if (editable) {
-    const isNumber = column.dataType === "number";
-    return (
-      <DataCell className="p-1">
-        {isNumber ? (
+    const inputClassName =
+      "h-7 w-full min-w-16 rounded border border-transparent bg-transparent px-1.5 outline-none hover:border-input focus:border-primary focus:bg-background";
+
+    if (isNumber) {
+      return (
+        <DataCell className={`p-1 ${alignClass}`}>
           <input
             key={`${entityId(row.task)}-${column.key}-${value}`}
             type="number"
+            inputMode="decimal"
             defaultValue={value}
-            className="h-7 w-full min-w-16 rounded border border-transparent bg-transparent px-1.5 text-center outline-none hover:border-input focus:border-primary focus:bg-background"
+            className={`${inputClassName} text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
             onBlur={async (event) => {
               if (event.currentTarget.value === value) return;
               const saved = await onSave(
@@ -217,30 +245,94 @@ function TemplateColumnCell({
               if (!saved) event.currentTarget.value = value;
             }}
           />
-        ) : (
-          <textarea
+        </DataCell>
+      );
+    }
+
+    if (isDate) {
+      return (
+        <DataCell className={`p-1 ${alignClass}`}>
+          <input
             key={`${entityId(row.task)}-${column.key}-${value}`}
-            rows={2}
-            defaultValue={value}
-            className="min-h-7 w-full min-w-16 resize-y rounded border border-transparent bg-transparent px-1.5 py-1 text-left outline-none hover:border-input focus:border-primary focus:bg-background"
+            type="date"
+            defaultValue={toDateInputValue(value)}
+            className={`${inputClassName} text-center`}
             onBlur={async (event) => {
-              if (event.currentTarget.value === value) return;
-              const saved = await onSave(
-                row.task,
-                column,
-                event.currentTarget.value,
-              );
-              if (!saved) event.currentTarget.value = value;
+              const next = event.currentTarget.value;
+              if (next === toDateInputValue(value)) return;
+              const saved = await onSave(row.task, column, next);
+              if (!saved) event.currentTarget.value = toDateInputValue(value);
             }}
           />
-        )}
+        </DataCell>
+      );
+    }
+
+    if (isTime) {
+      return (
+        <DataCell className={`p-1 ${alignClass}`}>
+          <input
+            key={`${entityId(row.task)}-${column.key}-${value}`}
+            type="time"
+            defaultValue={toTimeInputValue(value)}
+            className={`${inputClassName} text-center`}
+            onBlur={async (event) => {
+              const next = event.currentTarget.value;
+              if (next === toTimeInputValue(value)) return;
+              const saved = await onSave(row.task, column, next);
+              if (!saved) event.currentTarget.value = toTimeInputValue(value);
+            }}
+          />
+        </DataCell>
+      );
+    }
+
+    if (isDateTime) {
+      return (
+        <DataCell className={`p-1 ${alignClass}`}>
+          <input
+            key={`${entityId(row.task)}-${column.key}-${value}`}
+            type="datetime-local"
+            defaultValue={toDateTimeInputValue(value)}
+            className={`${inputClassName} text-center`}
+            onBlur={async (event) => {
+              const next = event.currentTarget.value;
+              if (next === toDateTimeInputValue(value)) return;
+              const saved = await onSave(row.task, column, next);
+              if (!saved)
+                event.currentTarget.value = toDateTimeInputValue(value);
+            }}
+          />
+        </DataCell>
+      );
+    }
+
+    return (
+      <DataCell className={`p-1 ${alignClass}`}>
+        <textarea
+          key={`${entityId(row.task)}-${column.key}-${value}`}
+          rows={2}
+          defaultValue={value}
+          className="min-h-7 w-full min-w-16 resize-y rounded border border-transparent bg-transparent px-1.5 py-1 text-left outline-none hover:border-input focus:border-primary focus:bg-background"
+          onBlur={async (event) => {
+            if (event.currentTarget.value === value) return;
+            const saved = await onSave(
+              row.task,
+              column,
+              event.currentTarget.value,
+            );
+            if (!saved) event.currentTarget.value = value;
+          }}
+        />
       </DataCell>
     );
   }
 
   return (
-    <DataCell className="text-center text-muted-foreground">
-      {value || "—"}
+    <DataCell
+      className={`${alignClass} ${displayValue ? "" : "text-muted-foreground"}`}
+    >
+      {displayValue || "—"}
     </DataCell>
   );
 }
@@ -298,19 +390,52 @@ export function TaskAssignmentGrid({
       return false;
     }
 
-    const value = normalizeCellInput(column, rawValue);
-    if (column.dataType === "number" && rawValue.trim() && value === undefined) {
+    const value = normalizeCellInput(column, rawValue, template);
+    if (
+      isNumericTemplateColumn(column, template) &&
+      rawValue.trim() &&
+      value === undefined
+    ) {
       toast.error("Giá trị số không hợp lệ.");
+      return false;
+    }
+    if (column.dataType === "date" && rawValue.trim() && value === undefined) {
+      toast.error("Ngày không hợp lệ.");
+      return false;
+    }
+    if (column.dataType === "time" && rawValue.trim() && value === undefined) {
+      toast.error("Giờ không hợp lệ.");
+      return false;
+    }
+    if (
+      column.dataType === "datetime" &&
+      rawValue.trim() &&
+      value === undefined
+    ) {
+      toast.error("Ngày giờ không hợp lệ.");
       return false;
     }
 
     try {
-      await updateTaskAssignment(entityId(task), {
-        fieldValues: {
-          ...(task.fieldValues ?? {}),
-          [column.key]: value ?? "",
-        },
-      });
+      const nextFieldValues: Record<string, string | number> = {
+        ...(task.fieldValues ?? {}),
+      };
+      if (value === undefined) {
+        delete nextFieldValues[column.key];
+      } else {
+        nextFieldValues[column.key] = value;
+      }
+      const patch: Parameters<typeof updateTaskAssignment>[1] = {
+        fieldValues: nextFieldValues,
+      };
+      const semantic = getColumnSemanticField(column, template);
+      if (semantic === "standard_score") {
+        patch.standardScore = typeof value === "number" ? value : 0;
+      }
+      if (semantic === "proposed_adjustment") {
+        patch.proposedAdjustment = typeof value === "number" ? value : 0;
+      }
+      await updateTaskAssignment(entityId(task), patch);
       onSaved();
       return true;
     } catch (error) {

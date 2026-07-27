@@ -77,8 +77,12 @@ import {
   getAssignmentDialogColumns,
   getColumnSemanticField,
   getTemplateColumnValue,
+  isNumericTemplateColumn,
   readFieldValueBySemantic,
   taskValueSourceFromAssignment,
+  toDateInputValue,
+  toDateTimeInputValue,
+  toTimeInputValue,
   type TaskValueSource,
 } from "../template-column-utils";
 
@@ -1055,7 +1059,9 @@ function TaskDialog({
       form.fieldValues,
       "standard_score",
     );
-    const standardScore = Number(standardRaw || 0);
+    const standardScore = standardRaw.trim()
+      ? Number(standardRaw)
+      : (edit?.standardScore ?? 0);
     if (!Number.isFinite(standardScore) || standardScore < 0) {
       toast.error("Điểm chuẩn không hợp lệ.");
       return;
@@ -1072,9 +1078,23 @@ function TaskDialog({
     };
     for (const column of dialogColumns) {
       const raw = form.fieldValues[column.key]?.trim() ?? "";
-      if (!raw) continue;
-      numericFieldValues[column.key] =
-        column.dataType === "number" ? Number(raw) || 0 : raw;
+      if (!raw) {
+        delete numericFieldValues[column.key];
+        continue;
+      }
+      numericFieldValues[column.key] = isNumericTemplateColumn(
+        column,
+        template,
+      )
+        ? Number(raw)
+        : raw;
+      if (
+        isNumericTemplateColumn(column, template) &&
+        !Number.isFinite(Number(raw))
+      ) {
+        toast.error(`“${column.title}” phải là số.`);
+        return;
+      }
     }
 
     const payload: TaskAssignmentInput = {
@@ -1106,7 +1126,8 @@ function TaskDialog({
       reportDueDate: payload.reportDueDate,
       product: payload.product,
       actualProduct: payload.actualProduct,
-      standardScore: payload.standardScore,
+      // Chỉ đưa điểm chuẩn vào fieldValues khi user đã nhập.
+      standardScore: standardRaw.trim() ? standardScore : undefined,
       note: edit?.note,
     };
     payload.fieldValues = buildFieldValuesFromTemplate(
@@ -1224,6 +1245,7 @@ function TaskDialog({
                   }
 
                   if (
+                    column.dataType === "date" ||
                     semantic === "due_date" ||
                     semantic === "report_due_date"
                   ) {
@@ -1231,7 +1253,9 @@ function TaskDialog({
                       <Field key={column.id} label={label} required>
                         <Input
                           type="date"
-                          value={toIsoDate(form.fieldValues[column.key] ?? "")}
+                          value={toDateInputValue(
+                            form.fieldValues[column.key] ?? "",
+                          )}
                           onChange={(event) =>
                             setFieldValue(column.key, event.target.value)
                           }
@@ -1241,12 +1265,48 @@ function TaskDialog({
                     );
                   }
 
-                  if (column.dataType === "number") {
+                  if (column.dataType === "time") {
+                    return (
+                      <Field key={column.id} label={label} required>
+                        <Input
+                          type="time"
+                          value={toTimeInputValue(
+                            form.fieldValues[column.key] ?? "",
+                          )}
+                          onChange={(event) =>
+                            setFieldValue(column.key, event.target.value)
+                          }
+                          disabled={!editable && !!edit}
+                        />
+                      </Field>
+                    );
+                  }
+
+                  if (column.dataType === "datetime") {
+                    return (
+                      <Field key={column.id} label={label} required>
+                        <Input
+                          type="datetime-local"
+                          value={toDateTimeInputValue(
+                            form.fieldValues[column.key] ?? "",
+                          )}
+                          onChange={(event) =>
+                            setFieldValue(column.key, event.target.value)
+                          }
+                          disabled={!editable && !!edit}
+                        />
+                      </Field>
+                    );
+                  }
+
+                  if (isNumericTemplateColumn(column, template)) {
                     return (
                       <Field key={column.id} label={label} required>
                         <Input
                           type="number"
+                          inputMode="decimal"
                           min={0}
+                          className="text-right"
                           value={form.fieldValues[column.key] ?? ""}
                           onChange={(event) =>
                             setFieldValue(column.key, event.target.value)

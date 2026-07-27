@@ -31,7 +31,6 @@ import {
   KpiTemplate,
   KpiTemplateDocument,
   TemplateColumnDataType,
-  TemplateColumnPhase,
   TemplateHeaderGroup,
   TemplateVisibilityScope,
 } from './schemas/kpi-template.schema';
@@ -357,7 +356,6 @@ export class KpiConfigService {
             ? 'CALCULATED'
             : (item.inputRoleCode?.trim() ?? ''),
         dataType: item.dataType,
-        phase: item.phase ?? TemplateColumnPhase.ANY,
       }));
     }
     if (dto.headerGroups !== undefined) {
@@ -428,7 +426,6 @@ export class KpiConfigService {
             ? 'CALCULATED'
             : (item.inputRoleCode?.trim() ?? ''),
         dataType: item.dataType,
-        phase: item.phase ?? TemplateColumnPhase.ANY,
       })),
       headerGroups: this.normalizeHeaderGroups(dto.headerGroups ?? []),
       includedContentIds: (dto.includedContentIds ?? []).map(
