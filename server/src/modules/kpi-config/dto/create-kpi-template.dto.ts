@@ -20,6 +20,7 @@ import { TemplateVisibilityScope } from '../schemas/kpi-template.schema';
 import { CatalogScope } from '../schemas/catalog-scope.enum';
 import { TemplateColumnDto } from './template-column.dto';
 import { TemplateHeaderGroupDto } from './template-header-group.dto';
+import { TemplateWorkflowRulesDto } from './template-workflow-rules.dto';
 
 export class CreateKpiTemplateDto {
   @StringRequired('Tên biểu mẫu', { example: 'Biểu mẫu KPI mặc định' })
@@ -47,6 +48,12 @@ export class CreateKpiTemplateDto {
   @IsArray()
   @IsMongoId({ each: true, message: 'Nội dung công việc không hợp lệ.' })
   includedContentIds?: string[];
+
+  @ApiPropertyOptional({ type: TemplateWorkflowRulesDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TemplateWorkflowRulesDto)
+  workflowRules?: TemplateWorkflowRulesDto;
 
   @ApiPropertyOptional({ example: 50 })
   @IsOptional()

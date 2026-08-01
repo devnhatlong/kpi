@@ -42,6 +42,8 @@ import {
   fetchWorkGroups,
   kpiConfigKeys,
 } from "../api";
+import { useAuth } from "@/features/auth/auth-provider";
+import { userHasAnyRole } from "@/features/auth/types";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -52,7 +54,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { MASTER_FORM_STATUSES, type TaskAssignment, type TaskOrigin, type UnitKpiSheet, type WorkContent } from "../types";
+import {
+  MASTER_FORM_STATUSES,
+  resolveTemplateWorkflowRules,
+  type TaskAssignment,
+  type TaskOrigin,
+  type UnitKpiSheet,
+  type WorkContent,
+} from "../types";
 import { useWorkingUnit } from "../use-working-unit";
 import { TaskAssignmentGrid } from "./task-assignment-grid";
 import { WorkingUnitSelect } from "./working-unit-select";
@@ -70,6 +79,7 @@ function matchSource(task: TaskAssignment, filter: SourceFilter): boolean {
 }
 
 export function UnitKpiSheetView() {
+  const { user } = useAuth();
   const {
     workingDepartmentId,
     setWorkingDepartmentId,
@@ -80,16 +90,31 @@ export function UnitKpiSheetView() {
     kpiConfigKeys.periods,
     fetchKpiPeriods,
   );
-  const { data: templates = [] } = useSWR(
+  const { data: departmentTemplates = [] } = useSWR(
     kpiConfigKeys.templates("DEPARTMENT"),
     () => fetchKpiTemplates("DEPARTMENT"),
+  );
+  const { data: systemTemplates = [] } = useSWR(
+    kpiConfigKeys.templates("SYSTEM"),
+    () => fetchKpiTemplates("SYSTEM"),
+  );
+  const templates = useMemo(
+    () => [...systemTemplates, ...departmentTemplates],
+    [systemTemplates, departmentTemplates],
   );
   const { data: groups = [] } = useSWR(kpiConfigKeys.groups("DEPARTMENT"), () =>
     fetchWorkGroups("DEPARTMENT"),
   );
+  const { data: systemGroups = [] } = useSWR(kpiConfigKeys.groups("SYSTEM"), () =>
+    fetchWorkGroups("SYSTEM"),
+  );
   const { data: contents = [] } = useSWR(
     kpiConfigKeys.contents("DEPARTMENT"),
     () => fetchWorkContents("DEPARTMENT"),
+  );
+  const { data: systemContents = [] } = useSWR(
+    kpiConfigKeys.contents("SYSTEM"),
+    () => fetchWorkContents("SYSTEM"),
   );
   const { data: users = [] } = useSWR("users-for-kpi-assign", fetchUsers);
 
@@ -113,6 +138,17 @@ export function UnitKpiSheetView() {
 
   const sheetTemplate =
     templates.find((t) => entityId(t) === sheetTemplateId) ?? null;
+  const workflowRules = resolveTemplateWorkflowRules(
+    sheetTemplate?.workflowRules,
+  );
+  const canCreateTasksByRole = userHasAnyRole(
+    user,
+    workflowRules.taskCreators,
+  );
+  const catalogContents =
+    sheetTemplate?.scope === "SYSTEM" ? systemContents : contents;
+  const catalogGroups =
+    sheetTemplate?.scope === "SYSTEM" ? systemGroups : groups;
 
   const templateContents = useMemo(() => {
     if (!sheetTemplate) return [];
@@ -120,8 +156,8 @@ export function UnitKpiSheetView() {
     // Rỗng = không cho chọn nội dung nào (Super Admin phải tick trong biểu mẫu).
     if (!included.length) return [];
     const set = new Set(included);
-    return contents.filter((c) => c.isActive && set.has(entityId(c)));
-  }, [contents, sheetTemplate]);
+    return catalogContents.filter((c) => c.isActive && set.has(entityId(c)));
+  }, [catalogContents, sheetTemplate]);
 
   const {
     data: tasks = [],
@@ -130,6 +166,18 @@ export function UnitKpiSheetView() {
   } = useSWR(activeSheetId ? ["sheet-tasks", activeSheetId] : null, () =>
     fetchSheetTasks(activeSheetId),
   );
+
+  const allowAddTaskForContent = (content: WorkContent) => {
+    if (!canCreateTasksByRole) return false;
+    if (workflowRules.executeMode === "MANY_TASKS") return true;
+    const contentId = entityId(content);
+    return !tasks.some(
+      (item) =>
+        (typeof item.contentId === "string"
+          ? item.contentId
+          : entityId(item.contentId)) === contentId,
+    );
+  };
 
   const { data: publishedMasters = [] } = useSWR(
     kpiConfigKeys.masterForms,
@@ -438,10 +486,11 @@ export function UnitKpiSheetView() {
               <CardContent>
                 <TaskAssignmentGrid
                   template={sheetTemplate}
-                  groups={groups}
+                  groups={catalogGroups}
                   contents={templateContents}
                   tasks={filteredTasks}
                   loading={tasksLoading}
+                  allowAddTask={allowAddTaskForContent}
                   onAddTask={(content) => openCreateTask(content)}
                   onEditTask={(task) => openAssign(task)}
                   onDeleteTask={() => {
@@ -523,7 +572,7 @@ export function UnitKpiSheetView() {
                   <SelectValue placeholder="Chọn biểu mẫu" />
                 </SelectTrigger>
                 <SelectContent>
-                  {templates
+                  {departmentTemplates
                     .filter((t) => t.isActive)
                     .map((t) => (
                       <SelectItem key={entityId(t)} value={entityId(t)}>
@@ -532,7 +581,7 @@ export function UnitKpiSheetView() {
                     ))}
                 </SelectContent>
               </Select>
-              {!templates.length ? (
+              {!departmentTemplates.length ? (
                 <p className="text-xs text-amber-700 dark:text-amber-400">
                   Chưa có biểu mẫu nội bộ. Vào Cấu hình KPI → Biểu mẫu nội bộ
                   để tạo trước.
@@ -564,6 +613,9 @@ export function UnitKpiSheetView() {
                 onValueChange={(v) =>
                   setTaskForm((s) => ({ ...s, contentId: v }))
                 }
+                disabled={
+                  workflowRules.contentColumnLocked && Boolean(taskForm.contentId)
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Chọn nội dung" />
@@ -576,6 +628,11 @@ export function UnitKpiSheetView() {
                   ))}
                 </SelectContent>
               </Select>
+              {workflowRules.contentColumnLocked ? (
+                <p className="text-xs text-muted-foreground">
+                  Nội dung được map từ biểu mẫu — không sửa tay.
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label>Nhiệm vụ</Label>

@@ -19,6 +19,7 @@ import type {
   WorkContent,
   WorkGroup,
 } from "../types";
+import { isAutoIncrementColumn } from "../types";
 
 type TableRow =
   | { id: string; kind: "group"; label: string }
@@ -43,6 +44,8 @@ type TaskAssignmentGridProps = {
   /** Nút sửa — mặc định "Sửa". Form 1 dùng "Giao". */
   editAriaLabel?: string;
   showDelete?: boolean;
+  /** Ẩn / hiện nút + Thêm nhiệm vụ dưới dòng nội dung. */
+  allowAddTask?: boolean | ((content: WorkContent) => boolean);
 };
 
 function relationId(value: object | string): string {
@@ -275,6 +278,7 @@ export function TaskAssignmentGrid({
   onDeleteTask,
   editAriaLabel = "Sửa",
   showDelete = true,
+  allowAddTask = true,
 }: TaskAssignmentGridProps) {
   const [fontSize, setFontSize] = useState(12);
   const [headerFontSize, setHeaderFontSize] = useState(11);
@@ -428,30 +432,108 @@ export function TaskAssignmentGrid({
                   const taskCount = tasks.filter(
                     (item) => relationId(item.contentId) === contentId,
                   ).length;
+                  const canAdd =
+                    typeof allowAddTask === "function"
+                      ? allowAddTask(row.content)
+                      : allowAddTask;
+                  // Chưa có NV: hiện ND như 1 dòng dữ liệu (tên vào cột Nội dung).
+                  // Đã có NV: dòng khung gọn + nút thêm.
+                  if (taskCount > 0) {
+                    return (
+                      <tr key={row.id}>
+                        <td
+                          colSpan={columnCount}
+                          className="border border-slate-300 bg-slate-100 px-3 py-1.5 font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                        >
+                          <div className="flex items-center gap-3">
+                            {canAdd ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 shrink-0 px-2 text-xs"
+                                onClick={() => onAddTask(row.content)}
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                Thêm nhiệm vụ
+                              </Button>
+                            ) : (
+                              <span className="w-[7.5rem] shrink-0 text-xs font-normal text-muted-foreground">
+                                {taskCount} NV
+                              </span>
+                            )}
+                            <span className="min-w-0 flex-1 text-center break-words whitespace-normal">
+                              {row.content.name}
+                            </span>
+                            <span className="w-[4.5rem] shrink-0 text-right text-xs font-normal text-muted-foreground tabular-nums">
+                              {taskCount} NV
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  let contentIndex = 0;
+                  for (const item of rows) {
+                    if (item.kind !== "content") continue;
+                    contentIndex += 1;
+                    if (item.id === row.id) break;
+                  }
+
                   return (
-                    <tr key={row.id}>
-                      <td
-                        colSpan={columnCount}
-                        className="border border-slate-300 bg-slate-100 px-3 py-1.5 font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                      >
-                        <div className="flex items-center gap-3">
+                    <tr
+                      key={row.id}
+                      className="bg-slate-50/80 hover:bg-blue-50/40 dark:bg-slate-900/40 dark:hover:bg-blue-950/20"
+                    >
+                      {visibleColumns.map((column) => {
+                        const semantic = getColumnSemanticField(
+                          column,
+                          template,
+                        );
+                        if (isAutoIncrementColumn(column)) {
+                          return (
+                            <DataCell
+                              key={`${row.id}-${column.id}`}
+                              className="text-center tabular-nums"
+                            >
+                              {contentIndex}
+                            </DataCell>
+                          );
+                        }
+                        if (semantic === "content_name") {
+                          return (
+                            <DataCell
+                              key={`${row.id}-${column.id}`}
+                              className="text-left font-medium align-middle"
+                              title={row.content.name}
+                            >
+                              {row.content.name}
+                            </DataCell>
+                          );
+                        }
+                        return (
+                          <DataCell
+                            key={`${row.id}-${column.id}`}
+                            className="text-muted-foreground"
+                          >
+                            —
+                          </DataCell>
+                        );
+                      })}
+                      <DataCell className="text-muted-foreground">—</DataCell>
+                      <DataCell className="sticky right-0 bg-background p-1 text-center">
+                        {canAdd ? (
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 shrink-0 px-2 text-xs"
+                            className="h-7 px-2 text-xs"
                             onClick={() => onAddTask(row.content)}
                           >
                             <Plus className="h-3.5 w-3.5" />
-                            Thêm nhiệm vụ
+                            Thêm
                           </Button>
-                          <span className="min-w-0 flex-1 text-center break-words whitespace-normal">
-                            {row.content.name}
-                          </span>
-                          <span className="w-[4.5rem] shrink-0 text-right text-xs font-normal text-muted-foreground tabular-nums">
-                            {taskCount} NV
-                          </span>
-                        </div>
-                      </td>
+                        ) : null}
+                      </DataCell>
                     </tr>
                   );
                 }

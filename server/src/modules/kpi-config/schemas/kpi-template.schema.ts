@@ -10,6 +10,60 @@ export enum TemplateVisibilityScope {
   USERS = 'USERS',
 }
 
+/** 1 ND = 1 dòng khi phát hành / xem cấp phát hành. */
+export enum TemplatePublishMode {
+  ONE_ROW = 'ONE_ROW',
+  MANY_TASKS = 'MANY_TASKS',
+}
+
+/** Cấp thực hiện: 1 ND cho phép bao nhiêu dòng nhiệm vụ. */
+export enum TemplateExecuteMode {
+  ONE_ROW = 'ONE_ROW',
+  MANY_TASKS = 'MANY_TASKS',
+}
+
+export enum TemplateTaskCreatorRole {
+  SUPER_ADMIN = 'SUPER_ADMIN',
+  UNIT_ADMIN = 'UNIT_ADMIN',
+  MANAGER = 'MANAGER',
+}
+
+@Schema({ _id: false })
+export class TemplateWorkflowRules {
+  @Prop({
+    enum: Object.values(TemplatePublishMode),
+    default: TemplatePublishMode.ONE_ROW,
+  })
+  publishMode!: TemplatePublishMode;
+
+  @Prop({
+    enum: Object.values(TemplateExecuteMode),
+    default: TemplateExecuteMode.MANY_TASKS,
+  })
+  executeMode!: TemplateExecuteMode;
+
+  @Prop({
+    type: [String],
+    enum: Object.values(TemplateTaskCreatorRole),
+    default: [TemplateTaskCreatorRole.UNIT_ADMIN],
+  })
+  taskCreators!: TemplateTaskCreatorRole[];
+
+  /** Cột Nội dung chỉ map từ catalog, không sửa tay. */
+  @Prop({ default: true })
+  contentColumnLocked!: boolean;
+}
+
+export const TemplateWorkflowRulesSchema =
+  SchemaFactory.createForClass(TemplateWorkflowRules);
+
+export const DEFAULT_TEMPLATE_WORKFLOW_RULES: TemplateWorkflowRules = {
+  publishMode: TemplatePublishMode.ONE_ROW,
+  executeMode: TemplateExecuteMode.MANY_TASKS,
+  taskCreators: [TemplateTaskCreatorRole.UNIT_ADMIN],
+  contentColumnLocked: true,
+};
+
 export enum TemplateColumnDataType {
   TEXT = 'text',
   NUMBER = 'number',
@@ -95,6 +149,12 @@ export class KpiTemplate {
     default: [],
   })
   includedContentIds!: Types.ObjectId[];
+
+  @Prop({
+    type: TemplateWorkflowRulesSchema,
+    default: () => ({ ...DEFAULT_TEMPLATE_WORKFLOW_RULES }),
+  })
+  workflowRules!: TemplateWorkflowRules;
 
   @Prop({ default: 50, min: 0, max: 100 })
   progressWeight!: number;

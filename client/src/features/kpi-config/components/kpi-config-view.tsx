@@ -62,6 +62,7 @@ import {
 } from "../api";
 import {
   TASK_STATUSES,
+  resolveTemplateWorkflowRules,
   type CatalogScope,
   type KpiTemplate,
   type TaskAssignment,
@@ -147,7 +148,7 @@ export function KpiConfigView() {
   const templateCatalogScope = canManageTemplate ? undefined : "DEPARTMENT";
   const [tab, setTab] = useState<TabValue>("tasks");
   const [templateConfigTab, setTemplateConfigTab] = useState<
-    "columns" | "contents" | "formula"
+    "columns" | "contents" | "formula" | "workflow"
   >("columns");
   const catalogGroupsQuery = useSWR(kpiConfigKeys.groups(), () => fetchWorkGroups());
   const catalogContentsQuery = useSWR(kpiConfigKeys.contents(), () =>
@@ -211,6 +212,12 @@ export function KpiConfigView() {
 
   const selectedTemplate =
     templates.find((item) => entityId(item) === selectedTemplateId) ?? null;
+  const selectedWorkflowRules = resolveTemplateWorkflowRules(
+    selectedTemplate?.workflowRules,
+  );
+  const allowAddTaskOnPreview =
+    selectedWorkflowRules.publishMode === "MANY_TASKS" &&
+    userHasAnyRole(user, selectedWorkflowRules.taskCreators);
 
   const scopedContents = useMemo(() => {
     if (!selectedTemplate) return [];
@@ -322,7 +329,14 @@ export function KpiConfigView() {
 
       <Tabs
         value={tab}
-        onValueChange={(value) => setTab(value as TabValue)}
+        onValueChange={(value) => {
+          const next = value as TabValue;
+          setTab(next);
+          if (next === "tasks") {
+            void systemTemplatesQuery.mutate();
+            void systemContentsQuery.mutate();
+          }
+        }}
         className="flex min-h-0 flex-1 flex-col"
       >
         <TabsList className="h-auto w-fit flex-wrap">
@@ -422,6 +436,7 @@ export function KpiConfigView() {
                   systemContentsQuery.isLoading ||
                   systemTemplatesQuery.isLoading
                 }
+                allowAddTask={allowAddTaskOnPreview}
                 onAddTask={(content) => {
                   setEditingTask(null);
                   setCreatingForContent(content);
@@ -622,6 +637,7 @@ export function KpiConfigView() {
             users={users}
             initialTemplateId={selectedTemplateId}
             initialConfigTab={templateConfigTab}
+            onTemplatesChange={() => systemTemplatesQuery.mutate()}
           />
         </TabsContent>
       </Tabs>

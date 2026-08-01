@@ -28,11 +28,16 @@ import {
   TaskAssignmentDocument,
 } from './schemas/task-assignment.schema';
 import {
+  DEFAULT_TEMPLATE_WORKFLOW_RULES,
   KpiTemplate,
   KpiTemplateDocument,
   TemplateColumnDataType,
+  TemplateExecuteMode,
   TemplateHeaderGroup,
+  TemplatePublishMode,
+  TemplateTaskCreatorRole,
   TemplateVisibilityScope,
+  TemplateWorkflowRules,
 } from './schemas/kpi-template.schema';
 import { Role, RoleDocument } from '../roles/schemas/role.schema';
 import { CreateKpiTemplateDto } from './dto/create-kpi-template.dto';
@@ -455,6 +460,12 @@ export class KpiConfigService {
         (value) => new Types.ObjectId(value),
       );
     }
+    if (dto.workflowRules !== undefined) {
+      template.workflowRules = this.normalizeWorkflowRules(
+        dto.workflowRules,
+        template.workflowRules,
+      );
+    }
     if (dto.progressWeight !== undefined) {
       template.progressWeight = dto.progressWeight;
     }
@@ -521,6 +532,7 @@ export class KpiConfigService {
       includedContentIds: (dto.includedContentIds ?? []).map(
         (value) => new Types.ObjectId(value),
       ),
+      workflowRules: this.normalizeWorkflowRules(dto.workflowRules),
       progressWeight: dto.progressWeight ?? 50,
       qualityWeight: dto.qualityWeight ?? 50,
       visibilityScope: dto.visibilityScope ?? TemplateVisibilityScope.ALL,
@@ -531,6 +543,34 @@ export class KpiConfigService {
         (value) => new Types.ObjectId(value),
       ),
       isActive: dto.isActive ?? true,
+    };
+  }
+
+  private normalizeWorkflowRules(
+    dto?: {
+      publishMode?: TemplatePublishMode;
+      executeMode?: TemplateExecuteMode;
+      taskCreators?: TemplateTaskCreatorRole[];
+      contentColumnLocked?: boolean;
+    },
+    current?: TemplateWorkflowRules,
+  ): TemplateWorkflowRules {
+    const base = current ?? { ...DEFAULT_TEMPLATE_WORKFLOW_RULES };
+    const creators =
+      dto?.taskCreators?.length
+        ? [...new Set(dto.taskCreators)]
+        : base.taskCreators?.length
+          ? base.taskCreators
+          : DEFAULT_TEMPLATE_WORKFLOW_RULES.taskCreators;
+    return {
+      publishMode: dto?.publishMode ?? base.publishMode ?? TemplatePublishMode.ONE_ROW,
+      executeMode:
+        dto?.executeMode ?? base.executeMode ?? TemplateExecuteMode.MANY_TASKS,
+      taskCreators: creators,
+      contentColumnLocked:
+        dto?.contentColumnLocked ??
+        base.contentColumnLocked ??
+        DEFAULT_TEMPLATE_WORKFLOW_RULES.contentColumnLocked,
     };
   }
 

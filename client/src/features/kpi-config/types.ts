@@ -324,6 +324,64 @@ export type TaskAssignmentInput = Omit<
 };
 
 export type TemplateVisibilityScope = "ALL" | "ROLES" | "USERS";
+
+export type TemplatePublishMode = "ONE_ROW" | "MANY_TASKS";
+export type TemplateExecuteMode = "ONE_ROW" | "MANY_TASKS";
+export type TemplateTaskCreatorRole =
+  | "SUPER_ADMIN"
+  | "UNIT_ADMIN"
+  | "MANAGER";
+
+export type TemplateWorkflowRules = {
+  publishMode: TemplatePublishMode;
+  executeMode: TemplateExecuteMode;
+  taskCreators: TemplateTaskCreatorRole[];
+  contentColumnLocked: boolean;
+};
+
+export const DEFAULT_TEMPLATE_WORKFLOW_RULES: TemplateWorkflowRules = {
+  publishMode: "ONE_ROW",
+  executeMode: "MANY_TASKS",
+  taskCreators: ["UNIT_ADMIN"],
+  contentColumnLocked: true,
+};
+
+export const TEMPLATE_PUBLISH_MODE_LABELS: Record<TemplatePublishMode, string> =
+  {
+    ONE_ROW: "1 nội dung = 1 dòng (không tạo NV sẵn)",
+    MANY_TASKS: "Cho phép tạo nhiều nhiệm vụ ngay khi phát hành",
+  };
+
+export const TEMPLATE_EXECUTE_MODE_LABELS: Record<TemplateExecuteMode, string> =
+  {
+    ONE_ROW: "1 nội dung = tối đa 1 nhiệm vụ",
+    MANY_TASKS: "1 nội dung = nhiều nhiệm vụ",
+  };
+
+export const TEMPLATE_TASK_CREATOR_LABELS: Record<
+  TemplateTaskCreatorRole,
+  string
+> = {
+  SUPER_ADMIN: "Super Admin",
+  UNIT_ADMIN: "Unit Admin",
+  MANAGER: "Manager",
+};
+
+export function resolveTemplateWorkflowRules(
+  rules?: Partial<TemplateWorkflowRules> | null,
+): TemplateWorkflowRules {
+  return {
+    publishMode: rules?.publishMode ?? DEFAULT_TEMPLATE_WORKFLOW_RULES.publishMode,
+    executeMode: rules?.executeMode ?? DEFAULT_TEMPLATE_WORKFLOW_RULES.executeMode,
+    taskCreators:
+      rules?.taskCreators?.length
+        ? [...rules.taskCreators]
+        : [...DEFAULT_TEMPLATE_WORKFLOW_RULES.taskCreators],
+    contentColumnLocked:
+      rules?.contentColumnLocked ??
+      DEFAULT_TEMPLATE_WORKFLOW_RULES.contentColumnLocked,
+  };
+}
 export type TemplateColumnDataType =
   | "text"
   | "number"
@@ -360,6 +418,7 @@ export type KpiTemplate = {
   columns: TemplateColumn[];
   headerGroups: TemplateHeaderGroup[];
   includedContentIds: string[];
+  workflowRules?: TemplateWorkflowRules;
   progressWeight: number;
   qualityWeight: number;
   visibilityScope: TemplateVisibilityScope;

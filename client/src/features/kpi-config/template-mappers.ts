@@ -6,7 +6,9 @@ import type {
   TemplateColumn,
   TemplateHeaderGroup,
   TemplateVisibilityScope,
+  TemplateWorkflowRules,
 } from "./types";
+import { resolveTemplateWorkflowRules } from "./types";
 
 export type TemplateDraft = {
   id: string;
@@ -15,6 +17,7 @@ export type TemplateDraft = {
   columns: TemplateColumn[];
   headerGroups: TemplateHeaderGroup[];
   includedContentIds: string[];
+  workflowRules: TemplateWorkflowRules;
   progressWeight: string;
   qualityWeight: string;
   visibilityScope: TemplateVisibilityScope;
@@ -56,6 +59,7 @@ export function toTemplateDraft(template: KpiTemplate): TemplateDraft {
     columns: template.columns.map(serializeTemplateColumn),
     headerGroups: cloneHeaderGroups(template.headerGroups),
     includedContentIds: template.includedContentIds.map(String),
+    workflowRules: resolveTemplateWorkflowRules(template.workflowRules),
     progressWeight: String(template.progressWeight),
     qualityWeight: String(template.qualityWeight),
     visibilityScope: template.visibilityScope,
@@ -80,6 +84,7 @@ export function toTemplateInput(template: TemplateDraft): KpiTemplateInput {
     columns: template.columns.map(serializeTemplateColumn),
     headerGroups: template.headerGroups,
     includedContentIds: template.includedContentIds,
+    workflowRules: resolveTemplateWorkflowRules(template.workflowRules),
     progressWeight: Number(template.progressWeight) || 0,
     qualityWeight: Number(template.qualityWeight) || 0,
     visibilityScope: template.visibilityScope,
@@ -107,6 +112,7 @@ export function createBlankTemplateDraft(
     columns: [],
     headerGroups: [],
     includedContentIds,
+    workflowRules: resolveTemplateWorkflowRules(),
     progressWeight: "50",
     qualityWeight: "50",
     visibilityScope: "ALL",

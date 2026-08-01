@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import {
   ArrowDown,
   ArrowUp,
@@ -69,12 +69,20 @@ import {
 } from "../template-mappers";
 import {
   isAutoIncrementColumn,
+  resolveTemplateWorkflowRules,
+  TEMPLATE_EXECUTE_MODE_LABELS,
+  TEMPLATE_PUBLISH_MODE_LABELS,
+  TEMPLATE_TASK_CREATOR_LABELS,
   type CatalogScope,
   type KpiTemplate,
   type TemplateColumn,
   type TemplateColumnDataType,
+  type TemplateExecuteMode,
   type TemplateHeaderGroup,
+  type TemplatePublishMode,
+  type TemplateTaskCreatorRole,
   type TemplateVisibilityScope,
+  type TemplateWorkflowRules,
   type WorkContent,
 } from "../types";
 import { CALCULATED_INPUT } from "../template-column-utils";
@@ -561,6 +569,7 @@ export function TemplateConfigView({
   canMutateAllCatalog = false,
   initialTemplateId,
   initialConfigTab = "columns",
+  onTemplatesChange,
 }: {
   contents: WorkContent[];
   roles: Role[];
@@ -572,8 +581,11 @@ export function TemplateConfigView({
   /** Super Admin sửa được mọi biểu mẫu (hệ thống + đơn vị). */
   canMutateAllCatalog?: boolean;
   initialTemplateId?: string;
-  initialConfigTab?: "columns" | "contents" | "formula";
+  initialConfigTab?: "columns" | "contents" | "formula" | "workflow";
+  /** Gọi sau khi lưu/tạo/xóa để tab Nhiệm vụ refresh ngay. */
+  onTemplatesChange?: () => void | Promise<void>;
 }) {
+  const { mutate: globalMutate } = useSWRConfig();
   const listScope = catalogScope;
   const mutateScope = allowMutateScope ?? catalogScope ?? "SYSTEM";
   const isDepartmentScope = mutateScope === "DEPARTMENT";
@@ -599,6 +611,17 @@ export function TemplateConfigView({
     listScope ? fetchKpiTemplates(listScope) : fetchKpiTemplates(),
   );
   const templatesHydratedRef = useRef(false);
+
+  async function revalidateTemplates() {
+    await templatesQuery.mutate();
+    await globalMutate(
+      (key) =>
+        Array.isArray(key) &&
+        key[0] === "kpi-config" &&
+        key[1] === "templates",
+    );
+    await onTemplatesChange?.();
+  }
 
   useEffect(() => {
     templatesHydratedRef.current = false;
@@ -690,6 +713,9 @@ export function TemplateConfigView({
   const templateName = activeTemplate?.name ?? "";
   const templateCode = activeTemplate?.code ?? "";
   const includedContentIds = activeTemplate?.includedContentIds ?? [];
+  const workflowRules = resolveTemplateWorkflowRules(
+    activeTemplate?.workflowRules,
+  );
   const progressWeight = activeTemplate?.progressWeight ?? "50";
   const qualityWeight = activeTemplate?.qualityWeight ?? "50";
   const headerGroups = activeTemplate?.headerGroups ?? [];
@@ -697,6 +723,8 @@ export function TemplateConfigView({
     setTemplateField("columns", action);
   const setIncludedContentIds = (action: SetStateAction<string[]>) =>
     setTemplateField("includedContentIds", action);
+  const setWorkflowRules = (action: SetStateAction<TemplateWorkflowRules>) =>
+    setTemplateField("workflowRules", action);
   const setProgressWeight = (action: SetStateAction<string>) =>
     setTemplateField("progressWeight", action);
   const setQualityWeight = (action: SetStateAction<string>) =>
@@ -966,7 +994,7 @@ export function TemplateConfigView({
         );
       }
 
-      await templatesQuery.mutate();
+      await revalidateTemplates();
       setTemplateDialogMode(null);
       setNewTemplateName("");
       setNewTemplateCode("");
@@ -991,7 +1019,7 @@ export function TemplateConfigView({
       setTemplates(remaining);
       setSelectedTemplateId(remaining[0]?.id ?? "");
       setDeleteDialogOpen(false);
-      await templatesQuery.mutate();
+      await revalidateTemplates();
       toast.success("Đã xoá biểu mẫu.");
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không xoá được biểu mẫu."));
@@ -1039,7 +1067,7 @@ export function TemplateConfigView({
             : template,
         ),
       );
-      await templatesQuery.mutate();
+      await revalidateTemplates();
       toast.success("Đã lưu cấu hình biểu mẫu.");
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không lưu được cấu hình biểu mẫu."));
@@ -1064,7 +1092,7 @@ export function TemplateConfigView({
             : template,
         ),
       );
-      await templatesQuery.mutate();
+      await revalidateTemplates();
       setGroupDialogOpen(false);
       toast.success("Đã lưu nhóm header.");
     } catch (error) {
@@ -1262,13 +1290,16 @@ export function TemplateConfigView({
             <Tabs
               value={configTab}
               onValueChange={(value) =>
-                setConfigTab(value as "columns" | "contents" | "formula")
+                setConfigTab(
+                  value as "columns" | "contents" | "formula" | "workflow",
+                )
               }
               className="p-4"
             >
               <TabsList className="h-auto flex-wrap">
                 <TabsTrigger value="columns">Cột & header</TabsTrigger>
                 <TabsTrigger value="contents">Nội dung công việc</TabsTrigger>
+                <TabsTrigger value="workflow">Luồng / Rule</TabsTrigger>
                 <TabsTrigger value="formula">Công thức điểm</TabsTrigger>
               </TabsList>
 
@@ -1610,6 +1641,154 @@ export function TemplateConfigView({
                     <strong>Lưu cấu hình</strong>.
                   </p>
                 )}
+              </TabsContent>
+
+              <TabsContent value="workflow" className="space-y-4">
+                <div>
+                  <div className="font-semibold">Luồng / Rule</div>
+                  <div className="text-xs text-muted-foreground">
+                    Cấu hình cách nội dung công việc map xuống bảng khi phát
+                    hành và khi đơn vị thực hiện.
+                  </div>
+                </div>
+
+                <div className="grid max-w-2xl gap-4 rounded-md border p-4">
+                  <div className="space-y-2">
+                    <Label>Cấp phát hành (Super Admin)</Label>
+                    <Select
+                      value={workflowRules.publishMode}
+                      disabled={activeReadOnly}
+                      onValueChange={(value) =>
+                        setWorkflowRules((current) => ({
+                          ...current,
+                          publishMode: value as TemplatePublishMode,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(
+                          Object.keys(
+                            TEMPLATE_PUBLISH_MODE_LABELS,
+                          ) as TemplatePublishMode[]
+                        ).map((key) => (
+                          <SelectItem key={key} value={key}>
+                            {TEMPLATE_PUBLISH_MODE_LABELS[key]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      ONE_ROW: bật nội dung → hiện đúng số dòng ND, không tạo NV
+                      sẵn.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Cấp thực hiện (đơn vị)</Label>
+                    <Select
+                      value={workflowRules.executeMode}
+                      disabled={activeReadOnly}
+                      onValueChange={(value) =>
+                        setWorkflowRules((current) => ({
+                          ...current,
+                          executeMode: value as TemplateExecuteMode,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(
+                          Object.keys(
+                            TEMPLATE_EXECUTE_MODE_LABELS,
+                          ) as TemplateExecuteMode[]
+                        ).map((key) => (
+                          <SelectItem key={key} value={key}>
+                            {TEMPLATE_EXECUTE_MODE_LABELS[key]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      MANY_TASKS: Unit Admin có thể thêm nhiều nhiệm vụ dưới
+                      mỗi nội dung.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Ai được thêm nhiệm vụ</Label>
+                    <div className="space-y-2 rounded-md border p-3">
+                      {(
+                        Object.keys(
+                          TEMPLATE_TASK_CREATOR_LABELS,
+                        ) as TemplateTaskCreatorRole[]
+                      ).map((role) => {
+                        const checked =
+                          workflowRules.taskCreators.includes(role);
+                        return (
+                          <label
+                            key={role}
+                            className={`flex items-center gap-2 text-sm ${
+                              activeReadOnly ? "" : "cursor-pointer"
+                            }`}
+                          >
+                            <Checkbox
+                              checked={checked}
+                              disabled={activeReadOnly}
+                              onCheckedChange={(value) =>
+                                setWorkflowRules((current) => {
+                                  const next = value
+                                    ? [...current.taskCreators, role]
+                                    : current.taskCreators.filter(
+                                        (item) => item !== role,
+                                      );
+                                  return {
+                                    ...current,
+                                    taskCreators: next.length
+                                      ? next
+                                      : ["UNIT_ADMIN"],
+                                  };
+                                })
+                              }
+                            />
+                            {TEMPLATE_TASK_CREATOR_LABELS[role]}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <label
+                    className={`flex items-start gap-3 rounded-md border p-3 text-sm ${
+                      activeReadOnly ? "" : "cursor-pointer"
+                    }`}
+                  >
+                    <Switch
+                      className="mt-0.5"
+                      checked={workflowRules.contentColumnLocked}
+                      disabled={activeReadOnly}
+                      onCheckedChange={(contentColumnLocked) =>
+                        setWorkflowRules((current) => ({
+                          ...current,
+                          contentColumnLocked,
+                        }))
+                      }
+                    />
+                    <span>
+                      <span className="font-medium">
+                        Khóa cột Nội dung công việc
+                      </span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        Chỉ map từ danh mục đã chọn trên biểu mẫu, không cho
+                        sửa tay khi thêm nhiệm vụ.
+                      </span>
+                    </span>
+                  </label>
+                </div>
               </TabsContent>
 
               <TabsContent value="formula" className="space-y-4">
