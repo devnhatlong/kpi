@@ -4,10 +4,12 @@ import {
   BookMarked,
   ClipboardList,
   Filter,
+  FormInput,
   Gauge,
   Inbox,
   KeyRound,
   Layers,
+  ListTree,
   Network,
   Settings,
   Shield,
@@ -59,6 +61,7 @@ export const KPI_OPERATOR_ROLES = KPI_ASSIGN_ROLES;
 export const SUPER_ADMIN_PATH_PREFIXES = [
   "/organization",
   "/settings",
+  "/kpi/form-config",
 ] as const;
 
 export function isSuperAdminPath(pathname: string): boolean {
@@ -130,6 +133,23 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/kpi/catalogs",
     icon: BookMarked,
     roles: [...KPI_ADMIN_ROLES],
+  },
+  {
+    title: "Cấu hình form KPI",
+    icon: FormInput,
+    roles: [...SUPER_ADMIN_ONLY],
+    children: [
+      {
+        title: "Nội dung công việc",
+        href: "/kpi/form-config/work-contents",
+        icon: ListTree,
+      },
+      {
+        title: "Nhóm điểm",
+        href: "/kpi/form-config/score-groups",
+        icon: Gauge,
+      },
+    ],
   },
   {
     title: "Tổ chức",
