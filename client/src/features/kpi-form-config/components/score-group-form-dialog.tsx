@@ -160,7 +160,9 @@ export function ScoreGroupFormDialog({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="score-group-name">Tên nhóm</Label>
+            <Label htmlFor="score-group-name">
+              Tên nhóm <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="score-group-name"
               value={name}
@@ -171,7 +173,9 @@ export function ScoreGroupFormDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="score-group-min">Mức điểm từ</Label>
+            <Label htmlFor="score-group-min">
+              Mức điểm từ <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="score-group-min"
               type="number"
@@ -185,7 +189,9 @@ export function ScoreGroupFormDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="score-group-max">Mức điểm đến</Label>
+            <Label htmlFor="score-group-max">
+              Mức điểm đến <span className="text-destructive">*</span>
+            </Label>
             <Input
               id="score-group-max"
               type="number"

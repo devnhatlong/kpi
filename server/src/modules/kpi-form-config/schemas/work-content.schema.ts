@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, Types } from 'mongoose';
+import { ContentGroup } from './content-group.schema';
 
 export type WorkContentDocument = HydratedDocument<WorkContent>;
 
@@ -14,6 +15,9 @@ export class WorkContent {
 
   @Prop({ trim: true, default: '' })
   description!: string;
+
+  @Prop({ type: Types.ObjectId, ref: ContentGroup.name, required: true, index: true })
+  contentGroupId!: Types.ObjectId;
 
   @Prop({ default: 0, min: 0 })
   sortOrder!: number;

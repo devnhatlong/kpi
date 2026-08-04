@@ -140,6 +140,11 @@ export const NAV_ITEMS: NavItem[] = [
     roles: [...SUPER_ADMIN_ONLY],
     children: [
       {
+        title: "Nhóm nội dung",
+        href: "/kpi/form-config/content-groups",
+        icon: Layers,
+      },
+      {
         title: "Nội dung công việc",
         href: "/kpi/form-config/work-contents",
         icon: ListTree,

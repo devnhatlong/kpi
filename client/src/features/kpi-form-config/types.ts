@@ -1,4 +1,4 @@
-export type WorkContent = {
+export type ContentGroup = {
   _id: string;
   id?: string;
   code: string;
@@ -8,10 +8,36 @@ export type WorkContent = {
   isActive: boolean;
 };
 
+export type ContentGroupInput = {
+  code?: string;
+  name: string;
+  description?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+export type ContentGroupRef = {
+  _id: string;
+  code: string;
+  name: string;
+};
+
+export type WorkContent = {
+  _id: string;
+  id?: string;
+  code: string;
+  name: string;
+  description?: string;
+  contentGroupId: string | ContentGroupRef;
+  sortOrder: number;
+  isActive: boolean;
+};
+
 export type WorkContentInput = {
   code?: string;
   name: string;
   description?: string;
+  contentGroupId: string;
   sortOrder?: number;
   isActive?: boolean;
 };

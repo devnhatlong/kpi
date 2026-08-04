@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 import { buildPaginatedResponse } from '@/common/utils/pagination.util';
 import { CreateWorkContentDto } from './dto/create-work-content.dto';
@@ -13,12 +13,15 @@ import {
   WorkContent,
   WorkContentDocument,
 } from './schemas/work-content.schema';
+import { ContentGroup, ContentGroupDocument } from './schemas/content-group.schema';
 
 @Injectable()
 export class WorkContentsService {
   constructor(
     @InjectModel(WorkContent.name)
     private readonly workContentModel: Model<WorkContentDocument>,
+    @InjectModel(ContentGroup.name)
+    private readonly contentGroupModel: Model<ContentGroupDocument>,
   ) {}
 
   async create(dto: CreateWorkContentDto) {
@@ -26,14 +29,17 @@ export class WorkContentsService {
       ? dto.code.trim().toUpperCase()
       : await this.nextCode();
     await this.ensureUniqueCode(code);
+    const contentGroup = await this.requireContentGroup(dto.contentGroupId);
 
     const data = await this.workContentModel.create({
       code,
       name: dto.name.trim(),
       description: dto.description?.trim() ?? '',
+      contentGroupId: contentGroup._id,
       sortOrder: dto.sortOrder ?? 0,
       isActive: dto.isActive ?? true,
     });
+    await data.populate('contentGroupId', 'code name');
 
     return { message: 'Tạo nội dung công việc thành công.', data };
   }
@@ -49,7 +55,10 @@ export class WorkContentsService {
     const sort = { sortOrder: 1 as const, name: 1 as const };
 
     if (query.all) {
-      const data = await this.workContentModel.find(filter).sort(sort);
+      const data = await this.workContentModel
+        .find(filter)
+        .sort(sort)
+        .populate('contentGroupId', 'code name');
       return buildPaginatedResponse(data, data.length, 1, data.length || 1);
     }
 
@@ -58,7 +67,12 @@ export class WorkContentsService {
     const skip = (page - 1) * limit;
 
     const [data, total] = await Promise.all([
-      this.workContentModel.find(filter).sort(sort).skip(skip).limit(limit),
+      this.workContentModel
+        .find(filter)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .populate('contentGroupId', 'code name'),
       this.workContentModel.countDocuments(filter),
     ]);
 
@@ -66,7 +80,7 @@ export class WorkContentsService {
   }
 
   async findOne(id: string) {
-    return this.requireById(id);
+    return this.requireById(id, true);
   }
 
   async update(id: string, dto: UpdateWorkContentDto) {
@@ -81,10 +95,15 @@ export class WorkContentsService {
     if (dto.description !== undefined) {
       item.description = dto.description.trim();
     }
+    if (dto.contentGroupId !== undefined) {
+      const contentGroup = await this.requireContentGroup(dto.contentGroupId);
+      item.contentGroupId = contentGroup._id;
+    }
     if (dto.sortOrder !== undefined) item.sortOrder = dto.sortOrder;
     if (dto.isActive !== undefined) item.isActive = dto.isActive;
 
     await item.save();
+    await item.populate('contentGroupId', 'code name');
     return { message: 'Cập nhật nội dung công việc thành công.', data: item };
   }
 
@@ -94,10 +113,28 @@ export class WorkContentsService {
     return { message: 'Xoá nội dung công việc thành công.' };
   }
 
-  private async requireById(id: string) {
-    const item = await this.workContentModel.findById(id);
+  private async requireById(id: string, withPopulate = false) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException('Không tìm thấy nội dung công việc.');
+    }
+    const item = withPopulate
+      ? await this.workContentModel
+          .findById(id)
+          .populate('contentGroupId', 'code name')
+      : await this.workContentModel.findById(id);
     if (!item) {
       throw new NotFoundException('Không tìm thấy nội dung công việc.');
+    }
+    return item;
+  }
+
+  private async requireContentGroup(id: string) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Nhóm nội dung không hợp lệ.');
+    }
+    const item = await this.contentGroupModel.findById(id);
+    if (!item) {
+      throw new BadRequestException('Nhóm nội dung không tồn tại.');
     }
     return item;
   }

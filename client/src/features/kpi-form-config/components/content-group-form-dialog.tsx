@@ -16,62 +16,42 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  createWorkContent,
-  fetchContentGroupsAll,
-  updateWorkContent,
+  createContentGroup,
+  updateContentGroup,
 } from "@/features/kpi-form-config/api";
-import type { WorkContent } from "@/features/kpi-form-config/types";
+import type { ContentGroup } from "@/features/kpi-form-config/types";
 import { entityId } from "@/features/kpi-form-config/types";
 import { getApiErrorMessage } from "@/lib/api-client";
-import useSWR from "swr";
 
-type WorkContentFormDialogProps = {
+type ContentGroupFormDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  edit?: WorkContent | null;
+  edit?: ContentGroup | null;
   onSuccess: () => void;
 };
 
-export function WorkContentFormDialog({
+export function ContentGroupFormDialog({
   open,
   onOpenChange,
   edit,
   onSuccess,
-}: WorkContentFormDialogProps) {
+}: ContentGroupFormDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [contentGroupId, setContentGroupId] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
-  const { data: contentGroups = [] } = useSWR(
-    open ? ["content-groups", "all", "for-work-content"] : null,
-    fetchContentGroupsAll,
-  );
 
   useEffect(() => {
     if (!open) return;
     if (edit) {
       setName(edit.name);
       setDescription(edit.description ?? "");
-      setContentGroupId(
-        typeof edit.contentGroupId === "string"
-          ? edit.contentGroupId
-          : edit.contentGroupId?._id ?? "",
-      );
       setSortOrder(String(edit.sortOrder ?? 0));
       setIsActive(edit.isActive);
     } else {
       setName("");
       setDescription("");
-      setContentGroupId("");
       setSortOrder("0");
       setIsActive(true);
     }
@@ -79,11 +59,7 @@ export function WorkContentFormDialog({
 
   const submit = async () => {
     if (!name.trim()) {
-      toast.error("Vui lòng nhập tên nội dung công việc.");
-      return;
-    }
-    if (!contentGroupId) {
-      toast.error("Vui lòng chọn nhóm nội dung.");
+      toast.error("Vui lòng nhập tên nhóm nội dung.");
       return;
     }
 
@@ -96,7 +72,6 @@ export function WorkContentFormDialog({
     const payload = {
       name: name.trim(),
       description: description.trim(),
-      contentGroupId,
       sortOrder: sortOrderNum,
       isActive,
     };
@@ -104,18 +79,16 @@ export function WorkContentFormDialog({
     setSaving(true);
     try {
       if (edit) {
-        await updateWorkContent(entityId(edit), payload);
-        toast.success("Đã cập nhật nội dung công việc.");
+        await updateContentGroup(entityId(edit), payload);
+        toast.success("Đã cập nhật nhóm nội dung.");
       } else {
-        await createWorkContent(payload);
-        toast.success("Đã thêm nội dung công việc.");
+        await createContentGroup(payload);
+        toast.success("Đã thêm nhóm nội dung.");
       }
       onOpenChange(false);
       onSuccess();
     } catch (error) {
-      toast.error(
-        getApiErrorMessage(error, "Không lưu được nội dung công việc."),
-      );
+      toast.error(getApiErrorMessage(error, "Không lưu được nhóm nội dung."));
     } finally {
       setSaving(false);
     }
@@ -125,15 +98,13 @@ export function WorkContentFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>
-            {edit ? "Sửa nội dung công việc" : "Thêm nội dung công việc"}
-          </DialogTitle>
+          <DialogTitle>{edit ? "Sửa nhóm nội dung" : "Thêm nhóm nội dung"}</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-5 py-2">
           {edit ? (
             <div className="space-y-2">
-              <Label>Mã</Label>
+              <Label>Mã nhóm</Label>
               <Input value={edit.code} readOnly disabled className="font-mono" />
               <p className="text-xs text-muted-foreground">
                 Mã tự sinh — không đổi sau khi tạo.
@@ -141,27 +112,27 @@ export function WorkContentFormDialog({
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Mã sẽ tự sinh (ND-0001, ND-0002, …) khi lưu.
+              Mã sẽ tự sinh (NND-0001, NND-0002, …) khi lưu.
             </p>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="work-content-name">
-              Tên nội dung công việc <span className="text-destructive">*</span>
+            <Label htmlFor="content-group-name">
+              Tên nhóm nội dung <span className="text-destructive">*</span>
             </Label>
             <Input
-              id="work-content-name"
+              id="content-group-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="VD: Nhiệm vụ trọng tâm ban hành kèm Chỉ thị công tác"
+              placeholder="VD: Nghiệp vụ thường xuyên"
               autoFocus
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="work-content-description">Mô tả (tuỳ chọn)</Label>
+            <Label htmlFor="content-group-description">Mô tả (tuỳ chọn)</Label>
             <Textarea
-              id="work-content-description"
+              id="content-group-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
@@ -169,27 +140,9 @@ export function WorkContentFormDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>
-              Nhóm nội dung <span className="text-destructive">*</span>
-            </Label>
-            <Select value={contentGroupId || undefined} onValueChange={setContentGroupId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn nhóm nội dung" />
-              </SelectTrigger>
-              <SelectContent>
-                {contentGroups.map((group) => (
-                  <SelectItem key={entityId(group)} value={entityId(group)}>
-                    {group.name} ({group.code})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="work-content-sort">Thứ tự hiển thị</Label>
+            <Label htmlFor="content-group-sort">Thứ tự hiển thị</Label>
             <Input
-              id="work-content-sort"
+              id="content-group-sort"
               type="number"
               min={0}
               value={sortOrder}
@@ -198,9 +151,9 @@ export function WorkContentFormDialog({
           </div>
 
           <div className="flex h-9 items-center justify-between rounded-lg border px-3">
-            <Label htmlFor="work-content-active">Đang hoạt động</Label>
+            <Label htmlFor="content-group-active">Đang hoạt động</Label>
             <Switch
-              id="work-content-active"
+              id="content-group-active"
               checked={isActive}
               onCheckedChange={setIsActive}
             />
