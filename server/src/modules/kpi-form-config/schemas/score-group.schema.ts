@@ -7,7 +7,7 @@ import {
 
 export type ScoreGroupDocument = HydratedDocument<ScoreGroup>;
 
-/** Nhóm điểm — dải điểm trên thang 100. */
+/** Nhóm điểm - dải điểm trên thang 100. */
 @Schema({ timestamps: true })
 export class ScoreGroup {
   @Prop({ required: true, unique: true, trim: true, uppercase: true })

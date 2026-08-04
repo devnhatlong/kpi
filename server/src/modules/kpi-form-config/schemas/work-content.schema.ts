@@ -5,7 +5,7 @@ import { Axis } from './axis.schema';
 
 export type WorkContentDocument = HydratedDocument<WorkContent>;
 
-/** Danh mục nội dung công việc — dùng cho dropdown form KPI cá nhân. */
+/** Danh mục nội dung công việc - dùng cho dropdown form KPI cá nhân. */
 @Schema({ timestamps: true })
 export class WorkContent {
   @Prop({ required: true, unique: true, trim: true, uppercase: true })

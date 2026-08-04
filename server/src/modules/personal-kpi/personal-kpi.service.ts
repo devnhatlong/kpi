@@ -41,7 +41,7 @@ import {
 const EDITABLE: PersonalKpiStatus[] = ['DRAFT', 'REJECTED'];
 const SEND_NOTE_MAX = 1000;
 
-/** Bậc role tăng dần — gửi cho đúng 1 bậc trên. */
+/** Bậc role tăng dần - gửi cho đúng 1 bậc trên. */
 const ROLE_LADDER: RoleCode[] = [
   RoleCode.STAFF,
   RoleCode.MANAGER,
@@ -354,7 +354,7 @@ export class PersonalKpiService {
     this.assertEditable(item);
     if (!item.title.trim()) {
       throw new BadRequestException(
-        'Nhiệm vụ chưa có tên — hãy sửa trước khi gửi.',
+        'Nhiệm vụ chưa có tên - hãy sửa trước khi gửi.',
       );
     }
 
@@ -423,7 +423,7 @@ export class PersonalKpiService {
     const invalid = items.find((item) => !item.title.trim());
     if (invalid) {
       throw new BadRequestException(
-        'Có nhiệm vụ chưa có tên — hãy sửa nháp trước khi gửi báo cáo.',
+        'Có nhiệm vụ chưa có tên - hãy sửa nháp trước khi gửi báo cáo.',
       );
     }
 
@@ -494,7 +494,7 @@ export class PersonalKpiService {
     if (!staff) throw new NotFoundException('Không tìm thấy người dùng.');
     if (!staff.departmentId) {
       throw new BadRequestException(
-        'Tài khoản chưa gắn đơn vị — không xác định được người nhận cấp trên.',
+        'Tài khoản chưa gắn đơn vị - không xác định được người nhận cấp trên.',
       );
     }
 
@@ -655,8 +655,8 @@ export class PersonalKpiService {
     if (!EDITABLE.includes(item.status)) {
       throw new ForbiddenException(
         item.status === 'SENT'
-          ? 'Đã gửi — không sửa/xoá trực tiếp.'
-          : 'Nhiệm vụ đã hoàn thành — không sửa/xoá được.',
+          ? 'Đã gửi - không sửa/xoá trực tiếp.'
+          : 'Nhiệm vụ đã hoàn thành - không sửa/xoá được.',
       );
     }
   }

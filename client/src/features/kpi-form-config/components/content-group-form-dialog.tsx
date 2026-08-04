@@ -107,7 +107,7 @@ export function ContentGroupFormDialog({
               <Label>Mã nhóm</Label>
               <Input value={edit.code} readOnly disabled className="font-mono" />
               <p className="text-xs text-muted-foreground">
-                Mã tự sinh — không đổi sau khi tạo.
+                Mã tự sinh - không đổi sau khi tạo.
               </p>
             </div>
           ) : (

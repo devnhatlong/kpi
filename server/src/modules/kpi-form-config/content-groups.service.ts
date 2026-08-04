@@ -77,7 +77,7 @@ export class ContentGroupsService {
 
     if (dto.code !== undefined && dto.code.trim().toUpperCase() !== item.code) {
       throw new BadRequestException(
-        'Không được đổi mã nhóm sau khi đã tạo — tránh lệch map dữ liệu.',
+        'Không được đổi mã nhóm sau khi đã tạo - tránh lệch map dữ liệu.',
       );
     }
     if (dto.name !== undefined) item.name = dto.name.trim();

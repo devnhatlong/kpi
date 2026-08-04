@@ -3,7 +3,7 @@ import { HydratedDocument } from 'mongoose';
 
 export type AxisDocument = HydratedDocument<Axis>;
 
-/** Trục KPI — phân loại cấp cao cho nội dung công việc. */
+/** Trục KPI - phân loại cấp cao cho nội dung công việc. */
 @Schema({ timestamps: true })
 export class Axis {
   @Prop({ required: true, unique: true, trim: true, uppercase: true })

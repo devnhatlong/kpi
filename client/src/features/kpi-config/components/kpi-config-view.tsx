@@ -402,7 +402,7 @@ export function KpiConfigView() {
           {selectedTemplate && !scopedContents.length ? (
             <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
               <p className="font-medium">
-                Biểu mẫu chưa gắn nội dung công việc — chưa có dòng để thao tác.
+                Biểu mẫu chưa gắn nội dung công việc - chưa có dòng để thao tác.
               </p>
               <p className="mt-1 text-amber-900/80 dark:text-amber-100/80">
                 Super Admin cần vào{" "}
@@ -1241,7 +1241,7 @@ function TaskDialog({
       ? parseTemporalForApi(reportDueColumn, reportDueRaw)
       : toIsoDate(reportDueRaw) || undefined;
     const product =
-      readFieldValueBySemantic(template, form.fieldValues, "product") || "—";
+      readFieldValueBySemantic(template, form.fieldValues, "product") || "-";
     const standardRaw = readFieldValueBySemantic(
       template,
       form.fieldValues,
@@ -1357,7 +1357,7 @@ function TaskDialog({
               <p className="text-sm text-muted-foreground">
                 Không có cột nào gán ROLE NHẬP khớp role hiện tại (
                 {userRoleCodes.join(", ") || "không có role"}). Chỉ hiện field
-                đúng role — hãy cấu hình lại ROLE NHẬP ở tab Cấu hình biểu mẫu.
+                đúng role - hãy cấu hình lại ROLE NHẬP ở tab Cấu hình biểu mẫu.
               </p>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">

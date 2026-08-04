@@ -50,11 +50,11 @@ import { useWorkingUnit } from "../use-working-unit";
 import { WorkingUnitSelect } from "./working-unit-select";
 
 function relationName(value: object | string | undefined | null): string {
-  if (!value) return "—";
+  if (!value) return "-";
   if (typeof value === "string") return value;
   const obj = value as { code?: string; name?: string };
-  if (obj.code && obj.name) return `${obj.code} — ${obj.name}`;
-  return obj.name ?? "—";
+  if (obj.code && obj.name) return `${obj.code} - ${obj.name}`;
+  return obj.name ?? "-";
 }
 
 export function HandoffOutboundView() {
@@ -150,7 +150,7 @@ export function HandoffOutboundView() {
             Theo dõi nhiệm vụ do đơn vị chủ trì
           </h1>
           <p className="text-sm text-muted-foreground">
-            Form 2 — giao ngang cho đơn vị cùng cấp (cùng đơn vị cha).
+            Form 2 - giao ngang cho đơn vị cùng cấp (cùng đơn vị cha).
           </p>
         </div>
         <WorkingUnitSelect
@@ -259,7 +259,7 @@ export function HandoffOutboundView() {
                 <SelectContent>
                   {peers.map((d) => (
                     <SelectItem key={entityId(d)} value={entityId(d)}>
-                      {d.code} — {d.name}
+                      {d.code} - {d.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -283,7 +283,7 @@ export function HandoffOutboundView() {
                   <SelectItem value="__none__">Không chọn</SelectItem>
                   {periods.map((p) => (
                     <SelectItem key={entityId(p)} value={entityId(p)}>
-                      {p.code} — {p.name}
+                      {p.code} - {p.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -301,7 +301,7 @@ export function HandoffOutboundView() {
                 <SelectContent>
                   {contents.map((c) => (
                     <SelectItem key={entityId(c)} value={entityId(c)}>
-                      {c.code} — {c.name}
+                      {c.code} - {c.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

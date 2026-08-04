@@ -1632,7 +1632,7 @@ export function TemplateConfigView({
                 </div>
                 {!includedContentIds.length ? (
                   <p className="text-sm text-amber-700 dark:text-amber-400">
-                    Chưa chọn nội dung nào — Unit Admin sẽ không thấy dòng để
+                    Chưa chọn nội dung nào - Unit Admin sẽ không thấy dòng để
                     giao nhiệm vụ trên biểu mẫu này.
                   </p>
                 ) : (

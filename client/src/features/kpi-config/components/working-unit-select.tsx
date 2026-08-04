@@ -35,7 +35,7 @@ export function WorkingUnitSelect({
       <p className={`text-sm ${className ?? ""}`}>
         Đơn vị làm việc:{" "}
         <span className="font-medium">
-          {only.code} — {only.name}
+          {only.code} - {only.name}
         </span>
       </p>
     );
@@ -51,7 +51,7 @@ export function WorkingUnitSelect({
         <SelectContent>
           {scopedOptions.map((d) => (
             <SelectItem key={entityId(d)} value={entityId(d)}>
-              {d.code} — {d.name}
+              {d.code} - {d.name}
             </SelectItem>
           ))}
         </SelectContent>

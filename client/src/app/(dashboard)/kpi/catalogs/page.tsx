@@ -10,7 +10,7 @@ export default function KpiCatalogsPage() {
   return (
     <PlaceholderPage
       title="Danh mục"
-      description="Loại công việc, lĩnh vực, mức độ ưu tiên, thang điểm / tiêu chí chấm — admin quản lý trong CSDL."
+      description="Loại công việc, lĩnh vực, mức độ ưu tiên, thang điểm / tiêu chí chấm - admin quản lý trong CSDL."
     />
   );
 }

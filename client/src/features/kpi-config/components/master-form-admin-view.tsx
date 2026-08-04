@@ -429,7 +429,7 @@ export function MasterFormAdminView() {
                   <SelectContent>
                     {periods.map((p) => (
                       <SelectItem key={entityId(p)} value={entityId(p)}>
-                        {p.code} — {p.name}
+                        {p.code} - {p.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -451,7 +451,7 @@ export function MasterFormAdminView() {
                       .filter((t) => t.isActive)
                       .map((t) => (
                         <SelectItem key={entityId(t)} value={entityId(t)}>
-                          {t.code} — {t.name}
+                          {t.code} - {t.name}
                         </SelectItem>
                       ))}
                   </SelectContent>
@@ -498,7 +498,7 @@ export function MasterFormAdminView() {
                   <SelectContent>
                     {catDepts.map((d) => (
                       <SelectItem key={entityId(d)} value={entityId(d)}>
-                        {d.code} — {d.name}
+                        {d.code} - {d.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -528,7 +528,7 @@ export function MasterFormAdminView() {
                             }))
                           }
                         />
-                        {d.code} — {d.name}
+                        {d.code} - {d.name}
                       </label>
                     );
                   })}
@@ -684,7 +684,7 @@ export function MasterFormAdminView() {
                   {tracking.rows.map((row) => (
                     <TableRow key={row.departmentId}>
                       <TableCell>
-                        {row.code} — {row.name}
+                        {row.code} - {row.name}
                       </TableCell>
                       <TableCell>{row.hasSheet ? "Có" : "Chưa"}</TableCell>
                       <TableCell>{row.indicatorCount}</TableCell>

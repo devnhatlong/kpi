@@ -1,4 +1,4 @@
-/** Tag màu dùng chung — solid + white text đọc được cả light/dark. Không dùng tím. */
+/** Tag màu dùng chung - solid + white text đọc được cả light/dark. Không dùng tím. */
 
 const CODE_PALETTE = [
   "bg-blue-600 text-white border-transparent dark:bg-blue-500",
@@ -52,21 +52,21 @@ export function levelBadgeClass(rank?: number) {
   }
 }
 
-/** Màu badge mã (vai trò / quyền / mã bất kỳ) — ổn định theo chuỗi. */
+/** Màu badge mã (vai trò / quyền / mã bất kỳ) - ổn định theo chuỗi. */
 export function codeBadgeClass(code: string) {
   return CODE_PALETTE[hashSeed(code.toUpperCase()) % CODE_PALETTE.length];
 }
 
-/** Màu badge module quyền — nền nhạt, có dark mode. */
+/** Màu badge module quyền - nền nhạt, có dark mode. */
 export function moduleBadgeClass(module: string) {
   return MODULE_PALETTE[hashSeed(module.toLowerCase()) % MODULE_PALETTE.length];
 }
 
-/** Trạng thái hoạt động — nền nhạt + chữ đậm (light), nền tối + chữ sáng (dark). */
+/** Trạng thái hoạt động - nền nhạt + chữ đậm (light), nền tối + chữ sáng (dark). */
 export const activeBadgeClass =
   "border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
 
-/** Trạng thái ngừng — neutral, tương phản ổn định cả hai mode. */
+/** Trạng thái ngừng - neutral, tương phản ổn định cả hai mode. */
 export const inactiveBadgeClass =
   "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400";
 

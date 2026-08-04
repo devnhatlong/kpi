@@ -172,8 +172,8 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     if (!canEditPersonalKpi(item.status)) {
       toast.error(
         item.status === "SENT"
-          ? "Đã gửi — không sửa trực tiếp."
-          : "Nhiệm vụ đã hoàn thành — không sửa được.",
+          ? "Đã gửi - không sửa trực tiếp."
+          : "Nhiệm vụ đã hoàn thành - không sửa được.",
       );
       return;
     }

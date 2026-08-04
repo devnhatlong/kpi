@@ -336,7 +336,7 @@ export function UnitKpiSheetView() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Form KPI</h1>
           <p className="text-sm text-muted-foreground">
-            Form KPI nội bộ của phòng — dùng biểu mẫu do phòng tự cấu hình.
+            Form KPI nội bộ của phòng - dùng biểu mẫu do phòng tự cấu hình.
           </p>
         </div>
         <WorkingUnitSelect
@@ -400,7 +400,7 @@ export function UnitKpiSheetView() {
                 <p className="text-sm text-muted-foreground">
                   Template:{" "}
                   <span className="font-medium text-foreground">
-                    {sheetTemplate.code} — {sheetTemplate.name}
+                    {sheetTemplate.code} - {sheetTemplate.name}
                   </span>
                   {" · "}
                   {sheetTemplate.columns.filter((c) => c.visible).length} cột
@@ -495,7 +495,7 @@ export function UnitKpiSheetView() {
                   onEditTask={(task) => openAssign(task)}
                   onDeleteTask={() => {
                     toast.message(
-                      "Xoá nhiệm vụ Form 1 sẽ bổ sung sau — dùng giao dọc / tiếp nhận.",
+                      "Xoá nhiệm vụ Form 1 sẽ bổ sung sau - dùng giao dọc / tiếp nhận.",
                     );
                   }}
                   editAriaLabel="Giao nhiệm vụ"
@@ -522,7 +522,7 @@ export function UnitKpiSheetView() {
                 <SelectContent>
                   {periods.map((p) => (
                     <SelectItem key={entityId(p)} value={entityId(p)}>
-                      {p.code} — {p.name}
+                      {p.code} - {p.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -576,7 +576,7 @@ export function UnitKpiSheetView() {
                     .filter((t) => t.isActive)
                     .map((t) => (
                       <SelectItem key={entityId(t)} value={entityId(t)}>
-                        {t.code} — {t.name}
+                        {t.code} - {t.name}
                       </SelectItem>
                     ))}
                 </SelectContent>
@@ -623,14 +623,14 @@ export function UnitKpiSheetView() {
                 <SelectContent>
                   {templateContents.map((c) => (
                     <SelectItem key={entityId(c)} value={entityId(c)}>
-                      {c.code} — {c.name}
+                      {c.code} - {c.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {workflowRules.contentColumnLocked ? (
                 <p className="text-xs text-muted-foreground">
-                  Nội dung được map từ biểu mẫu — không sửa tay.
+                  Nội dung được map từ biểu mẫu - không sửa tay.
                 </p>
               ) : null}
             </div>
@@ -753,7 +753,7 @@ export function UnitKpiSheetView() {
                   <SelectContent>
                     {children.map((d) => (
                       <SelectItem key={entityId(d)} value={entityId(d)}>
-                        {d.code} — {d.name}
+                        {d.code} - {d.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -779,7 +779,7 @@ function sheetLabel(sheet: UnitKpiSheet): string {
   const period =
     typeof sheet.periodId === "string"
       ? sheet.periodId
-      : `${sheet.periodId.code} — ${sheet.periodId.name}`;
+      : `${sheet.periodId.code} - ${sheet.periodId.name}`;
   const template =
     typeof sheet.templateId === "string"
       ? ""

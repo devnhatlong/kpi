@@ -13,7 +13,7 @@ import type {
 
 type PersonalTaskFormProps = {
   index: number;
-  /** Số thứ tự nhiệm vụ trong nội dung — dùng cho placeholder */
+  /** Số thứ tự nhiệm vụ trong nội dung - dùng cho placeholder */
   taskNumber?: number;
   task: PersonalTaskDraft;
   onChange: (patch: Partial<PersonalTaskDraft>) => void;
@@ -252,7 +252,7 @@ export function PersonalTaskForm({
               ))}
             </ul>
           ) : readOnly ? (
-            <span className="text-xs text-muted-foreground">—</span>
+            <span className="text-xs text-muted-foreground">-</span>
           ) : null}
         </div>
       </TableCell>

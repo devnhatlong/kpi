@@ -7,13 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/common/searchable-select";
 import {
   Sheet,
   SheetContent,
@@ -144,7 +138,7 @@ export function PersonalTaskDrawer({
       ]);
       return;
     }
-    // Không mặc định sẵn trục — thêm đúng những trục cần dùng
+    // Không mặc định sẵn trục - thêm đúng những trục cần dùng
     setBlocks([]);
   }, [open, edit]);
 
@@ -441,25 +435,20 @@ export function PersonalTaskDrawer({
                     <Label>
                       Trục <span className="text-destructive">*</span>
                     </Label>
-                    <Select
-                      value={block.axisId || undefined}
+                    <SearchableSelect
+                      value={block.axisId}
                       onValueChange={(value) => setAxisId(block.key, value)}
                       disabled={loading || saving || isEdit}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Chọn trục" />
-                      </SelectTrigger>
-                      <SelectContent className="z-[100]">
-                        {axes.map((item) => (
-                          <SelectItem
-                            key={entityId(item)}
-                            value={entityId(item)}
-                          >
-                            {catalogOptionLabel(item)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Chọn trục"
+                      searchPlaceholder="Tìm trục..."
+                      emptyText="Không tìm thấy trục."
+                      className="z-[100]"
+                      options={axes.map((item) => ({
+                        value: entityId(item),
+                        label: catalogOptionLabel(item),
+                        keywords: item.code,
+                      }))}
+                    />
                   </div>
                   {!isEdit ? (
                     <div className="flex h-9 items-center gap-2">
@@ -516,35 +505,28 @@ export function PersonalTaskDrawer({
                             Nội dung công việc{" "}
                             <span className="text-destructive">*</span>
                           </Label>
-                          <Select
-                            value={content.workContentId || undefined}
+                          <SearchableSelect
+                            value={content.workContentId}
                             onValueChange={(value) =>
                               setWorkContentId(block.key, content.key, value)
                             }
                             disabled={
                               !block.axisId || loading || saving || isEdit
                             }
-                          >
-                            <SelectTrigger>
-                              <SelectValue
-                                placeholder={
-                                  block.axisId
-                                    ? "Chọn nội dung công việc"
-                                    : "Chọn trục trước"
-                                }
-                              />
-                            </SelectTrigger>
-                            <SelectContent className="z-[100]">
-                              {contentOptions.map((item) => (
-                                <SelectItem
-                                  key={entityId(item)}
-                                  value={entityId(item)}
-                                >
-                                  {catalogOptionLabel(item)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            placeholder={
+                              block.axisId
+                                ? "Chọn nội dung công việc"
+                                : "Chọn trục trước"
+                            }
+                            searchPlaceholder="Tìm nội dung công việc..."
+                            emptyText="Không tìm thấy nội dung."
+                            className="z-[100]"
+                            options={contentOptions.map((item) => ({
+                              value: entityId(item),
+                              label: catalogOptionLabel(item),
+                              keywords: item.code,
+                            }))}
+                          />
                           {block.axisId && availableContents.length === 0 ? (
                             <p className="text-xs text-muted-foreground">
                               Trục này chưa có nội dung công việc nào.
@@ -661,7 +643,7 @@ export function PersonalTaskDrawer({
                                   {axis
                                     ? catalogOptionLabel(axis)
                                     : "Trục"}
-                                  {" — "}
+                                  {" - "}
                                   {catalogOptionLabel(selectedContent)}
                                 </TableCell>
                               </TableRow>

@@ -98,7 +98,7 @@ export class WorkContentsService {
 
     if (dto.code !== undefined && dto.code.trim().toUpperCase() !== item.code) {
       throw new BadRequestException(
-        'Không được đổi mã nội dung sau khi đã tạo — tránh lệch map dữ liệu.',
+        'Không được đổi mã nội dung sau khi đã tạo - tránh lệch map dữ liệu.',
       );
     }
     if (dto.name !== undefined) item.name = dto.name.trim();

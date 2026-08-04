@@ -302,7 +302,7 @@ export type WorkContentInput = Omit<
   "_id" | "id" | "groupId" | "code"
 > & {
   groupId: string;
-  /** Để trống khi tạo mới — server tự sinh (ND-0001, …). */
+  /** Để trống khi tạo mới - server tự sinh (ND-0001, …). */
   code?: string;
 };
 

@@ -3,7 +3,7 @@ import { HydratedDocument } from 'mongoose';
 
 export type ContentGroupDocument = HydratedDocument<ContentGroup>;
 
-/** Nhóm nội dung công việc — dùng để phân loại nội dung KPI. */
+/** Nhóm nội dung công việc - dùng để phân loại nội dung KPI. */
 @Schema({ timestamps: true })
 export class ContentGroup {
   @Prop({ required: true, unique: true, trim: true, uppercase: true })

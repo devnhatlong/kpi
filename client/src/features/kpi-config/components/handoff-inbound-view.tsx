@@ -52,11 +52,11 @@ import { useWorkingUnit } from "../use-working-unit";
 import { WorkingUnitSelect } from "./working-unit-select";
 
 function relationName(value: object | string | undefined | null): string {
-  if (!value) return "—";
+  if (!value) return "-";
   if (typeof value === "string") return value;
   const obj = value as { code?: string; name?: string };
-  if (obj.code && obj.name) return `${obj.code} — ${obj.name}`;
-  return obj.name ?? "—";
+  if (obj.code && obj.name) return `${obj.code} - ${obj.name}`;
+  return obj.name ?? "-";
 }
 
 export function HandoffInboundView() {
@@ -139,7 +139,7 @@ export function HandoffInboundView() {
             Form tiếp nhận nhiệm vụ
           </h1>
           <p className="text-sm text-muted-foreground">
-            Form 3 — nhiệm vụ đơn vị ngang cấp giao sang; pick vào Form KPI.
+            Form 3 - nhiệm vụ đơn vị ngang cấp giao sang; pick vào Form KPI.
           </p>
         </div>
         <WorkingUnitSelect
@@ -275,7 +275,7 @@ export function HandoffInboundView() {
                       <SelectItem key={entityId(s)} value={entityId(s)}>
                         {typeof s.periodId === "string"
                           ? s.periodId
-                          : `${s.periodId.code} — ${s.periodId.name}`}
+                          : `${s.periodId.code} - ${s.periodId.name}`}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -293,7 +293,7 @@ export function HandoffInboundView() {
                     <SelectContent>
                       {periods.map((p) => (
                         <SelectItem key={entityId(p)} value={entityId(p)}>
-                          {p.code} — {p.name}
+                          {p.code} - {p.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -310,7 +310,7 @@ export function HandoffInboundView() {
                         .filter((t) => t.isActive)
                         .map((t) => (
                           <SelectItem key={entityId(t)} value={entityId(t)}>
-                            {t.code} — {t.name}
+                            {t.code} - {t.name}
                           </SelectItem>
                         ))}
                     </SelectContent>

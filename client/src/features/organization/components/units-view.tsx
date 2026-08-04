@@ -76,7 +76,7 @@ import { getApiErrorMessage } from "@/lib/api-client";
 import { DEFAULT_PAGE_SIZE, rowIndex } from "@/lib/pagination";
 import { cn } from "@/lib/utils";
 
-/** Cột indent — khoảng cách rõ với cha. Node lá không có slot icon → sát trục hơn. */
+/** Cột indent - khoảng cách rõ với cha. Node lá không có slot icon → sát trục hơn. */
 const TREE_COL = 24;
 const TREE_LINE_X = 12;
 const TREE_ROW_H = 36;
@@ -382,7 +382,7 @@ export function UnitsView() {
       ) : null}
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(260px,320px)_1fr] lg:grid-rows-[minmax(0,1fr)]">
-        {/* Tree — cuộn dọc/ngang trong panel, không kéo cả trang */}
+        {/* Tree - cuộn dọc/ngang trong panel, không kéo cả trang */}
         <Card className="flex h-full min-h-0 max-h-full flex-col overflow-hidden border-border/80 shadow-sm">
           <div className="space-y-2 border-b bg-muted/30 p-3">
             <div className="relative">

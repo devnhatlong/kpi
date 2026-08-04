@@ -41,7 +41,7 @@ type TaskAssignmentGridProps = {
   onAddTask: (content: WorkContent) => void;
   onEditTask: (task: TaskAssignment) => void;
   onDeleteTask: (task: TaskAssignment) => void;
-  /** Nút sửa — mặc định "Sửa". Form 1 dùng "Giao". */
+  /** Nút sửa - mặc định "Sửa". Form 1 dùng "Giao". */
   editAriaLabel?: string;
   showDelete?: boolean;
   /** Ẩn / hiện nút + Thêm nhiệm vụ dưới dòng nội dung. */
@@ -262,7 +262,7 @@ function TemplateColumnCell({
       className={`${alignClass} ${displayValue ? "" : "text-muted-foreground"}`}
       title={displayValue || undefined}
     >
-      {displayValue || "—"}
+      {displayValue || "-"}
     </DataCell>
   );
 }
@@ -516,11 +516,11 @@ export function TaskAssignmentGrid({
                             key={`${row.id}-${column.id}`}
                             className="text-muted-foreground"
                           >
-                            —
+                            -
                           </DataCell>
                         );
                       })}
-                      <DataCell className="text-muted-foreground">—</DataCell>
+                      <DataCell className="text-muted-foreground">-</DataCell>
                       <DataCell className="sticky right-0 bg-background p-1 text-center">
                         {canAdd ? (
                           <Button
@@ -580,7 +580,7 @@ export function TaskAssignmentGrid({
                       className={`min-w-[8rem] text-left ${assignedTo ? "" : "text-muted-foreground"}`}
                       title={assignedTo || "Chưa giao"}
                     >
-                      {assignedTo || "—"}
+                      {assignedTo || "-"}
                     </DataCell>
                     <DataCell className="sticky right-0 bg-background p-1 text-center">
                       <div className="inline-flex gap-1">

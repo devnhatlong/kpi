@@ -400,7 +400,7 @@ export function PersonalReportDetailDrawer({
                                 colSpan={14}
                                 className="py-2 text-sm font-semibold"
                               >
-                                {group.axisName} — {content.workContentName}
+                                {group.axisName} - {content.workContentName}
                               </TableCell>
                             </TableRow>
                             {content.items.map((item, taskIndex) => {

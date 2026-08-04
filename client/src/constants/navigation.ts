@@ -42,17 +42,17 @@ export const ALL_KPI_ROLES = [
   "STAFF",
 ] as const;
 
-/** Manager trở lên — giao KPI xuống. */
+/** Manager trở lên - giao KPI xuống. */
 export const KPI_ASSIGN_ROLES = [
   "SUPER_ADMIN",
   "UNIT_ADMIN",
   "MANAGER",
 ] as const;
 
-/** Chỉ Manager / Unit admin — tổng hợp & nâng cấp. */
+/** Chỉ Manager / Unit admin - tổng hợp & nâng cấp. */
 export const KPI_PROMOTE_ROLES = ["UNIT_ADMIN", "MANAGER"] as const;
 
-/** Unit admin / Superadmin — danh mục, quản trị. */
+/** Unit admin / Superadmin - danh mục, quản trị. */
 export const KPI_ADMIN_ROLES = ["SUPER_ADMIN", "UNIT_ADMIN"] as const;
 
 /** @deprecated dùng KPI_ASSIGN_ROLES */
