@@ -19,6 +19,7 @@ import {
   CreatePersonalKpiBatchDto,
   PersonalKpiListQueryDto,
   PersonalKpiReportsQueryDto,
+  SendPersonalKpiDto,
   UpdatePersonalKpiDto,
 } from './dto/personal-kpi.dto';
 import { PersonalKpiService } from './personal-kpi.service';
@@ -50,6 +51,18 @@ export class PersonalKpiController {
     return this.personalKpiService.findReports(user.uid, query);
   }
 
+  @ApiOperation({
+    summary: 'Danh sách người nhận cấp trên 1 bậc (đơn vị cha) để chọn khi gửi',
+  })
+  @Permissions(Permission.EVALUATION_SELF)
+  @Get('recipients')
+  listRecipients(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query('q') q?: string,
+  ) {
+    return this.personalKpiService.listRecipients(user.uid, q);
+  }
+
   @ApiOperation({ summary: 'Danh sách nhiệm vụ KPI cá nhân của tôi' })
   @Permissions(Permission.EVALUATION_SELF)
   @Get('mine')
@@ -66,8 +79,9 @@ export class PersonalKpiController {
   sendReport(
     @CurrentUser() user: JwtPayloadUser,
     @Param('reportDate') reportDate: string,
+    @Body() dto: SendPersonalKpiDto,
   ) {
-    return this.personalKpiService.sendReport(user.uid, reportDate);
+    return this.personalKpiService.sendReport(user.uid, reportDate, dto);
   }
 
   @ApiOperation({ summary: 'Chi tiết nhiệm vụ KPI cá nhân' })
@@ -91,8 +105,12 @@ export class PersonalKpiController {
   @ApiOperation({ summary: 'Gửi nhiệm vụ' })
   @Permissions(Permission.EVALUATION_SELF)
   @Post(':id/send')
-  send(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
-    return this.personalKpiService.send(user.uid, id);
+  send(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: SendPersonalKpiDto,
+  ) {
+    return this.personalKpiService.send(user.uid, id, dto);
   }
 
   @ApiOperation({ summary: 'Xoá nhiệm vụ nháp / từ chối' })

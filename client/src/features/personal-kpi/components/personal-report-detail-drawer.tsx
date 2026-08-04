@@ -29,8 +29,10 @@ import {
   sendPersonalKpiReport,
   taskToWriteInput,
   updatePersonalKpi,
+  type SendPersonalKpiPayload,
 } from "@/features/personal-kpi/api";
 import { PersonalTaskForm } from "@/features/personal-kpi/components/personal-task-form";
+import { SendRecipientDialog } from "@/features/personal-kpi/components/send-recipient-dialog";
 import {
   PERSONAL_KPI_STATUS_LABEL,
   canEditPersonalKpi,
@@ -109,6 +111,7 @@ export function PersonalReportDetailDrawer({
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
 
   const { data, isLoading, mutate } = useSWR(
     open && reportDate
@@ -208,7 +211,7 @@ export function PersonalReportDetailDrawer({
     }
   };
 
-  const handleSend = async () => {
+  const handleSend = async (payload: SendPersonalKpiPayload) => {
     if (!reportDate || isEditing) return;
     if (sendableCount === 0) {
       toast.error("Không còn nhiệm vụ nháp/từ chối để gửi.");
@@ -217,12 +220,13 @@ export function PersonalReportDetailDrawer({
 
     setSending(true);
     try {
-      const result = await sendPersonalKpiReport(reportDate);
+      const result = await sendPersonalKpiReport(reportDate, payload);
       toast.success(
         result?.sentCount
-          ? `Đã gửi ${result.sentCount} nhiệm vụ.`
+          ? `Đã gửi ${result.sentCount} nhiệm vụ tới ${result.recipientName}.`
           : "Đã gửi báo cáo.",
       );
+      setSendOpen(false);
       await mutate();
       await onChanged();
       onOpenChange(false);
@@ -231,6 +235,15 @@ export function PersonalReportDetailDrawer({
     } finally {
       setSending(false);
     }
+  };
+
+  const openSendDialog = () => {
+    if (!reportDate || isEditing) return;
+    if (sendableCount === 0) {
+      toast.error("Không còn nhiệm vụ nháp/từ chối để gửi.");
+      return;
+    }
+    setSendOpen(true);
   };
 
   const busy = saving || sending;
@@ -469,7 +482,7 @@ export function PersonalReportDetailDrawer({
                 ) : null}
                 <Button
                   type="button"
-                  onClick={() => void handleSend()}
+                  onClick={openSendDialog}
                   disabled={busy || isLoading || sendableCount === 0}
                 >
                   <Send className="h-4 w-4" />
@@ -480,6 +493,15 @@ export function PersonalReportDetailDrawer({
           </div>
         </SheetFooter>
       </SheetContent>
+
+      <SendRecipientDialog
+        open={sendOpen}
+        onOpenChange={setSendOpen}
+        title="Gửi báo cáo"
+        description="Chọn người nhận ở đơn vị cấp trên 1 bậc."
+        submitting={sending}
+        onConfirm={handleSend}
+      />
     </Sheet>
   );
 }

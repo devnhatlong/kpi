@@ -13,10 +13,16 @@ import {
   WorkContentDocument,
 } from '@/modules/kpi-form-config/schemas/work-content.schema';
 import {
+  Department,
+  DepartmentDocument,
+} from '@/modules/departments/schemas/department.schema';
+import { User, UserDocument } from '@/modules/users/schemas/user.schema';
+import {
   CreatePersonalKpiBatchDto,
   CreatePersonalKpiDto,
   PersonalKpiListQueryDto,
   PersonalKpiReportsQueryDto,
+  SendPersonalKpiDto,
   UpdatePersonalKpiDto,
 } from './dto/personal-kpi.dto';
 import {
@@ -32,6 +38,7 @@ import {
 } from './personal-kpi.time';
 
 const EDITABLE: PersonalKpiStatus[] = ['DRAFT', 'REJECTED'];
+const SEND_NOTE_MAX = 1000;
 
 @Injectable()
 export class PersonalKpiService {
@@ -42,6 +49,10 @@ export class PersonalKpiService {
     private readonly axisModel: Model<AxisDocument>,
     @InjectModel(WorkContent.name)
     private readonly workContentModel: Model<WorkContentDocument>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
+    @InjectModel(Department.name)
+    private readonly departmentModel: Model<DepartmentDocument>,
   ) {}
 
   async createMany(ownerId: string, batch: CreatePersonalKpiBatchDto) {
@@ -317,7 +328,12 @@ export class PersonalKpiService {
     return { message: 'Đã lưu nháp.', data: item };
   }
 
-  async send(ownerId: string, id: string) {
+  async listRecipients(ownerId: string, q?: string) {
+    const data = await this.findRecipientsOneLevelUp(ownerId, q);
+    return { message: 'OK', data };
+  }
+
+  async send(ownerId: string, id: string, dto: SendPersonalKpiDto) {
     const item = await this.requireOwned(ownerId, id);
     this.assertEditable(item);
     if (!item.title.trim()) {
@@ -326,23 +342,38 @@ export class PersonalKpiService {
       );
     }
 
+    const target = await this.requireValidSendTarget(ownerId, dto);
+    const sendNote = this.normalizeSendNote(dto.note);
+
     item.status = 'SENT';
     item.sentAt = new Date();
     item.rejectReason = '';
+    item.recipientId = target.recipientId;
+    item.recipientDepartmentId = target.recipientDepartmentId;
+    item.recipientName = target.recipientName;
+    item.sendNote = sendNote;
     await item.save();
     await item.populate([
       { path: 'axisId', select: 'code name description' },
       { path: 'workContentId', select: 'code name description' },
+      { path: 'recipientId', select: 'fullName username departmentId' },
+      { path: 'recipientDepartmentId', select: 'code name' },
     ]);
 
     return { message: 'Đã gửi nhiệm vụ.', data: item };
   }
 
-  async sendReport(ownerId: string, reportDate: string) {
+  async sendReport(
+    ownerId: string,
+    reportDate: string,
+    dto: SendPersonalKpiDto,
+  ) {
     if (!isYmd(reportDate)) {
       throw new BadRequestException('reportDate phải là YYYY-MM-DD.');
     }
     const owner = this.requireObjectId(ownerId, 'Người dùng');
+    const target = await this.requireValidSendTarget(ownerId, dto);
+    const sendNote = this.normalizeSendNote(dto.note);
     const filter: Record<string, unknown> = {
       ownerId: owner,
       status: { $in: EDITABLE },
@@ -388,13 +419,27 @@ export class PersonalKpiService {
           status: 'SENT',
           sentAt: now,
           rejectReason: '',
+          recipientId: target.recipientId,
+          recipientDepartmentId: target.recipientDepartmentId,
+          recipientName: target.recipientName,
+          sendNote,
         },
       },
     );
 
     return {
-      message: `Đã gửi ${items.length} nhiệm vụ của báo cáo ngày ${reportDate}.`,
-      data: { reportDate, sentCount: items.length },
+      message: `Đã gửi ${items.length} nhiệm vụ tới ${target.recipientName}.`,
+      data: {
+        reportDate,
+        sentCount: items.length,
+        recipientId: target.recipientId
+          ? String(target.recipientId)
+          : null,
+        recipientDepartmentId: target.recipientDepartmentId
+          ? String(target.recipientDepartmentId)
+          : null,
+        recipientName: target.recipientName,
+      },
     };
   }
 
@@ -403,6 +448,158 @@ export class PersonalKpiService {
     this.assertEditable(item);
     await item.deleteOne();
     return { message: 'Đã xoá nhiệm vụ.' };
+  }
+
+  private normalizeSendNote(note?: string) {
+    const value = note?.trim() ?? '';
+    if (!value) {
+      throw new BadRequestException('Nội dung gửi là bắt buộc.');
+    }
+    if (value.length > SEND_NOTE_MAX) {
+      throw new BadRequestException(
+        `Nội dung gửi tối đa ${SEND_NOTE_MAX} ký tự.`,
+      );
+    }
+    return value;
+  }
+
+  private async findRecipientsOneLevelUp(ownerId: string, q?: string) {
+    const staff = await this.userModel.findById(ownerId);
+    if (!staff) throw new NotFoundException('Không tìm thấy người dùng.');
+    if (!staff.departmentId) {
+      throw new BadRequestException(
+        'Tài khoản chưa gắn đơn vị — không xác định được cấp trên.',
+      );
+    }
+
+    const dept = await this.departmentModel.findById(staff.departmentId);
+    if (!dept) {
+      throw new BadRequestException('Đơn vị công tác không tồn tại.');
+    }
+
+    if (!dept.parentId) {
+      return { department: null, people: [] as Array<{
+        id: string;
+        fullName: string;
+        username: string;
+        departmentId: string | null;
+        departmentCode: string;
+        departmentName: string;
+      }> };
+    }
+
+    const parent = await this.departmentModel.findById(dept.parentId);
+    if (!parent || parent.isActive === false) {
+      return { department: null, people: [] };
+    }
+
+    const parentId = parent._id as Types.ObjectId;
+    const department = {
+      id: String(parentId),
+      code: parent.code ?? '',
+      name: parent.name ?? 'Đơn vị cấp trên',
+    };
+
+    const filter: Record<string, unknown> = {
+      isActive: true,
+      _id: { $ne: staff._id },
+      departmentId: parentId,
+    };
+
+    if (q?.trim()) {
+      const escaped = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'i');
+      filter.$or = [{ fullName: regex }, { username: regex }];
+    }
+
+    const recipients = await this.userModel
+      .find(filter)
+      .select('fullName username departmentId roleAssignments')
+      .populate('departmentId', 'code name')
+      .sort({ fullName: 1, username: 1 })
+      .lean();
+
+    const people = recipients.map((user) => {
+      const userDept =
+        user.departmentId && typeof user.departmentId === 'object'
+          ? (user.departmentId as {
+              _id?: Types.ObjectId;
+              code?: string;
+              name?: string;
+            })
+          : null;
+      return {
+        id: String(user._id),
+        fullName: user.fullName?.trim() || user.username,
+        username: user.username,
+        departmentId: userDept?._id
+          ? String(userDept._id)
+          : String(parentId),
+        departmentCode: userDept?.code ?? department.code,
+        departmentName: userDept?.name ?? department.name,
+      };
+    });
+
+    return { department, people };
+  }
+
+  private async requireValidSendTarget(
+    ownerId: string,
+    dto: SendPersonalKpiDto,
+  ) {
+    const recipientId = dto.recipientId?.trim() || '';
+    const recipientDepartmentId = dto.recipientDepartmentId?.trim() || '';
+
+    if (!recipientId && !recipientDepartmentId) {
+      throw new BadRequestException(
+        'Vui lòng chọn đơn vị hoặc người nhận.',
+      );
+    }
+
+    const allowed = await this.findRecipientsOneLevelUp(ownerId);
+    if (!allowed.department) {
+      throw new BadRequestException(
+        'Không có đơn vị cấp trên 1 bậc để gửi.',
+      );
+    }
+
+    if (recipientId) {
+      if (!Types.ObjectId.isValid(recipientId)) {
+        throw new BadRequestException('Người nhận không hợp lệ.');
+      }
+      const person = allowed.people.find((item) => item.id === recipientId);
+      if (!person) {
+        throw new BadRequestException(
+          'Người nhận không hợp lệ hoặc không thuộc cấp trên 1 bậc của bạn.',
+        );
+      }
+      const recipient = await this.userModel.findById(recipientId);
+      if (!recipient || !recipient.isActive) {
+        throw new BadRequestException(
+          'Người nhận không tồn tại hoặc đã khoá.',
+        );
+      }
+      return {
+        recipientId: recipient._id as Types.ObjectId,
+        recipientDepartmentId: new Types.ObjectId(allowed.department.id),
+        recipientName: recipient.fullName?.trim() || recipient.username,
+      };
+    }
+
+    if (!Types.ObjectId.isValid(recipientDepartmentId)) {
+      throw new BadRequestException('Đơn vị nhận không hợp lệ.');
+    }
+    if (recipientDepartmentId !== allowed.department.id) {
+      throw new BadRequestException(
+        'Đơn vị nhận không hợp lệ hoặc không phải cấp trên 1 bậc của bạn.',
+      );
+    }
+
+    return {
+      recipientId: null,
+      recipientDepartmentId: new Types.ObjectId(allowed.department.id),
+      recipientName: allowed.department.name,
+    };
   }
 
   private resolveReportDate(value?: string) {

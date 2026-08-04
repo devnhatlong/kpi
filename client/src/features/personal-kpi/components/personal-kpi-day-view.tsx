@@ -56,8 +56,10 @@ import {
   fetchMyPersonalKpi,
   personalKpiKeys,
   sendPersonalKpi,
+  type SendPersonalKpiPayload,
 } from "@/features/personal-kpi/api";
 import { PersonalTaskDrawer } from "@/features/personal-kpi/components/personal-task-drawer";
+import { SendRecipientDialog } from "@/features/personal-kpi/components/send-recipient-dialog";
 import {
   PERSONAL_KPI_STATUS_LABEL,
   canDeletePersonalKpi,
@@ -125,6 +127,8 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   const [edit, setEdit] = useState<PersonalKpiItem | null>(null);
   const [deleting, setDeleting] = useState<PersonalKpiItem | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [sendingItem, setSendingItem] = useState<PersonalKpiItem | null>(null);
+  const [sending, setSending] = useState(false);
 
   const { data: axes = [] } = useSWR(
     ["axes", "all", "personal-kpi-day"],
@@ -177,19 +181,27 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     setDrawerOpen(true);
   };
 
-  const submitItem = async (item: PersonalKpiItem) => {
+  const openSend = (item: PersonalKpiItem) => {
     if (!canSendPersonalKpi(item.status)) {
       toast.error("Chỉ gửi được khi đang Nháp hoặc Từ chối.");
       return;
     }
-    setActingId(item.id);
+    setSendingItem(item);
+  };
+
+  const confirmSend = async (payload: SendPersonalKpiPayload) => {
+    if (!sendingItem) return;
+    setSending(true);
+    setActingId(sendingItem.id);
     try {
-      await sendPersonalKpi(item.id);
+      await sendPersonalKpi(sendingItem.id, payload);
       await mutate();
       toast.success("Đã gửi nhiệm vụ.");
+      setSendingItem(null);
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không gửi được nhiệm vụ."));
     } finally {
+      setSending(false);
       setActingId(null);
     }
   };
@@ -404,7 +416,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
                             <Button
                               size="icon"
                               variant="ghost"
-                              onClick={() => void submitItem(item)}
+                              onClick={() => openSend(item)}
                               aria-label="Gửi"
                               disabled={actingId === item.id}
                             >
@@ -477,6 +489,17 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <SendRecipientDialog
+        open={!!sendingItem}
+        onOpenChange={(open) => {
+          if (!open && !sending) setSendingItem(null);
+        }}
+        title="Gửi nhiệm vụ"
+        description="Chọn người nhận ở đơn vị cấp trên 1 bậc."
+        submitting={sending}
+        onConfirm={confirmSend}
+      />
     </div>
   );
 }

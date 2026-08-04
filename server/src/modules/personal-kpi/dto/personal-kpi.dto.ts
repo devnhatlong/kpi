@@ -7,7 +7,9 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -225,4 +227,28 @@ export class PersonalKpiReportsQueryDto {
   @IsOptional()
   @IsString()
   q?: string;
+}
+
+export class SendPersonalKpiDto {
+  @ApiPropertyOptional({
+    description: 'Người nhận (cá nhân). Có thể bỏ trống nếu gửi theo đơn vị.',
+    example: '66af9f31f0e4d3e4f4305e91',
+  })
+  @ValidateIf((o: SendPersonalKpiDto) => !o.recipientDepartmentId || !!o.recipientId)
+  @IsOptional()
+  @IsMongoId({ message: 'Người nhận không hợp lệ.' })
+  recipientId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Đơn vị nhận (cấp trên 1 bậc). Có thể gửi chỉ đơn vị, không chọn cá nhân.',
+    example: '66af9f31f0e4d3e4f4305e92',
+  })
+  @ValidateIf((o: SendPersonalKpiDto) => !o.recipientId || !!o.recipientDepartmentId)
+  @IsOptional()
+  @IsMongoId({ message: 'Đơn vị nhận không hợp lệ.' })
+  recipientDepartmentId?: string;
+
+  @StringRequired('Nội dung gửi', { example: 'Kính gửi' })
+  @MaxLength(1000, { message: 'Nội dung gửi tối đa 1000 ký tự.' })
+  note!: string;
 }

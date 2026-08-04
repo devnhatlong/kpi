@@ -63,6 +63,9 @@ export type PersonalKpiItem = {
   updatedAt: string;
   /** Thời điểm gửi gần nhất */
   sentAt?: string;
+  recipientId?: string;
+  recipientName?: string;
+  sendNote?: string;
   rejectReason?: string;
 };
 

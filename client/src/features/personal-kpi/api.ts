@@ -32,9 +32,38 @@ export type PersonalKpiApiRecord = {
   note?: string;
   evidenceFiles?: TaskEvidenceFile[];
   sentAt?: string | null;
+  recipientId?: string | CatalogRef | null;
+  recipientName?: string;
+  sendNote?: string;
   rejectReason?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type PersonalKpiRecipient = {
+  id: string;
+  fullName: string;
+  username: string;
+  departmentId: string | null;
+  departmentCode: string;
+  departmentName: string;
+};
+
+export type PersonalKpiRecipientDepartment = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+export type PersonalKpiRecipientsResponse = {
+  department: PersonalKpiRecipientDepartment | null;
+  people: PersonalKpiRecipient[];
+};
+
+export type SendPersonalKpiPayload = {
+  recipientId?: string;
+  recipientDepartmentId?: string;
+  note: string;
 };
 
 export type PersonalKpiDailyReport = {
@@ -140,6 +169,9 @@ export function mapPersonalKpiFromApi(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     sentAt: row.sentAt || undefined,
+    recipientId: row.recipientId ? refId(row.recipientId) : undefined,
+    recipientName: row.recipientName?.trim() || undefined,
+    sendNote: row.sendNote?.trim() || undefined,
     rejectReason: row.rejectReason?.trim() || undefined,
   };
 }
@@ -268,20 +300,43 @@ export async function updatePersonalKpi(
   return mapPersonalKpiFromApi(data);
 }
 
-export async function sendPersonalKpi(id: string) {
+export async function fetchPersonalKpiRecipients(q?: string) {
+  return unwrapData(
+    api.get<ApiResponse<PersonalKpiRecipientsResponse>>(
+      "/personal-kpi/recipients",
+      {
+        params: q?.trim() ? { q: q.trim() } : undefined,
+      },
+    ),
+  );
+}
+
+export async function sendPersonalKpi(
+  id: string,
+  payload: SendPersonalKpiPayload,
+) {
   const data = await unwrapData(
     api.post<ApiResponse<PersonalKpiApiRecord>>(
       `/personal-kpi/${id}/send`,
+      payload,
     ),
   );
   return mapPersonalKpiFromApi(data);
 }
 
-export async function sendPersonalKpiReport(reportDate: string) {
+export async function sendPersonalKpiReport(
+  reportDate: string,
+  payload: SendPersonalKpiPayload,
+) {
   return unwrapData(
-    api.post<ApiResponse<{ reportDate: string; sentCount: number }>>(
-      `/personal-kpi/reports/${reportDate}/send`,
-    ),
+    api.post<
+      ApiResponse<{
+        reportDate: string;
+        sentCount: number;
+        recipientId: string;
+        recipientName: string;
+      }>
+    >(`/personal-kpi/reports/${reportDate}/send`, payload),
   );
 }
 

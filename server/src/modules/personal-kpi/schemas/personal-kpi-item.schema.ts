@@ -112,6 +112,25 @@ export class PersonalKpiItem {
   @Prop({ type: Date, default: null })
   sentAt!: Date | null;
 
+  /** Người nhận (cá nhân) khi gửi */
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null, index: true })
+  recipientId!: Types.ObjectId | null;
+
+  /** Đơn vị nhận (cấp trên 1 bậc) khi gửi */
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'Department',
+    default: null,
+    index: true,
+  })
+  recipientDepartmentId!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  recipientName!: string;
+
+  @Prop({ trim: true, default: '' })
+  sendNote!: string;
+
   @Prop({ trim: true, default: '' })
   rejectReason!: string;
 
