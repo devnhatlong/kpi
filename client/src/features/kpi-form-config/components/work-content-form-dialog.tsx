@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import {
   createWorkContent,
+  fetchAxesAll,
   fetchContentGroupsAll,
   updateWorkContent,
 } from "@/features/kpi-form-config/api";
@@ -48,12 +49,17 @@ export function WorkContentFormDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [contentGroupId, setContentGroupId] = useState("");
+  const [axisId, setAxisId] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
   const { data: contentGroups = [] } = useSWR(
     open ? ["content-groups", "all", "for-work-content"] : null,
     fetchContentGroupsAll,
+  );
+  const { data: axes = [] } = useSWR(
+    open ? ["axes", "all", "for-work-content"] : null,
+    fetchAxesAll,
   );
 
   useEffect(() => {
@@ -66,12 +72,18 @@ export function WorkContentFormDialog({
           ? edit.contentGroupId
           : edit.contentGroupId?._id ?? "",
       );
+      setAxisId(
+        typeof edit.axisId === "string"
+          ? edit.axisId
+          : edit.axisId?._id ?? "",
+      );
       setSortOrder(String(edit.sortOrder ?? 0));
       setIsActive(edit.isActive);
     } else {
       setName("");
       setDescription("");
       setContentGroupId("");
+      setAxisId("");
       setSortOrder("0");
       setIsActive(true);
     }
@@ -86,6 +98,10 @@ export function WorkContentFormDialog({
       toast.error("Vui lòng chọn nhóm nội dung.");
       return;
     }
+    if (!axisId) {
+      toast.error("Vui lòng chọn trục.");
+      return;
+    }
 
     const sortOrderNum = Number(sortOrder);
     if (!Number.isFinite(sortOrderNum) || sortOrderNum < 0) {
@@ -97,6 +113,7 @@ export function WorkContentFormDialog({
       name: name.trim(),
       description: description.trim(),
       contentGroupId,
+      axisId,
       sortOrder: sortOrderNum,
       isActive,
     };
@@ -180,6 +197,24 @@ export function WorkContentFormDialog({
                 {contentGroups.map((group) => (
                   <SelectItem key={entityId(group)} value={entityId(group)}>
                     {group.name} ({group.code})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>
+              Trục <span className="text-destructive">*</span>
+            </Label>
+            <Select value={axisId || undefined} onValueChange={setAxisId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Chọn trục" />
+              </SelectTrigger>
+              <SelectContent>
+                {axes.map((axis) => (
+                  <SelectItem key={entityId(axis)} value={entityId(axis)}>
+                    {axis.name} ({axis.code})
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ClipboardList, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, Search, Split, Trash2 } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 
@@ -32,65 +32,37 @@ import {
   activeBadgeClass,
   inactiveBadgeClass,
 } from "@/features/organization/badge-styles";
-import {
-  deleteWorkContent,
-  fetchWorkContentsPage,
-  workContentKeys,
-} from "@/features/kpi-form-config/api";
-import { WorkContentFormDialog } from "@/features/kpi-form-config/components/work-content-form-dialog";
-import type { WorkContent } from "@/features/kpi-form-config/types";
+import { axisKeys, deleteAxis, fetchAxesPage } from "@/features/kpi-form-config/api";
+import { AxisFormDialog } from "@/features/kpi-form-config/components/axis-form-dialog";
+import type { Axis } from "@/features/kpi-form-config/types";
 import { entityId } from "@/features/kpi-form-config/types";
 import { useListPagination } from "@/hooks/use-list-pagination";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
 
-export function WorkContentsView() {
-  const contentGroupLabel = (item: WorkContent) => {
-    const group = item.contentGroupId;
-    if (!group || typeof group === "string") return "";
-    return `${group.name} (${group.code})`;
-  };
-  const axisLabel = (item: WorkContent) => {
-    const axis = item.axisId;
-    if (!axis || typeof axis === "string") return "";
-    return `${axis.name} (${axis.code})`;
-  };
-
+export function AxesView() {
   const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
     useListPagination();
-
   const listParams = { page, limit, q: debouncedQuery };
-  const { data, isLoading, mutate } = useSWR(
-    workContentKeys.list(listParams),
-    () => fetchWorkContentsPage(listParams),
+  const { data, isLoading, mutate } = useSWR(axisKeys.list(listParams), () =>
+    fetchAxesPage(listParams),
   );
 
   const items = data?.data ?? [];
   const meta = data?.meta ?? emptyPaginationMeta(limit);
-
   const [formOpen, setFormOpen] = useState(false);
-  const [edit, setEdit] = useState<WorkContent | null>(null);
-  const [deleting, setDeleting] = useState<WorkContent | null>(null);
-
-  const openCreate = () => {
-    setEdit(null);
-    setFormOpen(true);
-  };
-
-  const openEdit = (item: WorkContent) => {
-    setEdit(item);
-    setFormOpen(true);
-  };
+  const [edit, setEdit] = useState<Axis | null>(null);
+  const [deleting, setDeleting] = useState<Axis | null>(null);
 
   const confirmDelete = async () => {
     if (!deleting) return;
     try {
-      await deleteWorkContent(entityId(deleting));
-      toast.success("Đã xoá nội dung công việc.");
+      await deleteAxis(entityId(deleting));
+      toast.success("Đã xoá trục.");
       setDeleting(null);
       await mutate();
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Không xoá được nội dung công việc."));
+      toast.error(getApiErrorMessage(error, "Không xoá được trục."));
     }
   };
 
@@ -98,16 +70,19 @@ export function WorkContentsView() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">
-            Nội dung công việc
-          </h1>
+          <h1 className="font-display text-2xl font-semibold tracking-tight">Trục</h1>
           <p className="text-sm text-muted-foreground">
-            Danh mục dùng cho dropdown khi cán bộ nhập KPI cá nhân.
+            Danh mục trục để gán cho từng nội dung công việc.
           </p>
         </div>
-        <Button onClick={openCreate}>
+        <Button
+          onClick={() => {
+            setEdit(null);
+            setFormOpen(true);
+          }}
+        >
           <Plus className="h-4 w-4" />
-          Thêm nội dung
+          Thêm trục
         </Button>
       </div>
 
@@ -129,9 +104,7 @@ export function WorkContentsView() {
                 <TableRow>
                   <TableHead className="w-14">STT</TableHead>
                   <TableHead className="w-[120px]">Mã</TableHead>
-                  <TableHead>Tên nội dung</TableHead>
-                  <TableHead className="w-[220px]">Nhóm nội dung</TableHead>
-                  <TableHead className="w-[220px]">Trục</TableHead>
+                  <TableHead>Tên trục</TableHead>
                   <TableHead className="w-[100px]">Thứ tự</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
                   <TableHead className="w-[100px] text-right">Thao tác</TableHead>
@@ -140,16 +113,16 @@ export function WorkContentsView() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                       <div className="inline-flex flex-col items-center gap-2">
-                        <ClipboardList className="h-8 w-8 opacity-40" />
-                        <span>Chưa có nội dung công việc nào.</span>
+                        <Split className="h-8 w-8 opacity-40" />
+                        <span>Chưa có trục nào.</span>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -172,12 +145,6 @@ export function WorkContentsView() {
                           </div>
                         ) : null}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {contentGroupLabel(item) || "-"}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {axisLabel(item) || "-"}
-                      </TableCell>
                       <TableCell>{item.sortOrder}</TableCell>
                       <TableCell>
                         {item.isActive ? (
@@ -195,7 +162,10 @@ export function WorkContentsView() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            onClick={() => openEdit(item)}
+                            onClick={() => {
+                              setEdit(item);
+                              setFormOpen(true);
+                            }}
                             aria-label="Sửa"
                           >
                             <Pencil className="h-4 w-4" />
@@ -216,7 +186,6 @@ export function WorkContentsView() {
               </TableBody>
             </Table>
           </div>
-
           <TablePagination
             page={meta.page}
             limit={limit}
@@ -229,7 +198,7 @@ export function WorkContentsView() {
         </CardContent>
       </Card>
 
-      <WorkContentFormDialog
+      <AxisFormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
         edit={edit}
@@ -239,7 +208,7 @@ export function WorkContentsView() {
       <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xoá nội dung công việc?</AlertDialogTitle>
+            <AlertDialogTitle>Xoá trục?</AlertDialogTitle>
             <AlertDialogDescription>
               Bạn sắp xoá{" "}
               <span className="font-medium text-foreground">

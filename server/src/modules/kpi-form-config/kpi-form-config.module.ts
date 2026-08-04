@@ -10,6 +10,7 @@ import {
   ContentGroup,
   ContentGroupSchema,
 } from './schemas/content-group.schema';
+import { Axis, AxisSchema } from './schemas/axis.schema';
 import {
   ScoreGroup,
   ScoreGroupSchema,
@@ -18,6 +19,8 @@ import { WorkContentsController } from './work-contents.controller';
 import { WorkContentsService } from './work-contents.service';
 import { ContentGroupsController } from './content-groups.controller';
 import { ContentGroupsService } from './content-groups.service';
+import { AxesController } from './axes.controller';
+import { AxesService } from './axes.service';
 import { ScoreGroupsController } from './score-groups.controller';
 import { ScoreGroupsService } from './score-groups.service';
 
@@ -26,13 +29,19 @@ import { ScoreGroupsService } from './score-groups.service';
     MongooseModule.forFeature([
       { name: WorkContent.name, schema: WorkContentSchema },
       { name: ContentGroup.name, schema: ContentGroupSchema },
+      { name: Axis.name, schema: AxisSchema },
       { name: ScoreGroup.name, schema: ScoreGroupSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),
   ],
-  controllers: [WorkContentsController, ContentGroupsController, ScoreGroupsController],
-  providers: [WorkContentsService, ContentGroupsService, ScoreGroupsService],
-  exports: [WorkContentsService, ContentGroupsService, ScoreGroupsService],
+  controllers: [
+    WorkContentsController,
+    ContentGroupsController,
+    AxesController,
+    ScoreGroupsController,
+  ],
+  providers: [WorkContentsService, ContentGroupsService, AxesService, ScoreGroupsService],
+  exports: [WorkContentsService, ContentGroupsService, AxesService, ScoreGroupsService],
 })
 export class KpiFormConfigModule {}

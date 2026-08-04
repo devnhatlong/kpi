@@ -14,6 +14,7 @@ import {
   WorkContentDocument,
 } from './schemas/work-content.schema';
 import { ContentGroup, ContentGroupDocument } from './schemas/content-group.schema';
+import { Axis, AxisDocument } from './schemas/axis.schema';
 
 @Injectable()
 export class WorkContentsService {
@@ -22,6 +23,8 @@ export class WorkContentsService {
     private readonly workContentModel: Model<WorkContentDocument>,
     @InjectModel(ContentGroup.name)
     private readonly contentGroupModel: Model<ContentGroupDocument>,
+    @InjectModel(Axis.name)
+    private readonly axisModel: Model<AxisDocument>,
   ) {}
 
   async create(dto: CreateWorkContentDto) {
@@ -30,16 +33,21 @@ export class WorkContentsService {
       : await this.nextCode();
     await this.ensureUniqueCode(code);
     const contentGroup = await this.requireContentGroup(dto.contentGroupId);
+    const axis = await this.requireAxis(dto.axisId);
 
     const data = await this.workContentModel.create({
       code,
       name: dto.name.trim(),
       description: dto.description?.trim() ?? '',
       contentGroupId: contentGroup._id,
+      axisId: axis._id,
       sortOrder: dto.sortOrder ?? 0,
       isActive: dto.isActive ?? true,
     });
-    await data.populate('contentGroupId', 'code name');
+    await data.populate([
+      { path: 'contentGroupId', select: 'code name' },
+      { path: 'axisId', select: 'code name' },
+    ]);
 
     return { message: 'Tạo nội dung công việc thành công.', data };
   }
@@ -58,7 +66,8 @@ export class WorkContentsService {
       const data = await this.workContentModel
         .find(filter)
         .sort(sort)
-        .populate('contentGroupId', 'code name');
+        .populate('contentGroupId', 'code name')
+        .populate('axisId', 'code name');
       return buildPaginatedResponse(data, data.length, 1, data.length || 1);
     }
 
@@ -72,7 +81,8 @@ export class WorkContentsService {
         .sort(sort)
         .skip(skip)
         .limit(limit)
-        .populate('contentGroupId', 'code name'),
+        .populate('contentGroupId', 'code name')
+        .populate('axisId', 'code name'),
       this.workContentModel.countDocuments(filter),
     ]);
 
@@ -99,11 +109,18 @@ export class WorkContentsService {
       const contentGroup = await this.requireContentGroup(dto.contentGroupId);
       item.contentGroupId = contentGroup._id;
     }
+    if (dto.axisId !== undefined) {
+      const axis = await this.requireAxis(dto.axisId);
+      item.axisId = axis._id;
+    }
     if (dto.sortOrder !== undefined) item.sortOrder = dto.sortOrder;
     if (dto.isActive !== undefined) item.isActive = dto.isActive;
 
     await item.save();
-    await item.populate('contentGroupId', 'code name');
+    await item.populate([
+      { path: 'contentGroupId', select: 'code name' },
+      { path: 'axisId', select: 'code name' },
+    ]);
     return { message: 'Cập nhật nội dung công việc thành công.', data: item };
   }
 
@@ -121,6 +138,7 @@ export class WorkContentsService {
       ? await this.workContentModel
           .findById(id)
           .populate('contentGroupId', 'code name')
+          .populate('axisId', 'code name')
       : await this.workContentModel.findById(id);
     if (!item) {
       throw new NotFoundException('Không tìm thấy nội dung công việc.');
@@ -135,6 +153,17 @@ export class WorkContentsService {
     const item = await this.contentGroupModel.findById(id);
     if (!item) {
       throw new BadRequestException('Nhóm nội dung không tồn tại.');
+    }
+    return item;
+  }
+
+  private async requireAxis(id: string) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Trục không hợp lệ.');
+    }
+    const item = await this.axisModel.findById(id);
+    if (!item) {
+      throw new BadRequestException('Trục không tồn tại.');
     }
     return item;
   }

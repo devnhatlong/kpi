@@ -22,6 +22,30 @@ export type ContentGroupRef = {
   name: string;
 };
 
+export type Axis = {
+  _id: string;
+  id?: string;
+  code: string;
+  name: string;
+  description?: string;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+export type AxisInput = {
+  code?: string;
+  name: string;
+  description?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+export type AxisRef = {
+  _id: string;
+  code: string;
+  name: string;
+};
+
 export type WorkContent = {
   _id: string;
   id?: string;
@@ -29,6 +53,7 @@ export type WorkContent = {
   name: string;
   description?: string;
   contentGroupId: string | ContentGroupRef;
+  axisId: string | AxisRef;
   sortOrder: number;
   isActive: boolean;
 };
@@ -38,6 +63,7 @@ export type WorkContentInput = {
   name: string;
   description?: string;
   contentGroupId: string;
+  axisId: string;
   sortOrder?: number;
   isActive?: boolean;
 };

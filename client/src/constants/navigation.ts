@@ -145,6 +145,11 @@ export const NAV_ITEMS: NavItem[] = [
         icon: Layers,
       },
       {
+        title: "Trục",
+        href: "/kpi/form-config/axes",
+        icon: Layers,
+      },
+      {
         title: "Nội dung công việc",
         href: "/kpi/form-config/work-contents",
         icon: ListTree,

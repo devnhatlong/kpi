@@ -1,6 +1,8 @@
 import { api, buildListQuery, unwrapData, unwrapPaginated } from "@/lib/api-client";
 import type { ApiResponse } from "@/features/auth/types";
 import type {
+  Axis,
+  AxisInput,
   ContentGroup,
   ContentGroupInput,
   ListQueryParams,
@@ -10,6 +12,43 @@ import type {
   WorkContent,
   WorkContentInput,
 } from "./types";
+
+export const axisKeys = {
+  all: ["axes"] as const,
+  list: (params: ListQueryParams) =>
+    ["axes", params.page, params.limit, params.q ?? "", params.all ?? false] as const,
+};
+
+export async function fetchAxesPage(
+  params: ListQueryParams,
+): Promise<PaginatedResult<Axis>> {
+  return unwrapPaginated(
+    api.get<ApiResponse<Axis[]>>("/kpi-form-config/axes/all", {
+      params: buildListQuery(params),
+    }),
+  );
+}
+
+export async function fetchAxesAll() {
+  const result = await fetchAxesPage({ all: true });
+  return result.data.filter((item) => item.isActive);
+}
+
+export function createAxis(input: AxisInput) {
+  return unwrapData(
+    api.post<ApiResponse<Axis>>("/kpi-form-config/axes", input),
+  );
+}
+
+export function updateAxis(id: string, input: Partial<AxisInput>) {
+  return unwrapData(
+    api.patch<ApiResponse<Axis>>(`/kpi-form-config/axes/${id}`, input),
+  );
+}
+
+export async function deleteAxis(id: string) {
+  await api.delete(`/kpi-form-config/axes/${id}`);
+}
 
 export const contentGroupKeys = {
   all: ["content-groups"] as const,
