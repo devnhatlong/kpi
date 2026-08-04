@@ -7,6 +7,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, PipelineStage, Types } from 'mongoose';
 import { buildPaginatedResponse } from '@/common/utils/pagination.util';
+import { RoleCode } from '@/common/enums/role-code.enum';
 import { Axis, AxisDocument } from '@/modules/kpi-form-config/schemas/axis.schema';
 import {
   WorkContent,
@@ -39,6 +40,21 @@ import {
 
 const EDITABLE: PersonalKpiStatus[] = ['DRAFT', 'REJECTED'];
 const SEND_NOTE_MAX = 1000;
+
+/** Bậc role tăng dần — gửi cho đúng 1 bậc trên. */
+const ROLE_LADDER: RoleCode[] = [
+  RoleCode.STAFF,
+  RoleCode.MANAGER,
+  RoleCode.UNIT_ADMIN,
+  RoleCode.SUPER_ADMIN,
+];
+
+const ROLE_LABEL: Record<RoleCode, string> = {
+  [RoleCode.STAFF]: 'Staff',
+  [RoleCode.MANAGER]: 'Manager',
+  [RoleCode.UNIT_ADMIN]: 'Unit Admin',
+  [RoleCode.SUPER_ADMIN]: 'Super Admin',
+};
 
 @Injectable()
 export class PersonalKpiService {
@@ -463,12 +479,32 @@ export class PersonalKpiService {
     return value;
   }
 
+  private resolveTargetRole(roleCodes: string[]): RoleCode | null {
+    const indexes = roleCodes
+      .map((code) => ROLE_LADDER.indexOf(code as RoleCode))
+      .filter((index) => index >= 0);
+    if (indexes.length === 0) return null;
+    // Lấy role thấp nhất của user → bậc trên 1 cấp
+    const lowest = Math.min(...indexes);
+    return ROLE_LADDER[lowest + 1] ?? null;
+  }
+
   private async findRecipientsOneLevelUp(ownerId: string, q?: string) {
     const staff = await this.userModel.findById(ownerId);
     if (!staff) throw new NotFoundException('Không tìm thấy người dùng.');
     if (!staff.departmentId) {
       throw new BadRequestException(
-        'Tài khoản chưa gắn đơn vị — không xác định được cấp trên.',
+        'Tài khoản chưa gắn đơn vị — không xác định được người nhận cấp trên.',
+      );
+    }
+
+    const roleCodes = (staff.roleAssignments ?? []).map(
+      (item) => item.roleCode,
+    );
+    const targetRole = this.resolveTargetRole(roleCodes);
+    if (!targetRole) {
+      throw new BadRequestException(
+        'Không xác định được role cấp trên để gửi báo cáo.',
       );
     }
 
@@ -477,33 +513,24 @@ export class PersonalKpiService {
       throw new BadRequestException('Đơn vị công tác không tồn tại.');
     }
 
-    if (!dept.parentId) {
-      return { department: null, people: [] as Array<{
-        id: string;
-        fullName: string;
-        username: string;
-        departmentId: string | null;
-        departmentCode: string;
-        departmentName: string;
-      }> };
-    }
-
-    const parent = await this.departmentModel.findById(dept.parentId);
-    if (!parent || parent.isActive === false) {
-      return { department: null, people: [] };
-    }
-
-    const parentId = parent._id as Types.ObjectId;
-    const department = {
-      id: String(parentId),
-      code: parent.code ?? '',
-      name: parent.name ?? 'Đơn vị cấp trên',
-    };
+    // Manager/UnitAdmin có scope bao phủ đơn vị staff hoặc tổ tiên
+    const coveringIds = [
+      staff.departmentId,
+      ...(dept.ancestors ?? []),
+    ].map((id) => new Types.ObjectId(String(id)));
 
     const filter: Record<string, unknown> = {
       isActive: true,
       _id: { $ne: staff._id },
-      departmentId: parentId,
+      roleAssignments: {
+        $elemMatch: {
+          roleCode: targetRole,
+          $or: [
+            { scopeDepartmentId: null },
+            { scopeDepartmentId: { $in: coveringIds } },
+          ],
+        },
+      },
     };
 
     if (q?.trim()) {
@@ -534,13 +561,20 @@ export class PersonalKpiService {
         username: user.username,
         departmentId: userDept?._id
           ? String(userDept._id)
-          : String(parentId),
-        departmentCode: userDept?.code ?? department.code,
-        departmentName: userDept?.name ?? department.name,
+          : user.departmentId
+            ? String(user.departmentId)
+            : null,
+        departmentCode: userDept?.code ?? '',
+        departmentName: userDept?.name ?? 'Chưa gắn đơn vị',
+        roleCode: targetRole,
       };
     });
 
-    return { department, people };
+    return {
+      targetRole,
+      targetRoleLabel: ROLE_LABEL[targetRole],
+      people,
+    };
   }
 
   private async requireValidSendTarget(
@@ -548,57 +582,34 @@ export class PersonalKpiService {
     dto: SendPersonalKpiDto,
   ) {
     const recipientId = dto.recipientId?.trim() || '';
-    const recipientDepartmentId = dto.recipientDepartmentId?.trim() || '';
-
-    if (!recipientId && !recipientDepartmentId) {
-      throw new BadRequestException(
-        'Vui lòng chọn đơn vị hoặc người nhận.',
-      );
+    if (!recipientId) {
+      throw new BadRequestException('Vui lòng chọn người nhận.');
+    }
+    if (!Types.ObjectId.isValid(recipientId)) {
+      throw new BadRequestException('Người nhận không hợp lệ.');
     }
 
     const allowed = await this.findRecipientsOneLevelUp(ownerId);
-    if (!allowed.department) {
+    const person = allowed.people.find((item) => item.id === recipientId);
+    if (!person) {
       throw new BadRequestException(
-        'Không có đơn vị cấp trên 1 bậc để gửi.',
+        `Người nhận không hợp lệ hoặc không phải ${allowed.targetRoleLabel} trong phạm vi của bạn.`,
       );
     }
 
-    if (recipientId) {
-      if (!Types.ObjectId.isValid(recipientId)) {
-        throw new BadRequestException('Người nhận không hợp lệ.');
-      }
-      const person = allowed.people.find((item) => item.id === recipientId);
-      if (!person) {
-        throw new BadRequestException(
-          'Người nhận không hợp lệ hoặc không thuộc cấp trên 1 bậc của bạn.',
-        );
-      }
-      const recipient = await this.userModel.findById(recipientId);
-      if (!recipient || !recipient.isActive) {
-        throw new BadRequestException(
-          'Người nhận không tồn tại hoặc đã khoá.',
-        );
-      }
-      return {
-        recipientId: recipient._id as Types.ObjectId,
-        recipientDepartmentId: new Types.ObjectId(allowed.department.id),
-        recipientName: recipient.fullName?.trim() || recipient.username,
-      };
-    }
-
-    if (!Types.ObjectId.isValid(recipientDepartmentId)) {
-      throw new BadRequestException('Đơn vị nhận không hợp lệ.');
-    }
-    if (recipientDepartmentId !== allowed.department.id) {
+    const recipient = await this.userModel.findById(recipientId);
+    if (!recipient || !recipient.isActive) {
       throw new BadRequestException(
-        'Đơn vị nhận không hợp lệ hoặc không phải cấp trên 1 bậc của bạn.',
+        'Người nhận không tồn tại hoặc đã khoá.',
       );
     }
 
     return {
-      recipientId: null,
-      recipientDepartmentId: new Types.ObjectId(allowed.department.id),
-      recipientName: allowed.department.name,
+      recipientId: recipient._id as Types.ObjectId,
+      recipientDepartmentId: recipient.departmentId
+        ? new Types.ObjectId(String(recipient.departmentId))
+        : null,
+      recipientName: recipient.fullName?.trim() || recipient.username,
     };
   }
 

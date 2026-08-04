@@ -480,14 +480,16 @@ export function PersonalReportDetailDrawer({
                     Chỉnh sửa
                   </Button>
                 ) : null}
-                <Button
-                  type="button"
-                  onClick={openSendDialog}
-                  disabled={busy || isLoading || sendableCount === 0}
-                >
-                  <Send className="h-4 w-4" />
-                  {sending ? "Đang gửi..." : "Gửi"}
-                </Button>
+                {sendableCount > 0 ? (
+                  <Button
+                    type="button"
+                    onClick={openSendDialog}
+                    disabled={busy || isLoading}
+                  >
+                    <Send className="h-4 w-4" />
+                    {sending ? "Đang gửi..." : "Gửi"}
+                  </Button>
+                ) : null}
               </>
             )}
           </div>
@@ -498,7 +500,6 @@ export function PersonalReportDetailDrawer({
         open={sendOpen}
         onOpenChange={setSendOpen}
         title="Gửi báo cáo"
-        description="Chọn người nhận ở đơn vị cấp trên 1 bậc."
         submitting={sending}
         onConfirm={handleSend}
       />

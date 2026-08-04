@@ -52,7 +52,8 @@ export class PersonalKpiController {
   }
 
   @ApiOperation({
-    summary: 'Danh sách người nhận cấp trên 1 bậc (đơn vị cha) để chọn khi gửi',
+    summary:
+      'Danh sách người nhận đúng 1 bậc role trên (Staff→Manager, Manager→UnitAdmin)',
   })
   @Permissions(Permission.EVALUATION_SELF)
   @Get('recipients')

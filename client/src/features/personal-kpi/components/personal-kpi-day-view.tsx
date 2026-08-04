@@ -496,7 +496,6 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
           if (!open && !sending) setSendingItem(null);
         }}
         title="Gửi nhiệm vụ"
-        description="Chọn người nhận ở đơn vị cấp trên 1 bậc."
         submitting={sending}
         onConfirm={confirmSend}
       />

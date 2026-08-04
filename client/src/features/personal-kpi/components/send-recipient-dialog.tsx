@@ -20,7 +20,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   fetchPersonalKpiRecipients,
   type PersonalKpiRecipient,
-  type PersonalKpiRecipientDepartment,
   type SendPersonalKpiPayload,
 } from "@/features/personal-kpi/api";
 import { getApiErrorMessage } from "@/lib/api-client";
@@ -39,26 +38,27 @@ type SendRecipientDialogProps = {
   onConfirm: (payload: SendPersonalKpiPayload) => Promise<void> | void;
 };
 
+type RecipientGroup = {
+  key: string;
+  departmentId: string | null;
+  departmentName: string;
+  people: PersonalKpiRecipient[];
+};
+
 export function SendRecipientDialog({
   open,
   onOpenChange,
   title = "Gửi báo cáo",
-  description = "Chọn người nhận ở đơn vị cấp trên 1 bậc.",
+  description,
   confirmLabel = "Gửi",
   submitting = false,
   onConfirm,
 }: SendRecipientDialogProps) {
   const [loading, setLoading] = useState(false);
-  const [department, setDepartment] =
-    useState<PersonalKpiRecipientDepartment | null>(null);
   const [people, setPeople] = useState<PersonalKpiRecipient[]>([]);
+  const [targetRoleLabel, setTargetRoleLabel] = useState("cấp trên");
   const [query, setQuery] = useState("");
-  const [selectedDepartmentId, setSelectedDepartmentId] = useState<
-    string | null
-  >(null);
   const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
-  /** Chọn đơn vị tổng → gửi theo đơn vị; chọn cá nhân → gửi theo người */
-  const [sendAsDepartment, setSendAsDepartment] = useState(false);
   const [note, setNote] = useState(DEFAULT_NOTE);
 
   useEffect(() => {
@@ -66,9 +66,7 @@ export function SendRecipientDialog({
 
     let cancelled = false;
     setQuery("");
-    setSelectedDepartmentId(null);
     setSelectedPersonIds([]);
-    setSendAsDepartment(false);
     setNote(DEFAULT_NOTE);
     setLoading(true);
 
@@ -76,11 +74,10 @@ export function SendRecipientDialog({
       try {
         const data = await fetchPersonalKpiRecipients();
         if (cancelled) return;
-        setDepartment(data?.department ?? null);
         setPeople(data?.people ?? []);
+        setTargetRoleLabel(data?.targetRoleLabel ?? "cấp trên");
       } catch (error) {
         if (cancelled) return;
-        setDepartment(null);
         setPeople([]);
         toast.error(
           getApiErrorMessage(error, "Không tải được danh sách người nhận."),
@@ -104,98 +101,75 @@ export function SendRecipientDialog({
         item.username,
         item.departmentName,
         item.departmentCode,
-        department?.name ?? "",
-        department?.code ?? "",
       ]
         .join(" ")
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [query, people, department]);
+  }, [query, people]);
 
-  const showDepartment =
-    !!department &&
-    (!query.trim() ||
-      department.name.toLowerCase().includes(query.trim().toLowerCase()) ||
-      department.code.toLowerCase().includes(query.trim().toLowerCase()) ||
-      filteredPeople.length > 0);
+  const groups = useMemo(() => {
+    const map = new Map<string, RecipientGroup>();
+    for (const person of filteredPeople) {
+      const key = person.departmentId ?? "__none__";
+      const existing = map.get(key);
+      if (existing) {
+        existing.people.push(person);
+        continue;
+      }
+      map.set(key, {
+        key,
+        departmentId: person.departmentId,
+        departmentName: person.departmentName || "Chưa gắn đơn vị",
+        people: [person],
+      });
+    }
+    return Array.from(map.values());
+  }, [filteredPeople]);
+
+  const resolvedDescription =
+    description ??
+    `Chọn ${targetRoleLabel} trong phạm vi đơn vị của bạn (Staff → Manager → Unit Admin).`;
 
   const noteTrimmed = note.trim();
-  const canSubmit =
-    (!!selectedDepartmentId || selectedPersonIds.length > 0) &&
-    noteTrimmed.length > 0;
+  const canSubmit = selectedPersonIds.length === 1 && noteTrimmed.length > 0;
 
-  const selectDepartment = (checked: boolean) => {
-    if (!department) return;
+  const selectDepartment = (group: RecipientGroup, checked: boolean) => {
+    const ids = group.people.map((person) => person.id);
     if (!checked) {
-      setSelectedDepartmentId(null);
-      setSelectedPersonIds([]);
-      setSendAsDepartment(false);
+      setSelectedPersonIds((prev) => prev.filter((id) => !ids.includes(id)));
       return;
     }
-    // Tích đơn vị tổng → tự tích hết cá nhân bên dưới
-    setSelectedDepartmentId(department.id);
-    setSelectedPersonIds(people.map((person) => person.id));
-    setSendAsDepartment(true);
+    // Tích đơn vị → tự tích hết người bên dưới
+    setSelectedPersonIds((prev) => Array.from(new Set([...prev, ...ids])));
   };
 
   const selectPerson = (person: PersonalKpiRecipient, checked: boolean) => {
     if (!checked) {
-      setSelectedPersonIds((prev) => {
-        const next = prev.filter((id) => id !== person.id);
-        if (next.length === 0) {
-          setSelectedDepartmentId(null);
-          setSendAsDepartment(false);
-        } else {
-          setSendAsDepartment(false);
-        }
-        return next;
-      });
+      setSelectedPersonIds((prev) => prev.filter((id) => id !== person.id));
       return;
     }
-
-    const deptId = person.departmentId ?? department?.id ?? null;
-    setSelectedDepartmentId(deptId);
+    // Chọn 1 người nhận (exclusive)
     setSelectedPersonIds([person.id]);
-    setSendAsDepartment(false);
   };
 
   const handleConfirm = async () => {
-    if (!selectedDepartmentId && selectedPersonIds.length === 0) {
-      toast.error("Vui lòng chọn đơn vị hoặc người nhận.");
+    if (selectedPersonIds.length === 0) {
+      toast.error(`Vui lòng chọn ${targetRoleLabel} nhận báo cáo.`);
+      return;
+    }
+    if (selectedPersonIds.length > 1) {
+      toast.error("Chỉ chọn một người nhận.");
       return;
     }
     if (!noteTrimmed) {
       toast.error("Vui lòng nhập nội dung gửi.");
       return;
     }
-
-    if (sendAsDepartment && selectedDepartmentId) {
-      await onConfirm({
-        recipientDepartmentId: selectedDepartmentId,
-        note: noteTrimmed,
-      });
-      return;
-    }
-
-    if (selectedPersonIds.length === 1) {
-      await onConfirm({
-        recipientId: selectedPersonIds[0],
-        recipientDepartmentId: selectedDepartmentId ?? undefined,
-        note: noteTrimmed,
-      });
-      return;
-    }
-
-    if (selectedDepartmentId) {
-      await onConfirm({
-        recipientDepartmentId: selectedDepartmentId,
-        note: noteTrimmed,
-      });
-      return;
-    }
-
-    toast.error("Vui lòng chọn đơn vị hoặc một người nhận.");
+    await onConfirm({
+      recipientId: selectedPersonIds[0]!,
+      note: noteTrimmed,
+    });
   };
 
   return (
@@ -205,7 +179,7 @@ export function SendRecipientDialog({
           <DialogTitle className="text-base font-semibold uppercase tracking-wide">
             {title}
           </DialogTitle>
-          <p className="text-sm text-muted-foreground">{description}</p>
+          <p className="text-sm text-muted-foreground">{resolvedDescription}</p>
         </DialogHeader>
 
         <div className="space-y-4 px-6 py-4">
@@ -214,7 +188,7 @@ export function SendRecipientDialog({
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Tìm kiếm theo tên đồng chí"
+              placeholder={`Tìm kiếm theo tên ${targetRoleLabel}`}
               className="pl-9"
               disabled={loading || submitting}
             />
@@ -235,81 +209,92 @@ export function SendRecipientDialog({
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Đang tải danh sách...
                   </div>
-                ) : !department ? (
+                ) : groups.length === 0 ? (
                   <div className="p-8 text-center text-sm text-muted-foreground">
-                    Không có đơn vị cấp trên 1 bậc.
-                  </div>
-                ) : !showDepartment ? (
-                  <div className="p-8 text-center text-sm text-muted-foreground">
-                    Không tìm thấy kết quả phù hợp.
+                    Không có {targetRoleLabel} nào trong phạm vi của bạn.
                   </div>
                 ) : (
                   <div className="divide-y">
-                    <button
-                      type="button"
-                      className={cn(
-                        "grid w-full grid-cols-[1fr_88px] items-center px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/40",
-                        selectedDepartmentId === department.id &&
-                          "bg-primary/5",
-                      )}
-                      onClick={() =>
-                        selectDepartment(
-                          selectedDepartmentId !== department.id,
-                        )
-                      }
-                      disabled={submitting}
-                    >
-                      <span className="flex min-w-0 items-center gap-2">
-                        <Building2 className="h-4 w-4 shrink-0 text-sky-600" />
-                        <span className="truncate">{department.name}</span>
-                      </span>
-                      <span className="flex justify-center">
-                        <Checkbox
-                          checked={selectedDepartmentId === department.id}
-                          onCheckedChange={(value) =>
-                            selectDepartment(value === true)
-                          }
-                          onClick={(event) => event.stopPropagation()}
-                          aria-label={`Chọn đơn vị ${department.name}`}
-                        />
-                      </span>
-                    </button>
-                    {filteredPeople.map((person) => {
-                      const personChecked = selectedPersonIds.includes(
-                        person.id,
-                      );
+                    {groups.map((group) => {
+                      const deptChecked =
+                        group.people.length > 0 &&
+                        group.people.every((person) =>
+                          selectedPersonIds.includes(person.id),
+                        );
                       return (
-                        <button
-                          key={person.id}
-                          type="button"
-                          className={cn(
-                            "grid w-full grid-cols-[1fr_88px] items-center py-2.5 pr-3 pl-8 text-left text-sm hover:bg-muted/40",
-                            personChecked && "bg-primary/5",
-                          )}
-                          onClick={() => selectPerson(person, !personChecked)}
-                          disabled={submitting}
-                        >
-                          <span className="flex min-w-0 items-center gap-2 pl-2">
-                            <UserRound className="h-4 w-4 shrink-0 text-amber-500" />
-                            <span className="truncate">
-                              {person.fullName}
-                              <span className="text-muted-foreground">
-                                {" "}
-                                ({person.username})
+                        <div key={group.key}>
+                          <button
+                            type="button"
+                            className={cn(
+                              "grid w-full grid-cols-[1fr_88px] items-center px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/40",
+                              deptChecked && "bg-primary/5",
+                            )}
+                            onClick={() =>
+                              selectDepartment(group, !deptChecked)
+                            }
+                            disabled={submitting || group.people.length === 0}
+                          >
+                            <span className="flex min-w-0 items-center gap-2">
+                              <Building2 className="h-4 w-4 shrink-0 text-sky-600" />
+                              <span className="truncate">
+                                {group.departmentName}
                               </span>
                             </span>
-                          </span>
-                          <span className="flex justify-center">
-                            <Checkbox
-                              checked={personChecked}
-                              onCheckedChange={(value) =>
-                                selectPerson(person, value === true)
-                              }
-                              onClick={(event) => event.stopPropagation()}
-                              aria-label={`Chọn ${person.fullName}`}
-                            />
-                          </span>
-                        </button>
+                            <span className="flex justify-center">
+                              <Checkbox
+                                checked={deptChecked}
+                                disabled={
+                                  submitting || group.people.length === 0
+                                }
+                                onCheckedChange={(value) =>
+                                  selectDepartment(group, value === true)
+                                }
+                                onClick={(event) => event.stopPropagation()}
+                                aria-label={`Chọn đơn vị ${group.departmentName}`}
+                              />
+                            </span>
+                          </button>
+                          {group.people.map((person) => {
+                            const personChecked = selectedPersonIds.includes(
+                              person.id,
+                            );
+                            return (
+                              <button
+                                key={person.id}
+                                type="button"
+                                className={cn(
+                                  "grid w-full grid-cols-[1fr_88px] items-center py-2.5 pr-3 pl-8 text-left text-sm hover:bg-muted/40",
+                                  personChecked && "bg-primary/5",
+                                )}
+                                onClick={() =>
+                                  selectPerson(person, !personChecked)
+                                }
+                                disabled={submitting}
+                              >
+                                <span className="flex min-w-0 items-center gap-2 pl-2">
+                                  <UserRound className="h-4 w-4 shrink-0 text-amber-500" />
+                                  <span className="truncate">
+                                    {person.fullName}
+                                    <span className="text-muted-foreground">
+                                      {" "}
+                                      ({person.username})
+                                    </span>
+                                  </span>
+                                </span>
+                                <span className="flex justify-center">
+                                  <Checkbox
+                                    checked={personChecked}
+                                    onCheckedChange={(value) =>
+                                      selectPerson(person, value === true)
+                                    }
+                                    onClick={(event) => event.stopPropagation()}
+                                    aria-label={`Chọn ${person.fullName}`}
+                                  />
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       );
                     })}
                   </div>

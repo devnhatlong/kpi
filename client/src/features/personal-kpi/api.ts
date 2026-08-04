@@ -47,22 +47,17 @@ export type PersonalKpiRecipient = {
   departmentId: string | null;
   departmentCode: string;
   departmentName: string;
-};
-
-export type PersonalKpiRecipientDepartment = {
-  id: string;
-  code: string;
-  name: string;
+  roleCode?: string;
 };
 
 export type PersonalKpiRecipientsResponse = {
-  department: PersonalKpiRecipientDepartment | null;
+  targetRole: string;
+  targetRoleLabel: string;
   people: PersonalKpiRecipient[];
 };
 
 export type SendPersonalKpiPayload = {
-  recipientId?: string;
-  recipientDepartmentId?: string;
+  recipientId: string;
   note: string;
 };
 
