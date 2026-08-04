@@ -10,6 +10,7 @@ import {
   KeyRound,
   Layers,
   ListTree,
+  MailOpen,
   Network,
   Settings,
   Shield,
@@ -75,6 +76,15 @@ export function pathRequiresRoles(pathname: string): readonly string[] | null {
   if (isSuperAdminPath(pathname)) return SUPER_ADMIN_ONLY;
 
   if (
+    pathname === "/kpi/received" ||
+    pathname.startsWith("/kpi/received/") ||
+    pathname === "/kpi/personal/inbox" ||
+    pathname.startsWith("/kpi/personal/inbox/")
+  ) {
+    return KPI_ASSIGN_ROLES;
+  }
+
+  if (
     pathname === "/kpi/promote" ||
     pathname.startsWith("/kpi/promote/")
   ) {
@@ -97,8 +107,10 @@ export function pathRequiresRoles(pathname: string): readonly string[] | null {
 }
 
 /**
- * Menu theo đặc tả: KPI cá nhân / được giao (mọi role),
- * tổng hợp & giao xuống (theo cấp), thống kê, quản trị.
+ * Menu theo đặc tả:
+ * - KPI của tôi: báo cáo bottom-up (Staff/Manager tự khai)
+ * - Duyệt KPI cấp dưới: cấp trên nhận & duyệt
+ * - KPI cấp trên giao: nhiệm vụ top-down giao xuống
  */
 export const NAV_ITEMS: NavItem[] = [
   {
@@ -107,12 +119,18 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Gauge,
   },
   {
-    title: "KPI cá nhân",
+    title: "KPI của tôi",
     href: "/kpi/personal",
     icon: ClipboardList,
   },
   {
-    title: "KPI được giao",
+    title: "Duyệt KPI cấp dưới",
+    href: "/kpi/received",
+    icon: MailOpen,
+    roles: [...KPI_ASSIGN_ROLES],
+  },
+  {
+    title: "KPI cấp trên giao",
     href: "/kpi/assigned",
     icon: Inbox,
   },

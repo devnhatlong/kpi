@@ -21,8 +21,10 @@ import { User, UserDocument } from '@/modules/users/schemas/user.schema';
 import {
   CreatePersonalKpiBatchDto,
   CreatePersonalKpiDto,
+  PersonalKpiInboxQueryDto,
   PersonalKpiListQueryDto,
   PersonalKpiReportsQueryDto,
+  RejectPersonalKpiDto,
   SendPersonalKpiDto,
   UpdatePersonalKpiDto,
 } from './dto/personal-kpi.dto';
@@ -291,7 +293,7 @@ export class PersonalKpiService {
 
   async update(ownerId: string, id: string, dto: UpdatePersonalKpiDto) {
     const item = await this.requireOwned(ownerId, id);
-    this.assertEditable(item);
+    await this.assertResubmittableInReport(item);
 
     if (dto.axisId !== undefined || dto.workContentId !== undefined) {
       const axisId = dto.axisId ?? String(item.axisId);
@@ -332,8 +334,11 @@ export class PersonalKpiService {
       item.reportDate = serverDateYmd(item.createdAt ?? new Date());
     }
 
-    item.status = 'DRAFT';
-    item.rejectReason = '';
+    // Giữ Trả lại đến khi gửi lại — không đổi thành Nháp khi sửa.
+    if (item.status !== 'REJECTED') {
+      item.status = 'DRAFT';
+      item.rejectReason = '';
+    }
 
     await item.save();
     await item.populate([
@@ -349,9 +354,334 @@ export class PersonalKpiService {
     return { message: 'OK', data };
   }
 
+  /** Báo cáo gửi đến tôi — gom theo người gửi + ngày */
+  async findInboxReports(
+    recipientId: string,
+    query: PersonalKpiReportsQueryDto,
+  ) {
+    const recipient = this.requireObjectId(recipientId, 'Người nhận');
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
+
+    if (query.fromDate && !isYmd(query.fromDate)) {
+      throw new BadRequestException('fromDate phải là YYYY-MM-DD.');
+    }
+    if (query.toDate && !isYmd(query.toDate)) {
+      throw new BadRequestException('toDate phải là YYYY-MM-DD.');
+    }
+    if (
+      query.status &&
+      !PERSONAL_KPI_STATUSES.includes(query.status as PersonalKpiStatus)
+    ) {
+      throw new BadRequestException('Trạng thái không hợp lệ.');
+    }
+
+    const reportDateExpr = {
+      $ifNull: [
+        '$reportDate',
+        {
+          $dateToString: {
+            format: '%Y-%m-%d',
+            date: '$createdAt',
+            timezone: KPI_TIMEZONE,
+          },
+        },
+      ],
+    };
+
+    const preMatch: Record<string, unknown> = {
+      recipientId: recipient,
+      status: { $ne: 'DRAFT' },
+    };
+    if (query.status) preMatch.status = query.status;
+    if (query.q?.trim()) {
+      const escaped = query.q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      preMatch.title = new RegExp(escaped, 'i');
+    }
+
+    const dateRange: Record<string, string> = {};
+    if (query.fromDate) dateRange.$gte = query.fromDate;
+    if (query.toDate) dateRange.$lte = query.toDate;
+
+    const keysPipeline: PipelineStage[] = [
+      { $match: preMatch },
+      { $addFields: { reportDateResolved: reportDateExpr } },
+    ];
+    if (Object.keys(dateRange).length) {
+      keysPipeline.push({ $match: { reportDateResolved: dateRange } });
+    }
+    keysPipeline.push({
+      $group: {
+        _id: {
+          ownerId: '$ownerId',
+          reportDate: '$reportDateResolved',
+        },
+      },
+    });
+
+    const keyDocs = await this.itemModel.aggregate<{
+      _id: { ownerId: Types.ObjectId; reportDate: string };
+    }>(keysPipeline);
+
+    const keys = keyDocs
+      .map((row) => row._id)
+      .filter((row) => row?.reportDate && row?.ownerId)
+      .sort((a, b) => {
+        const byDate = String(b.reportDate).localeCompare(String(a.reportDate));
+        if (byDate !== 0) return byDate;
+        return String(b.ownerId).localeCompare(String(a.ownerId));
+      });
+
+    const total = keys.length;
+    const pageKeys = keys.slice(skip, skip + limit);
+    if (pageKeys.length === 0) {
+      return buildPaginatedResponse([], total, page, limit);
+    }
+
+    const summary = await this.itemModel.aggregate([
+      { $match: preMatch },
+      { $addFields: { reportDateResolved: reportDateExpr } },
+      {
+        $match: {
+          $or: pageKeys.map((key) => ({
+            ownerId: key.ownerId,
+            reportDateResolved: key.reportDate,
+          })),
+        },
+      },
+      {
+        $group: {
+          _id: {
+            ownerId: '$ownerId',
+            reportDate: '$reportDateResolved',
+          },
+          taskCount: { $sum: 1 },
+          sentCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'SENT'] }, 1, 0] },
+          },
+          rejectedCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'REJECTED'] }, 1, 0] },
+          },
+          completedCount: {
+            $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, 1, 0] },
+          },
+          createdAt: { $min: '$createdAt' },
+          updatedAt: { $max: '$updatedAt' },
+          lastSentAt: { $max: '$sentAt' },
+          sendNote: { $last: '$sendNote' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id.ownerId',
+          foreignField: '_id',
+          as: 'owner',
+        },
+      },
+      {
+        $addFields: {
+          ownerDoc: { $arrayElemAt: ['$owner', 0] },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          ownerId: { $toString: '$_id.ownerId' },
+          reportDate: '$_id.reportDate',
+          ownerName: {
+            $ifNull: [
+              { $trim: { input: '$ownerDoc.fullName' } },
+              '$ownerDoc.username',
+            ],
+          },
+          ownerUsername: '$ownerDoc.username',
+          taskCount: 1,
+          sentCount: 1,
+          rejectedCount: 1,
+          completedCount: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          lastSentAt: 1,
+          sendNote: 1,
+        },
+      },
+    ]);
+
+    const byKey = new Map(
+      summary.map((row: { ownerId: string; reportDate: string }) => [
+        `${row.ownerId}:${row.reportDate}`,
+        row,
+      ]),
+    );
+    const data = pageKeys
+      .map((key) => byKey.get(`${String(key.ownerId)}:${key.reportDate}`))
+      .filter(Boolean);
+
+    return buildPaginatedResponse(data, total, page, limit);
+  }
+
+  async findInbox(recipientId: string, query: PersonalKpiInboxQueryDto = {}) {
+    const recipient = this.requireObjectId(recipientId, 'Người nhận');
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
+    const filter: Record<string, unknown> = {
+      recipientId: recipient,
+      status: { $ne: 'DRAFT' },
+    };
+
+    if (query.ownerId) {
+      filter.ownerId = this.requireObjectId(query.ownerId, 'Người gửi');
+    }
+
+    if (query.reportDate) {
+      if (!isYmd(query.reportDate)) {
+        throw new BadRequestException('reportDate phải là YYYY-MM-DD.');
+      }
+      filter.$or = [
+        { reportDate: query.reportDate },
+        {
+          reportDate: { $exists: false },
+          $expr: {
+            $eq: [
+              {
+                $dateToString: {
+                  format: '%Y-%m-%d',
+                  date: '$createdAt',
+                  timezone: KPI_TIMEZONE,
+                },
+              },
+              query.reportDate,
+            ],
+          },
+        },
+      ];
+    }
+
+    if (query.status) {
+      if (!PERSONAL_KPI_STATUSES.includes(query.status as PersonalKpiStatus)) {
+        throw new BadRequestException('Trạng thái không hợp lệ.');
+      }
+      filter.status = query.status;
+    }
+
+    if (query.axisId) {
+      if (!Types.ObjectId.isValid(query.axisId)) {
+        throw new BadRequestException('Trục không hợp lệ.');
+      }
+      filter.axisId = new Types.ObjectId(query.axisId);
+    }
+
+    if (query.q?.trim()) {
+      const escaped = query.q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.title = new RegExp(escaped, 'i');
+    }
+
+    const [data, total] = await Promise.all([
+      this.itemModel
+        .find(filter)
+        .sort({ createdAt: 1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('ownerId', 'fullName username departmentId')
+        .populate('axisId', 'code name description')
+        .populate('workContentId', 'code name description'),
+      this.itemModel.countDocuments(filter),
+    ]);
+
+    return buildPaginatedResponse(data, total, page, limit);
+  }
+
+  async complete(recipientId: string, id: string) {
+    const item = await this.requireReceived(recipientId, id, true);
+    if (item.status !== 'SENT') {
+      throw new BadRequestException(
+        'Chỉ hoàn thành được nhiệm vụ đang ở trạng thái Đã gửi.',
+      );
+    }
+    item.status = 'COMPLETED';
+    item.rejectReason = '';
+    await item.save();
+    return { message: 'Đã duyệt hoàn thành.', data: item };
+  }
+
+  async reject(recipientId: string, id: string, dto: RejectPersonalKpiDto) {
+    const item = await this.requireReceived(recipientId, id, true);
+    if (item.status !== 'SENT') {
+      throw new BadRequestException(
+        'Chỉ trả lại được nhiệm vụ đang ở trạng thái Đã gửi.',
+      );
+    }
+    const reason = dto.reason.trim();
+    if (!reason) {
+      throw new BadRequestException('Lý do trả lại là bắt buộc.');
+    }
+    item.status = 'REJECTED';
+    item.rejectReason = reason;
+    await item.save();
+    return { message: 'Đã trả lại nhiệm vụ.', data: item };
+  }
+
+  async completeInboxReport(
+    recipientId: string,
+    ownerId: string,
+    reportDate: string,
+  ) {
+    const items = await this.findInboxSentItems(
+      recipientId,
+      ownerId,
+      reportDate,
+    );
+    if (items.length === 0) {
+      throw new BadRequestException(
+        'Không có nhiệm vụ Đã gửi nào để duyệt trong báo cáo này.',
+      );
+    }
+    await this.itemModel.updateMany(
+      { _id: { $in: items.map((item) => item._id) } },
+      { $set: { status: 'COMPLETED', rejectReason: '' } },
+    );
+    return {
+      message: `Đã duyệt hoàn thành ${items.length} nhiệm vụ.`,
+      data: { completedCount: items.length, reportDate, ownerId },
+    };
+  }
+
+  async rejectInboxReport(
+    recipientId: string,
+    ownerId: string,
+    reportDate: string,
+    dto: RejectPersonalKpiDto,
+  ) {
+    const reason = dto.reason.trim();
+    if (!reason) {
+      throw new BadRequestException('Lý do trả lại là bắt buộc.');
+    }
+    const items = await this.findInboxSentItems(
+      recipientId,
+      ownerId,
+      reportDate,
+    );
+    if (items.length === 0) {
+      throw new BadRequestException(
+        'Không có nhiệm vụ Đã gửi nào để trả lại trong báo cáo này.',
+      );
+    }
+    await this.itemModel.updateMany(
+      { _id: { $in: items.map((item) => item._id) } },
+      { $set: { status: 'REJECTED', rejectReason: reason } },
+    );
+    return {
+      message: `Đã trả lại ${items.length} nhiệm vụ.`,
+      data: { rejectedCount: items.length, reportDate, ownerId },
+    };
+  }
+
   async send(ownerId: string, id: string, dto: SendPersonalKpiDto) {
     const item = await this.requireOwned(ownerId, id);
-    this.assertEditable(item);
+    await this.assertResubmittableInReport(item);
     if (!item.title.trim()) {
       throw new BadRequestException(
         'Nhiệm vụ chưa có tên - hãy sửa trước khi gửi.',
@@ -390,40 +720,47 @@ export class PersonalKpiService {
     const owner = this.requireObjectId(ownerId, 'Người dùng');
     const target = await this.requireValidSendTarget(ownerId, dto);
     const sendNote = this.normalizeSendNote(dto.note);
+    const dateOr = this.reportDateOrFilter(reportDate);
+    const hasRejected = Boolean(
+      await this.itemModel.exists({
+        ownerId: owner,
+        status: 'REJECTED',
+        $or: dateOr,
+      }),
+    );
+    const allowedStatuses = hasRejected ? (['REJECTED'] as const) : EDITABLE;
     const filter: Record<string, unknown> = {
       ownerId: owner,
-      status: { $in: EDITABLE },
-      $or: [
-        { reportDate },
-        {
-          reportDate: { $exists: false },
-          $expr: {
-            $eq: [
-              {
-                $dateToString: {
-                  format: '%Y-%m-%d',
-                  date: '$createdAt',
-                  timezone: KPI_TIMEZONE,
-                },
-              },
-              reportDate,
-            ],
-          },
-        },
-      ],
+      status: { $in: [...allowedStatuses] },
+      $or: dateOr,
     };
+
+    if (dto.itemIds?.length) {
+      filter._id = {
+        $in: dto.itemIds.map((id) => this.requireObjectId(id, 'Nhiệm vụ')),
+      };
+    }
 
     const items = await this.itemModel.find(filter);
     if (items.length === 0) {
       throw new BadRequestException(
-        'Không có nhiệm vụ nháp/từ chối nào để gửi trong ngày này.',
+        hasRejected
+          ? 'Không có nhiệm vụ Trả lại nào để gửi lại.'
+          : 'Không có nhiệm vụ nháp/trả lại nào để gửi trong ngày này.',
+      );
+    }
+    if (dto.itemIds?.length && items.length !== dto.itemIds.length) {
+      throw new BadRequestException(
+        hasRejected
+          ? 'Chỉ gửi được đúng nhiệm vụ Trả lại trong báo cáo này.'
+          : 'Một số nhiệm vụ không thể gửi (không thuộc báo cáo hoặc không còn Nháp/Trả lại).',
       );
     }
 
     const invalid = items.find((item) => !item.title.trim());
     if (invalid) {
       throw new BadRequestException(
-        'Có nhiệm vụ chưa có tên - hãy sửa nháp trước khi gửi báo cáo.',
+        'Có nhiệm vụ chưa có tên - hãy sửa trước khi gửi báo cáo.',
       );
     }
 
@@ -444,7 +781,9 @@ export class PersonalKpiService {
     );
 
     return {
-      message: `Đã gửi ${items.length} nhiệm vụ tới ${target.recipientName}.`,
+      message: hasRejected
+        ? `Đã gửi lại ${items.length} nhiệm vụ Trả lại tới ${target.recipientName}.`
+        : `Đã gửi ${items.length} nhiệm vụ tới ${target.recipientName}.`,
       data: {
         reportDate,
         sentCount: items.length,
@@ -659,6 +998,114 @@ export class PersonalKpiService {
           : 'Nhiệm vụ đã hoàn thành - không sửa/xoá được.',
       );
     }
+  }
+
+  private reportDateOrFilter(reportDate: string) {
+    return [
+      { reportDate },
+      {
+        reportDate: { $exists: false },
+        $expr: {
+          $eq: [
+            {
+              $dateToString: {
+                format: '%Y-%m-%d',
+                date: '$createdAt',
+                timezone: KPI_TIMEZONE,
+              },
+            },
+            reportDate,
+          ],
+        },
+      },
+    ];
+  }
+
+  private resolveItemReportDate(item: PersonalKpiItemDocument) {
+    if (item.reportDate && isYmd(item.reportDate)) return item.reportDate;
+    return serverDateYmd(item.createdAt ?? new Date());
+  }
+
+  /**
+   * Khi báo cáo còn nhiệm vụ Trả lại: chỉ sửa/gửi lại đúng nhiệm vụ Trả lại.
+   */
+  private async assertResubmittableInReport(item: PersonalKpiItemDocument) {
+    this.assertEditable(item);
+    if (item.status === 'REJECTED') return;
+
+    const reportDate = this.resolveItemReportDate(item);
+    const hasRejected = await this.itemModel.exists({
+      ownerId: item.ownerId,
+      status: 'REJECTED',
+      $or: this.reportDateOrFilter(reportDate),
+    });
+    if (hasRejected) {
+      throw new BadRequestException(
+        'Báo cáo còn nhiệm vụ Trả lại — chỉ được sửa/gửi lại đúng nhiệm vụ đã trả lại.',
+      );
+    }
+  }
+
+  private async findInboxSentItems(
+    recipientId: string,
+    ownerId: string,
+    reportDate: string,
+  ) {
+    if (!isYmd(reportDate)) {
+      throw new BadRequestException('reportDate phải là YYYY-MM-DD.');
+    }
+    const recipient = this.requireObjectId(recipientId, 'Người nhận');
+    const owner = this.requireObjectId(ownerId, 'Người gửi');
+    return this.itemModel.find({
+      recipientId: recipient,
+      ownerId: owner,
+      status: 'SENT',
+      $or: [
+        { reportDate },
+        {
+          reportDate: { $exists: false },
+          $expr: {
+            $eq: [
+              {
+                $dateToString: {
+                  format: '%Y-%m-%d',
+                  date: '$createdAt',
+                  timezone: KPI_TIMEZONE,
+                },
+              },
+              reportDate,
+            ],
+          },
+        },
+      ],
+    });
+  }
+
+  private async requireReceived(
+    recipientId: string,
+    id: string,
+    withPopulate = false,
+  ) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException('Không tìm thấy nhiệm vụ.');
+    }
+    const recipient = this.requireObjectId(recipientId, 'Người nhận');
+    const query = this.itemModel.findOne({
+      _id: id,
+      recipientId: recipient,
+      status: { $ne: 'DRAFT' },
+    });
+    if (withPopulate) {
+      query
+        .populate('ownerId', 'fullName username departmentId')
+        .populate('axisId', 'code name description')
+        .populate('workContentId', 'code name description');
+    }
+    const item = await query;
+    if (!item) {
+      throw new NotFoundException('Không tìm thấy nhiệm vụ gửi đến bạn.');
+    }
+    return item;
   }
 
   private async requireOwned(

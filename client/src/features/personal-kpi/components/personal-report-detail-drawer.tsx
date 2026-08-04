@@ -35,12 +35,26 @@ import { PersonalTaskForm } from "@/features/personal-kpi/components/personal-ta
 import { SendRecipientDialog } from "@/features/personal-kpi/components/send-recipient-dialog";
 import {
   PERSONAL_KPI_STATUS_LABEL,
-  canEditPersonalKpi,
-  canSendPersonalKpi,
+  canEditPersonalKpiInReport,
+  canSendPersonalKpiInReport,
   type PersonalKpiItem,
+  type PersonalKpiStatus,
   type PersonalTaskDraft,
 } from "@/features/personal-kpi/types";
 import { getApiErrorMessage } from "@/lib/api-client";
+
+function statusBadgeClass(status: PersonalKpiStatus) {
+  if (status === "SENT") {
+    return "border-sky-500/40 text-sky-700 dark:text-sky-400";
+  }
+  if (status === "COMPLETED") {
+    return "border-emerald-500/40 text-emerald-700 dark:text-emerald-400";
+  }
+  if (status === "REJECTED") {
+    return "border-amber-500/40 text-amber-700 dark:text-amber-400";
+  }
+  return "border-muted-foreground/30 text-muted-foreground";
+}
 
 function formatReportDate(ymd: string) {
   const date = new Date(`${ymd}T00:00:00`);
@@ -140,17 +154,23 @@ export function PersonalReportDetailDrawer({
   }, [open, data]);
 
   const groups = useMemo(() => groupByAxisContent(items), [items]);
-  const canShowEdit = items.some((item) => canEditPersonalKpi(item.status));
-  const sendableCount = items.filter((item) =>
-    canSendPersonalKpi(item.status),
-  ).length;
+  const hasRejected = items.some((item) => item.status === "REJECTED");
+  const canShowEdit = items.some((item) =>
+    canEditPersonalKpiInReport(item.status, items),
+  );
+  const sendableItems = items.filter((item) =>
+    canSendPersonalKpiInReport(item.status, items),
+  );
+  const sendableCount = sendableItems.length;
   const isEditing = mode === "edit";
 
   const updateTask = (id: string, patch: Partial<PersonalTaskDraft>) => {
     if (!isEditing) return;
     setItems((prev) =>
       prev.map((item) => {
-        if (item.id !== id || !canEditPersonalKpi(item.status)) return item;
+        if (item.id !== id || !canEditPersonalKpiInReport(item.status, prev)) {
+          return item;
+        }
         return { ...item, task: { ...item.task, ...patch } };
       }),
     );
@@ -158,7 +178,11 @@ export function PersonalReportDetailDrawer({
 
   const startEdit = () => {
     if (!canShowEdit) {
-      toast.error("Chỉ sửa được khi có nhiệm vụ Nháp hoặc Từ chối.");
+      toast.error(
+        hasRejected
+          ? "Chỉ sửa được nhiệm vụ Trả lại."
+          : "Chỉ sửa được khi có nhiệm vụ Nháp hoặc Trả lại.",
+      );
       return;
     }
     setMode("edit");
@@ -171,10 +195,14 @@ export function PersonalReportDetailDrawer({
 
   const handleSave = async () => {
     const editableItems = items.filter((item) =>
-      canEditPersonalKpi(item.status),
+      canEditPersonalKpiInReport(item.status, items),
     );
     if (editableItems.length === 0) {
-      toast.error("Không có nhiệm vụ nào được phép sửa.");
+      toast.error(
+        hasRejected
+          ? "Chỉ sửa được nhiệm vụ Trả lại."
+          : "Không có nhiệm vụ nào được phép sửa.",
+      );
       return;
     }
 
@@ -200,7 +228,9 @@ export function PersonalReportDetailDrawer({
           ),
         ),
       );
-      toast.success("Đã lưu nháp.");
+      toast.success(
+        hasRejected ? "Đã lưu nhiệm vụ Trả lại." : "Đã lưu nháp.",
+      );
       await mutate();
       await onChanged();
       setMode("view");
@@ -214,16 +244,25 @@ export function PersonalReportDetailDrawer({
   const handleSend = async (payload: SendPersonalKpiPayload) => {
     if (!reportDate || isEditing) return;
     if (sendableCount === 0) {
-      toast.error("Không còn nhiệm vụ nháp/từ chối để gửi.");
+      toast.error(
+        hasRejected
+          ? "Không còn nhiệm vụ Trả lại để gửi lại."
+          : "Không còn nhiệm vụ nháp/trả lại để gửi.",
+      );
       return;
     }
 
     setSending(true);
     try {
-      const result = await sendPersonalKpiReport(reportDate, payload);
+      const result = await sendPersonalKpiReport(reportDate, {
+        ...payload,
+        itemIds: sendableItems.map((item) => item.id),
+      });
       toast.success(
         result?.sentCount
-          ? `Đã gửi ${result.sentCount} nhiệm vụ tới ${result.recipientName}.`
+          ? hasRejected
+            ? `Đã gửi lại ${result.sentCount} nhiệm vụ Trả lại tới ${result.recipientName}.`
+            : `Đã gửi ${result.sentCount} nhiệm vụ tới ${result.recipientName}.`
           : "Đã gửi báo cáo.",
       );
       setSendOpen(false);
@@ -240,7 +279,11 @@ export function PersonalReportDetailDrawer({
   const openSendDialog = () => {
     if (!reportDate || isEditing) return;
     if (sendableCount === 0) {
-      toast.error("Không còn nhiệm vụ nháp/từ chối để gửi.");
+      toast.error(
+        hasRejected
+          ? "Không còn nhiệm vụ Trả lại để gửi lại."
+          : "Không còn nhiệm vụ nháp/trả lại để gửi.",
+      );
       return;
     }
     setSendOpen(true);
@@ -261,8 +304,12 @@ export function PersonalReportDetailDrawer({
           </SheetTitle>
           <SheetDescription>
             {isEditing
-              ? "Đang chỉnh sửa nhiệm vụ Nháp / Từ chối. Lưu xong mới gửi được."
-              : "Chế độ xem. Bấm Chỉnh sửa nếu còn nhiệm vụ Nháp / Từ chối."}
+              ? hasRejected
+                ? "Chỉ chỉnh sửa nhiệm vụ Trả lại. Nhiệm vụ Đã gửi / Nháp khác bị khoá."
+                : "Đang chỉnh sửa nhiệm vụ Nháp / Trả lại. Lưu xong mới gửi được."
+              : hasRejected
+                ? "Có nhiệm vụ Trả lại — chỉ được sửa và gửi lại đúng các nhiệm vụ đó."
+                : "Chế độ xem. Bấm Chỉnh sửa nếu còn nhiệm vụ Nháp / Trả lại."}
           </SheetDescription>
           {items.length > 0 ? (
             <div className="flex flex-wrap gap-1 pt-1">
@@ -316,80 +363,82 @@ export function PersonalReportDetailDrawer({
                             <TableRow>
                               <TableHead
                                 rowSpan={2}
-                                className="sticky left-0 z-20 w-12 bg-background text-center align-middle"
+                                className="sticky left-0 z-20 w-12 bg-muted/50 text-center align-middle text-sm font-medium"
                               >
                                 STT
                               </TableHead>
                               <TableHead
                                 rowSpan={2}
-                                className="min-w-[220px] align-middle"
+                                className="min-w-[220px] align-middle text-sm font-medium"
                               >
                                 Nội dung công việc
                               </TableHead>
                               <TableHead
                                 rowSpan={2}
-                                className="min-w-[200px] align-middle"
+                                className="min-w-[200px] align-middle text-sm font-medium"
                               >
                                 Nhiệm vụ
                               </TableHead>
                               <TableHead
                                 rowSpan={2}
-                                className="min-w-[140px] align-middle"
+                                className="min-w-[140px] align-middle text-sm font-medium"
                               >
                                 Thời hạn hoàn thành
                               </TableHead>
                               <TableHead
                                 rowSpan={2}
-                                className="min-w-[160px] align-middle"
+                                className="min-w-[160px] align-middle text-sm font-medium"
                               >
                                 Sản phẩm dự kiến
                               </TableHead>
                               <TableHead
                                 rowSpan={2}
-                                className="min-w-[100px] align-middle"
+                                className="min-w-[100px] align-middle text-sm font-medium"
                               >
                                 Điểm chuẩn
                               </TableHead>
                               <TableHead
                                 rowSpan={2}
-                                className="min-w-[140px] align-middle"
+                                className="min-w-[140px] align-middle text-sm font-medium"
                               >
                                 Đơn vị thực hiện
                               </TableHead>
                               <TableHead
                                 colSpan={4}
-                                className="text-center after:hidden"
+                                className="text-center text-sm font-medium after:hidden"
                               >
                                 Kết quả theo dõi
                               </TableHead>
                               <TableHead
                                 rowSpan={2}
-                                className="min-w-[160px] align-middle before:absolute before:left-0 before:top-1/2 before:h-4 before:w-px before:-translate-y-1/2 before:bg-border"
+                                className="min-w-[160px] align-middle text-sm font-medium before:absolute before:left-0 before:top-1/2 before:h-4 before:w-px before:-translate-y-1/2 before:bg-border"
                               >
                                 Đề nghị khác (căn cứ)
                               </TableHead>
                               <TableHead
                                 rowSpan={2}
-                                className="min-w-[200px] align-middle"
+                                className="min-w-[200px] align-middle text-sm font-medium"
                               >
                                 Tài liệu kiểm chứng
                               </TableHead>
                               <TableHead
                                 rowSpan={2}
-                                className="sticky right-0 z-20 w-14 bg-background"
-                              />
+                                className="sticky right-0 z-20 w-[110px] bg-muted/50 text-center align-middle text-sm font-medium"
+                              >
+                                Trạng thái
+                              </TableHead>
                             </TableRow>
                             <TableRow>
-                              <TableHead className="min-w-[100px] text-center text-xs">
+                              <TableHead className="min-w-[100px] text-center text-sm font-medium">
                                 KPI tiến độ %
                               </TableHead>
-                              <TableHead className="min-w-[110px] text-center text-xs">
+                              <TableHead className="min-w-[110px] text-center text-sm font-medium">
                                 Điểm tự chấm
                               </TableHead>
-                              <TableHead className="min-w-[100px] text-center text-xs">
+                              <TableHead className="min-w-[100px] text-center text-sm font-medium">
                                 KPI chất lượng %
                               </TableHead>
-                              <TableHead className="min-w-[110px] text-center text-xs after:hidden">
+                              <TableHead className="min-w-[110px] text-center text-sm font-medium after:hidden">
                                 Điểm tự chấm
                               </TableHead>
                             </TableRow>
@@ -405,7 +454,8 @@ export function PersonalReportDetailDrawer({
                             </TableRow>
                             {content.items.map((item, taskIndex) => {
                               const editable =
-                                isEditing && canEditPersonalKpi(item.status);
+                                isEditing &&
+                                canEditPersonalKpiInReport(item.status, items);
                               return (
                                 <PersonalTaskForm
                                   key={item.id}
@@ -422,6 +472,14 @@ export function PersonalReportDetailDrawer({
                                     updateTask(item.id, patch)
                                   }
                                   onRemove={() => undefined}
+                                  actions={
+                                    <Badge
+                                      variant="outline"
+                                      className={statusBadgeClass(item.status)}
+                                    >
+                                      {PERSONAL_KPI_STATUS_LABEL[item.status]}
+                                    </Badge>
+                                  }
                                 />
                               );
                             })}
@@ -487,7 +545,11 @@ export function PersonalReportDetailDrawer({
                     disabled={busy || isLoading}
                   >
                     <Send className="h-4 w-4" />
-                    {sending ? "Đang gửi..." : "Gửi"}
+                    {sending
+                      ? "Đang gửi..."
+                      : hasRejected
+                        ? `Gửi lại (${sendableCount})`
+                        : `Gửi (${sendableCount})`}
                   </Button>
                 ) : null}
               </>
@@ -499,7 +561,11 @@ export function PersonalReportDetailDrawer({
       <SendRecipientDialog
         open={sendOpen}
         onOpenChange={setSendOpen}
-        title="Gửi báo cáo"
+        title={
+          hasRejected
+            ? `Gửi lại ${sendableCount} nhiệm vụ Trả lại`
+            : `Gửi ${sendableCount} nhiệm vụ`
+        }
         submitting={sending}
         onConfirm={handleSend}
       />

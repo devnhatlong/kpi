@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { Paperclip, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,8 @@ type PersonalTaskFormProps = {
   workContentRowSpan?: number;
   /** Chỉ xem (drawer chi tiết / gửi báo cáo) */
   readOnly?: boolean;
+  /** Ô thao tác bên phải (ví dụ Duyệt / Từ chối) */
+  actions?: ReactNode;
 };
 
 const cellInputClass = "h-8";
@@ -49,6 +51,7 @@ export function PersonalTaskForm({
   workContentLabel = "",
   workContentRowSpan = 1,
   readOnly = false,
+  actions,
 }: PersonalTaskFormProps) {
   const titlePlaceholder = `Nhiệm vụ ${taskNumber ?? index}`;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -256,8 +259,10 @@ export function PersonalTaskForm({
           ) : null}
         </div>
       </TableCell>
-      <TableCell className="sticky right-0 z-10 bg-background text-right">
-        {!readOnly ? (
+      <TableCell className="sticky right-0 z-10 min-w-[140px] bg-background text-right align-middle">
+        {actions ? (
+          actions
+        ) : !readOnly ? (
           <Button
             type="button"
             size="icon"

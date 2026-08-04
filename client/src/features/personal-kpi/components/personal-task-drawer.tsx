@@ -556,80 +556,80 @@ export function PersonalTaskDrawer({
                               <TableRow>
                                 <TableHead
                                   rowSpan={2}
-                                  className="sticky left-0 z-20 w-12 bg-background text-center align-middle"
+                                  className="sticky left-0 z-20 w-12 bg-muted/50 text-center align-middle text-sm font-medium"
                                 >
                                   STT
                                 </TableHead>
                                 <TableHead
                                   rowSpan={2}
-                                  className="min-w-[220px] align-middle"
+                                  className="min-w-[220px] align-middle text-sm font-medium"
                                 >
                                   Nội dung công việc
                                 </TableHead>
                                 <TableHead
                                   rowSpan={2}
-                                  className="min-w-[200px] align-middle"
+                                  className="min-w-[200px] align-middle text-sm font-medium"
                                 >
                                   Nhiệm vụ
                                 </TableHead>
                                 <TableHead
                                   rowSpan={2}
-                                  className="min-w-[140px] align-middle"
+                                  className="min-w-[140px] align-middle text-sm font-medium"
                                 >
                                   Thời hạn hoàn thành
                                 </TableHead>
                                 <TableHead
                                   rowSpan={2}
-                                  className="min-w-[160px] align-middle"
+                                  className="min-w-[160px] align-middle text-sm font-medium"
                                 >
                                   Sản phẩm dự kiến
                                 </TableHead>
                                 <TableHead
                                   rowSpan={2}
-                                  className="min-w-[100px] align-middle"
+                                  className="min-w-[100px] align-middle text-sm font-medium"
                                 >
                                   Điểm chuẩn
                                 </TableHead>
                                 <TableHead
                                   rowSpan={2}
-                                  className="min-w-[140px] align-middle"
+                                  className="min-w-[140px] align-middle text-sm font-medium"
                                 >
                                   Đơn vị thực hiện
                                 </TableHead>
                                 <TableHead
                                   colSpan={4}
-                                  className="text-center after:hidden"
+                                  className="text-center text-sm font-medium after:hidden"
                                 >
                                   Kết quả theo dõi
                                 </TableHead>
                                 <TableHead
                                   rowSpan={2}
-                                  className="min-w-[160px] align-middle before:absolute before:left-0 before:top-1/2 before:h-4 before:w-px before:-translate-y-1/2 before:bg-border"
+                                  className="min-w-[160px] align-middle text-sm font-medium before:absolute before:left-0 before:top-1/2 before:h-4 before:w-px before:-translate-y-1/2 before:bg-border"
                                 >
                                   Đề nghị khác (căn cứ)
                                 </TableHead>
                                 <TableHead
                                   rowSpan={2}
-                                  className="min-w-[200px] align-middle"
+                                  className="min-w-[200px] align-middle text-sm font-medium"
                                 >
                                   Tài liệu kiểm chứng
                                 </TableHead>
                                 <TableHead
                                   rowSpan={2}
-                                  className="sticky right-0 z-20 w-14 bg-background"
+                                  className="sticky right-0 z-20 w-14 bg-muted/50"
                                 />
                               </TableRow>
                               <TableRow>
-                                <TableHead className="min-w-[100px] text-center text-xs">
+                                <TableHead className="min-w-[100px] text-center text-sm font-medium">
                                   KPI tiến độ %
                                 </TableHead>
-                                <TableHead className="min-w-[110px] text-center text-xs">
+                                <TableHead className="min-w-[110px] text-center text-sm font-medium">
                                   Điểm tự chấm
                                 </TableHead>
-                                <TableHead className="min-w-[100px] text-center text-xs">
+                                <TableHead className="min-w-[100px] text-center text-sm font-medium">
                                   KPI chất lượng %
                                 </TableHead>
-                                <TableHead className="min-w-[110px] text-center text-xs after:hidden">
+                                <TableHead className="min-w-[110px] text-center text-sm font-medium after:hidden">
                                   Điểm tự chấm
                                 </TableHead>
                               </TableRow>

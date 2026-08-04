@@ -12,12 +12,15 @@ type CatalogRef = {
   code?: string;
   name?: string;
   description?: string;
+  fullName?: string;
+  username?: string;
 };
 
 export type PersonalKpiApiRecord = {
   _id: string;
   status: PersonalKpiStatus;
   reportDate?: string;
+  ownerId?: string | CatalogRef;
   axisId: string | CatalogRef;
   workContentId: string | CatalogRef;
   title: string;
@@ -59,6 +62,8 @@ export type PersonalKpiRecipientsResponse = {
 export type SendPersonalKpiPayload = {
   recipientId: string;
   note: string;
+  /** Chỉ gửi các nhiệm vụ này (khi có Trả lại: chỉ gửi đúng nhiệm vụ Trả lại). */
+  itemIds?: string[];
 };
 
 export type PersonalKpiDailyReport = {
@@ -71,6 +76,21 @@ export type PersonalKpiDailyReport = {
   createdAt: string;
   updatedAt: string;
   lastSentAt?: string | null;
+};
+
+export type PersonalKpiInboxReport = {
+  ownerId: string;
+  ownerName: string;
+  ownerUsername?: string;
+  reportDate: string;
+  taskCount: number;
+  sentCount: number;
+  rejectedCount: number;
+  completedCount: number;
+  createdAt: string;
+  updatedAt: string;
+  lastSentAt?: string | null;
+  sendNote?: string;
 };
 
 export type PersonalKpiWriteInput = {
@@ -109,7 +129,7 @@ function refId(value: string | CatalogRef): string {
 
 function refName(value: string | CatalogRef, fallback = ""): string {
   if (typeof value === "string") return fallback;
-  return value.name ?? fallback;
+  return value.name ?? value.fullName ?? value.username ?? fallback;
 }
 
 function refCode(value: string | CatalogRef, fallback = ""): string {
@@ -164,6 +184,8 @@ export function mapPersonalKpiFromApi(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     sentAt: row.sentAt || undefined,
+    ownerId: row.ownerId ? refId(row.ownerId) : undefined,
+    ownerName: row.ownerId ? refName(row.ownerId) : undefined,
     recipientId: row.recipientId ? refId(row.recipientId) : undefined,
     recipientName: row.recipientName?.trim() || undefined,
     sendNote: row.sendNote?.trim() || undefined,
@@ -230,6 +252,28 @@ export const personalKpiKeys = {
       params.status ?? "",
       params.q ?? "",
       params.axisId ?? "",
+    ] as const,
+  inboxReports: (params: PersonalKpiReportsQuery) =>
+    [
+      "personal-kpi",
+      "inbox-reports",
+      params.page ?? 1,
+      params.limit ?? 10,
+      params.fromDate ?? "",
+      params.toDate ?? "",
+      params.status ?? "",
+      params.q ?? "",
+    ] as const,
+  inboxItems: (params: PersonalKpiMineQuery & { ownerId?: string }) =>
+    [
+      "personal-kpi",
+      "inbox",
+      params.ownerId ?? "",
+      params.reportDate ?? "",
+      params.page ?? 1,
+      params.limit ?? 100,
+      params.status ?? "",
+      params.q ?? "",
     ] as const,
 };
 
@@ -337,4 +381,99 @@ export async function sendPersonalKpiReport(
 
 export async function deletePersonalKpi(id: string) {
   await api.delete(`/personal-kpi/${id}`);
+}
+
+export async function fetchPersonalKpiInboxReports(
+  params: PersonalKpiReportsQuery,
+) {
+  return unwrapPaginated(
+    api.get<ApiResponse<PersonalKpiInboxReport[]>>(
+      "/personal-kpi/inbox/reports",
+      {
+        params: buildListQuery({
+          page: params.page,
+          limit: params.limit,
+          q: params.q,
+          fromDate: params.fromDate || undefined,
+          toDate: params.toDate || undefined,
+          status: params.status || undefined,
+        }),
+      },
+    ),
+  );
+}
+
+export async function fetchPersonalKpiInbox(
+  params: PersonalKpiMineQuery & { ownerId?: string } = {},
+) {
+  return unwrapPaginated(
+    api.get<ApiResponse<PersonalKpiApiRecord[]>>("/personal-kpi/inbox", {
+      params: buildListQuery({
+        page: params.page,
+        limit: params.limit,
+        q: params.q,
+        reportDate: params.reportDate || undefined,
+        ownerId: params.ownerId || undefined,
+        status:
+          params.status && params.status !== "ALL"
+            ? params.status
+            : undefined,
+        axisId: params.axisId || undefined,
+      }),
+    }),
+  ).then((result) => ({
+    ...result,
+    data: result.data.map(mapPersonalKpiFromApi),
+  }));
+}
+
+export async function completePersonalKpi(id: string) {
+  const data = await unwrapData(
+    api.post<ApiResponse<PersonalKpiApiRecord>>(
+      `/personal-kpi/${id}/complete`,
+    ),
+  );
+  return mapPersonalKpiFromApi(data);
+}
+
+export async function rejectPersonalKpi(id: string, reason: string) {
+  const data = await unwrapData(
+    api.post<ApiResponse<PersonalKpiApiRecord>>(`/personal-kpi/${id}/reject`, {
+      reason,
+    }),
+  );
+  return mapPersonalKpiFromApi(data);
+}
+
+export async function completePersonalKpiInboxReport(
+  ownerId: string,
+  reportDate: string,
+) {
+  return unwrapData(
+    api.post<
+      ApiResponse<{
+        completedCount: number;
+        reportDate: string;
+        ownerId: string;
+      }>
+    >(`/personal-kpi/inbox/reports/${ownerId}/${reportDate}/complete`),
+  );
+}
+
+export async function rejectPersonalKpiInboxReport(
+  ownerId: string,
+  reportDate: string,
+  reason: string,
+) {
+  return unwrapData(
+    api.post<
+      ApiResponse<{
+        rejectedCount: number;
+        reportDate: string;
+        ownerId: string;
+      }>
+    >(`/personal-kpi/inbox/reports/${ownerId}/${reportDate}/reject`, {
+      reason,
+    }),
+  );
 }

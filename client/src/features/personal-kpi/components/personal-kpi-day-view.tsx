@@ -63,8 +63,8 @@ import { SendRecipientDialog } from "@/features/personal-kpi/components/send-rec
 import {
   PERSONAL_KPI_STATUS_LABEL,
   canDeletePersonalKpi,
-  canEditPersonalKpi,
-  canSendPersonalKpi,
+  canEditPersonalKpiInReport,
+  canSendPersonalKpiInReport,
   type PersonalKpiItem,
   type PersonalKpiStatus,
 } from "@/features/personal-kpi/types";
@@ -153,8 +153,30 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     () => fetchMyPersonalKpi(listParams),
   );
 
+  const { data: rejectedProbe, mutate: mutateRejected } = useSWR(
+    personalKpiKeys.byDate({
+      reportDate,
+      status: "REJECTED",
+      page: 1,
+      limit: 1,
+    }),
+    () =>
+      fetchMyPersonalKpi({
+        reportDate,
+        status: "REJECTED",
+        page: 1,
+        limit: 1,
+      }),
+  );
+
   const items = data?.data ?? [];
   const meta = data?.meta ?? emptyPaginationMeta(limit);
+  const hasRejected = (rejectedProbe?.meta.total ?? 0) > 0;
+  const reportStatusContext = hasRejected
+    ? ([{ status: "REJECTED" as const }] as Array<{
+        status: PersonalKpiStatus;
+      }>)
+    : items;
 
   const resetFilters = () => {
     setQuery("");
@@ -169,11 +191,13 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   };
 
   const openEdit = (item: PersonalKpiItem) => {
-    if (!canEditPersonalKpi(item.status)) {
+    if (!canEditPersonalKpiInReport(item.status, reportStatusContext)) {
       toast.error(
-        item.status === "SENT"
-          ? "Đã gửi - không sửa trực tiếp."
-          : "Nhiệm vụ đã hoàn thành - không sửa được.",
+        hasRejected && item.status !== "REJECTED"
+          ? "Báo cáo còn nhiệm vụ Trả lại — chỉ sửa được đúng nhiệm vụ đã trả lại."
+          : item.status === "SENT"
+            ? "Đã gửi - không sửa trực tiếp."
+            : "Nhiệm vụ đã hoàn thành - không sửa được.",
       );
       return;
     }
@@ -182,11 +206,19 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   };
 
   const openSend = (item: PersonalKpiItem) => {
-    if (!canSendPersonalKpi(item.status)) {
-      toast.error("Chỉ gửi được khi đang Nháp hoặc Từ chối.");
+    if (!canSendPersonalKpiInReport(item.status, reportStatusContext)) {
+      toast.error(
+        hasRejected && item.status !== "REJECTED"
+          ? "Báo cáo còn nhiệm vụ Trả lại — chỉ gửi lại đúng nhiệm vụ đã trả lại."
+          : "Chỉ gửi được khi đang Nháp hoặc Trả lại.",
+      );
       return;
     }
     setSendingItem(item);
+  };
+
+  const refreshDay = async () => {
+    await Promise.all([mutate(), mutateRejected()]);
   };
 
   const confirmSend = async (payload: SendPersonalKpiPayload) => {
@@ -195,8 +227,12 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     setActingId(sendingItem.id);
     try {
       await sendPersonalKpi(sendingItem.id, payload);
-      await mutate();
-      toast.success("Đã gửi nhiệm vụ.");
+      await refreshDay();
+      toast.success(
+        sendingItem.status === "REJECTED"
+          ? "Đã gửi lại nhiệm vụ."
+          : "Đã gửi nhiệm vụ.",
+      );
       setSendingItem(null);
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không gửi được nhiệm vụ."));
@@ -211,7 +247,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     setActingId(deleting.id);
     try {
       await deletePersonalKpi(deleting.id);
-      await mutate();
+      await refreshDay();
       toast.success("Đã xoá nhiệm vụ.");
       setDeleting(null);
     } catch (error) {
@@ -243,6 +279,9 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
             <p className="text-sm text-muted-foreground">
               Chi tiết nhiệm vụ trong báo cáo ngày{" "}
               <span className="font-mono">{reportDate}</span>
+              {hasRejected
+                ? " — đang có nhiệm vụ Trả lại: chỉ sửa/gửi lại đúng các nhiệm vụ đó."
+                : null}
             </p>
           </div>
         </div>
@@ -371,7 +410,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
                         <div className="font-medium">{item.task.title}</div>
                         {item.rejectReason ? (
                           <div className="text-xs text-amber-600 dark:text-amber-400">
-                            Lý do từ chối: {item.rejectReason}
+                            Lý do trả lại: {item.rejectReason}
                           </div>
                         ) : null}
                       </TableCell>
@@ -406,13 +445,18 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
                             onClick={() => openEdit(item)}
                             aria-label="Sửa"
                             disabled={
-                              !canEditPersonalKpi(item.status) ||
-                              actingId === item.id
+                              !canEditPersonalKpiInReport(
+                                item.status,
+                                reportStatusContext,
+                              ) || actingId === item.id
                             }
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          {canSendPersonalKpi(item.status) ? (
+                          {canSendPersonalKpiInReport(
+                            item.status,
+                            reportStatusContext,
+                          ) ? (
                             <Button
                               size="icon"
                               variant="ghost"
@@ -462,7 +506,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
         edit={edit}
         reportDate={reportDate}
         onSaved={async () => {
-          await mutate();
+          await refreshDay();
         }}
       />
 

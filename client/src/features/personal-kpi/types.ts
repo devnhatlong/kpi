@@ -7,11 +7,11 @@ export type PersonalKpiStatus =
 export const PERSONAL_KPI_STATUS_LABEL: Record<PersonalKpiStatus, string> = {
   DRAFT: "Nháp",
   SENT: "Đã gửi",
-  REJECTED: "Từ chối",
+  REJECTED: "Trả lại",
   COMPLETED: "Hoàn thành",
 };
 
-/** Chỉ nháp / từ chối mới sửa, xoá, gửi lại. */
+/** Chỉ nháp / trả lại mới sửa, xoá. */
 export function canEditPersonalKpi(status: PersonalKpiStatus) {
   return status === "DRAFT" || status === "REJECTED";
 }
@@ -22,6 +22,31 @@ export function canSendPersonalKpi(status: PersonalKpiStatus) {
 
 export function canDeletePersonalKpi(status: PersonalKpiStatus) {
   return status === "DRAFT" || status === "REJECTED";
+}
+
+/**
+ * Khi báo cáo còn nhiệm vụ Trả lại: chỉ được sửa/gửi lại đúng các nhiệm vụ Trả lại.
+ * Không còn Trả lại thì xử lý Nháp như bình thường.
+ */
+export function getResubmittableStatuses(
+  items: Array<{ status: PersonalKpiStatus }>,
+): PersonalKpiStatus[] {
+  const hasRejected = items.some((item) => item.status === "REJECTED");
+  return hasRejected ? ["REJECTED"] : ["DRAFT", "REJECTED"];
+}
+
+export function canEditPersonalKpiInReport(
+  status: PersonalKpiStatus,
+  items: Array<{ status: PersonalKpiStatus }>,
+) {
+  return getResubmittableStatuses(items).includes(status);
+}
+
+export function canSendPersonalKpiInReport(
+  status: PersonalKpiStatus,
+  items: Array<{ status: PersonalKpiStatus }>,
+) {
+  return getResubmittableStatuses(items).includes(status);
 }
 
 export type TaskEvidenceFile = {
@@ -63,11 +88,17 @@ export type PersonalKpiItem = {
   updatedAt: string;
   /** Thời điểm gửi gần nhất */
   sentAt?: string;
+  ownerId?: string;
+  ownerName?: string;
   recipientId?: string;
   recipientName?: string;
   sendNote?: string;
   rejectReason?: string;
 };
+
+export function canApprovePersonalKpi(status: PersonalKpiStatus) {
+  return status === "SENT";
+}
 
 function localKey(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

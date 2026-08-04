@@ -107,11 +107,11 @@ export function PersonalKpiListView() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h1 className="font-display text-2xl font-semibold tracking-tight">
-            KPI cá nhân
+            KPI của tôi
           </h1>
           <p className="text-sm text-muted-foreground">
-            Mỗi ngày một báo cáo tổng. Bấm Chi tiết để xem từng nhiệm vụ. Thời
-            gian lưu theo giờ server (VN).
+            Báo cáo KPI bạn tự khai. Mỗi ngày một báo cáo tổng — bấm Chi tiết để
+            xem / gửi. Thời gian theo giờ server (VN).
           </p>
         </div>
         <Button onClick={() => setDrawerOpen(true)}>
@@ -265,7 +265,7 @@ export function PersonalKpiListView() {
                           ) : null}
                           {report.rejectedCount > 0 ? (
                             <Badge variant="outline">
-                              Từ chối {report.rejectedCount}
+                              Trả lại {report.rejectedCount}
                             </Badge>
                           ) : null}
                           {report.completedCount > 0 ? (

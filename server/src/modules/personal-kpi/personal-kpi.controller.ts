@@ -17,8 +17,10 @@ import type { JwtPayloadUser } from '@/common/interfaces/jwt-payload-user.interf
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import {
   CreatePersonalKpiBatchDto,
+  PersonalKpiInboxQueryDto,
   PersonalKpiListQueryDto,
   PersonalKpiReportsQueryDto,
+  RejectPersonalKpiDto,
   SendPersonalKpiDto,
   UpdatePersonalKpiDto,
 } from './dto/personal-kpi.dto';
@@ -62,6 +64,60 @@ export class PersonalKpiController {
     @Query('q') q?: string,
   ) {
     return this.personalKpiService.listRecipients(user.uid, q);
+  }
+
+  @ApiOperation({
+    summary: 'Báo cáo KPI gửi đến tôi (gom theo người gửi + ngày)',
+  })
+  @Permissions(Permission.EVALUATION_APPROVE)
+  @Get('inbox/reports')
+  findInboxReports(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: PersonalKpiReportsQueryDto,
+  ) {
+    return this.personalKpiService.findInboxReports(user.uid, query);
+  }
+
+  @ApiOperation({ summary: 'Danh sách nhiệm vụ KPI gửi đến tôi' })
+  @Permissions(Permission.EVALUATION_APPROVE)
+  @Get('inbox')
+  findInbox(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: PersonalKpiInboxQueryDto,
+  ) {
+    return this.personalKpiService.findInbox(user.uid, query);
+  }
+
+  @ApiOperation({ summary: 'Duyệt hoàn thành cả báo cáo gửi đến' })
+  @Permissions(Permission.EVALUATION_APPROVE)
+  @Post('inbox/reports/:ownerId/:reportDate/complete')
+  completeInboxReport(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('ownerId') ownerId: string,
+    @Param('reportDate') reportDate: string,
+  ) {
+    return this.personalKpiService.completeInboxReport(
+      user.uid,
+      ownerId,
+      reportDate,
+    );
+  }
+
+  @ApiOperation({ summary: 'Trả lại cả báo cáo gửi đến' })
+  @Permissions(Permission.EVALUATION_APPROVE)
+  @Post('inbox/reports/:ownerId/:reportDate/reject')
+  rejectInboxReport(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('ownerId') ownerId: string,
+    @Param('reportDate') reportDate: string,
+    @Body() dto: RejectPersonalKpiDto,
+  ) {
+    return this.personalKpiService.rejectInboxReport(
+      user.uid,
+      ownerId,
+      reportDate,
+      dto,
+    );
   }
 
   @ApiOperation({ summary: 'Danh sách nhiệm vụ KPI cá nhân của tôi' })
@@ -112,6 +168,24 @@ export class PersonalKpiController {
     @Body() dto: SendPersonalKpiDto,
   ) {
     return this.personalKpiService.send(user.uid, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Duyệt hoàn thành nhiệm vụ gửi đến' })
+  @Permissions(Permission.EVALUATION_APPROVE)
+  @Post(':id/complete')
+  complete(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
+    return this.personalKpiService.complete(user.uid, id);
+  }
+
+  @ApiOperation({ summary: 'Trả lại nhiệm vụ gửi đến' })
+  @Permissions(Permission.EVALUATION_APPROVE)
+  @Post(':id/reject')
+  reject(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: RejectPersonalKpiDto,
+  ) {
+    return this.personalKpiService.reject(user.uid, id, dto);
   }
 
   @ApiOperation({ summary: 'Xoá nhiệm vụ nháp / từ chối' })

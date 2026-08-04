@@ -236,4 +236,27 @@ export class SendPersonalKpiDto {
   @StringRequired('Nội dung gửi', { example: 'Kính gửi' })
   @MaxLength(1000, { message: 'Nội dung gửi tối đa 1000 ký tự.' })
   note!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Chỉ gửi các nhiệm vụ này (khi có Trả lại: chỉ gửi đúng nhiệm vụ Trả lại).',
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true, message: 'ID nhiệm vụ không hợp lệ.' })
+  itemIds?: string[];
+}
+
+export class RejectPersonalKpiDto {
+  @StringRequired('Lý do trả lại', { example: 'Cần bổ sung sản phẩm đầu ra.' })
+  @MaxLength(1000, { message: 'Lý do trả lại tối đa 1000 ký tự.' })
+  reason!: string;
+}
+
+export class PersonalKpiInboxQueryDto extends PersonalKpiListQueryDto {
+  @ApiPropertyOptional({ description: 'Lọc theo người gửi' })
+  @IsOptional()
+  @IsMongoId({ message: 'Người gửi không hợp lệ.' })
+  ownerId?: string;
 }

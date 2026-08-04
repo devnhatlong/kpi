@@ -34,25 +34,55 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-function isPathActive(pathname: string, href: string) {
+function collectNavHrefs(items: NavItem[]): string[] {
+  const hrefs: string[] = [];
+  for (const item of items) {
+    if (item.href) hrefs.push(item.href);
+    for (const child of item.children ?? []) {
+      hrefs.push(child.href);
+    }
+  }
+  return hrefs;
+}
+
+/** Active theo href khớp dài nhất — tránh /kpi/personal sáng khi đang ở /kpi/received. */
+function isPathActive(pathname: string, href: string, allHrefs: string[]) {
   if (href === "/dashboard") {
     return pathname === "/dashboard";
   }
-  return pathname === href || pathname.startsWith(`${href}/`);
+
+  const matches = allHrefs
+    .filter(
+      (candidate) =>
+        pathname === candidate || pathname.startsWith(`${candidate}/`),
+    )
+    .sort((a, b) => b.length - a.length);
+
+  return matches[0] === href;
 }
 
-function hasActiveChild(pathname: string, item: NavItem) {
-  return item.children?.some((child) => isPathActive(pathname, child.href)) ?? false;
+function hasActiveChild(pathname: string, item: NavItem, allHrefs: string[]) {
+  return (
+    item.children?.some((child) =>
+      isPathActive(pathname, child.href, allHrefs),
+    ) ?? false
+  );
 }
 
-function NavGroup({ item }: { item: NavItem }) {
+function NavGroup({
+  item,
+  allHrefs,
+}: {
+  item: NavItem;
+  allHrefs: string[];
+}) {
   const pathname = usePathname();
   const { state, isMobile } = useSidebar();
   const Icon = item.icon;
 
   if (!item.children?.length) {
     const href = item.href ?? "#";
-    const active = isPathActive(pathname, href);
+    const active = isPathActive(pathname, href, allHrefs);
 
     return (
       <SidebarMenuItem>
@@ -79,7 +109,7 @@ function NavGroup({ item }: { item: NavItem }) {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               tooltip={item.title}
-              isActive={hasActiveChild(pathname, item)}
+              isActive={hasActiveChild(pathname, item, allHrefs)}
               className="h-10 [&>svg]:size-5 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Icon />
@@ -110,12 +140,15 @@ function NavGroup({ item }: { item: NavItem }) {
   }
 
   return (
-    <Collapsible defaultOpen={hasActiveChild(pathname, item)} className="group/collapsible">
+    <Collapsible
+      defaultOpen={hasActiveChild(pathname, item, allHrefs)}
+      className="group/collapsible"
+    >
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
           <SidebarMenuButton
             tooltip={item.title}
-            isActive={hasActiveChild(pathname, item)}
+            isActive={hasActiveChild(pathname, item, allHrefs)}
             className="h-10 [&>svg]:size-5 data-[state=open]:bg-sidebar-accent/60"
           >
             <Icon />
@@ -126,7 +159,7 @@ function NavGroup({ item }: { item: NavItem }) {
         <CollapsibleContent>
           <SidebarMenuSub className="mx-0 mt-1.5 translate-x-0 gap-0.5 rounded-md border-l-0 bg-muted/60 px-1 py-1.5 dark:bg-muted/40">
             {item.children.map((child) => {
-              const active = isPathActive(pathname, child.href);
+              const active = isPathActive(pathname, child.href, allHrefs);
               const ChildIcon = child.icon;
               return (
                 <SidebarMenuSubItem key={child.href}>
@@ -161,6 +194,8 @@ export function AppSidebar() {
     [user],
   );
 
+  const allHrefs = useMemo(() => collectNavHrefs(visibleItems), [visibleItems]);
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border">
@@ -193,7 +228,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
               {visibleItems.map((item) => (
-                <NavGroup key={item.title} item={item} />
+                <NavGroup key={item.title} item={item} allHrefs={allHrefs} />
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
