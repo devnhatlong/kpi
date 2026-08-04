@@ -34,14 +34,14 @@ export class AxesController {
   }
 
   @ApiOperation({ summary: 'Danh sách trục KPI' })
-  @Permissions(Permission.KPI_MANAGE, Permission.KPI_ASSIGN)
+  @Permissions(Permission.TASK_VIEW)
   @Get('all')
   findAll(@Query() query: PaginationQueryDto) {
     return this.axesService.findAll(query);
   }
 
   @ApiOperation({ summary: 'Chi tiết trục KPI' })
-  @Permissions(Permission.KPI_MANAGE, Permission.KPI_ASSIGN)
+  @Permissions(Permission.TASK_VIEW)
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.axesService.findOne(id);

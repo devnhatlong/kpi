@@ -34,14 +34,14 @@ export class WorkContentsController {
   }
 
   @ApiOperation({ summary: 'Danh sách nội dung công việc' })
-  @Permissions(Permission.KPI_MANAGE, Permission.KPI_ASSIGN)
+  @Permissions(Permission.TASK_VIEW)
   @Get('all')
   findAll(@Query() query: PaginationQueryDto) {
     return this.workContentsService.findAll(query);
   }
 
   @ApiOperation({ summary: 'Chi tiết nội dung công việc' })
-  @Permissions(Permission.KPI_MANAGE, Permission.KPI_ASSIGN)
+  @Permissions(Permission.TASK_VIEW)
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.workContentsService.findOne(id);

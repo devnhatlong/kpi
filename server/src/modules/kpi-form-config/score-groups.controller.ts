@@ -34,14 +34,14 @@ export class ScoreGroupsController {
   }
 
   @ApiOperation({ summary: 'Danh sách nhóm điểm' })
-  @Permissions(Permission.KPI_MANAGE, Permission.KPI_ASSIGN)
+  @Permissions(Permission.TASK_VIEW)
   @Get('all')
   findAll(@Query() query: PaginationQueryDto) {
     return this.scoreGroupsService.findAll(query);
   }
 
   @ApiOperation({ summary: 'Chi tiết nhóm điểm' })
-  @Permissions(Permission.KPI_MANAGE, Permission.KPI_ASSIGN)
+  @Permissions(Permission.TASK_VIEW)
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.scoreGroupsService.findOne(id);
