@@ -1,19 +1,14 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
-  ClipboardCheck,
   FileText,
   Gauge,
-  Inbox,
   KeyRound,
   Layers,
   Network,
-  Rocket,
   Settings,
-  Settings2,
   Shield,
   Target,
-  Trophy,
   Users,
 } from "lucide-react";
 
@@ -37,7 +32,10 @@ export type NavItem = {
 /** Chỉ SUPER_ADMIN được vào khu vực tổ chức / cài đặt hệ thống. */
 export const SUPER_ADMIN_ONLY = ["SUPER_ADMIN"] as const;
 
-/** Role được vận hành KPI (xem bảng, giao / phân rã nhiệm vụ). */
+/**
+ * Role vận hành KPI (giữ lại hằng số cho guard / login cũ).
+ * Menu Quản lý KPI cũ đã gỡ — sẽ gắn lại khi làm đặc tả mới.
+ */
 export const KPI_OPERATOR_ROLES = [
   "SUPER_ADMIN",
   "UNIT_ADMIN",
@@ -50,17 +48,8 @@ export const SUPER_ADMIN_PATH_PREFIXES = [
   "/settings",
 ] as const;
 
-/** Prefix KPI — SUPER_ADMIN / UNIT_ADMIN / MANAGER. */
-export const KPI_OPERATOR_PATH_PREFIXES = ["/kpi"] as const;
-
 export function isSuperAdminPath(pathname: string): boolean {
   return SUPER_ADMIN_PATH_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
-}
-
-export function isKpiOperatorPath(pathname: string): boolean {
-  return KPI_OPERATOR_PATH_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 }
@@ -68,13 +57,6 @@ export function isKpiOperatorPath(pathname: string): boolean {
 /** Kiểm tra user có được vào path theo role hay không (dùng chung guard + login). */
 export function pathRequiresRoles(pathname: string): readonly string[] | null {
   if (isSuperAdminPath(pathname)) return SUPER_ADMIN_ONLY;
-  if (
-    pathname === "/kpi/publish" ||
-    pathname.startsWith("/kpi/publish/")
-  ) {
-    return SUPER_ADMIN_ONLY;
-  }
-  if (isKpiOperatorPath(pathname)) return KPI_OPERATOR_ROLES;
   return null;
 }
 
@@ -99,49 +81,6 @@ export const NAV_ITEMS: NavItem[] = [
       { title: "Vai trò", href: "/organization/roles", icon: Shield },
       { title: "Quyền", href: "/organization/permissions", icon: KeyRound },
       { title: "Người dùng", href: "/organization/employees", icon: Users },
-    ],
-  },
-  {
-    title: "Quản lý KPI",
-    icon: Trophy,
-    roles: [...KPI_OPERATOR_ROLES],
-    children: [
-      {
-        title: "Phát hành KPI cấp tỉnh",
-        href: "/kpi/publish",
-        icon: Rocket,
-        roles: [...SUPER_ADMIN_ONLY],
-      },
-      {
-        title: "Form KPI",
-        href: "/kpi/sheet",
-        icon: FileText,
-        roles: [...KPI_OPERATOR_ROLES],
-      },
-      {
-        title: "Chủ trì giao ngang",
-        href: "/kpi/tracking",
-        icon: Target,
-        roles: [...KPI_OPERATOR_ROLES],
-      },
-      {
-        title: "Tiếp nhận nhiệm vụ",
-        href: "/kpi/inbox",
-        icon: Inbox,
-        roles: [...KPI_OPERATOR_ROLES],
-      },
-      {
-        title: "Cấu hình & giao KPI",
-        href: "/kpi/config",
-        icon: Settings2,
-        roles: [...KPI_OPERATOR_ROLES],
-      },
-      {
-        title: "Chấm điểm KPI",
-        href: "/kpi/scoring",
-        icon: ClipboardCheck,
-        roles: [...KPI_OPERATOR_ROLES],
-      },
     ],
   },
   {

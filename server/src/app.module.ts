@@ -14,7 +14,7 @@ import { DepartmentsModule } from './modules/departments/departments.module';
 import { DepartmentLevelsModule } from './modules/department-levels/department-levels.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
-import { KpiConfigModule } from './modules/kpi-config/kpi-config.module';
+import { SystemModule } from './modules/system/system.module';
 import { mongooseConfig } from './config/database.config';
 import { JwtModule } from '@nestjs/jwt';
 import type { SignOptions } from 'jsonwebtoken';
@@ -46,7 +46,7 @@ import type { SignOptions } from 'jsonwebtoken';
     DepartmentLevelsModule,
     RolesModule,
     PermissionsModule,
-    KpiConfigModule,
+    SystemModule,
   ],
 })
 export class AppModule implements NestModule {

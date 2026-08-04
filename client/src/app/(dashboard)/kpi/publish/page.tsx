@@ -1,11 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { MasterFormAdminView } from "@/features/kpi-config/components/master-form-admin-view";
-
-export const metadata: Metadata = {
-  title: "Phát hành KPI cấp tỉnh",
-};
-
-export default function KpiPublishPage() {
-  return <MasterFormAdminView />;
+/** Chức năng KPI cũ đã gỡ — chờ đặc tả mới. */
+export default function RemovedKpiPage() {
+  redirect("/dashboard");
 }

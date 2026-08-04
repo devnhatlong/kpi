@@ -1,13 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { PlaceholderPage } from "@/components/common/placeholder-page";
-
-export const metadata: Metadata = {
-  title: "Chấm điểm KPI",
-};
-
-export default function KpiScoringPage() {
-  return (
-    <PlaceholderPage title="Chấm điểm KPI" description="Chấm điểm và đánh giá hiệu suất KPI." />
-  );
+/** Chức năng KPI cũ đã gỡ — chờ đặc tả mới. */
+export default function RemovedKpiPage() {
+  redirect("/dashboard");
 }

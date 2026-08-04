@@ -1,11 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { UnitKpiSheetView } from "@/features/kpi-config/components/unit-kpi-sheet-view";
-
-export const metadata: Metadata = {
-  title: "Form KPI",
-};
-
-export default function KpiSheetPage() {
-  return <UnitKpiSheetView />;
+/** Chức năng KPI cũ đã gỡ — chờ đặc tả mới. */
+export default function RemovedKpiPage() {
+  redirect("/dashboard");
 }

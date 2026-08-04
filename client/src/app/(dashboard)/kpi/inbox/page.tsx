@@ -1,11 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { HandoffInboundView } from "@/features/kpi-config/components/handoff-inbound-view";
-
-export const metadata: Metadata = {
-  title: "Tiếp nhận nhiệm vụ",
-};
-
-export default function KpiInboxPage() {
-  return <HandoffInboundView />;
+/** Chức năng KPI cũ đã gỡ — chờ đặc tả mới. */
+export default function RemovedKpiPage() {
+  redirect("/dashboard");
 }
