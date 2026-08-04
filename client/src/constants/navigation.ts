@@ -1,14 +1,16 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  BarChart3,
-  FileText,
+  ArrowDownToLine,
+  BookMarked,
+  ClipboardList,
+  Filter,
   Gauge,
+  Inbox,
   KeyRound,
   Layers,
   Network,
   Settings,
   Shield,
-  Target,
   Users,
 } from "lucide-react";
 
@@ -29,20 +31,31 @@ export type NavItem = {
   roles?: string[];
 };
 
-/** Chỉ SUPER_ADMIN được vào khu vực tổ chức / cài đặt hệ thống. */
 export const SUPER_ADMIN_ONLY = ["SUPER_ADMIN"] as const;
 
-/**
- * Role vận hành KPI (giữ lại hằng số cho guard / login cũ).
- * Menu Quản lý KPI cũ đã gỡ — sẽ gắn lại khi làm đặc tả mới.
- */
-export const KPI_OPERATOR_ROLES = [
+export const ALL_KPI_ROLES = [
+  "SUPER_ADMIN",
+  "UNIT_ADMIN",
+  "MANAGER",
+  "STAFF",
+] as const;
+
+/** Manager trở lên — giao KPI xuống. */
+export const KPI_ASSIGN_ROLES = [
   "SUPER_ADMIN",
   "UNIT_ADMIN",
   "MANAGER",
 ] as const;
 
-/** Prefix chỉ SUPER_ADMIN (chặn URL trực tiếp). */
+/** Chỉ Manager / Unit admin — tổng hợp & nâng cấp. */
+export const KPI_PROMOTE_ROLES = ["UNIT_ADMIN", "MANAGER"] as const;
+
+/** Unit admin / Superadmin — danh mục, quản trị. */
+export const KPI_ADMIN_ROLES = ["SUPER_ADMIN", "UNIT_ADMIN"] as const;
+
+/** @deprecated dùng KPI_ASSIGN_ROLES */
+export const KPI_OPERATOR_ROLES = KPI_ASSIGN_ROLES;
+
 export const SUPER_ADMIN_PATH_PREFIXES = [
   "/organization",
   "/settings",
@@ -57,19 +70,66 @@ export function isSuperAdminPath(pathname: string): boolean {
 /** Kiểm tra user có được vào path theo role hay không (dùng chung guard + login). */
 export function pathRequiresRoles(pathname: string): readonly string[] | null {
   if (isSuperAdminPath(pathname)) return SUPER_ADMIN_ONLY;
+
+  if (
+    pathname === "/kpi/promote" ||
+    pathname.startsWith("/kpi/promote/")
+  ) {
+    return KPI_PROMOTE_ROLES;
+  }
+  if (
+    pathname === "/kpi/assign" ||
+    pathname.startsWith("/kpi/assign/")
+  ) {
+    return KPI_ASSIGN_ROLES;
+  }
+  if (
+    pathname === "/kpi/catalogs" ||
+    pathname.startsWith("/kpi/catalogs/")
+  ) {
+    return KPI_ADMIN_ROLES;
+  }
+
   return null;
 }
 
+/**
+ * Menu theo đặc tả: KPI cá nhân / được giao (mọi role),
+ * tổng hợp & giao xuống (theo cấp), thống kê, quản trị.
+ */
 export const NAV_ITEMS: NavItem[] = [
   {
-    title: "Tổng quan",
+    title: "Thống kê",
     href: "/dashboard",
     icon: Gauge,
   },
   {
-    title: "KPI của tôi",
-    href: "/my-kpi",
-    icon: Target,
+    title: "KPI cá nhân",
+    href: "/kpi/personal",
+    icon: ClipboardList,
+  },
+  {
+    title: "KPI được giao",
+    href: "/kpi/assigned",
+    icon: Inbox,
+  },
+  {
+    title: "Tổng hợp & nâng cấp",
+    href: "/kpi/promote",
+    icon: Filter,
+    roles: [...KPI_PROMOTE_ROLES],
+  },
+  {
+    title: "Giao KPI xuống",
+    href: "/kpi/assign",
+    icon: ArrowDownToLine,
+    roles: [...KPI_ASSIGN_ROLES],
+  },
+  {
+    title: "Danh mục",
+    href: "/kpi/catalogs",
+    icon: BookMarked,
+    roles: [...KPI_ADMIN_ROLES],
   },
   {
     title: "Tổ chức",
@@ -82,16 +142,6 @@ export const NAV_ITEMS: NavItem[] = [
       { title: "Quyền", href: "/organization/permissions", icon: KeyRound },
       { title: "Người dùng", href: "/organization/employees", icon: Users },
     ],
-  },
-  {
-    title: "Báo cáo",
-    href: "/reports",
-    icon: FileText,
-  },
-  {
-    title: "Phân tích",
-    href: "/analytics",
-    icon: BarChart3,
   },
   {
     title: "Cài đặt",

@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
 
+import { PlaceholderPage } from "@/components/common/placeholder-page";
+
 export const metadata: Metadata = {
-  title: "Tổng quan",
-  description: "Trang tổng quan hệ thống chấm điểm KPI.",
+  title: "Thống kê",
+  description: "Dashboard thống kê KPI theo phạm vi role.",
 };
 
 export default function DashboardPage() {
   return (
-    <div className="flex min-h-[calc(100svh-8rem)] items-center justify-center">
-      <p className="text-sm text-muted-foreground">Nội dung tổng quan sẽ được bổ sung.</p>
-    </div>
+    <PlaceholderPage
+      title="Thống kê"
+      description="Dashboard theo scope: Staff/Manager (đội), Unit admin (phòng), Superadmin (toàn tỉnh)."
+    />
   );
 }

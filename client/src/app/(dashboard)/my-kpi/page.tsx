@@ -1,16 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { PlaceholderPage } from "@/components/common/placeholder-page";
-
-export const metadata: Metadata = {
-  title: "KPI của tôi",
-};
-
-export default function MyKpiPage() {
-  return (
-    <PlaceholderPage
-      title="KPI của tôi"
-      description="Theo dõi và cập nhật các chỉ tiêu KPI được giao."
-    />
-  );
+/** Đổi tên theo đặc tả → KPI cá nhân. */
+export default function MyKpiRedirectPage() {
+  redirect("/kpi/personal");
 }
