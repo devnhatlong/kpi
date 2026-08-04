@@ -1,22 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ClipboardList, Pencil, Plus, Send, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { ClipboardList, Eye, Plus, Search } from "lucide-react";
+import useSWR from "swr";
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { TablePagination } from "@/components/common/table-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -25,135 +25,81 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  activeBadgeClass,
-  inactiveBadgeClass,
-} from "@/features/organization/badge-styles";
+  fetchPersonalKpiReports,
+  personalKpiKeys,
+} from "@/features/personal-kpi/api";
+import { PersonalReportDetailDrawer } from "@/features/personal-kpi/components/personal-report-detail-drawer";
 import { PersonalTaskDrawer } from "@/features/personal-kpi/components/personal-task-drawer";
 import {
   PERSONAL_KPI_STATUS_LABEL,
-  canDeletePersonalKpi,
-  canEditPersonalKpi,
-  canSendPersonalKpi,
-  type PersonalKpiItem,
   type PersonalKpiStatus,
 } from "@/features/personal-kpi/types";
+import { useListPagination } from "@/hooks/use-list-pagination";
+import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
 
-const STATUS_TABS: Array<PersonalKpiStatus | "ALL"> = [
-  "ALL",
-  "DRAFT",
-  "SENT",
-  "REJECTED",
-  "COMPLETED",
+const STATUS_FILTERS: Array<{ value: string; label: string }> = [
+  { value: "ALL", label: "Tất cả trạng thái" },
+  { value: "DRAFT", label: PERSONAL_KPI_STATUS_LABEL.DRAFT },
+  { value: "SENT", label: PERSONAL_KPI_STATUS_LABEL.SENT },
+  { value: "REJECTED", label: PERSONAL_KPI_STATUS_LABEL.REJECTED },
+  { value: "COMPLETED", label: PERSONAL_KPI_STATUS_LABEL.COMPLETED },
 ];
 
-function statusBadgeClass(status: PersonalKpiStatus) {
-  if (status === "SENT") return activeBadgeClass;
-  if (status === "COMPLETED") {
-    return "border-emerald-500/40 text-emerald-700 dark:text-emerald-400";
-  }
-  if (status === "REJECTED") {
-    return "border-amber-500/40 text-amber-600 dark:text-amber-400";
-  }
-  return inactiveBadgeClass;
-}
-
-function formatUpdatedAt(value: string) {
+function formatDateTime(value?: string | null) {
+  if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("vi-VN");
 }
 
+function formatReportDate(ymd: string) {
+  const date = new Date(`${ymd}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return ymd;
+  return date.toLocaleDateString("vi-VN", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 export function PersonalKpiListView() {
-  const [items, setItems] = useState<PersonalKpiItem[]>([]);
-  const [statusTab, setStatusTab] = useState<PersonalKpiStatus | "ALL">("ALL");
+  const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
+    useListPagination();
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [status, setStatus] = useState("ALL");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [edit, setEdit] = useState<PersonalKpiItem | null>(null);
-  const [deleting, setDeleting] = useState<PersonalKpiItem | null>(null);
+  const [detailDate, setDetailDate] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
-    const list =
-      statusTab === "ALL"
-        ? items
-        : items.filter((item) => item.status === statusTab);
-    return [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  }, [items, statusTab]);
+  const listParams = useMemo(
+    () => ({
+      page,
+      limit,
+      q: debouncedQuery,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+      status:
+        status === "ALL" ? undefined : (status as PersonalKpiStatus),
+    }),
+    [page, limit, debouncedQuery, fromDate, toDate, status],
+  );
 
-  const counts = useMemo(() => {
-    return {
-      ALL: items.length,
-      DRAFT: items.filter((item) => item.status === "DRAFT").length,
-      SENT: items.filter((item) => item.status === "SENT").length,
-      REJECTED: items.filter((item) => item.status === "REJECTED").length,
-      COMPLETED: items.filter((item) => item.status === "COMPLETED").length,
-    };
-  }, [items]);
+  const { data, isLoading, mutate } = useSWR(
+    personalKpiKeys.reports(listParams),
+    () => fetchPersonalKpiReports(listParams),
+  );
 
-  const openCreate = () => {
-    setEdit(null);
-    setDrawerOpen(true);
-  };
+  const reports = data?.data ?? [];
+  const meta = data?.meta ?? emptyPaginationMeta(limit);
 
-  const openEdit = (item: PersonalKpiItem) => {
-    if (!canEditPersonalKpi(item.status)) {
-      toast.error(
-        item.status === "SENT"
-          ? "Đã gửi — không sửa trực tiếp. Chờ từ chối nếu cần chỉnh lại."
-          : "Nhiệm vụ đã hoàn thành — không sửa được.",
-      );
-      return;
-    }
-    setEdit(item);
-    setDrawerOpen(true);
-  };
-
-  const handleSaveFromDrawer = (saved: PersonalKpiItem[]) => {
-    setItems((prev) => {
-      let next = [...prev];
-      for (const item of saved) {
-        const index = next.findIndex((row) => row.id === item.id);
-        if (index >= 0) next[index] = item;
-        else next = [item, ...next];
-      }
-      return next;
-    });
-  };
-
-  const submitItem = (item: PersonalKpiItem) => {
-    if (!canSendPersonalKpi(item.status)) {
-      toast.error("Chỉ gửi được khi đang Nháp hoặc Từ chối.");
-      return;
-    }
-    if (!item.task.title.trim()) {
-      toast.error("Nhiệm vụ nháp chưa có tên — hãy sửa trước khi gửi.");
-      return;
-    }
-    setItems((prev) =>
-      prev.map((row) =>
-        row.id === item.id
-          ? {
-              ...row,
-              status: "SENT",
-              updatedAt: new Date().toISOString(),
-              rejectReason: undefined,
-            }
-          : row,
-      ),
-    );
-    toast.success("Đã gửi nhiệm vụ.");
-  };
-
-  const confirmDelete = () => {
-    if (!deleting) return;
-    if (!canDeletePersonalKpi(deleting.status)) {
-      toast.error("Không xoá nhiệm vụ đã gửi hoặc đã hoàn thành.");
-      setDeleting(null);
-      return;
-    }
-    setItems((prev) => prev.filter((row) => row.id !== deleting.id));
-    toast.success("Đã xoá nhiệm vụ.");
-    setDeleting(null);
+  const resetFilters = () => {
+    setQuery("");
+    setFromDate("");
+    setToDate("");
+    setStatus("ALL");
+    setPage(1);
   };
 
   return (
@@ -164,130 +110,187 @@ export function PersonalKpiListView() {
             KPI cá nhân
           </h1>
           <p className="text-sm text-muted-foreground">
-            Tạo nháp trước, chỉnh xong rồi mới gửi. Theo dõi theo trạng thái Nháp
-            / Đã gửi / Từ chối / Hoàn thành.
+            Mỗi ngày một báo cáo tổng. Bấm Chi tiết để xem từng nhiệm vụ. Thời
+            gian lưu theo giờ server (VN).
           </p>
         </div>
-        <Button onClick={openCreate}>
+        <Button onClick={() => setDrawerOpen(true)}>
           <Plus className="h-4 w-4" />
           Tạo nháp
         </Button>
       </div>
 
-      <Tabs
-        value={statusTab}
-        onValueChange={(value) =>
-          setStatusTab(value as PersonalKpiStatus | "ALL")
-        }
-      >
-        <TabsList>
-          {STATUS_TABS.map((tab) => (
-            <TabsTrigger key={tab} value={tab}>
-              {tab === "ALL" ? "Tất cả" : PERSONAL_KPI_STATUS_LABEL[tab]} (
-              {counts[tab]})
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="space-y-4 pt-6">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="space-y-2 xl:col-span-2">
+              <Label htmlFor="kpi-search">Tìm nhiệm vụ</Label>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="kpi-search"
+                  className="bg-background pl-8 placeholder:text-muted-foreground/70"
+                  placeholder="Tên nhiệm vụ trong báo cáo..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="from-date">Từ ngày</Label>
+              <Input
+                id="from-date"
+                type="date"
+                className="bg-background"
+                value={fromDate}
+                onChange={(e) => {
+                  setFromDate(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="to-date">Đến ngày</Label>
+              <Input
+                id="to-date"
+                type="date"
+                className="bg-background"
+                value={toDate}
+                onChange={(e) => {
+                  setToDate(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Trạng thái</Label>
+              <Select
+                value={status}
+                onValueChange={(value) => {
+                  setStatus(value);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="bg-background">
+                  <SelectValue placeholder="Trạng thái" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_FILTERS.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="bg-background"
+              onClick={resetFilters}
+            >
+              Xoá bộ lọc
+            </Button>
+          </div>
+
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-14">STT</TableHead>
-                  <TableHead>Nhiệm vụ</TableHead>
-                  <TableHead className="w-[180px]">Trục</TableHead>
-                  <TableHead className="w-[220px]">Nội dung CV</TableHead>
-                  <TableHead className="w-[100px]">Điểm chuẩn</TableHead>
-                  <TableHead className="w-[110px]">Trạng thái</TableHead>
-                  <TableHead className="w-[160px]">Cập nhật</TableHead>
-                  <TableHead className="w-[130px] text-right">Thao tác</TableHead>
+                  <TableHead>Ngày báo cáo</TableHead>
+                  <TableHead className="w-[110px]">Số NV</TableHead>
+                  <TableHead>Trạng thái</TableHead>
+                  <TableHead className="w-[170px]">Tạo lúc</TableHead>
+                  <TableHead className="w-[170px]">Gửi gần nhất</TableHead>
+                  <TableHead className="w-[120px] text-right">Thao tác</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.length === 0 ? (
+                {isLoading ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={7}
+                      className="h-28 text-center text-muted-foreground"
+                    >
+                      Đang tải...
+                    </TableCell>
+                  </TableRow>
+                ) : reports.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
                       className="h-28 text-center text-muted-foreground"
                     >
                       <div className="inline-flex flex-col items-center gap-2">
                         <ClipboardList className="h-8 w-8 opacity-40" />
-                        <span>Chưa có nhiệm vụ nào. Bấm &quot;Tạo nháp&quot; để bắt đầu.</span>
+                        <span>
+                          Chưa có báo cáo nào. Bấm &quot;Tạo nháp&quot; để thêm
+                          nhiệm vụ ngày hôm nay.
+                        </span>
                       </div>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((item, index) => (
-                    <TableRow key={item.id}>
+                  reports.map((report, index) => (
+                    <TableRow key={report.reportDate}>
                       <TableCell className="text-muted-foreground">
-                        {index + 1}
+                        {rowIndex(page, limit, index)}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">{item.task.title}</div>
-                        {item.rejectReason ? (
-                          <div className="text-xs text-amber-600 dark:text-amber-400">
-                            Lý do từ chối: {item.rejectReason}
-                          </div>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {item.axisName}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        <div>{item.workContentName}</div>
-                        <div className="font-mono text-xs">
-                          {item.workContentCode}
+                        <div className="font-medium capitalize">
+                          {formatReportDate(report.reportDate)}
+                        </div>
+                        <div className="font-mono text-xs text-muted-foreground">
+                          {report.reportDate}
                         </div>
                       </TableCell>
                       <TableCell className="tabular-nums">
-                        {item.task.standardScore || "-"}
+                        {report.taskCount}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={statusBadgeClass(item.status)}
-                        >
-                          {PERSONAL_KPI_STATUS_LABEL[item.status]}
-                        </Badge>
+                        <div className="flex flex-wrap gap-1">
+                          {report.draftCount > 0 ? (
+                            <Badge variant="outline">
+                              Nháp {report.draftCount}
+                            </Badge>
+                          ) : null}
+                          {report.sentCount > 0 ? (
+                            <Badge variant="outline">
+                              Đã gửi {report.sentCount}
+                            </Badge>
+                          ) : null}
+                          {report.rejectedCount > 0 ? (
+                            <Badge variant="outline">
+                              Từ chối {report.rejectedCount}
+                            </Badge>
+                          ) : null}
+                          {report.completedCount > 0 ? (
+                            <Badge variant="outline">
+                              HT {report.completedCount}
+                            </Badge>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {formatUpdatedAt(item.updatedAt)}
+                        {formatDateTime(report.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {formatDateTime(report.lastSentAt)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="inline-flex gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => openEdit(item)}
-                            aria-label="Sửa"
-                            disabled={!canEditPersonalKpi(item.status)}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          {canSendPersonalKpi(item.status) ? (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => submitItem(item)}
-                              aria-label="Gửi"
-                              title="Gửi"
-                            >
-                              <Send className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => setDeleting(item)}
-                            aria-label="Xoá"
-                            disabled={!canDeletePersonalKpi(item.status)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="bg-background"
+                          onClick={() => setDetailDate(report.reportDate)}
+                        >
+                          <Eye className="h-4 w-4" />
+                          Chi tiết
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
@@ -295,37 +298,37 @@ export function PersonalKpiListView() {
               </TableBody>
             </Table>
           </div>
+
+          <TablePagination
+            page={page}
+            limit={limit}
+            total={meta.total}
+            totalPages={meta.totalPages}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
+            disabled={isLoading}
+          />
         </CardContent>
       </Card>
 
       <PersonalTaskDrawer
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
-        edit={edit}
-        onSave={handleSaveFromDrawer}
+        onSaved={async () => {
+          await mutate();
+        }}
       />
 
-      <AlertDialog
-        open={!!deleting}
-        onOpenChange={(open) => !open && setDeleting(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Xoá nhiệm vụ nháp?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Bạn sắp xoá{" "}
-              <span className="font-medium text-foreground">
-                {deleting?.task.title}
-              </span>
-              . Thao tác này không thể hoàn tác.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Huỷ</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>Xoá</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <PersonalReportDetailDrawer
+        open={!!detailDate}
+        onOpenChange={(open) => {
+          if (!open) setDetailDate(null);
+        }}
+        reportDate={detailDate}
+        onChanged={async () => {
+          await mutate();
+        }}
+      />
     </div>
   );
 }

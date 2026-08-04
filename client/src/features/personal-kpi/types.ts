@@ -59,7 +59,10 @@ export type PersonalKpiItem = {
   workContentName: string;
   workContentCode: string;
   task: PersonalTaskDraft;
+  createdAt: string;
   updatedAt: string;
+  /** Thời điểm gửi gần nhất */
+  sentAt?: string;
   rejectReason?: string;
 };
 

@@ -25,6 +25,8 @@ type PersonalTaskFormProps = {
   showWorkContentCell?: boolean;
   workContentLabel?: string;
   workContentRowSpan?: number;
+  /** Chỉ xem (drawer chi tiết / gửi báo cáo) */
+  readOnly?: boolean;
 };
 
 const cellInputClass = "h-8";
@@ -46,13 +48,14 @@ export function PersonalTaskForm({
   showWorkContentCell = false,
   workContentLabel = "",
   workContentRowSpan = 1,
+  readOnly = false,
 }: PersonalTaskFormProps) {
   const titlePlaceholder = `Nhiệm vụ ${taskNumber ?? index}`;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const evidenceFiles = task.evidenceFiles ?? [];
 
   const addFiles = (fileList: FileList | null) => {
-    if (!fileList?.length) return;
+    if (readOnly || !fileList?.length) return;
     const next: TaskEvidenceFile[] = [...evidenceFiles];
     for (const file of Array.from(fileList)) {
       next.push({
@@ -68,6 +71,7 @@ export function PersonalTaskForm({
   };
 
   const removeFile = (fileKey: string) => {
+    if (readOnly) return;
     onChange({
       evidenceFiles: evidenceFiles.filter((item) => item.key !== fileKey),
     });
@@ -99,6 +103,7 @@ export function PersonalTaskForm({
           value={task.title}
           onChange={(e) => onChange({ title: e.target.value })}
           placeholder={titlePlaceholder}
+          disabled={readOnly}
         />
       </TableCell>
       <TableCell className="min-w-[140px]">
@@ -107,6 +112,7 @@ export function PersonalTaskForm({
           type="date"
           value={task.deadline}
           onChange={(e) => onChange({ deadline: e.target.value })}
+          disabled={readOnly}
         />
       </TableCell>
       <TableCell className="min-w-[160px]">
@@ -115,6 +121,7 @@ export function PersonalTaskForm({
           value={task.product}
           onChange={(e) => onChange({ product: e.target.value })}
           placeholder="Sản phẩm dự kiến"
+          disabled={readOnly}
         />
       </TableCell>
       <TableCell className="min-w-[100px]">
@@ -126,6 +133,7 @@ export function PersonalTaskForm({
           value={task.standardScore}
           onChange={(e) => onChange({ standardScore: e.target.value })}
           placeholder="0 *"
+          disabled={readOnly}
         />
       </TableCell>
       <TableCell className="min-w-[140px]">
@@ -134,6 +142,7 @@ export function PersonalTaskForm({
           value={task.executingUnit}
           onChange={(e) => onChange({ executingUnit: e.target.value })}
           placeholder="Đơn vị thực hiện"
+          disabled={readOnly}
         />
       </TableCell>
       <TableCell className="min-w-[100px]">
@@ -145,6 +154,7 @@ export function PersonalTaskForm({
           value={task.progressPercent}
           onChange={(e) => onChange({ progressPercent: e.target.value })}
           placeholder="%"
+          disabled={readOnly}
         />
       </TableCell>
       <TableCell className="min-w-[110px]">
@@ -156,6 +166,7 @@ export function PersonalTaskForm({
           value={task.progressSelfScore}
           onChange={(e) => onChange({ progressSelfScore: e.target.value })}
           placeholder="Điểm"
+          disabled={readOnly}
         />
       </TableCell>
       <TableCell className="min-w-[100px]">
@@ -167,6 +178,7 @@ export function PersonalTaskForm({
           value={task.qualityPercent}
           onChange={(e) => onChange({ qualityPercent: e.target.value })}
           placeholder="%"
+          disabled={readOnly}
         />
       </TableCell>
       <TableCell className="min-w-[110px]">
@@ -178,6 +190,7 @@ export function PersonalTaskForm({
           value={task.qualitySelfScore}
           onChange={(e) => onChange({ qualitySelfScore: e.target.value })}
           placeholder="Điểm"
+          disabled={readOnly}
         />
       </TableCell>
       <TableCell className="min-w-[160px]">
@@ -186,28 +199,32 @@ export function PersonalTaskForm({
           value={task.note}
           onChange={(e) => onChange({ note: e.target.value })}
           placeholder="Đề nghị khác"
+          disabled={readOnly}
         />
       </TableCell>
-      <TableCell className="min-w-[200px] align-top">
-        <div className="flex flex-col gap-1.5 py-0.5">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.webp,.zip,.rar"
-            onChange={(e) => addFiles(e.target.files)}
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-8 justify-start"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Paperclip className="h-3.5 w-3.5" />
-            Upload
-          </Button>
+      <TableCell className="min-w-[200px]">
+        <div className="flex flex-col gap-1.5">
+          {!readOnly ? (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.webp,.zip,.rar"
+                onChange={(e) => addFiles(e.target.files)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 w-full justify-start px-2 py-0 text-xs"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Paperclip className="h-3.5 w-3.5" />
+                Upload
+              </Button>
+            </>
+          ) : null}
           {evidenceFiles.length > 0 ? (
             <ul className="space-y-1">
               {evidenceFiles.map((file) => (
@@ -221,31 +238,37 @@ export function PersonalTaskForm({
                   >
                     {file.name}
                   </span>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-background hover:text-destructive"
-                    onClick={() => removeFile(file.key)}
-                    aria-label={`Xoá ${file.name}`}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
+                  {!readOnly ? (
+                    <button
+                      type="button"
+                      className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-background hover:text-destructive"
+                      onClick={() => removeFile(file.key)}
+                      aria-label={`Xoá ${file.name}`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>
+          ) : readOnly ? (
+            <span className="text-xs text-muted-foreground">—</span>
           ) : null}
         </div>
       </TableCell>
       <TableCell className="sticky right-0 z-10 bg-background text-right">
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          onClick={onRemove}
-          disabled={!canRemove}
-          aria-label="Xoá nhiệm vụ"
-        >
-          <Trash2 className="h-4 w-4 text-destructive" />
-        </Button>
+        {!readOnly ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            onClick={onRemove}
+            disabled={!canRemove}
+            aria-label="Xoá nhiệm vụ"
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        ) : null}
       </TableCell>
     </TableRow>
   );

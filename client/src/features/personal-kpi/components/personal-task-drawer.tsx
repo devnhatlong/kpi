@@ -36,6 +36,11 @@ import {
 } from "@/features/kpi-form-config/api";
 import type { Axis, WorkContent } from "@/features/kpi-form-config/types";
 import { entityId } from "@/features/kpi-form-config/types";
+import {
+  createPersonalKpiBatch,
+  taskToWriteInput,
+  updatePersonalKpi,
+} from "@/features/personal-kpi/api";
 import { PersonalTaskForm } from "@/features/personal-kpi/components/personal-task-form";
 import {
   createEmptyAxisBlock,
@@ -69,14 +74,17 @@ type PersonalTaskDrawerProps = {
   onOpenChange: (open: boolean) => void;
   /** Sửa 1 nhiệm vụ đã có trên danh sách */
   edit?: PersonalKpiItem | null;
-  onSave: (items: PersonalKpiItem[]) => void;
+  /** Ngày báo cáo YYYY-MM-DD (mặc định hôm nay theo server) */
+  reportDate?: string;
+  onSaved: () => void | Promise<void>;
 };
 
 export function PersonalTaskDrawer({
   open,
   onOpenChange,
   edit,
-  onSave,
+  reportDate,
+  onSaved,
 }: PersonalTaskDrawerProps) {
   const { data: axes = [], isLoading: loadingAxes, error: axesError } = useSWR(
     open ? ["axes", "all", "personal-task-drawer"] : null,
@@ -297,14 +305,13 @@ export function PersonalTaskDrawer({
     );
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (blocks.length === 0) {
       toast.error("Chưa có trục nào. Thêm trục nếu cần lưu nhiệm vụ.");
       return;
     }
 
-    const now = new Date().toISOString();
-    const saved: PersonalKpiItem[] = [];
+    const payloads: ReturnType<typeof taskToWriteInput>[] = [];
 
     for (const block of blocks) {
       if (!block.axisId) {
@@ -317,8 +324,7 @@ export function PersonalTaskDrawer({
         );
         return;
       }
-      const axis = axisById.get(block.axisId);
-      if (!axis) {
+      if (!axisById.get(block.axisId)) {
         toast.error("Trục không hợp lệ.");
         return;
       }
@@ -328,8 +334,7 @@ export function PersonalTaskDrawer({
           toast.error("Vui lòng chọn nội dung công việc cho mọi khối.");
           return;
         }
-        const workContent = contentById.get(content.workContentId);
-        if (!workContent) {
+        if (!contentById.get(content.workContentId)) {
           toast.error("Nội dung công việc không hợp lệ.");
           return;
         }
@@ -344,49 +349,35 @@ export function PersonalTaskDrawer({
             toast.error("Điểm chuẩn phải là số ≥ 0.");
             return;
           }
-
-          if (edit) {
-            saved.push({
-              ...edit,
-              axisId: block.axisId,
-              axisName: axis.name,
-              workContentId: content.workContentId,
-              workContentName: workContent.name,
-              workContentCode: workContent.code,
-              task: { ...task, title: task.title.trim() },
-              updatedAt: now,
-              status: "DRAFT",
-              rejectReason: undefined,
-            });
-          } else {
-            saved.push({
-              id: `local-${task.key}`,
-              status: "DRAFT",
-              axisId: block.axisId,
-              axisName: axis.name,
-              workContentId: content.workContentId,
-              workContentName: workContent.name,
-              workContentCode: workContent.code,
-              task: { ...task, title: task.title.trim() },
-              updatedAt: now,
-            });
-          }
+          payloads.push(
+            taskToWriteInput(block.axisId, content.workContentId, task),
+          );
         }
       }
     }
 
-    if (saved.length === 0) {
+    if (payloads.length === 0) {
       toast.error("Chưa có nhiệm vụ nào để lưu.");
       return;
     }
 
     setSaving(true);
     try {
-      onSave(saved);
-      toast.success(
-        saved.length > 1 ? `Đã lưu ${saved.length} nhiệm vụ nháp.` : "Đã lưu nháp.",
-      );
+      if (edit) {
+        await updatePersonalKpi(edit.id, payloads[0]);
+        toast.success("Đã lưu nháp.");
+      } else {
+        await createPersonalKpiBatch(payloads, reportDate);
+        toast.success(
+          payloads.length > 1
+            ? `Đã lưu ${payloads.length} nhiệm vụ nháp.`
+            : "Đã lưu nháp.",
+        );
+      }
+      await onSaved();
       onOpenChange(false);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không lưu được nháp."));
     } finally {
       setSaving(false);
     }
@@ -625,13 +616,13 @@ export function PersonalTaskDrawer({
                                 </TableHead>
                                 <TableHead
                                   colSpan={4}
-                                  className="text-center"
+                                  className="text-center after:hidden"
                                 >
                                   Kết quả theo dõi
                                 </TableHead>
                                 <TableHead
                                   rowSpan={2}
-                                  className="min-w-[160px] align-middle"
+                                  className="min-w-[160px] align-middle before:absolute before:left-0 before:top-1/2 before:h-4 before:w-px before:-translate-y-1/2 before:bg-border"
                                 >
                                   Đề nghị khác (căn cứ)
                                 </TableHead>
@@ -656,7 +647,7 @@ export function PersonalTaskDrawer({
                                 <TableHead className="min-w-[100px] text-center text-xs">
                                   KPI chất lượng %
                                 </TableHead>
-                                <TableHead className="min-w-[110px] text-center text-xs">
+                                <TableHead className="min-w-[110px] text-center text-xs after:hidden">
                                   Điểm tự chấm
                                 </TableHead>
                               </TableRow>
@@ -761,7 +752,11 @@ export function PersonalTaskDrawer({
           >
             Huỷ
           </Button>
-          <Button type="button" onClick={submit} disabled={saving || loading}>
+          <Button
+            type="button"
+            onClick={() => void submit()}
+            disabled={saving || loading}
+          >
             {saving ? "Đang lưu..." : "Lưu nháp"}
           </Button>
         </SheetFooter>
