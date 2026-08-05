@@ -25,10 +25,11 @@ const SYSTEM_DEPARTMENT_LEVELS: Array<{
   { code: 'CAT', name: 'Công an tỉnh', rank: 1 },
   { code: 'PHONG', name: 'Cấp phòng', rank: 2 },
   { code: 'DOI', name: 'Cấp đội', rank: 3 },
-  { code: 'XA', name: 'Cấp xã', rank: 4 },
-  { code: 'PHUONG', name: 'Cấp phường', rank: 5 },
-  { code: 'DON', name: 'Cấp đồn', rank: 6 },
-  { code: 'DACKHU', name: 'Đặc khu', rank: 7 },
+  { code: 'TO', name: 'Cấp tổ', rank: 4 },
+  { code: 'XA', name: 'Cấp xã', rank: 5 },
+  { code: 'PHUONG', name: 'Cấp phường', rank: 6 },
+  { code: 'DON', name: 'Cấp đồn', rank: 7 },
+  { code: 'DACKHU', name: 'Đặc khu', rank: 8 },
 ];
 
 @Injectable()

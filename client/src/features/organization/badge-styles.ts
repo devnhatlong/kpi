@@ -40,12 +40,14 @@ export function levelBadgeClass(rank?: number) {
     case 3:
       return CODE_PALETTE[1]; // DOI
     case 4:
-      return CODE_PALETTE[3]; // XA
+      return CODE_PALETTE[2]; // TO
     case 5:
-      return CODE_PALETTE[4]; // PHUONG
+      return CODE_PALETTE[3]; // XA
     case 6:
-      return CODE_PALETTE[5]; // DON
+      return CODE_PALETTE[4]; // PHUONG
     case 7:
+      return CODE_PALETTE[5]; // DON
+    case 8:
       return CODE_PALETTE[6]; // DK
     default:
       return CODE_PALETTE[hashSeed(String(rank)) % CODE_PALETTE.length];
