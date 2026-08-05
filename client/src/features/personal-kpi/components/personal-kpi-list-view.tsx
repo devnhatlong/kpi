@@ -40,6 +40,7 @@ import {
 } from "@/features/personal-kpi/types";
 import { kpiStatusPillClass } from "@/features/personal-kpi/status-styles";
 import { useListPagination } from "@/hooks/use-list-pagination";
+import { useServerTime } from "@/hooks/use-server-time";
 import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
 import { serverDayjs } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
@@ -79,7 +80,10 @@ export function PersonalKpiListView() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailDate, setDetailDate] = useState<string | null>(null);
 
-  const todayYmd = useMemo(() => serverDayjs().format("YYYY-MM-DD"), []);
+  // Sync giờ server để có re-render khi offset sẵn sàng, rồi tính lại mỗi lần
+  // render - tự đúng sau khi sync xong và khi sang ngày mới.
+  useServerTime();
+  const todayYmd = serverDayjs().format("YYYY-MM-DD");
 
   const listParams = useMemo(
     () => ({
