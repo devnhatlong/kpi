@@ -9,6 +9,7 @@ const USER_HEADERS = [
   "fullName",
   "email",
   "phone",
+  "position",
   "departmentCode",
   "roleCodes",
   "isActive",
@@ -132,21 +133,33 @@ export async function downloadUsersImportTemplate() {
   ws.addRow([...USER_HEADERS]);
   ws.getRow(1).font = { bold: true };
   ws.addRow([
-    "nv01",
-    "Nguyễn Văn A",
-    "a@example.com",
-    "0901234567",
+    "pv01",
+    "Phòng PV01",
+    "pv01a@lamdong.bca",
+    "0123456789",
+    "Trưởng phòng",
     "PV01",
-    "STAFF",
+    "UNIT_ADMIN",
     true,
   ]);
   ws.addRow([
-    "ql01",
-    "Trần Thị B",
-    "b@example.com",
-    "0912345678",
-    "PV01",
-    "MANAGER,STAFF",
+    "pv01.cntt",
+    "Đội Công nghệ thông tin",
+    "pv01.cntt@lamdong.bca",
+    "0123456789",
+    "Đội trưởng",
+    "CNTT",
+    "MANAGER",
+    true,
+  ]);
+  ws.addRow([
+    "pv01.nnlong",
+    "Nguyễn Nhật Long",
+    "pv01.nnlong@lamdong.bca",
+    "0123456789",
+    "Cán bộ",
+    "CNTT",
+    "STAFF",
     true,
   ]);
 
@@ -155,6 +168,7 @@ export async function downloadUsersImportTemplate() {
     { width: 24 },
     { width: 24 },
     { width: 14 },
+    { width: 18 },
     { width: 14 },
     { width: 18 },
     { width: 10 },
@@ -202,6 +216,9 @@ export async function parseUsersExcel(file: File): Promise<ImportUserRow[]> {
         : undefined,
       phone: col("phone")
         ? cellText(row.getCell(col("phone")!).value) || undefined
+        : undefined,
+      position: col("position")
+        ? cellText(row.getCell(col("position")!).value) || undefined
         : undefined,
       departmentCode: col("departmentcode")
         ? cellText(row.getCell(col("departmentcode")!).value) || undefined

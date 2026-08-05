@@ -1,13 +1,6 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { PlaceholderPage } from "@/components/common/placeholder-page";
-
-export const metadata: Metadata = {
-  title: "Hồ sơ",
-};
-
+/** Hồ sơ đã gộp vào tab "Hồ sơ" của trang Cài đặt. */
 export default function ProfilePage() {
-  return (
-    <PlaceholderPage title="Hồ sơ" description="Thông tin tài khoản và cá nhân." />
-  );
+  redirect("/settings");
 }

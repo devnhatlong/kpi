@@ -54,6 +54,7 @@ export function UserFormDialog({
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [position, setPosition] = useState("");
   const [departmentId, setDepartmentId] = useState(NONE);
   const [roleCodes, setRoleCodes] = useState<string[]>([]);
   const [isActive, setIsActive] = useState(true);
@@ -67,6 +68,7 @@ export function UserFormDialog({
       setFullName(edit.fullName ?? "");
       setEmail(edit.email ?? "");
       setPhone(edit.phone ?? "");
+      setPosition(edit.position ?? "");
       setDepartmentId(entityId(edit.departmentId) || NONE);
       setRoleCodes((edit.roleAssignments ?? []).map((r) => r.roleCode));
       setIsActive(edit.isActive);
@@ -76,6 +78,7 @@ export function UserFormDialog({
       setFullName("");
       setEmail("");
       setPhone("");
+      setPosition("");
       setDepartmentId(NONE);
       setRoleCodes([]);
       setIsActive(true);
@@ -135,6 +138,7 @@ export function UserFormDialog({
           fullName: fullName.trim() || undefined,
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
+          position: position.trim(),
           departmentId: departmentId === NONE ? null : departmentId,
           roleAssignments,
           isActive,
@@ -147,6 +151,7 @@ export function UserFormDialog({
           fullName: fullName.trim() || undefined,
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
+          position: position.trim() || undefined,
           departmentId: departmentId === NONE ? undefined : departmentId,
           roleAssignments,
           isActive,
@@ -224,9 +229,21 @@ export function UserFormDialog({
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="a@example.com"
+                placeholder="a@lamdong.bca"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="user-position">Chức vụ</Label>
+              <Input
+                id="user-position"
+                value={position}
+                onChange={(e) => setPosition(e.target.value)}
+                placeholder="Đội trưởng"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Đơn vị</Label>
               <SearchableSelect

@@ -164,6 +164,7 @@ export type UserAccount = {
   fullName?: string;
   email?: string;
   phone?: string;
+  position?: string;
   departmentId?: string | { _id?: string; id?: string; code?: string; name?: string };
   roleAssignments: RoleAssignment[];
   isActive: boolean;
@@ -178,6 +179,7 @@ export type CreateUserInput = {
   fullName?: string;
   email?: string;
   phone?: string;
+  position?: string;
   departmentId?: string;
   roleAssignments?: RoleAssignment[];
   isActive?: boolean;
@@ -188,6 +190,7 @@ export type UpdateUserInput = {
   fullName?: string;
   email?: string;
   phone?: string;
+  position?: string;
   departmentId?: string | null;
   roleAssignments?: RoleAssignment[];
   isActive?: boolean;
@@ -198,6 +201,7 @@ export type ImportUserRow = {
   fullName?: string;
   email?: string;
   phone?: string;
+  position?: string;
   departmentCode?: string;
   roleCodes?: string;
   isActive?: boolean;

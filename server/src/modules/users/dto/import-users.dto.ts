@@ -19,7 +19,7 @@ export class ImportUserRowDto {
   @IsString({ message: 'Họ tên phải là chuỗi.' })
   fullName?: string;
 
-  @ApiPropertyOptional({ example: 'a@example.com' })
+  @ApiPropertyOptional({ example: 'a@lamdong.bca' })
   @IsOptional()
   @IsString({ message: 'Email phải là chuỗi.' })
   email?: string;
@@ -28,6 +28,11 @@ export class ImportUserRowDto {
   @IsOptional()
   @IsString({ message: 'Số điện thoại phải là chuỗi.' })
   phone?: string;
+
+  @ApiPropertyOptional({ example: 'Đội trưởng' })
+  @IsOptional()
+  @IsString({ message: 'Chức vụ phải là chuỗi.' })
+  position?: string;
 
   @ApiPropertyOptional({
     example: 'PV01',

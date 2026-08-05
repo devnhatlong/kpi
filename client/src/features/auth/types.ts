@@ -43,6 +43,7 @@ export type AuthUser = {
   fullName?: string;
   email?: string;
   phone?: string;
+  position?: string;
   departmentId?: string;
   departmentName?: string | null;
   roleAssignments: AuthRoleAssignment[];

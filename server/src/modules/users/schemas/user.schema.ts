@@ -29,6 +29,10 @@ export class User {
     @Prop({ trim: true })
     phone?: string;
 
+    /** Chức vụ hiển thị trên hồ sơ, vd: "Đội trưởng". */
+    @Prop({ trim: true })
+    position?: string;
+
     /** Đơn vị công tác chính của người dùng. */
     @Prop({ type: Types.ObjectId, ref: 'Department', index: true })
     departmentId?: Types.ObjectId;

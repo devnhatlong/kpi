@@ -11,6 +11,8 @@ import { Model, Types } from 'mongoose';
 
 import { UsersService } from '../users/users.service';
 import { UserDocument } from '../users/schemas/user.schema';
+import { UpdateProfileDto } from '../users/dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import {
   RefreshToken,
   RefreshTokenDocument,
@@ -54,6 +56,30 @@ export class AuthsService {
       message: 'Lấy thông tin người dùng thành công.',
       data: profile,
     };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const profile = await this.usersService.updateOwnProfile(userId, dto);
+
+    return {
+      message: 'Cập nhật hồ sơ thành công.',
+      data: profile,
+    };
+  }
+
+  /**
+   * Đổi mật khẩu và thu hồi toàn bộ refresh token của user,
+   * kể cả phiên hiện tại - người dùng phải đăng nhập lại.
+   */
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    await this.usersService.changeOwnPassword(
+      userId,
+      dto.currentPassword,
+      dto.newPassword,
+    );
+    await this.logoutAll(userId);
+
+    return { message: 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại.' };
   }
 
   async refresh(refreshToken: string) {

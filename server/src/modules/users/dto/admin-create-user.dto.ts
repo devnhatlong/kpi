@@ -26,6 +26,9 @@ export class AdminCreateUserDto {
   @StringNotRequired('Số điện thoại', { example: '0901234567' })
   phone?: string;
 
+  @StringNotRequired('Chức vụ', { example: 'Đội trưởng' })
+  position?: string;
+
   @StringNotRequired('Mã đơn vị', { example: '507f1f77bcf86cd799439011' })
   departmentId?: string;
 

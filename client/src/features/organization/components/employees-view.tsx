@@ -1,7 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileSpreadsheet, Pencil, Plus, Search, Trash2, Users } from "lucide-react";
+import {
+  Download,
+  FileSpreadsheet,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Users,
+} from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 
@@ -48,6 +56,7 @@ import {
 } from "@/features/organization/api";
 import { ImportUsersDialog } from "@/features/organization/components/import-users-dialog";
 import { UserFormDialog } from "@/features/organization/components/user-form-dialog";
+import { downloadUsersImportTemplate } from "@/features/organization/excel";
 import type { UserAccount } from "@/features/organization/types";
 import { entityId } from "@/features/organization/types";
 import { useListPagination } from "@/hooks/use-list-pagination";
@@ -79,6 +88,18 @@ export function EmployeesView() {
   const [importOpen, setImportOpen] = useState(false);
   const [edit, setEdit] = useState<UserAccount | null>(null);
   const [deleting, setDeleting] = useState<UserAccount | null>(null);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+
+  const downloadTemplate = async () => {
+    setDownloadingTemplate(true);
+    try {
+      await downloadUsersImportTemplate();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không tải được file mẫu."));
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  };
 
   const openCreate = () => {
     setEdit(null);
@@ -120,6 +141,14 @@ export function EmployeesView() {
           </Breadcrumb>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            disabled={downloadingTemplate}
+            onClick={downloadTemplate}
+          >
+            <Download className="h-4 w-4" />
+            {downloadingTemplate ? "Đang tải..." : "Tải mẫu Excel"}
+          </Button>
           <Button variant="outline" onClick={() => setImportOpen(true)}>
             <FileSpreadsheet className="h-4 w-4" />
             Import Excel
@@ -150,6 +179,7 @@ export function EmployeesView() {
                   <TableHead className="w-14">STT</TableHead>
                   <TableHead className="w-[140px]">Tên đăng nhập</TableHead>
                   <TableHead>Họ tên</TableHead>
+                  <TableHead>Chức vụ</TableHead>
                   <TableHead>Đơn vị</TableHead>
                   <TableHead>Vai trò</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
@@ -159,13 +189,13 @@ export function EmployeesView() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : users.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                       <div className="inline-flex flex-col items-center gap-2">
                         <Users className="h-8 w-8 opacity-40" />
                         <span>Chưa có người dùng nào.</span>
@@ -185,6 +215,9 @@ export function EmployeesView() {
                         </TableCell>
                         <TableCell className="font-medium">
                           {user.fullName || "-"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {user.position || "-"}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {deptId ? deptNameById.get(deptId) || "-" : "-"}

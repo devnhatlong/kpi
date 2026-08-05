@@ -11,6 +11,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { AdminCreateUserDto } from './dto/admin-create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ImportUserRowDto } from './dto/import-users.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { RoleCode } from '@/common/enums/role-code.enum';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 import { buildPaginatedResponse } from '@/common/utils/pagination.util';
@@ -148,6 +149,7 @@ export class UsersService {
       fullName: dto.fullName?.trim() || undefined,
       email: dto.email?.trim().toLowerCase() || undefined,
       phone: dto.phone?.trim() || undefined,
+      position: dto.position?.trim() || undefined,
       departmentId,
       roleAssignments,
       isActive: dto.isActive ?? true,
@@ -232,6 +234,9 @@ export class UsersService {
     if (updateUserDto.phone !== undefined) {
       user.phone = updateUserDto.phone;
     }
+    if (updateUserDto.position !== undefined) {
+      user.set('position', updateUserDto.position.trim() || undefined);
+    }
     if (updateUserDto.departmentId !== undefined) {
       if (!updateUserDto.departmentId) {
         user.set('departmentId', undefined);
@@ -258,6 +263,58 @@ export class UsersService {
       message: 'Cập nhật người dùng thành công.',
       data: user.toSafeObject(),
     };
+  }
+
+  /** Người dùng tự cập nhật hồ sơ: chỉ các field cá nhân, không đụng vai trò/đơn vị/trạng thái. */
+  async updateOwnProfile(id: string, dto: UpdateProfileDto) {
+    const user = await this.requireUser(id, true);
+
+    if (dto.fullName !== undefined) {
+      user.set('fullName', dto.fullName.trim() || undefined);
+    }
+    if (dto.phone !== undefined) {
+      user.set('phone', dto.phone.trim() || undefined);
+    }
+    if (dto.position !== undefined) {
+      user.set('position', dto.position.trim() || undefined);
+    }
+    if (dto.email !== undefined) {
+      const email = dto.email.trim().toLowerCase();
+      if (email) {
+        const emailTaken = await this.userModel.exists({
+          email,
+          _id: { $ne: user._id },
+        });
+        if (emailTaken) {
+          throw new BadRequestException('Email đã được sử dụng.');
+        }
+        user.email = email;
+      } else {
+        user.set('email', undefined);
+      }
+    }
+
+    await user.save();
+
+    return this.findSafeProfile(id);
+  }
+
+  /** Đổi mật khẩu của chính mình, bắt buộc xác thực mật khẩu hiện tại. */
+  async changeOwnPassword(id: string, currentPassword: string, newPassword: string) {
+    const user = await this.requireUser(id, true);
+
+    const isCorrectPassword = await user.comparePassword(currentPassword);
+    if (!isCorrectPassword) {
+      throw new BadRequestException('Mật khẩu hiện tại không đúng.');
+    }
+    if (currentPassword === newPassword) {
+      throw new BadRequestException(
+        'Mật khẩu mới phải khác mật khẩu hiện tại.',
+      );
+    }
+
+    user.password = newPassword;
+    await user.save();
   }
 
   async remove(id: string) {
@@ -368,6 +425,7 @@ export class UsersService {
           fullName: row.fullName?.trim() || undefined,
           email: row.email?.trim().toLowerCase() || undefined,
           phone: row.phone?.trim() || undefined,
+          position: row.position?.trim() || undefined,
           departmentId,
           roleAssignments: roleCodes.map((roleCode) => ({
             roleCode,

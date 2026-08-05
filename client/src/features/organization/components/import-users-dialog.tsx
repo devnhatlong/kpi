@@ -101,9 +101,12 @@ export function ImportUsersDialog({
           <DialogDescription>
             Cột bắt buộc: <code>username</code>. Tuỳ chọn:{" "}
             <code>fullName</code>, <code>email</code>, <code>phone</code>,{" "}
-            <code>departmentCode</code>, <code>roleCodes</code> (cách nhau bởi dấu
-            phẩy), <code>isActive</code>. Mật khẩu mặc định khi import:{" "}
-            <code>123456</code>. Username đã tồn tại sẽ được bỏ qua.
+            <code>position</code>, <code>departmentCode</code>,{" "}
+            <code>roleCodes</code> (cách nhau bởi dấu phẩy), <code>isActive</code>.
+            <br />
+            <code>departmentCode</code> điền mã <strong>đơn vị trực tiếp</strong>: ai
+            thuộc đội thì điền mã đội, phòng cấp trên hệ thống tự suy ra theo cây đơn
+            vị.
           </DialogDescription>
         </DialogHeader>
 
@@ -142,6 +145,7 @@ export function ImportUsersDialog({
                   <TableHead className="w-12">#</TableHead>
                   <TableHead>Username</TableHead>
                   <TableHead>Họ tên</TableHead>
+                  <TableHead>Chức vụ</TableHead>
                   <TableHead>Đơn vị</TableHead>
                   <TableHead>Vai trò</TableHead>
                 </TableRow>
@@ -152,6 +156,7 @@ export function ImportUsersDialog({
                     <TableCell>{i + 1}</TableCell>
                     <TableCell className="font-medium">{row.username}</TableCell>
                     <TableCell>{row.fullName || "-"}</TableCell>
+                    <TableCell>{row.position || "-"}</TableCell>
                     <TableCell>{row.departmentCode || "-"}</TableCell>
                     <TableCell>{row.roleCodes || "-"}</TableCell>
                   </TableRow>
