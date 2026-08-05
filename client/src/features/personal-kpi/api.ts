@@ -78,6 +78,17 @@ export type PersonalKpiDailyReport = {
   lastSentAt?: string | null;
 };
 
+export type PersonalKpiDashboardSummary = {
+  today: string;
+  streakDays: number;
+  weekReportedDays: number;
+  weekWindowDays: number;
+  todayTaskCount: number;
+  todayDraftCount: number;
+  pendingSentCount: number;
+  rejectedCount: number;
+};
+
 export type PersonalKpiInboxReport = {
   ownerId: string;
   ownerName: string;
@@ -231,6 +242,7 @@ export type PersonalKpiMineQuery = {
 
 export const personalKpiKeys = {
   all: ["personal-kpi"] as const,
+  summary: ["personal-kpi", "summary"] as const,
   reports: (params: PersonalKpiReportsQuery) =>
     [
       "personal-kpi",
@@ -289,6 +301,12 @@ export async function fetchPersonalKpiReports(params: PersonalKpiReportsQuery) {
         status: params.status || undefined,
       }),
     }),
+  );
+}
+
+export async function fetchPersonalKpiSummary() {
+  return unwrapData(
+    api.get<ApiResponse<PersonalKpiDashboardSummary>>("/personal-kpi/summary"),
   );
 }
 

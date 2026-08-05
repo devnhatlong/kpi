@@ -45,7 +45,7 @@ function collectNavHrefs(items: NavItem[]): string[] {
   return hrefs;
 }
 
-/** Active theo href khớp dài nhất — tránh /kpi/personal sáng khi đang ở /kpi/received. */
+/** Active theo href khớp dài nhất - tránh /kpi/personal sáng khi đang ở /kpi/received. */
 function isPathActive(pathname: string, href: string, allHrefs: string[]) {
   if (href === "/dashboard") {
     return pathname === "/dashboard";

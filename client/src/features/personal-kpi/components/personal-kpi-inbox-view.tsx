@@ -31,12 +31,14 @@ import {
   type PersonalKpiInboxReport,
 } from "@/features/personal-kpi/api";
 import { PersonalInboxDetailDrawer } from "@/features/personal-kpi/components/personal-inbox-detail-drawer";
+import { kpiStatusPillClass } from "@/features/personal-kpi/status-styles";
 import {
   PERSONAL_KPI_STATUS_LABEL,
   type PersonalKpiStatus,
 } from "@/features/personal-kpi/types";
 import { useListPagination } from "@/hooks/use-list-pagination";
 import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
+import { cn } from "@/lib/utils";
 
 const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: "ALL", label: "Tất cả trạng thái" },
@@ -233,7 +235,7 @@ export function PersonalKpiInboxView() {
                     </TableCell>
                     <TableCell>
                       <div className="font-medium">
-                        {report.ownerName || "—"}
+                        {report.ownerName || "-"}
                       </div>
                       {report.ownerUsername ? (
                         <div className="text-xs text-muted-foreground">
@@ -247,17 +249,26 @@ export function PersonalKpiInboxView() {
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {report.sentCount > 0 ? (
-                          <Badge variant="outline">
+                          <Badge
+                            variant="secondary"
+                            className={cn(kpiStatusPillClass.SENT)}
+                          >
                             Đã gửi {report.sentCount}
                           </Badge>
                         ) : null}
                         {report.rejectedCount > 0 ? (
-                          <Badge variant="outline">
+                          <Badge
+                            variant="secondary"
+                            className={cn(kpiStatusPillClass.REJECTED)}
+                          >
                             Trả lại {report.rejectedCount}
                           </Badge>
                         ) : null}
                         {report.completedCount > 0 ? (
-                          <Badge variant="outline">
+                          <Badge
+                            variant="secondary"
+                            className={cn(kpiStatusPillClass.COMPLETED)}
+                          >
                             HT {report.completedCount}
                           </Badge>
                         ) : null}

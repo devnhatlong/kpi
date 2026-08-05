@@ -1,13 +1,28 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ClipboardList,
+  FolderTree,
+  Inbox,
+  Info,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/common/searchable-select";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Label } from "@/components/ui/label";
 import {
   Sheet,
   SheetContent,
@@ -45,6 +60,7 @@ import {
   type PersonalTaskDraft,
 } from "@/features/personal-kpi/types";
 import { getApiErrorMessage } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 
 function workContentAxisId(item: WorkContent): string {
   if (!item.axisId) return "";
@@ -52,8 +68,10 @@ function workContentAxisId(item: WorkContent): string {
 }
 
 function catalogOptionLabel(item: { name: string; description?: string }) {
+  const name = item.name.trim();
   const description = item.description?.trim();
-  return description ? `${item.name} (${description})` : item.name;
+  if (!description || description === name) return name;
+  return `${name} (${description})`;
 }
 
 function contentsForAxisId(workContents: WorkContent[], axisId: string) {
@@ -62,6 +80,8 @@ function contentsForAxisId(workContents: WorkContent[], axisId: string) {
     .filter((item) => workContentAxisId(item) === axisId)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
 }
+
+type WizardStep = "axes" | "contents";
 
 type PersonalTaskDrawerProps = {
   open: boolean;
@@ -113,11 +133,21 @@ export function PersonalTaskDrawer({
   }, [open, contentsError]);
 
   const [blocks, setBlocks] = useState<DraftAxisBlock[]>([]);
+  const [step, setStep] = useState<WizardStep>("axes");
   const [saving, setSaving] = useState(false);
+  const [collapsedAxes, setCollapsedAxes] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [collapsedContents, setCollapsedContents] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   useEffect(() => {
     if (!open) return;
+    setCollapsedAxes(new Set());
+    setCollapsedContents(new Set());
     if (edit) {
+      setStep("contents");
       setBlocks([
         {
           key: `axis-edit-${edit.id}`,
@@ -138,9 +168,27 @@ export function PersonalTaskDrawer({
       ]);
       return;
     }
-    // Không mặc định sẵn trục - thêm đúng những trục cần dùng
+    setStep("axes");
     setBlocks([]);
   }, [open, edit]);
+
+  const toggleAxisCollapsed = (axisKey: string) => {
+    setCollapsedAxes((prev) => {
+      const next = new Set(prev);
+      if (next.has(axisKey)) next.delete(axisKey);
+      else next.add(axisKey);
+      return next;
+    });
+  };
+
+  const toggleContentCollapsed = (contentKey: string) => {
+    setCollapsedContents((prev) => {
+      const next = new Set(prev);
+      if (next.has(contentKey)) next.delete(contentKey);
+      else next.add(contentKey);
+      return next;
+    });
+  };
 
   const axisById = useMemo(() => {
     const map = new Map<string, Axis>();
@@ -153,6 +201,17 @@ export function PersonalTaskDrawer({
     for (const item of workContents) map.set(entityId(item), item);
     return map;
   }, [workContents]);
+
+  const selectedAxisCount = blocks.filter((b) => b.axisId).length;
+  const taskCount = blocks.reduce(
+    (sum, block) =>
+      sum +
+      block.contents.reduce(
+        (inner, content) => inner + content.tasks.length,
+        0,
+      ),
+    0,
+  );
 
   const addAxisBlock = () => {
     setBlocks((prev) => [...prev, createEmptyAxisBlock()]);
@@ -299,6 +358,23 @@ export function PersonalTaskDrawer({
     );
   };
 
+  const goToContentsStep = () => {
+    if (blocks.length === 0) {
+      toast.error("Thêm ít nhất một trục trước khi tiếp tục.");
+      return;
+    }
+    const ids = blocks.map((b) => b.axisId);
+    if (ids.some((id) => !id)) {
+      toast.error("Vui lòng chọn trục cho mọi dòng đã thêm.");
+      return;
+    }
+    if (new Set(ids).size !== ids.length) {
+      toast.error("Mỗi trục chỉ được chọn một lần.");
+      return;
+    }
+    setStep("contents");
+  };
+
   const submit = async () => {
     if (blocks.length === 0) {
       toast.error("Chưa có trục nào. Thêm trục nếu cần lưu nhiệm vụ.");
@@ -379,6 +455,7 @@ export function PersonalTaskDrawer({
 
   const loading = loadingAxes || loadingContents;
   const isEdit = !!edit;
+  const showAxesStep = !isEdit && step === "axes";
   let contentStt = 0;
 
   return (
@@ -388,359 +465,622 @@ export function PersonalTaskDrawer({
         className="flex w-[96vw] max-w-[96vw] flex-col gap-0 overflow-hidden sm:max-w-[96vw]"
       >
         <SheetHeader className="border-b pb-4 text-left">
-          <SheetTitle>{isEdit ? "Sửa nháp" : "Tạo nháp"}</SheetTitle>
+          <SheetTitle>
+            {isEdit ? "Sửa nháp báo cáo KPI" : "Tạo nháp báo cáo KPI"}
+          </SheetTitle>
           <SheetDescription>
-            Chỉ thêm đúng những trục / nội dung cần dùng (có thể một phần hoặc
-            đủ). Lưu nháp xong mới gửi từ danh sách.
+            Chỉ thêm đúng những trục / nội dung cần dùng. Lưu nháp xong mới gửi
+            từ danh sách.
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 space-y-4 overflow-auto py-4">
-          {blocks.length === 0 && !isEdit ? (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-10 text-center">
-              <p className="text-sm text-muted-foreground">
-                Chưa có trục nào. Thêm trục khi có nhiệm vụ thuộc trục đó.
-              </p>
-              <Button
+        {!isEdit ? (
+          <div className="border-b px-1 py-4">
+            <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 sm:gap-4 sm:px-5">
+              <button
                 type="button"
-                variant="outline"
-                onClick={addAxisBlock}
-                disabled={saving || loading}
+                onClick={() => setStep("axes")}
+                className="flex min-w-0 flex-1 items-start gap-3 text-left outline-none"
               >
-                <Plus className="h-4 w-4" />
-                Thêm trục
-              </Button>
-            </div>
-          ) : null}
+                <span
+                  className={cn(
+                    "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold tabular-nums",
+                    step === "axes" || step === "contents"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {step === "contents" ? (
+                    <Check className="size-4" />
+                  ) : (
+                    1
+                  )}
+                </span>
+                <span className="min-w-0">
+                  <span
+                    className={cn(
+                      "flex items-center gap-1.5 text-sm font-semibold",
+                      step === "axes" ? "text-primary" : "text-foreground",
+                    )}
+                  >
+                    <FolderTree className="size-3.5 shrink-0 opacity-80" />
+                    Chọn trục
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Nhóm lĩnh vực công tác ({selectedAxisCount})
+                  </span>
+                </span>
+              </button>
 
-          {blocks.map((block) => {
-            const axis = axisById.get(block.axisId);
-            const availableContents = contentsForAxisId(
-              workContents,
-              block.axisId,
-            );
-            const usedContentIds = new Set(
-              block.contents
-                .map((c) => c.workContentId)
-                .filter(Boolean),
-            );
-
-            return (
               <div
-                key={block.key}
-                className="space-y-3 rounded-lg border bg-card p-3"
+                className={cn(
+                  "hidden h-px min-w-8 flex-1 sm:block",
+                  step === "contents" ? "bg-primary" : "bg-border",
+                )}
+                aria-hidden
+              />
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (step === "axes") goToContentsStep();
+                }}
+                className="flex min-w-0 flex-1 items-start gap-3 text-left outline-none"
               >
-                <div className="flex flex-wrap items-end gap-3">
-                  <div className="min-w-[240px] flex-1 space-y-2">
-                    <Label>
-                      Trục <span className="text-destructive">*</span>
-                    </Label>
-                    <SearchableSelect
-                      value={block.axisId}
-                      onValueChange={(value) => setAxisId(block.key, value)}
-                      disabled={loading || saving || isEdit}
-                      placeholder="Chọn trục"
-                      searchPlaceholder="Tìm trục..."
-                      emptyText="Không tìm thấy trục."
-                      className="z-[100]"
-                      options={axes.map((item) => ({
-                        value: entityId(item),
-                        label: catalogOptionLabel(item),
-                        keywords: item.code,
-                      }))}
-                    />
-                  </div>
-                  {!isEdit ? (
-                    <div className="flex h-9 items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => addContentBlock(block.key)}
-                        disabled={saving || !block.axisId}
-                      >
-                        <Plus className="h-4 w-4" />
-                        Thêm nội dung
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => removeAxisBlock(block.key)}
-                        disabled={saving}
-                        aria-label="Xoá trục"
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  ) : null}
+                <span
+                  className={cn(
+                    "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold tabular-nums",
+                    step === "contents"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  2
+                </span>
+                <span className="min-w-0">
+                  <span
+                    className={cn(
+                      "flex items-center gap-1.5 text-sm font-semibold",
+                      step === "contents"
+                        ? "text-primary"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    <ClipboardList className="size-3.5 shrink-0 opacity-80" />
+                    Nội dung công việc
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Nhập nhiệm vụ chi tiết
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="flex-1 space-y-4 overflow-auto py-4">
+          {showAxesStep ? (
+            <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
+              <div className="flex items-start gap-2 rounded-md border border-primary/20 bg-primary/10 px-3 py-2.5 text-sm text-primary">
+                <Info className="mt-0.5 size-4 shrink-0" />
+                <p>
+                  Chọn các trục công tác sẽ báo cáo. Mỗi trục chỉ chọn một lần.
+                </p>
+              </div>
+
+              {blocks.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-card p-10 text-center">
+                  <Inbox className="size-8 text-muted-foreground/50" strokeWidth={1.5} />
+                  <p className="text-sm text-muted-foreground">
+                    Chưa có trục nào. Thêm trục khi có nhiệm vụ thuộc trục đó.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-background"
+                    onClick={addAxisBlock}
+                    disabled={saving || loading}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Thêm trục
+                  </Button>
                 </div>
-
-                {block.axisId && block.contents.length === 0 && !isEdit ? (
-                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    Trục này chưa có nội dung. Bấm &quot;Thêm nội dung&quot; nếu
-                    cần nhập nhiệm vụ.
-                  </div>
-                ) : null}
-
-                {block.contents.map((content) => {
-                  contentStt += 1;
-                  const stt = contentStt;
-                  const selectedContent = contentById.get(
-                    content.workContentId,
-                  );
-                  const contentOptions = availableContents.filter(
-                    (item) =>
-                      entityId(item) === content.workContentId ||
-                      !usedContentIds.has(entityId(item)),
-                  );
-
-                  return (
-                    <div
-                      key={content.key}
-                      className="space-y-2 rounded-md border border-dashed p-3"
-                    >
-                      <div className="flex flex-wrap items-end gap-3">
-                        <div className="min-w-[280px] flex-1 space-y-2">
+              ) : (
+                <div className="space-y-3">
+                  {blocks.map((block, index) => {
+                    const usedByOthers = new Set(
+                      blocks
+                        .filter((b) => b.key !== block.key && b.axisId)
+                        .map((b) => b.axisId),
+                    );
+                    return (
+                      <div
+                        key={block.key}
+                        className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3"
+                      >
+                        <span className="mb-1 flex size-8 shrink-0 items-center justify-center rounded-md bg-sky-50 text-sm font-semibold text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-[240px] flex-1 space-y-2">
                           <Label>
-                            Nội dung công việc{" "}
-                            <span className="text-destructive">*</span>
+                            Trục <span className="text-destructive">*</span>
                           </Label>
                           <SearchableSelect
-                            value={content.workContentId}
+                            value={block.axisId}
                             onValueChange={(value) =>
-                              setWorkContentId(block.key, content.key, value)
+                              setAxisId(block.key, value)
                             }
-                            disabled={
-                              !block.axisId || loading || saving || isEdit
-                            }
-                            placeholder={
-                              block.axisId
-                                ? "Chọn nội dung công việc"
-                                : "Chọn trục trước"
-                            }
-                            searchPlaceholder="Tìm nội dung công việc..."
-                            emptyText="Không tìm thấy nội dung."
+                            disabled={loading || saving}
+                            placeholder="Chọn trục"
+                            searchPlaceholder="Tìm trục..."
+                            emptyText="Không tìm thấy trục."
                             className="z-[100]"
-                            options={contentOptions.map((item) => ({
-                              value: entityId(item),
-                              label: catalogOptionLabel(item),
-                              keywords: item.code,
-                            }))}
+                            options={axes
+                              .filter(
+                                (item) =>
+                                  entityId(item) === block.axisId ||
+                                  !usedByOthers.has(entityId(item)),
+                              )
+                              .map((item) => ({
+                                value: entityId(item),
+                                label: catalogOptionLabel(item),
+                                keywords: item.code,
+                              }))}
                           />
-                          {block.axisId && availableContents.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">
-                              Trục này chưa có nội dung công việc nào.
-                            </p>
-                          ) : null}
                         </div>
-                        {!isEdit ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => removeAxisBlock(block.key)}
+                          disabled={saving}
+                          aria-label="Xoá trục"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-background"
+                    onClick={addAxisBlock}
+                    disabled={saving || loading}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Thêm trục
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {blocks.map((block, axisIndex) => {
+                const axis = axisById.get(block.axisId);
+                const availableContents = contentsForAxisId(
+                  workContents,
+                  block.axisId,
+                );
+                const usedContentIds = new Set(
+                  block.contents
+                    .map((c) => c.workContentId)
+                    .filter(Boolean),
+                );
+                const axisLabel = axis
+                  ? catalogOptionLabel(axis)
+                  : `Trục ${axisIndex + 1}`;
+
+                return (
+                  <Collapsible
+                    key={block.key}
+                    open={!collapsedAxes.has(block.key)}
+                    onOpenChange={() => toggleAxisCollapsed(block.key)}
+                    className="rounded-xl border bg-card shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <CollapsibleTrigger asChild>
                           <Button
                             type="button"
                             size="icon"
                             variant="ghost"
-                            onClick={() =>
-                              removeContentBlock(block.key, content.key)
+                            className="size-8 shrink-0"
+                            aria-label={
+                              collapsedAxes.has(block.key)
+                                ? "Mở trục"
+                                : "Thu gọn trục"
                             }
-                            disabled={saving}
-                            aria-label="Xoá nội dung"
                           >
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                            <ChevronDown
+                              className={cn(
+                                "size-4 transition-transform",
+                                collapsedAxes.has(block.key) && "-rotate-90",
+                              )}
+                            />
                           </Button>
-                        ) : null}
+                        </CollapsibleTrigger>
+                        <Badge
+                          variant="secondary"
+                          className="max-w-full truncate border-transparent bg-primary/10 px-2.5 py-1 text-sm font-medium text-primary"
+                        >
+                          Trục {axisIndex + 1}: {axisLabel}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {block.contents.length} nội dung
+                        </span>
                       </div>
-
-                      {selectedContent ? (
-                        <div className="overflow-auto rounded-md border">
-                          <Table className="min-w-[1800px]">
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="sticky left-0 z-20 w-12 bg-muted/50 text-center align-middle text-sm font-medium"
-                                >
-                                  STT
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[220px] align-middle text-sm font-medium"
-                                >
-                                  Nội dung công việc
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[200px] align-middle text-sm font-medium"
-                                >
-                                  Nhiệm vụ
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[140px] align-middle text-sm font-medium"
-                                >
-                                  Thời hạn hoàn thành
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[160px] align-middle text-sm font-medium"
-                                >
-                                  Sản phẩm dự kiến
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[100px] align-middle text-sm font-medium"
-                                >
-                                  Điểm chuẩn
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[140px] align-middle text-sm font-medium"
-                                >
-                                  Đơn vị thực hiện
-                                </TableHead>
-                                <TableHead
-                                  colSpan={4}
-                                  className="text-center text-sm font-medium after:hidden"
-                                >
-                                  Kết quả theo dõi
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[160px] align-middle text-sm font-medium before:absolute before:left-0 before:top-1/2 before:h-4 before:w-px before:-translate-y-1/2 before:bg-border"
-                                >
-                                  Đề nghị khác (căn cứ)
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[200px] align-middle text-sm font-medium"
-                                >
-                                  Tài liệu kiểm chứng
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="sticky right-0 z-20 w-14 bg-muted/50"
-                                />
-                              </TableRow>
-                              <TableRow>
-                                <TableHead className="min-w-[100px] text-center text-sm font-medium">
-                                  KPI tiến độ %
-                                </TableHead>
-                                <TableHead className="min-w-[110px] text-center text-sm font-medium">
-                                  Điểm tự chấm
-                                </TableHead>
-                                <TableHead className="min-w-[100px] text-center text-sm font-medium">
-                                  KPI chất lượng %
-                                </TableHead>
-                                <TableHead className="min-w-[110px] text-center text-sm font-medium after:hidden">
-                                  Điểm tự chấm
-                                </TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              <TableRow className="bg-muted/40 hover:bg-muted/40">
-                                <TableCell
-                                  colSpan={14}
-                                  className="py-2 text-sm font-semibold"
-                                >
-                                  {axis
-                                    ? catalogOptionLabel(axis)
-                                    : "Trục"}
-                                  {" - "}
-                                  {catalogOptionLabel(selectedContent)}
-                                </TableCell>
-                              </TableRow>
-                              {content.tasks.map((task, taskIndex) => (
-                                <PersonalTaskForm
-                                  key={task.key}
-                                  index={stt}
-                                  taskNumber={taskIndex + 1}
-                                  task={task}
-                                  canRemove={
-                                    !isEdit && content.tasks.length > 1
-                                  }
-                                  showWorkContentCell={taskIndex === 0}
-                                  showSttCell={taskIndex === 0}
-                                  workContentLabel={catalogOptionLabel(
-                                    selectedContent,
-                                  )}
-                                  workContentRowSpan={content.tasks.length}
-                                  onChange={(patch) =>
-                                    updateTask(
-                                      block.key,
-                                      content.key,
-                                      task.key,
-                                      patch,
-                                    )
-                                  }
-                                  onRemove={() =>
-                                    removeTask(
-                                      block.key,
-                                      content.key,
-                                      task.key,
-                                    )
-                                  }
-                                />
-                              ))}
-                              {!isEdit ? (
-                                <TableRow className="hover:bg-transparent">
-                                  <TableCell colSpan={14} className="py-2">
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        addTask(block.key, content.key)
-                                      }
-                                      disabled={saving}
-                                    >
-                                      <Plus className="h-4 w-4" />
-                                      Thêm nhiệm vụ
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ) : null}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      ) : (
-                        <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-                          Chọn nội dung công việc để hiện bảng nhiệm vụ.
-                        </div>
-                      )}
+                      {!isEdit ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="bg-background"
+                          onClick={() => addContentBlock(block.key)}
+                          disabled={saving || !block.axisId}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Thêm nội dung
+                        </Button>
+                      ) : null}
                     </div>
-                  );
-                })}
-              </div>
-            );
-          })}
 
-          {!isEdit && blocks.length > 0 ? (
+                    <CollapsibleContent className="space-y-3 border-t px-4 pb-4 pt-3">
+                      {block.contents.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-muted/20 p-10 text-center">
+                          <Inbox
+                            className="size-8 text-muted-foreground/45"
+                            strokeWidth={1.5}
+                          />
+                          <p className="text-sm text-muted-foreground">
+                            Chưa có nội dung công việc nào cho trục này
+                          </p>
+                        </div>
+                      ) : null}
+
+                      {block.contents.map((content) => {
+                        contentStt += 1;
+                        const stt = contentStt;
+                        const selectedContent = contentById.get(
+                          content.workContentId,
+                        );
+                        const contentOptions = availableContents.filter(
+                          (item) =>
+                            entityId(item) === content.workContentId ||
+                            !usedContentIds.has(entityId(item)),
+                        );
+                        const contentCollapsed = collapsedContents.has(
+                          content.key,
+                        );
+                        const contentTitle = selectedContent
+                          ? catalogOptionLabel(selectedContent)
+                          : "Chưa chọn nội dung";
+
+                        return (
+                          <Collapsible
+                            key={content.key}
+                            open={!contentCollapsed}
+                            onOpenChange={() =>
+                              toggleContentCollapsed(content.key)
+                            }
+                            className="rounded-lg border bg-muted/15"
+                          >
+                            <div className="flex flex-wrap items-end gap-3 p-3">
+                              <div className="flex min-w-0 flex-1 items-end gap-2">
+                                <CollapsibleTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    className="mb-0.5 size-8 shrink-0"
+                                    aria-label={
+                                      contentCollapsed
+                                        ? "Mở nội dung"
+                                        : "Thu gọn nội dung"
+                                    }
+                                  >
+                                    <ChevronDown
+                                      className={cn(
+                                        "size-4 transition-transform",
+                                        contentCollapsed && "-rotate-90",
+                                      )}
+                                    />
+                                  </Button>
+                                </CollapsibleTrigger>
+                                <div className="min-w-[240px] flex-1 space-y-2">
+                                  <Label>
+                                    Tiêu chí / nội dung công việc{" "}
+                                    <span className="text-destructive">*</span>
+                                  </Label>
+                                  <SearchableSelect
+                                    value={content.workContentId}
+                                    onValueChange={(value) =>
+                                      setWorkContentId(
+                                        block.key,
+                                        content.key,
+                                        value,
+                                      )
+                                    }
+                                    disabled={
+                                      !block.axisId ||
+                                      loading ||
+                                      saving ||
+                                      isEdit
+                                    }
+                                    placeholder={
+                                      block.axisId
+                                        ? "Chọn tiêu chí / nội dung công việc"
+                                        : "Chọn trục trước"
+                                    }
+                                    searchPlaceholder="Tìm nội dung công việc..."
+                                    emptyText="Không tìm thấy nội dung."
+                                    className="z-[100]"
+                                    options={contentOptions.map((item) => ({
+                                      value: entityId(item),
+                                      label: catalogOptionLabel(item),
+                                      keywords: item.code,
+                                    }))}
+                                  />
+                                  {block.axisId &&
+                                  availableContents.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">
+                                      Trục này chưa có nội dung công việc nào.
+                                    </p>
+                                  ) : null}
+                                </div>
+                              </div>
+                              {!isEdit ? (
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    removeContentBlock(block.key, content.key)
+                                  }
+                                  disabled={saving}
+                                  aria-label="Xoá nội dung"
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              ) : null}
+                            </div>
+
+                            {contentCollapsed ? (
+                              <p className="border-t px-3 py-2 text-xs text-muted-foreground">
+                                Đã thu gọn · {contentTitle} ·{" "}
+                                {content.tasks.length} nhiệm vụ
+                              </p>
+                            ) : null}
+
+                            <CollapsibleContent className="space-y-3 border-t px-3 pb-3 pt-3">
+                              {selectedContent ? (
+                                <div className="overflow-auto rounded-md border bg-card">
+                                  <Table className="min-w-[1800px]">
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead
+                                          rowSpan={2}
+                                          className="sticky left-0 z-20 w-12 bg-muted/50 text-center align-middle text-sm font-medium"
+                                        >
+                                          STT
+                                        </TableHead>
+                                        <TableHead
+                                          rowSpan={2}
+                                          className="min-w-[220px] align-middle text-sm font-medium"
+                                        >
+                                          Nội dung công việc
+                                        </TableHead>
+                                        <TableHead
+                                          rowSpan={2}
+                                          className="min-w-[200px] align-middle text-sm font-medium"
+                                        >
+                                          Nhiệm vụ
+                                        </TableHead>
+                                        <TableHead
+                                          rowSpan={2}
+                                          className="min-w-[140px] align-middle text-sm font-medium"
+                                        >
+                                          Thời hạn hoàn thành
+                                        </TableHead>
+                                        <TableHead
+                                          rowSpan={2}
+                                          className="min-w-[160px] align-middle text-sm font-medium"
+                                        >
+                                          Sản phẩm dự kiến
+                                        </TableHead>
+                                        <TableHead
+                                          rowSpan={2}
+                                          className="min-w-[100px] align-middle text-sm font-medium"
+                                        >
+                                          Điểm chuẩn
+                                        </TableHead>
+                                        <TableHead
+                                          rowSpan={2}
+                                          className="min-w-[140px] align-middle text-sm font-medium"
+                                        >
+                                          Đơn vị thực hiện
+                                        </TableHead>
+                                        <TableHead
+                                          colSpan={4}
+                                          className="text-center text-sm font-medium after:hidden"
+                                        >
+                                          Kết quả theo dõi
+                                        </TableHead>
+                                        <TableHead
+                                          rowSpan={2}
+                                          className="min-w-[160px] align-middle text-sm font-medium before:absolute before:left-0 before:top-1/2 before:h-4 before:w-px before:-translate-y-1/2 before:bg-border"
+                                        >
+                                          Đề nghị khác (căn cứ)
+                                        </TableHead>
+                                        <TableHead
+                                          rowSpan={2}
+                                          className="min-w-[200px] align-middle text-sm font-medium"
+                                        >
+                                          Tài liệu kiểm chứng
+                                        </TableHead>
+                                        <TableHead
+                                          rowSpan={2}
+                                          className="sticky right-0 z-20 w-14 bg-muted/50"
+                                        />
+                                      </TableRow>
+                                      <TableRow>
+                                        <TableHead className="min-w-[100px] text-center text-sm font-medium">
+                                          KPI tiến độ %
+                                        </TableHead>
+                                        <TableHead className="min-w-[110px] text-center text-sm font-medium">
+                                          Điểm tự chấm
+                                        </TableHead>
+                                        <TableHead className="min-w-[100px] text-center text-sm font-medium">
+                                          KPI chất lượng %
+                                        </TableHead>
+                                        <TableHead className="min-w-[110px] text-center text-sm font-medium after:hidden">
+                                          Điểm tự chấm
+                                        </TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      <TableRow className="bg-muted/40 hover:bg-muted/40">
+                                        <TableCell
+                                          colSpan={14}
+                                          className="py-2 text-sm font-semibold"
+                                        >
+                                          {axis
+                                            ? catalogOptionLabel(axis)
+                                            : "Trục"}
+                                          {" - "}
+                                          {catalogOptionLabel(selectedContent)}
+                                        </TableCell>
+                                      </TableRow>
+                                      {content.tasks.map((task, taskIndex) => (
+                                        <PersonalTaskForm
+                                          key={task.key}
+                                          index={stt}
+                                          taskNumber={taskIndex + 1}
+                                          task={task}
+                                          canRemove={
+                                            !isEdit && content.tasks.length > 1
+                                          }
+                                          showWorkContentCell={taskIndex === 0}
+                                          showSttCell={taskIndex === 0}
+                                          workContentLabel={catalogOptionLabel(
+                                            selectedContent,
+                                          )}
+                                          workContentRowSpan={
+                                            content.tasks.length
+                                          }
+                                          onChange={(patch) =>
+                                            updateTask(
+                                              block.key,
+                                              content.key,
+                                              task.key,
+                                              patch,
+                                            )
+                                          }
+                                          onRemove={() =>
+                                            removeTask(
+                                              block.key,
+                                              content.key,
+                                              task.key,
+                                            )
+                                          }
+                                        />
+                                      ))}
+                                      {!isEdit ? (
+                                        <TableRow className="hover:bg-transparent">
+                                          <TableCell
+                                            colSpan={14}
+                                            className="py-2"
+                                          >
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              variant="outline"
+                                              className="bg-background"
+                                              onClick={() =>
+                                                addTask(block.key, content.key)
+                                              }
+                                              disabled={saving}
+                                            >
+                                              <Plus className="h-4 w-4" />
+                                              Thêm nhiệm vụ
+                                            </Button>
+                                          </TableCell>
+                                        </TableRow>
+                                      ) : null}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              ) : (
+                                <div className="rounded-md border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">
+                                  Chọn nội dung công việc để hiện bảng nhiệm vụ.
+                                </div>
+                              )}
+                            </CollapsibleContent>
+                          </Collapsible>
+                        );
+                      })}
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <SheetFooter className="flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-1.5">
+            <Badge variant="outline" className="font-normal">
+              {selectedAxisCount} trục
+            </Badge>
+            <Badge variant="outline" className="font-normal">
+              {taskCount} nhiệm vụ
+            </Badge>
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-2">
             <Button
               type="button"
               variant="outline"
-              onClick={addAxisBlock}
-              disabled={saving || loading}
+              className="bg-background"
+              onClick={() => onOpenChange(false)}
+              disabled={saving}
             >
-              <Plus className="h-4 w-4" />
-              Thêm trục
+              Huỷ
             </Button>
-          ) : null}
-        </div>
 
-        <SheetFooter className="border-t pt-4 sm:space-x-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={saving}
-          >
-            Huỷ
-          </Button>
-          <Button
-            type="button"
-            onClick={() => void submit()}
-            disabled={saving || loading}
-          >
-            {saving ? "Đang lưu..." : "Lưu nháp"}
-          </Button>
+            {showAxesStep ? (
+              <Button
+                type="button"
+                onClick={goToContentsStep}
+                disabled={saving || loading}
+              >
+                Tiếp tục
+              </Button>
+            ) : (
+              <>
+                {!isEdit ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-background"
+                    onClick={() => setStep("axes")}
+                    disabled={saving}
+                  >
+                    Quay lại
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  onClick={() => void submit()}
+                  disabled={saving || loading}
+                >
+                  <Check className="h-4 w-4" />
+                  {saving ? "Đang lưu..." : "Lưu nháp"}
+                </Button>
+              </>
+            )}
+          </div>
         </SheetFooter>
       </SheetContent>
     </Sheet>

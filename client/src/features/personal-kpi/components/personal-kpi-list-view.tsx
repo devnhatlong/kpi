@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ClipboardList, Eye, Plus, Search } from "lucide-react";
+import { ClipboardList, Eye, Search } from "lucide-react";
 import useSWR from "swr";
 
 import { TablePagination } from "@/components/common/table-pagination";
@@ -27,16 +27,22 @@ import {
 } from "@/components/ui/table";
 import {
   fetchPersonalKpiReports,
+  fetchPersonalKpiSummary,
   personalKpiKeys,
 } from "@/features/personal-kpi/api";
+import { PersonalKpiStatsRow } from "@/features/personal-kpi/components/personal-kpi-stats-row";
+import { PersonalKpiTodayBanner } from "@/features/personal-kpi/components/personal-kpi-today-banner";
 import { PersonalReportDetailDrawer } from "@/features/personal-kpi/components/personal-report-detail-drawer";
 import { PersonalTaskDrawer } from "@/features/personal-kpi/components/personal-task-drawer";
 import {
   PERSONAL_KPI_STATUS_LABEL,
   type PersonalKpiStatus,
 } from "@/features/personal-kpi/types";
+import { kpiStatusPillClass } from "@/features/personal-kpi/status-styles";
 import { useListPagination } from "@/hooks/use-list-pagination";
 import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
+import { serverDayjs } from "@/lib/server-time";
+import { cn } from "@/lib/utils";
 
 const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: "ALL", label: "Tất cả trạng thái" },
@@ -73,6 +79,8 @@ export function PersonalKpiListView() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailDate, setDetailDate] = useState<string | null>(null);
 
+  const todayYmd = useMemo(() => serverDayjs().format("YYYY-MM-DD"), []);
+
   const listParams = useMemo(
     () => ({
       page,
@@ -86,13 +94,43 @@ export function PersonalKpiListView() {
     [page, limit, debouncedQuery, fromDate, toDate, status],
   );
 
+  const todayParams = useMemo(
+    () => ({
+      page: 1,
+      limit: 1,
+      fromDate: todayYmd,
+      toDate: todayYmd,
+    }),
+    [todayYmd],
+  );
+
   const { data, isLoading, mutate } = useSWR(
     personalKpiKeys.reports(listParams),
     () => fetchPersonalKpiReports(listParams),
   );
 
+  const {
+    data: todayData,
+    isLoading: todayLoading,
+    mutate: mutateToday,
+  } = useSWR(personalKpiKeys.reports(todayParams), () =>
+    fetchPersonalKpiReports(todayParams),
+  );
+
+  const {
+    data: summary,
+    isLoading: summaryLoading,
+    mutate: mutateSummary,
+  } = useSWR(personalKpiKeys.summary, fetchPersonalKpiSummary);
+
   const reports = data?.data ?? [];
   const meta = data?.meta ?? emptyPaginationMeta(limit);
+  const todayReport =
+    todayData?.data?.find((item) => item.reportDate === todayYmd) ?? null;
+
+  const refreshReports = async () => {
+    await Promise.all([mutate(), mutateToday(), mutateSummary()]);
+  };
 
   const resetFilters = () => {
     setQuery("");
@@ -104,21 +142,19 @@ export function PersonalKpiListView() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">
-            KPI của tôi
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Báo cáo KPI bạn tự khai. Mỗi ngày một báo cáo tổng — bấm Chi tiết để
-            xem / gửi. Thời gian theo giờ server (VN).
-          </p>
-        </div>
-        <Button onClick={() => setDrawerOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Tạo nháp
-        </Button>
-      </div>
+      <PersonalKpiTodayBanner
+        todayYmd={todayYmd}
+        todayReport={todayReport}
+        loading={todayLoading}
+        onCreateToday={() => setDrawerOpen(true)}
+        onOpenToday={() => setDetailDate(todayYmd)}
+      />
+
+      <PersonalKpiStatsRow
+        summary={summary}
+        loading={summaryLoading}
+        onOpenToday={() => setDetailDate(todayYmd)}
+      />
 
       <Card>
         <CardContent className="space-y-4 pt-6">
@@ -228,8 +264,8 @@ export function PersonalKpiListView() {
                       <div className="inline-flex flex-col items-center gap-2">
                         <ClipboardList className="h-8 w-8 opacity-40" />
                         <span>
-                          Chưa có báo cáo nào. Bấm &quot;Tạo nháp&quot; để thêm
-                          nhiệm vụ ngày hôm nay.
+                          Chưa có báo cáo nào. Bấm &quot;Lập báo cáo hôm
+                          nay&quot; ở phía trên để bắt đầu.
                         </span>
                       </div>
                     </TableCell>
@@ -254,22 +290,34 @@ export function PersonalKpiListView() {
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           {report.draftCount > 0 ? (
-                            <Badge variant="outline">
+                            <Badge
+                              variant="secondary"
+                              className={cn(kpiStatusPillClass.DRAFT)}
+                            >
                               Nháp {report.draftCount}
                             </Badge>
                           ) : null}
                           {report.sentCount > 0 ? (
-                            <Badge variant="outline">
+                            <Badge
+                              variant="secondary"
+                              className={cn(kpiStatusPillClass.SENT)}
+                            >
                               Đã gửi {report.sentCount}
                             </Badge>
                           ) : null}
                           {report.rejectedCount > 0 ? (
-                            <Badge variant="outline">
+                            <Badge
+                              variant="secondary"
+                              className={cn(kpiStatusPillClass.REJECTED)}
+                            >
                               Trả lại {report.rejectedCount}
                             </Badge>
                           ) : null}
                           {report.completedCount > 0 ? (
-                            <Badge variant="outline">
+                            <Badge
+                              variant="secondary"
+                              className={cn(kpiStatusPillClass.COMPLETED)}
+                            >
                               HT {report.completedCount}
                             </Badge>
                           ) : null}
@@ -314,8 +362,9 @@ export function PersonalKpiListView() {
       <PersonalTaskDrawer
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
+        reportDate={todayYmd}
         onSaved={async () => {
-          await mutate();
+          await refreshReports();
         }}
       />
 
@@ -326,7 +375,7 @@ export function PersonalKpiListView() {
         }}
         reportDate={detailDate}
         onChanged={async () => {
-          await mutate();
+          await refreshReports();
         }}
       />
     </div>

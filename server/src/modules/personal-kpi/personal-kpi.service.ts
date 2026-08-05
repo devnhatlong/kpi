@@ -38,6 +38,7 @@ import {
   KPI_TIMEZONE,
   isYmd,
   serverDateYmd,
+  shiftYmd,
 } from './personal-kpi.time';
 
 const EDITABLE: PersonalKpiStatus[] = ['DRAFT', 'REJECTED'];
@@ -105,6 +106,127 @@ export class PersonalKpiService {
           ? `Đã lưu ${data.length} nhiệm vụ nháp.`
           : 'Đã lưu nháp.',
       data,
+    };
+  }
+
+  /**
+   * Tóm tắt dashboard KPI cá nhân:
+   * - streak: chuỗi ngày có lập báo cáo (có nhiệm vụ)
+   * - week: số ngày trong 7 ngày gần nhất đã từng gửi
+   * - hôm nay: số NV + nháp
+   * - chờ duyệt (SENT) / trả lại (REJECTED) toàn cục — việc cần theo dõi
+   */
+  async getDashboardSummary(ownerId: string) {
+    const owner = this.requireObjectId(ownerId, 'Người dùng');
+    const today = serverDateYmd();
+    const lookbackDays = 60;
+    const fromDate = shiftYmd(today, -(lookbackDays - 1));
+    const reportDateExpr = {
+      $ifNull: [
+        '$reportDate',
+        {
+          $dateToString: {
+            format: '%Y-%m-%d',
+            date: '$createdAt',
+            timezone: KPI_TIMEZONE,
+          },
+        },
+      ],
+    };
+
+    const [statusRows, dailyRows] = await Promise.all([
+      this.itemModel.aggregate<{ _id: string; count: number }>([
+        { $match: { ownerId: owner } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      this.itemModel.aggregate<{
+        _id: string;
+        taskCount: number;
+        draftCount: number;
+        submittedCount: number;
+      }>([
+        { $match: { ownerId: owner } },
+        { $addFields: { reportDateResolved: reportDateExpr } },
+        {
+          $match: {
+            reportDateResolved: { $gte: fromDate, $lte: today },
+          },
+        },
+        {
+          $group: {
+            _id: '$reportDateResolved',
+            taskCount: { $sum: 1 },
+            draftCount: {
+              $sum: { $cond: [{ $eq: ['$status', 'DRAFT'] }, 1, 0] },
+            },
+            submittedCount: {
+              $sum: {
+                $cond: [
+                  { $in: ['$status', ['SENT', 'REJECTED', 'COMPLETED']] },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ]),
+    ]);
+
+    const statusMap = new Map(
+      statusRows.map((row) => [row._id, row.count] as const),
+    );
+    const pendingSentCount = statusMap.get('SENT') ?? 0;
+    const rejectedCount = statusMap.get('REJECTED') ?? 0;
+
+    const byDate = new Map(
+      dailyRows.map((row) => [
+        row._id,
+        {
+          taskCount: row.taskCount,
+          draftCount: row.draftCount,
+          submittedCount: row.submittedCount,
+        },
+      ]),
+    );
+
+    const todayStats = byDate.get(today) ?? {
+      taskCount: 0,
+      draftCount: 0,
+      submittedCount: 0,
+    };
+
+    // Chuỗi: nếu hôm nay chưa lập thì tạm tính từ hôm qua (không phá chuỗi giữa ngày).
+    let streakCursor =
+      todayStats.taskCount > 0 ? today : shiftYmd(today, -1);
+    let streakDays = 0;
+    for (let i = 0; i < lookbackDays; i += 1) {
+      const day = byDate.get(streakCursor);
+      if (!day || day.taskCount <= 0) break;
+      streakDays += 1;
+      streakCursor = shiftYmd(streakCursor, -1);
+    }
+
+    const weekWindowDays = 7;
+    let weekReportedDays = 0;
+    for (let i = 0; i < weekWindowDays; i += 1) {
+      const ymd = shiftYmd(today, -i);
+      const day = byDate.get(ymd);
+      if (day && day.submittedCount > 0) weekReportedDays += 1;
+    }
+
+    return {
+      message: 'OK',
+      data: {
+        today,
+        streakDays,
+        weekReportedDays,
+        weekWindowDays,
+        todayTaskCount: todayStats.taskCount,
+        todayDraftCount: todayStats.draftCount,
+        pendingSentCount,
+        rejectedCount,
+      },
     };
   }
 
@@ -334,7 +456,7 @@ export class PersonalKpiService {
       item.reportDate = serverDateYmd(item.createdAt ?? new Date());
     }
 
-    // Giữ Trả lại đến khi gửi lại — không đổi thành Nháp khi sửa.
+    // Giữ Trả lại đến khi gửi lại - không đổi thành Nháp khi sửa.
     if (item.status !== 'REJECTED') {
       item.status = 'DRAFT';
       item.rejectReason = '';
@@ -354,7 +476,7 @@ export class PersonalKpiService {
     return { message: 'OK', data };
   }
 
-  /** Báo cáo gửi đến tôi — gom theo người gửi + ngày */
+  /** Báo cáo gửi đến tôi - gom theo người gửi + ngày */
   async findInboxReports(
     recipientId: string,
     query: PersonalKpiReportsQueryDto,
@@ -1041,7 +1163,7 @@ export class PersonalKpiService {
     });
     if (hasRejected) {
       throw new BadRequestException(
-        'Báo cáo còn nhiệm vụ Trả lại — chỉ được sửa/gửi lại đúng nhiệm vụ đã trả lại.',
+        'Báo cáo còn nhiệm vụ Trả lại - chỉ được sửa/gửi lại đúng nhiệm vụ đã trả lại.',
       );
     }
   }

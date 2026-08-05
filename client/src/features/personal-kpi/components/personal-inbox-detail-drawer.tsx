@@ -246,7 +246,7 @@ export function PersonalInboxDetailDrawer({
             <SheetDescription>
               Báo cáo từ{" "}
               <span className="font-medium text-foreground">
-                {ownerName || "—"}
+                {ownerName || "-"}
               </span>
               . Duyệt hoàn thành hoặc trả lại nhiệm vụ Đã gửi.
             </SheetDescription>

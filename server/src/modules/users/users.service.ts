@@ -45,6 +45,31 @@ export class UsersService {
     return this.userModel.findById(id);
   }
 
+  /** Hồ sơ an toàn kèm tên đơn vị (cho /auth/me). */
+  async findSafeProfile(id: string) {
+    const user = await this.findById(id);
+    if (!user) return null;
+
+    const safe = user.toSafeObject();
+    let departmentName: string | null = null;
+    if (user.departmentId) {
+      const dept = await this.departmentModel
+        .findById(user.departmentId)
+        .select('name')
+        .lean();
+      departmentName = dept?.name?.trim() || null;
+    }
+
+    return {
+      ...safe,
+      id: user.id,
+      departmentId: user.departmentId
+        ? String(user.departmentId)
+        : undefined,
+      departmentName,
+    };
+  }
+
   async validateUser(username: string, password: string) {
     const user = await this.findByUsername(username);
     if (!user) {

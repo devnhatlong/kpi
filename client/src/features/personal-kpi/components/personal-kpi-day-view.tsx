@@ -45,10 +45,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  activeBadgeClass,
-  inactiveBadgeClass,
-} from "@/features/organization/badge-styles";
 import { fetchAxesAll } from "@/features/kpi-form-config/api";
 import { entityId } from "@/features/kpi-form-config/types";
 import {
@@ -60,6 +56,7 @@ import {
 } from "@/features/personal-kpi/api";
 import { PersonalTaskDrawer } from "@/features/personal-kpi/components/personal-task-drawer";
 import { SendRecipientDialog } from "@/features/personal-kpi/components/send-recipient-dialog";
+import { personalKpiStatusBadgeClass } from "@/features/personal-kpi/status-styles";
 import {
   PERSONAL_KPI_STATUS_LABEL,
   canDeletePersonalKpi,
@@ -80,17 +77,6 @@ const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: "COMPLETED", label: PERSONAL_KPI_STATUS_LABEL.COMPLETED },
 ];
 
-function statusBadgeClass(status: PersonalKpiStatus) {
-  if (status === "SENT") return activeBadgeClass;
-  if (status === "COMPLETED") {
-    return "border-emerald-500/40 text-emerald-700 dark:text-emerald-400";
-  }
-  if (status === "REJECTED") {
-    return "border-amber-500/40 text-amber-600 dark:text-amber-400";
-  }
-  return inactiveBadgeClass;
-}
-
 function formatDateTime(value?: string) {
   if (!value) return "-";
   const date = new Date(value);
@@ -110,8 +96,10 @@ function formatReportDate(ymd: string) {
 }
 
 function catalogOptionLabel(item: { name: string; description?: string }) {
+  const name = item.name.trim();
   const description = item.description?.trim();
-  return description ? `${item.name} (${description})` : item.name;
+  if (!description || description === name) return name;
+  return `${name} (${description})`;
 }
 
 type PersonalKpiDayViewProps = {
@@ -194,7 +182,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     if (!canEditPersonalKpiInReport(item.status, reportStatusContext)) {
       toast.error(
         hasRejected && item.status !== "REJECTED"
-          ? "Báo cáo còn nhiệm vụ Trả lại — chỉ sửa được đúng nhiệm vụ đã trả lại."
+          ? "Báo cáo còn nhiệm vụ Trả lại - chỉ sửa được đúng nhiệm vụ đã trả lại."
           : item.status === "SENT"
             ? "Đã gửi - không sửa trực tiếp."
             : "Nhiệm vụ đã hoàn thành - không sửa được.",
@@ -209,7 +197,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     if (!canSendPersonalKpiInReport(item.status, reportStatusContext)) {
       toast.error(
         hasRejected && item.status !== "REJECTED"
-          ? "Báo cáo còn nhiệm vụ Trả lại — chỉ gửi lại đúng nhiệm vụ đã trả lại."
+          ? "Báo cáo còn nhiệm vụ Trả lại - chỉ gửi lại đúng nhiệm vụ đã trả lại."
           : "Chỉ gửi được khi đang Nháp hoặc Trả lại.",
       );
       return;
@@ -280,7 +268,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
               Chi tiết nhiệm vụ trong báo cáo ngày{" "}
               <span className="font-mono">{reportDate}</span>
               {hasRejected
-                ? " — đang có nhiệm vụ Trả lại: chỉ sửa/gửi lại đúng các nhiệm vụ đó."
+                ? " - đang có nhiệm vụ Trả lại: chỉ sửa/gửi lại đúng các nhiệm vụ đó."
                 : null}
             </p>
           </div>
@@ -425,8 +413,8 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
                       </TableCell>
                       <TableCell>
                         <Badge
-                          variant="outline"
-                          className={statusBadgeClass(item.status)}
+                          variant="secondary"
+                          className={personalKpiStatusBadgeClass(item.status)}
                         >
                           {PERSONAL_KPI_STATUS_LABEL[item.status]}
                         </Badge>

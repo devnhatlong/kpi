@@ -43,6 +43,13 @@ export class PersonalKpiController {
     return this.personalKpiService.createMany(user.uid, dto);
   }
 
+  @ApiOperation({ summary: 'Tóm tắt dashboard KPI cá nhân' })
+  @Permissions(Permission.EVALUATION_SELF)
+  @Get('summary')
+  getSummary(@CurrentUser() user: JwtPayloadUser) {
+    return this.personalKpiService.getDashboardSummary(user.uid);
+  }
+
   @ApiOperation({ summary: 'Danh sách báo cáo theo ngày (tổng hợp)' })
   @Permissions(Permission.EVALUATION_SELF)
   @Get('reports')

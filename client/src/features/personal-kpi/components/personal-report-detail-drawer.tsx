@@ -41,20 +41,8 @@ import {
   type PersonalKpiStatus,
   type PersonalTaskDraft,
 } from "@/features/personal-kpi/types";
+import { personalKpiStatusBadgeClass } from "@/features/personal-kpi/status-styles";
 import { getApiErrorMessage } from "@/lib/api-client";
-
-function statusBadgeClass(status: PersonalKpiStatus) {
-  if (status === "SENT") {
-    return "border-sky-500/40 text-sky-700 dark:text-sky-400";
-  }
-  if (status === "COMPLETED") {
-    return "border-emerald-500/40 text-emerald-700 dark:text-emerald-400";
-  }
-  if (status === "REJECTED") {
-    return "border-amber-500/40 text-amber-700 dark:text-amber-400";
-  }
-  return "border-muted-foreground/30 text-muted-foreground";
-}
 
 function formatReportDate(ymd: string) {
   const date = new Date(`${ymd}T00:00:00`);
@@ -308,7 +296,7 @@ export function PersonalReportDetailDrawer({
                 ? "Chỉ chỉnh sửa nhiệm vụ Trả lại. Nhiệm vụ Đã gửi / Nháp khác bị khoá."
                 : "Đang chỉnh sửa nhiệm vụ Nháp / Trả lại. Lưu xong mới gửi được."
               : hasRejected
-                ? "Có nhiệm vụ Trả lại — chỉ được sửa và gửi lại đúng các nhiệm vụ đó."
+                ? "Có nhiệm vụ Trả lại - chỉ được sửa và gửi lại đúng các nhiệm vụ đó."
                 : "Chế độ xem. Bấm Chỉnh sửa nếu còn nhiệm vụ Nháp / Trả lại."}
           </SheetDescription>
           {items.length > 0 ? (
@@ -319,7 +307,13 @@ export function PersonalReportDetailDrawer({
                   return acc;
                 }, {}),
               ).map(([status, count]) => (
-                <Badge key={status} variant="outline">
+                <Badge
+                  key={status}
+                  variant="secondary"
+                  className={personalKpiStatusBadgeClass(
+                    status as PersonalKpiStatus,
+                  )}
+                >
                   {PERSONAL_KPI_STATUS_LABEL[
                     status as keyof typeof PERSONAL_KPI_STATUS_LABEL
                   ] ?? status}{" "}
@@ -474,8 +468,10 @@ export function PersonalReportDetailDrawer({
                                   onRemove={() => undefined}
                                   actions={
                                     <Badge
-                                      variant="outline"
-                                      className={statusBadgeClass(item.status)}
+                                      variant="secondary"
+                                      className={personalKpiStatusBadgeClass(
+                                        item.status,
+                                      )}
                                     >
                                       {PERSONAL_KPI_STATUS_LABEL[item.status]}
                                     </Badge>

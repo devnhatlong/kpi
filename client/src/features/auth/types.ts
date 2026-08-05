@@ -44,6 +44,7 @@ export type AuthUser = {
   email?: string;
   phone?: string;
   departmentId?: string;
+  departmentName?: string | null;
   roleAssignments: AuthRoleAssignment[];
   isActive: boolean;
   lastLoginAt?: string | null;
