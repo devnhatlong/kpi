@@ -226,13 +226,13 @@ export function PersonalTaskDrawer({
       prev.map((block) =>
         block.key === axisKey
           ? {
-              ...block,
-              axisId,
-              contents: block.contents.map((content) => ({
-                ...content,
-                workContentId: "",
-              })),
-            }
+            ...block,
+            axisId,
+            contents: block.contents.map((content) => ({
+              ...content,
+              workContentId: "",
+            })),
+          }
           : block,
       ),
     );
@@ -243,9 +243,9 @@ export function PersonalTaskDrawer({
       prev.map((block) =>
         block.key === axisKey
           ? {
-              ...block,
-              contents: [...block.contents, createEmptyContentBlock()],
-            }
+            ...block,
+            contents: [...block.contents, createEmptyContentBlock()],
+          }
           : block,
       ),
     );
@@ -272,13 +272,13 @@ export function PersonalTaskDrawer({
       prev.map((block) =>
         block.key === axisKey
           ? {
-              ...block,
-              contents: block.contents.map((content) =>
-                content.key === contentKey
-                  ? { ...content, workContentId }
-                  : content,
-              ),
-            }
+            ...block,
+            contents: block.contents.map((content) =>
+              content.key === contentKey
+                ? { ...content, workContentId }
+                : content,
+            ),
+          }
           : block,
       ),
     );
@@ -289,19 +289,19 @@ export function PersonalTaskDrawer({
       prev.map((block) =>
         block.key === axisKey
           ? {
-              ...block,
-              contents: block.contents.map((content) =>
-                content.key === contentKey
-                  ? {
-                      ...content,
-                      tasks: [
-                        ...content.tasks,
-                        createEmptyTask(content.tasks.length + 1),
-                      ],
-                    }
-                  : content,
-              ),
-            }
+            ...block,
+            contents: block.contents.map((content) =>
+              content.key === contentKey
+                ? {
+                  ...content,
+                  tasks: [
+                    ...content.tasks,
+                    createEmptyTask(content.tasks.length + 1),
+                  ],
+                }
+                : content,
+            ),
+          }
           : block,
       ),
     );
@@ -317,18 +317,18 @@ export function PersonalTaskDrawer({
       prev.map((block) =>
         block.key === axisKey
           ? {
-              ...block,
-              contents: block.contents.map((content) =>
-                content.key === contentKey
-                  ? {
-                      ...content,
-                      tasks: content.tasks.map((task) =>
-                        task.key === taskKey ? { ...task, ...patch } : task,
-                      ),
-                    }
-                  : content,
-              ),
-            }
+            ...block,
+            contents: block.contents.map((content) =>
+              content.key === contentKey
+                ? {
+                  ...content,
+                  tasks: content.tasks.map((task) =>
+                    task.key === taskKey ? { ...task, ...patch } : task,
+                  ),
+                }
+                : content,
+            ),
+          }
           : block,
       ),
     );
@@ -343,16 +343,16 @@ export function PersonalTaskDrawer({
       prev.map((block) =>
         block.key === axisKey
           ? {
-              ...block,
-              contents: block.contents.map((content) => {
-                if (content.key !== contentKey) return content;
-                if (content.tasks.length <= 1) return content;
-                return {
-                  ...content,
-                  tasks: content.tasks.filter((task) => task.key !== taskKey),
-                };
-              }),
-            }
+            ...block,
+            contents: block.contents.map((content) => {
+              if (content.key !== contentKey) return content;
+              if (content.tasks.length <= 1) return content;
+              return {
+                ...content,
+                tasks: content.tasks.filter((task) => task.key !== taskKey),
+              };
+            }),
+          }
           : block,
       ),
     );
@@ -823,7 +823,7 @@ export function PersonalTaskDrawer({
                                     }))}
                                   />
                                   {block.axisId &&
-                                  availableContents.length === 0 ? (
+                                    availableContents.length === 0 ? (
                                     <p className="text-xs text-muted-foreground">
                                       Trục này chưa có nội dung công việc nào.
                                     </p>
@@ -1046,7 +1046,7 @@ export function PersonalTaskDrawer({
               onClick={() => onOpenChange(false)}
               disabled={saving}
             >
-              Huỷ
+              Hủy
             </Button>
 
             {showAxesStep ? (

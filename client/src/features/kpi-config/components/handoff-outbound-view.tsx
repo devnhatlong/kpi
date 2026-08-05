@@ -136,7 +136,7 @@ export function HandoffOutboundView() {
     try {
       await cancelHandoff(entityId(item));
       await mutate();
-      toast.success("Đã huỷ giao nhiệm vụ.");
+      toast.success("Đã hủy giao nhiệm vụ.");
     } catch (error) {
       toast.error(getApiErrorMessage(error));
     }
@@ -227,7 +227,7 @@ export function HandoffOutboundView() {
                           onClick={() => handleCancel(item)}
                         >
                           <XCircle className="size-4" />
-                          Huỷ
+                          Hủy
                         </Button>
                       ) : null}
                     </TableCell>
@@ -361,7 +361,7 @@ export function HandoffOutboundView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
-              Huỷ
+              Hủy
             </Button>
             <Button onClick={handleCreate} disabled={saving}>
               Gửi

@@ -162,7 +162,7 @@ export function ContentGroupFormDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            Huỷ
+            Hủy
           </Button>
           <Button onClick={submit} disabled={saving}>
             {saving ? "Đang lưu..." : "Lưu"}

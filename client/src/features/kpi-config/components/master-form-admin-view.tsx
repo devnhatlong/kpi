@@ -650,7 +650,7 @@ export function MasterFormAdminView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
-              Huỷ
+              Hủy
             </Button>
             <Button onClick={handleCreate} disabled={saving}>
               Lưu nháp

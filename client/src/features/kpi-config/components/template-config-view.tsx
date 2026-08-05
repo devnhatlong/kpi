@@ -701,8 +701,8 @@ export function TemplateConfigView({
         const value =
           typeof action === "function"
             ? (action as (current: TemplateDraft[K]) => TemplateDraft[K])(
-                template[key],
-              )
+              template[key],
+            )
             : action;
         return { ...template, [key]: value };
       }),
@@ -939,50 +939,50 @@ export function TemplateConfigView({
         const draft =
           templateDialogMode === "copy" && activeTemplate
             ? {
-                ...activeTemplate,
-                id: "",
+              ...activeTemplate,
+              id: "",
+              name,
+              code,
+              columns: activeTemplate.columns.map((item) => ({
+                ...item,
+                headerPath: [...item.headerPath],
+              })),
+              headerGroups: cloneTemplateHeaderGroups(
+                activeTemplate.headerGroups,
+              ),
+              includedContentIds: [...activeTemplate.includedContentIds],
+              visibilityScope: newTemplateVisibilityScope,
+              assignedRoleIds: [...newAssignedRoleIds],
+              assignedUserIds: [...newAssignedUserIds],
+              isActive: newIsActive,
+              scope: canMutateAllCatalog
+                ? newTemplateScope
+                : activeTemplate.scope,
+              ownerDepartmentId: canMutateAllCatalog
+                ? newTemplateScope === "DEPARTMENT"
+                  ? newTemplateOwnerDepartmentId
+                  : null
+                : activeTemplate.ownerDepartmentId,
+            }
+            : {
+              ...createBlankTemplateDraft(
                 name,
                 code,
-                columns: activeTemplate.columns.map((item) => ({
-                  ...item,
-                  headerPath: [...item.headerPath],
-                })),
-                headerGroups: cloneTemplateHeaderGroups(
-                  activeTemplate.headerGroups,
-                ),
-                includedContentIds: [...activeTemplate.includedContentIds],
-                visibilityScope: newTemplateVisibilityScope,
-                assignedRoleIds: [...newAssignedRoleIds],
-                assignedUserIds: [...newAssignedUserIds],
-                isActive: newIsActive,
-                scope: canMutateAllCatalog
+                [],
+                canMutateAllCatalog
                   ? newTemplateScope
-                  : activeTemplate.scope,
-                ownerDepartmentId: canMutateAllCatalog
-                  ? newTemplateScope === "DEPARTMENT"
-                    ? newTemplateOwnerDepartmentId
-                    : null
-                  : activeTemplate.ownerDepartmentId,
-              }
-            : {
-                ...createBlankTemplateDraft(
-                  name,
-                  code,
-                  [],
-                  canMutateAllCatalog
-                    ? newTemplateScope
-                    : isDepartmentScope
-                      ? "DEPARTMENT"
-                      : "SYSTEM",
-                  canMutateAllCatalog && newTemplateScope === "DEPARTMENT"
-                    ? newTemplateOwnerDepartmentId
-                    : null,
-                ),
-                visibilityScope: newTemplateVisibilityScope,
-                assignedRoleIds: [...newAssignedRoleIds],
-                assignedUserIds: [...newAssignedUserIds],
-                isActive: newIsActive,
-              };
+                  : isDepartmentScope
+                    ? "DEPARTMENT"
+                    : "SYSTEM",
+                canMutateAllCatalog && newTemplateScope === "DEPARTMENT"
+                  ? newTemplateOwnerDepartmentId
+                  : null,
+              ),
+              visibilityScope: newTemplateVisibilityScope,
+              assignedRoleIds: [...newAssignedRoleIds],
+              assignedUserIds: [...newAssignedUserIds],
+              isActive: newIsActive,
+            };
         const created = await createKpiTemplate(toTemplateInput(draft));
         const nextTemplate = toTemplateDraft(created);
         setTemplates((current) => [...current, nextTemplate]);
@@ -1131,11 +1131,10 @@ export function TemplateConfigView({
               templates.map((template) => (
                 <div
                   key={template.id}
-                  className={`relative w-full rounded-md border text-left ${
-                    template.id === selectedTemplateId
+                  className={`relative w-full rounded-md border text-left ${template.id === selectedTemplateId
                       ? "border-primary/20 bg-primary/10"
                       : "bg-background"
-                  }`}
+                    }`}
                 >
                   <button
                     type="button"
@@ -1176,50 +1175,50 @@ export function TemplateConfigView({
                     </div>
                   </button>
                   {templateCanMutate(template) ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="absolute right-1.5 top-1.5 h-7 w-7"
-                        aria-label={`Thao tác với ${template.name}`}
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          setSelectedTemplateId(template.id);
-                          openTemplateDialog("edit", template);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4" />
-                        Chỉnh sửa
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          setSelectedTemplateId(template.id);
-                          openTemplateDialog("copy", template);
-                        }}
-                      >
-                        <Copy className="h-4 w-4" />
-                        Sao chép
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onSelect={() => {
-                          setSelectedTemplateId(template.id);
-                          setDeleteDialogOpen(true);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Xoá
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="absolute right-1.5 top-1.5 h-7 w-7"
+                          aria-label={`Thao tác với ${template.name}`}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            setSelectedTemplateId(template.id);
+                            openTemplateDialog("edit", template);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                          Chỉnh sửa
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            setSelectedTemplateId(template.id);
+                            openTemplateDialog("copy", template);
+                          }}
+                        >
+                          <Copy className="h-4 w-4" />
+                          Sao chép
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onSelect={() => {
+                            setSelectedTemplateId(template.id);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Xoá
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   ) : null}
                 </div>
               ))
@@ -1263,24 +1262,24 @@ export function TemplateConfigView({
                 <div className="flex gap-2">
                   {!activeReadOnly ? (
                     <>
-                  <Button
-                    variant="outline"
-                    onClick={() => openTemplateDialog("edit")}
-                  >
-                    <Pencil className="h-4 w-4" />
-                    Chỉnh sửa
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => openTemplateDialog("copy")}
-                  >
-                    <Copy className="h-4 w-4" />
-                    Sao chép biểu mẫu
-                  </Button>
-                  <Button onClick={saveDraft} disabled={saving || !activeTemplate}>
-                    <Save className="h-4 w-4" />
-                    {saving ? "Đang lưu..." : "Lưu cấu hình"}
-                  </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => openTemplateDialog("edit")}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Chỉnh sửa
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => openTemplateDialog("copy")}
+                      >
+                        <Copy className="h-4 w-4" />
+                        Sao chép biểu mẫu
+                      </Button>
+                      <Button onClick={saveDraft} disabled={saving || !activeTemplate}>
+                        <Save className="h-4 w-4" />
+                        {saving ? "Đang lưu..." : "Lưu cấu hình"}
+                      </Button>
                     </>
                   ) : null}
                 </div>
@@ -1317,21 +1316,21 @@ export function TemplateConfigView({
                   <div className="flex gap-2">
                     {!activeReadOnly ? (
                       <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setGroupDialogOpen(true)}
-                    >
-                      Quản lý nhóm header
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={addCustomColumn}
-                    >
-                      <Plus className="h-4 w-4" />
-                      Thêm cột
-                    </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setGroupDialogOpen(true)}
+                        >
+                          Quản lý nhóm header
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={addCustomColumn}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Thêm cột
+                        </Button>
                       </>
                     ) : null}
                   </div>
@@ -1499,32 +1498,32 @@ export function TemplateConfigView({
                         <div className="flex justify-end gap-0.5">
                           {!activeReadOnly ? (
                             <>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-9 w-7"
-                            onClick={() => moveColumn(index, -1)}
-                            disabled={index === 0}
-                          >
-                            <ArrowUp className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-9 w-7"
-                            onClick={() => moveColumn(index, 1)}
-                            disabled={index === columns.length - 1}
-                          >
-                            <ArrowDown className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-9 w-7"
-                            onClick={() => removeColumn(item)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-9 w-7"
+                                onClick={() => moveColumn(index, -1)}
+                                disabled={index === 0}
+                              >
+                                <ArrowUp className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-9 w-7"
+                                onClick={() => moveColumn(index, 1)}
+                                disabled={index === columns.length - 1}
+                              >
+                                <ArrowDown className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-9 w-7"
+                                onClick={() => removeColumn(item)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                              </Button>
                             </>
                           ) : null}
                         </div>
@@ -1562,30 +1561,30 @@ export function TemplateConfigView({
                   <div className="flex gap-2">
                     {!activeReadOnly ? (
                       <>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={!activeTemplateContents.length}
-                      onClick={() =>
-                        setIncludedContentIds(
-                          activeTemplateContents.map((content) =>
-                            entityId(content),
-                          ),
-                        )
-                      }
-                    >
-                      Chọn tất cả
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={!includedContentIds.length}
-                      onClick={() => setIncludedContentIds([])}
-                    >
-                      Bỏ chọn
-                    </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={!activeTemplateContents.length}
+                          onClick={() =>
+                            setIncludedContentIds(
+                              activeTemplateContents.map((content) =>
+                                entityId(content),
+                              ),
+                            )
+                          }
+                        >
+                          Chọn tất cả
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={!includedContentIds.length}
+                          onClick={() => setIncludedContentIds([])}
+                        >
+                          Bỏ chọn
+                        </Button>
                       </>
                     ) : null}
                   </div>
@@ -1598,9 +1597,8 @@ export function TemplateConfigView({
                       return (
                         <label
                           key={id}
-                          className={`flex items-center justify-between gap-3 px-3 py-2.5 ${
-                            activeReadOnly ? "" : "cursor-pointer"
-                          }`}
+                          className={`flex items-center justify-between gap-3 px-3 py-2.5 ${activeReadOnly ? "" : "cursor-pointer"
+                            }`}
                         >
                           <div>
                             <div className="font-medium">{content.name}</div>
@@ -1732,9 +1730,8 @@ export function TemplateConfigView({
                         return (
                           <label
                             key={role}
-                            className={`flex items-center gap-2 text-sm ${
-                              activeReadOnly ? "" : "cursor-pointer"
-                            }`}
+                            className={`flex items-center gap-2 text-sm ${activeReadOnly ? "" : "cursor-pointer"
+                              }`}
                           >
                             <Checkbox
                               checked={checked}
@@ -1744,8 +1741,8 @@ export function TemplateConfigView({
                                   const next = value
                                     ? [...current.taskCreators, role]
                                     : current.taskCreators.filter(
-                                        (item) => item !== role,
-                                      );
+                                      (item) => item !== role,
+                                    );
                                   return {
                                     ...current,
                                     taskCreators: next.length
@@ -1763,9 +1760,8 @@ export function TemplateConfigView({
                   </div>
 
                   <label
-                    className={`flex items-start gap-3 rounded-md border p-3 text-sm ${
-                      activeReadOnly ? "" : "cursor-pointer"
-                    }`}
+                    className={`flex items-start gap-3 rounded-md border p-3 text-sm ${activeReadOnly ? "" : "cursor-pointer"
+                      }`}
                   >
                     <Switch
                       className="mt-0.5"
@@ -2045,7 +2041,7 @@ export function TemplateConfigView({
               variant="outline"
               onClick={() => setTemplateDialogMode(null)}
             >
-              Huỷ
+              Hủy
             </Button>
             <Button onClick={submitTemplateDialog} disabled={saving}>
               {saving
@@ -2073,7 +2069,7 @@ export function TemplateConfigView({
               variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
             >
-              Huỷ
+              Hủy
             </Button>
             <Button variant="destructive" onClick={deleteTemplate} disabled={saving}>
               Xoá biểu mẫu
@@ -2128,7 +2124,7 @@ export function TemplateConfigView({
               onClick={() => setGroupDialogOpen(false)}
               disabled={saving}
             >
-              Huỷ
+              Hủy
             </Button>
             <Button onClick={saveHeaderGroups} disabled={saving}>
               {saving ? "Đang lưu..." : "Lưu và đóng"}

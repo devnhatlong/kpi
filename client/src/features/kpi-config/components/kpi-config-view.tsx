@@ -770,9 +770,9 @@ function GroupDialog({
         isActive,
         ...(!edit && allowSelectScope
           ? {
-              scope,
-              ...(scope === "DEPARTMENT" ? { ownerDepartmentId } : {}),
-            }
+            scope,
+            ...(scope === "DEPARTMENT" ? { ownerDepartmentId } : {}),
+          }
           : {}),
       };
       if (edit) await updateWorkGroup(entityId(edit), input);
@@ -842,7 +842,7 @@ function GroupDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Huỷ
+            Hủy
           </Button>
           <Button onClick={submit} disabled={saving}>
             {saving ? "Đang lưu..." : "Lưu"}
@@ -882,14 +882,14 @@ function ContentDialog({
         ? groupsForCatalogScope(groups, scope, ownerDepartmentId)
         : edit
           ? groups.filter(
-              (group) =>
-                entityId(group) === entityId(edit.groupId) ||
-                (!isDepartmentCatalog(edit)
-                  ? !isDepartmentCatalog(group)
-                  : isDepartmentCatalog(group) &&
-                    ownerDepartmentIdString(group.ownerDepartmentId) ===
-                      ownerDepartmentIdString(edit.ownerDepartmentId)),
-            )
+            (group) =>
+              entityId(group) === entityId(edit.groupId) ||
+              (!isDepartmentCatalog(edit)
+                ? !isDepartmentCatalog(group)
+                : isDepartmentCatalog(group) &&
+                ownerDepartmentIdString(group.ownerDepartmentId) ===
+                ownerDepartmentIdString(edit.ownerDepartmentId)),
+          )
           : groups.filter((group) => isDepartmentCatalog(group)),
     [allowSelectScope, edit, groups, ownerDepartmentId, scope],
   );
@@ -928,9 +928,9 @@ function ContentDialog({
         ...(edit ? { code: code.trim().toUpperCase() || edit.code } : {}),
         ...(!edit && allowSelectScope
           ? {
-              scope,
-              ...(scope === "DEPARTMENT" ? { ownerDepartmentId } : {}),
-            }
+            scope,
+            ...(scope === "DEPARTMENT" ? { ownerDepartmentId } : {}),
+          }
           : {}),
       };
       if (edit) await updateWorkContent(entityId(edit), input);
@@ -1022,7 +1022,7 @@ function ContentDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Huỷ
+            Hủy
           </Button>
           <Button onClick={submit} disabled={saving}>
             {saving ? "Đang lưu..." : "Lưu"}
@@ -1050,16 +1050,16 @@ function taskDialogFormFrom(
   const contentId = edit
     ? entityId(edit.contentId)
     : entityId(initialContent) ||
-      entityId(contents.find((content) => content.isActive));
+    entityId(contents.find((content) => content.isActive));
   const contentName =
     contents.find((item) => entityId(item) === contentId)?.name ?? "";
 
   const seeded = edit
     ? buildFieldValuesFromTemplate(
-        template,
-        taskValueSourceFromAssignment(edit, contentName),
-        edit.fieldValues ?? {},
-      )
+      template,
+      taskValueSourceFromAssignment(edit, contentName),
+      edit.fieldValues ?? {},
+    )
     : {};
 
   const fieldValues: Record<string, string> = {};
@@ -1513,9 +1513,9 @@ function TaskDialog({
                   (column) =>
                     getColumnSemanticField(column, template) === "content_name",
                 ) &&
-                (userRoleCodes.includes("UNIT_ADMIN") ||
-                  userRoleCodes.includes("MANAGER") ||
-                  userRoleCodes.includes("SUPER_ADMIN")) ? (
+                  (userRoleCodes.includes("UNIT_ADMIN") ||
+                    userRoleCodes.includes("MANAGER") ||
+                    userRoleCodes.includes("SUPER_ADMIN")) ? (
                   <Field label="Nội dung công việc">
                     <Select
                       value={form.contentId}
@@ -1547,8 +1547,8 @@ function TaskDialog({
                   (column) =>
                     getColumnSemanticField(column, template) === "assignee",
                 ) &&
-                (userRoleCodes.includes("UNIT_ADMIN") ||
-                  userRoleCodes.includes("MANAGER")) ? (
+                  (userRoleCodes.includes("UNIT_ADMIN") ||
+                    userRoleCodes.includes("MANAGER")) ? (
                   <Field label="Người thực hiện">
                     <Select
                       value={form.assigneeId}
@@ -1605,7 +1605,7 @@ function TaskDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Huỷ
+            Hủy
           </Button>
           <Button onClick={submit} disabled={saving}>
             {saving ? "Đang lưu..." : edit ? "Cập nhật" : "Giao nhiệm vụ"}

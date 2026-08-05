@@ -246,7 +246,7 @@ export function RolesView() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete}>Xoá</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

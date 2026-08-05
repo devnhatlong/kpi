@@ -321,7 +321,7 @@ export function HandoffInboundView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAcceptOpen(false)}>
-              Huỷ
+              Hủy
             </Button>
             <Button onClick={handleAccept} disabled={busy}>
               Xác nhận nhận
@@ -344,7 +344,7 @@ export function HandoffInboundView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectOpen(false)}>
-              Huỷ
+              Hủy
             </Button>
             <Button variant="destructive" onClick={handleReject} disabled={busy}>
               Từ chối

@@ -742,7 +742,7 @@ export function UnitsView() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Huỷ</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>Hủy</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();

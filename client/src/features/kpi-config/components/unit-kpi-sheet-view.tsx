@@ -591,7 +591,7 @@ export function UnitKpiSheetView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateSheetOpen(false)}>
-              Huỷ
+              Hủy
             </Button>
             <Button onClick={handleCreateSheet} disabled={creatingSheet}>
               Tạo
@@ -690,7 +690,7 @@ export function UnitKpiSheetView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTaskOpen(false)}>
-              Huỷ
+              Hủy
             </Button>
             <Button onClick={handleCreateTask} disabled={savingTask}>
               Lưu
@@ -763,7 +763,7 @@ export function UnitKpiSheetView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignOpen(false)}>
-              Huỷ
+              Hủy
             </Button>
             <Button onClick={handleAssign} disabled={assigning}>
               Xác nhận giao

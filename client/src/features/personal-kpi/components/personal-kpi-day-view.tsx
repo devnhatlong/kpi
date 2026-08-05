@@ -162,8 +162,8 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   const hasRejected = (rejectedProbe?.meta.total ?? 0) > 0;
   const reportStatusContext = hasRejected
     ? ([{ status: "REJECTED" as const }] as Array<{
-        status: PersonalKpiStatus;
-      }>)
+      status: PersonalKpiStatus;
+    }>)
     : items;
 
   const resetFilters = () => {
@@ -514,7 +514,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Huỷ</AlertDialogCancel>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
             <AlertDialogAction onClick={() => void confirmDelete()}>
               Xoá
             </AlertDialogAction>

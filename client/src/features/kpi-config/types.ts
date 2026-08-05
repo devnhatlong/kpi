@@ -32,7 +32,7 @@ export const TASK_STATUSES = {
   IN_PROGRESS: "Đang thực hiện",
   SUBMITTED: "Đã báo cáo",
   APPRAISED: "Đã thẩm định",
-  CANCELLED: "Đã huỷ",
+  CANCELLED: "Đã hủy",
 } as const;
 
 export type TaskStatus = keyof typeof TASK_STATUSES;
@@ -105,7 +105,7 @@ export const HANDOFF_STATUSES = {
   SENT: "Đã gửi",
   ACCEPTED: "Đã tiếp nhận",
   REJECTED: "Từ chối",
-  CANCELLED: "Đã huỷ",
+  CANCELLED: "Đã hủy",
 } as const;
 
 export type HandoffStatus = keyof typeof HANDOFF_STATUSES;
@@ -247,8 +247,8 @@ export type KpiMasterForm = {
   formType: string;
   periodId: KpiPeriod | string;
   templateId:
-    | string
-    | { _id: string; code: string; name: string; columns?: unknown; headerGroups?: unknown };
+  | string
+  | { _id: string; code: string; name: string; columns?: unknown; headerGroups?: unknown };
   scopeType: MasterFormScope;
   provinceDepartmentId?: DepartmentRef | string;
   targetDepartmentIds?: Array<DepartmentRef | string>;
@@ -347,16 +347,16 @@ export const DEFAULT_TEMPLATE_WORKFLOW_RULES: TemplateWorkflowRules = {
 };
 
 export const TEMPLATE_PUBLISH_MODE_LABELS: Record<TemplatePublishMode, string> =
-  {
-    ONE_ROW: "1 nội dung = 1 dòng (không tạo NV sẵn)",
-    MANY_TASKS: "Cho phép tạo nhiều nhiệm vụ ngay khi phát hành",
-  };
+{
+  ONE_ROW: "1 nội dung = 1 dòng (không tạo NV sẵn)",
+  MANY_TASKS: "Cho phép tạo nhiều nhiệm vụ ngay khi phát hành",
+};
 
 export const TEMPLATE_EXECUTE_MODE_LABELS: Record<TemplateExecuteMode, string> =
-  {
-    ONE_ROW: "1 nội dung = tối đa 1 nhiệm vụ",
-    MANY_TASKS: "1 nội dung = nhiều nhiệm vụ",
-  };
+{
+  ONE_ROW: "1 nội dung = tối đa 1 nhiệm vụ",
+  MANY_TASKS: "1 nội dung = nhiều nhiệm vụ",
+};
 
 export const TEMPLATE_TASK_CREATOR_LABELS: Record<
   TemplateTaskCreatorRole,

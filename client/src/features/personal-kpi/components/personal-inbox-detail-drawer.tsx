@@ -120,11 +120,11 @@ export function PersonalInboxDetailDrawer({
   const { data, isLoading, mutate } = useSWR(
     open && ownerId && reportDate
       ? personalKpiKeys.inboxItems({
-          ownerId,
-          reportDate,
-          page: 1,
-          limit: 100,
-        })
+        ownerId,
+        reportDate,
+        page: 1,
+        limit: 100,
+      })
       : null,
     () =>
       fetchPersonalKpiInbox({
@@ -416,7 +416,7 @@ export function PersonalInboxDetailDrawer({
                                       <Badge variant="outline">
                                         {
                                           PERSONAL_KPI_STATUS_LABEL[
-                                            item.status
+                                          item.status
                                           ]
                                         }
                                       </Badge>
@@ -532,7 +532,7 @@ export function PersonalInboxDetailDrawer({
               onClick={() => setRejectOpen(false)}
               disabled={acting}
             >
-              Huỷ
+              Hủy
             </Button>
             <Button
               type="button"

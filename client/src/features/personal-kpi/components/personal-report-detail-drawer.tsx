@@ -118,10 +118,10 @@ export function PersonalReportDetailDrawer({
   const { data, isLoading, mutate } = useSWR(
     open && reportDate
       ? personalKpiKeys.byDate({
-          reportDate,
-          page: 1,
-          limit: 100,
-        })
+        reportDate,
+        page: 1,
+        limit: 100,
+      })
       : null,
     () =>
       fetchMyPersonalKpi({
@@ -501,7 +501,7 @@ export function PersonalReportDetailDrawer({
                   onClick={cancelEdit}
                   disabled={busy}
                 >
-                  Huỷ
+                  Hủy
                 </Button>
                 <Button
                   type="button"
