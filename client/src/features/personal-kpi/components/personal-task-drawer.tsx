@@ -31,16 +31,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableRow } from "@/components/ui/table";
 import {
   fetchAxesAll,
+  fetchFormTemplatesAll,
   fetchWorkContentsAll,
 } from "@/features/kpi-form-config/api";
 import type { Axis, WorkContent } from "@/features/kpi-form-config/types";
@@ -50,6 +44,7 @@ import {
   taskToWriteInput,
   updatePersonalKpi,
 } from "@/features/personal-kpi/api";
+import { AxisTaskTable } from "@/features/personal-kpi/components/axis-task-table";
 import { PersonalTaskForm } from "@/features/personal-kpi/components/personal-task-form";
 import {
   createEmptyAxisBlock,
@@ -79,6 +74,82 @@ function contentsForAxisId(workContents: WorkContent[], axisId: string) {
   return workContents
     .filter((item) => workContentAxisId(item) === axisId)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+}
+
+type ContentTaskTableProps = {
+  axisId: string;
+  tasks: PersonalTaskDraft[];
+  stt: number;
+  axisLabel: string;
+  contentLabel: string;
+  isEdit: boolean;
+  saving: boolean;
+  onTaskChange: (taskKey: string, patch: Partial<PersonalTaskDraft>) => void;
+  onTaskRemove: (taskKey: string) => void;
+  onAddTask: () => void;
+};
+
+/**
+ * Bảng nhiệm vụ của một nội dung công việc.
+ * Header lấy theo mẫu bảng gán cho trục đang chọn; trục chưa gán thì dùng
+ * bảng mặc định.
+ */
+function ContentTaskTable({
+  axisId,
+  tasks,
+  stt,
+  axisLabel,
+  contentLabel,
+  isEdit,
+  saving,
+  onTaskChange,
+  onTaskRemove,
+  onAddTask,
+}: ContentTaskTableProps) {
+  return (
+    <AxisTaskTable
+      axisId={axisId}
+      caption={`${axisLabel} - ${contentLabel}`}
+      footer={(totalCols) =>
+        !isEdit ? (
+          <TableRow className="hover:bg-transparent">
+            <TableCell colSpan={totalCols} className="py-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="bg-background"
+                onClick={onAddTask}
+                disabled={saving}
+              >
+                <Plus className="h-4 w-4" />
+                Thêm nhiệm vụ
+              </Button>
+            </TableCell>
+          </TableRow>
+        ) : null
+      }
+    >
+      {(columns) =>
+        tasks.map((task, taskIndex) => (
+          <PersonalTaskForm
+            key={task.key}
+            index={stt}
+            taskNumber={taskIndex + 1}
+            task={task}
+            columns={columns}
+            canRemove={!isEdit && tasks.length > 1}
+            showWorkContentCell={taskIndex === 0}
+            showSttCell={taskIndex === 0}
+            workContentLabel={contentLabel}
+            workContentRowSpan={tasks.length}
+            onChange={(patch) => onTaskChange(task.key, patch)}
+            onRemove={() => onTaskRemove(task.key)}
+          />
+        ))
+      }
+    </AxisTaskTable>
+  );
 }
 
 type WizardStep = "axes" | "contents";
@@ -112,6 +183,19 @@ export function PersonalTaskDrawer({
     open ? ["work-contents", "all", "personal-task-drawer"] : null,
     fetchWorkContentsAll,
   );
+  const { data: formTemplates = [] } = useSWR(
+    open ? ["form-templates", "all", "personal-task-drawer"] : null,
+    fetchFormTemplatesAll,
+  );
+
+  /** Trục không nằm trong Set này thì chưa có bảng để nhập. */
+  const axesWithTemplate = useMemo(() => {
+    const ids = new Set<string>();
+    for (const template of formTemplates) {
+      for (const axis of template.axisIds ?? []) ids.add(entityId(axis));
+    }
+    return ids;
+  }, [formTemplates]);
 
   useEffect(() => {
     if (!open) return;
@@ -394,8 +478,15 @@ export function PersonalTaskDrawer({
         );
         return;
       }
-      if (!axisById.get(block.axisId)) {
+      const axis = axisById.get(block.axisId);
+      if (!axis) {
         toast.error("Trục không hợp lệ.");
+        return;
+      }
+      if (!axesWithTemplate.has(block.axisId)) {
+        toast.error(
+          `Trục "${axis.name}" chưa gán mẫu bảng nên không nhập được nhiệm vụ. Bỏ trục này hoặc liên hệ quản trị.`,
+        );
         return;
       }
 
@@ -623,7 +714,10 @@ export function PersonalTaskDrawer({
                               )
                               .map((item) => ({
                                 value: entityId(item),
-                                label: catalogOptionLabel(item),
+                                // Nói trước trục nào chưa có bảng để nhập.
+                                label: axesWithTemplate.has(entityId(item))
+                                  ? catalogOptionLabel(item)
+                                  : `${catalogOptionLabel(item)} - chưa gán mẫu bảng`,
                                 keywords: item.code,
                               }))}
                           />
@@ -855,162 +949,33 @@ export function PersonalTaskDrawer({
 
                             <CollapsibleContent className="space-y-3 border-t px-3 pb-3 pt-3">
                               {selectedContent ? (
-                                <div className="overflow-auto rounded-md border bg-card">
-                                  <Table className="min-w-[1800px]">
-                                    <TableHeader>
-                                      <TableRow>
-                                        <TableHead
-                                          rowSpan={2}
-                                          className="sticky left-0 z-20 w-12 bg-muted/50 text-center align-middle text-sm font-medium"
-                                        >
-                                          STT
-                                        </TableHead>
-                                        <TableHead
-                                          rowSpan={2}
-                                          className="min-w-[220px] align-middle text-sm font-medium"
-                                        >
-                                          Nội dung công việc
-                                        </TableHead>
-                                        <TableHead
-                                          rowSpan={2}
-                                          className="min-w-[200px] align-middle text-sm font-medium"
-                                        >
-                                          Nhiệm vụ
-                                        </TableHead>
-                                        <TableHead
-                                          rowSpan={2}
-                                          className="min-w-[140px] align-middle text-sm font-medium"
-                                        >
-                                          Thời hạn hoàn thành
-                                        </TableHead>
-                                        <TableHead
-                                          rowSpan={2}
-                                          className="min-w-[160px] align-middle text-sm font-medium"
-                                        >
-                                          Sản phẩm dự kiến
-                                        </TableHead>
-                                        <TableHead
-                                          rowSpan={2}
-                                          className="min-w-[100px] align-middle text-sm font-medium"
-                                        >
-                                          Điểm chuẩn
-                                        </TableHead>
-                                        <TableHead
-                                          rowSpan={2}
-                                          className="min-w-[140px] align-middle text-sm font-medium"
-                                        >
-                                          Đơn vị thực hiện
-                                        </TableHead>
-                                        <TableHead
-                                          colSpan={4}
-                                          className="text-center text-sm font-medium after:hidden"
-                                        >
-                                          Kết quả theo dõi
-                                        </TableHead>
-                                        <TableHead
-                                          rowSpan={2}
-                                          className="min-w-[160px] align-middle text-sm font-medium before:absolute before:left-0 before:top-1/2 before:h-4 before:w-px before:-translate-y-1/2 before:bg-border"
-                                        >
-                                          Đề nghị khác (căn cứ)
-                                        </TableHead>
-                                        <TableHead
-                                          rowSpan={2}
-                                          className="min-w-[200px] align-middle text-sm font-medium"
-                                        >
-                                          Tài liệu kiểm chứng
-                                        </TableHead>
-                                        <TableHead
-                                          rowSpan={2}
-                                          className="sticky right-0 z-20 w-14 bg-muted/50"
-                                        />
-                                      </TableRow>
-                                      <TableRow>
-                                        <TableHead className="min-w-[100px] text-center text-sm font-medium">
-                                          KPI tiến độ %
-                                        </TableHead>
-                                        <TableHead className="min-w-[110px] text-center text-sm font-medium">
-                                          Điểm tự chấm
-                                        </TableHead>
-                                        <TableHead className="min-w-[100px] text-center text-sm font-medium">
-                                          KPI chất lượng %
-                                        </TableHead>
-                                        <TableHead className="min-w-[110px] text-center text-sm font-medium after:hidden">
-                                          Điểm tự chấm
-                                        </TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      <TableRow className="bg-muted/40 hover:bg-muted/40">
-                                        <TableCell
-                                          colSpan={14}
-                                          className="py-2 text-sm font-semibold"
-                                        >
-                                          {axis
-                                            ? catalogOptionLabel(axis)
-                                            : "Trục"}
-                                          {" - "}
-                                          {catalogOptionLabel(selectedContent)}
-                                        </TableCell>
-                                      </TableRow>
-                                      {content.tasks.map((task, taskIndex) => (
-                                        <PersonalTaskForm
-                                          key={task.key}
-                                          index={stt}
-                                          taskNumber={taskIndex + 1}
-                                          task={task}
-                                          canRemove={
-                                            !isEdit && content.tasks.length > 1
-                                          }
-                                          showWorkContentCell={taskIndex === 0}
-                                          showSttCell={taskIndex === 0}
-                                          workContentLabel={catalogOptionLabel(
-                                            selectedContent,
-                                          )}
-                                          workContentRowSpan={
-                                            content.tasks.length
-                                          }
-                                          onChange={(patch) =>
-                                            updateTask(
-                                              block.key,
-                                              content.key,
-                                              task.key,
-                                              patch,
-                                            )
-                                          }
-                                          onRemove={() =>
-                                            removeTask(
-                                              block.key,
-                                              content.key,
-                                              task.key,
-                                            )
-                                          }
-                                        />
-                                      ))}
-                                      {!isEdit ? (
-                                        <TableRow className="hover:bg-transparent">
-                                          <TableCell
-                                            colSpan={14}
-                                            className="py-2"
-                                          >
-                                            <Button
-                                              type="button"
-                                              size="sm"
-                                              variant="outline"
-                                              className="bg-background"
-                                              onClick={() =>
-                                                addTask(block.key, content.key)
-                                              }
-                                              disabled={saving}
-                                            >
-                                              <Plus className="h-4 w-4" />
-                                              Thêm nhiệm vụ
-                                            </Button>
-                                          </TableCell>
-                                        </TableRow>
-                                      ) : null}
-                                    </TableBody>
-                                  </Table>
-                                </div>
+                                <ContentTaskTable
+                                  axisId={block.axisId}
+                                  tasks={content.tasks}
+                                  stt={stt}
+                                  axisLabel={
+                                    axis ? catalogOptionLabel(axis) : "Trục"
+                                  }
+                                  contentLabel={catalogOptionLabel(
+                                    selectedContent,
+                                  )}
+                                  isEdit={isEdit}
+                                  saving={saving}
+                                  onTaskChange={(taskKey, patch) =>
+                                    updateTask(
+                                      block.key,
+                                      content.key,
+                                      taskKey,
+                                      patch,
+                                    )
+                                  }
+                                  onTaskRemove={(taskKey) =>
+                                    removeTask(block.key, content.key, taskKey)
+                                  }
+                                  onAddTask={() =>
+                                    addTask(block.key, content.key)
+                                  }
+                                />
                               ) : (
                                 <div className="rounded-md border border-dashed bg-card p-6 text-center text-sm text-muted-foreground">
                                   Chọn nội dung công việc để hiện bảng nhiệm vụ.

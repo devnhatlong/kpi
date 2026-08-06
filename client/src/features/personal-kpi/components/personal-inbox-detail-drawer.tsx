@@ -23,15 +23,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { AxisTaskTable } from "@/features/personal-kpi/components/axis-task-table";
 import {
   completePersonalKpi,
   completePersonalKpiInboxReport,
@@ -302,107 +295,19 @@ export function PersonalInboxDetailDrawer({
                         <p className="text-sm text-muted-foreground">
                           Nội dung công việc: {content.workContentName}
                         </p>
-                        <div className="overflow-auto rounded-md border">
-                          <Table className="min-w-[1900px]">
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="sticky left-0 z-20 w-12 bg-muted/50 text-center align-middle text-sm font-medium"
-                                >
-                                  STT
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[220px] align-middle text-sm font-medium"
-                                >
-                                  Nội dung công việc
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[200px] align-middle text-sm font-medium"
-                                >
-                                  Nhiệm vụ
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[140px] align-middle text-sm font-medium"
-                                >
-                                  Thời hạn hoàn thành
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[160px] align-middle text-sm font-medium"
-                                >
-                                  Sản phẩm dự kiến
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[100px] align-middle text-sm font-medium"
-                                >
-                                  Điểm chuẩn
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[140px] align-middle text-sm font-medium"
-                                >
-                                  Đơn vị thực hiện
-                                </TableHead>
-                                <TableHead
-                                  colSpan={4}
-                                  className="text-center text-sm font-medium after:hidden"
-                                >
-                                  Kết quả theo dõi
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[160px] align-middle text-sm font-medium before:absolute before:top-1/2 before:left-0 before:h-4 before:w-px before:-translate-y-1/2 before:bg-border"
-                                >
-                                  Đề nghị khác (căn cứ)
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="min-w-[200px] align-middle text-sm font-medium"
-                                >
-                                  Tài liệu kiểm chứng
-                                </TableHead>
-                                <TableHead
-                                  rowSpan={2}
-                                  className="sticky right-0 z-20 min-w-[160px] bg-muted/50 text-center align-middle text-sm font-medium"
-                                >
-                                  Trạng thái / Thao tác
-                                </TableHead>
-                              </TableRow>
-                              <TableRow>
-                                <TableHead className="min-w-[100px] text-center text-sm font-medium">
-                                  KPI tiến độ %
-                                </TableHead>
-                                <TableHead className="min-w-[110px] text-center text-sm font-medium">
-                                  Điểm tự chấm
-                                </TableHead>
-                                <TableHead className="min-w-[100px] text-center text-sm font-medium">
-                                  KPI chất lượng %
-                                </TableHead>
-                                <TableHead className="min-w-[110px] text-center text-sm font-medium after:hidden">
-                                  Điểm tự chấm
-                                </TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              <TableRow className="bg-muted/40 hover:bg-muted/40">
-                                <TableCell
-                                  colSpan={14}
-                                  className="py-2 text-sm font-semibold"
-                                >
-                                  {group.axisName} - {content.workContentName}
-                                </TableCell>
-                              </TableRow>
-                              {content.items.map((item, taskIndex) => (
+                        <AxisTaskTable
+                          axisId={group.axisId}
+                          actionLabel="Trạng thái / Thao tác"
+                          caption={`${group.axisName} - ${content.workContentName}`}
+                        >
+                          {(columns) =>
+                            content.items.map((item, taskIndex) => (
                                 <PersonalTaskForm
                                   key={item.id}
                                   index={stt}
                                   taskNumber={taskIndex + 1}
                                   task={item.task}
+                                  columns={columns}
                                   readOnly
                                   canRemove={false}
                                   showWorkContentCell={taskIndex === 0}
@@ -456,10 +361,9 @@ export function PersonalInboxDetailDrawer({
                                     </div>
                                   }
                                 />
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
+                            ))
+                          }
+                        </AxisTaskTable>
                       </div>
                     );
                   })}

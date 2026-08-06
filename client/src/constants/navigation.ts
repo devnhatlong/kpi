@@ -14,6 +14,7 @@ import {
   Network,
   Settings,
   Shield,
+  Table2,
   Users,
 } from "lucide-react";
 
@@ -176,6 +177,11 @@ export const NAV_ITEMS: NavItem[] = [
         title: "Nhóm điểm",
         href: "/kpi/form-config/score-groups",
         icon: Gauge,
+      },
+      {
+        title: "Mẫu bảng KPI",
+        href: "/kpi/form-config/form-templates",
+        icon: Table2,
       },
     ],
   },

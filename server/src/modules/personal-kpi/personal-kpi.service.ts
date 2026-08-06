@@ -451,6 +451,10 @@ export class PersonalKpiService {
     if (dto.evidenceFiles !== undefined) {
       item.evidenceFiles = dto.evidenceFiles;
     }
+    if (dto.fieldValues !== undefined) {
+      item.fieldValues = dto.fieldValues;
+      item.markModified('fieldValues');
+    }
 
     if (!item.reportDate) {
       item.reportDate = serverDateYmd(item.createdAt ?? new Date());
@@ -1107,6 +1111,7 @@ export class PersonalKpiService {
       qualitySelfScore: dto.qualitySelfScore ?? null,
       note: dto.note?.trim() ?? '',
       evidenceFiles: dto.evidenceFiles ?? [],
+      fieldValues: dto.fieldValues ?? {},
       sentAt: null,
       rejectReason: '',
     };

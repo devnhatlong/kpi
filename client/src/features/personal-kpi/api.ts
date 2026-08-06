@@ -34,6 +34,7 @@ export type PersonalKpiApiRecord = {
   qualitySelfScore?: number | null;
   note?: string;
   evidenceFiles?: TaskEvidenceFile[];
+  fieldValues?: Record<string, string | number>;
   sentAt?: string | null;
   recipientId?: string | CatalogRef | null;
   recipientName?: string;
@@ -123,6 +124,8 @@ export type PersonalKpiWriteInput = {
     size: number;
     mimeType: string;
   }>;
+  /** Giá trị các cột tự do của mẫu bảng gán cho trục. */
+  fieldValues?: Record<string, string>;
 };
 
 export type PersonalKpiReportsQuery = {
@@ -181,6 +184,12 @@ export function mapPersonalKpiFromApi(
       size: file.size,
       mimeType: file.mimeType,
     })),
+    fieldValues: Object.fromEntries(
+      Object.entries(row.fieldValues ?? {}).map(([key, value]) => [
+        key,
+        value == null ? "" : String(value),
+      ]),
+    ),
   };
 
   return {
@@ -228,6 +237,11 @@ export function taskToWriteInput(
       size: file.size,
       mimeType: file.mimeType,
     })),
+    fieldValues: Object.fromEntries(
+      Object.entries(task.fieldValues ?? {}).filter(([, value]) =>
+        value.trim(),
+      ),
+    ),
   };
 }
 

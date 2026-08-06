@@ -4,6 +4,7 @@ import {
   IsInt,
   IsMongoId,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Max,
@@ -82,6 +83,14 @@ export class CreatePersonalKpiDto {
   @ValidateNested({ each: true })
   @Type(() => EvidenceFileDto)
   evidenceFiles?: EvidenceFileDto[];
+
+  @ApiPropertyOptional({
+    description: 'Giá trị các cột tự do của mẫu bảng (key cột -> giá trị)',
+    type: Object,
+  })
+  @IsOptional()
+  @IsObject({ message: 'fieldValues phải là object.' })
+  fieldValues?: Record<string, string | number>;
 }
 
 export class CreatePersonalKpiBatchDto {
@@ -147,6 +156,14 @@ export class UpdatePersonalKpiDto {
   @ValidateNested({ each: true })
   @Type(() => EvidenceFileDto)
   evidenceFiles?: EvidenceFileDto[];
+
+  @ApiPropertyOptional({
+    description: 'Giá trị các cột tự do của mẫu bảng (key cột -> giá trị)',
+    type: Object,
+  })
+  @IsOptional()
+  @IsObject({ message: 'fieldValues phải là object.' })
+  fieldValues?: Record<string, string | number>;
 }
 
 export class PersonalKpiListQueryDto {

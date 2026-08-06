@@ -11,6 +11,10 @@ import { CreateAxisDto } from './dto/create-axis.dto';
 import { UpdateAxisDto } from './dto/update-axis.dto';
 import { Axis, AxisDocument } from './schemas/axis.schema';
 import { WorkContent, WorkContentDocument } from './schemas/work-content.schema';
+import {
+  FormTemplate,
+  FormTemplateDocument,
+} from './schemas/form-template.schema';
 
 @Injectable()
 export class AxesService {
@@ -19,6 +23,8 @@ export class AxesService {
     private readonly axisModel: Model<AxisDocument>,
     @InjectModel(WorkContent.name)
     private readonly workContentModel: Model<WorkContentDocument>,
+    @InjectModel(FormTemplate.name)
+    private readonly formTemplateModel: Model<FormTemplateDocument>,
   ) {}
 
   async create(dto: CreateAxisDto) {
@@ -91,6 +97,11 @@ export class AxesService {
         'Không thể xoá trục đang được dùng ở nội dung công việc.',
       );
     }
+    // Gỡ khỏi mẫu bảng để không còn tham chiếu treo.
+    await this.formTemplateModel.updateMany(
+      { axisIds: item._id },
+      { $pull: { axisIds: item._id } },
+    );
     await item.deleteOne();
     return { message: 'Xoá trục thành công.' };
   }

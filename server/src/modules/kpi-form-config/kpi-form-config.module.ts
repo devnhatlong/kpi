@@ -15,6 +15,10 @@ import {
   ScoreGroup,
   ScoreGroupSchema,
 } from './schemas/score-group.schema';
+import {
+  FormTemplate,
+  FormTemplateSchema,
+} from './schemas/form-template.schema';
 import { WorkContentsController } from './work-contents.controller';
 import { WorkContentsService } from './work-contents.service';
 import { ContentGroupsController } from './content-groups.controller';
@@ -23,6 +27,8 @@ import { AxesController } from './axes.controller';
 import { AxesService } from './axes.service';
 import { ScoreGroupsController } from './score-groups.controller';
 import { ScoreGroupsService } from './score-groups.service';
+import { FormTemplatesController } from './form-templates.controller';
+import { FormTemplatesService } from './form-templates.service';
 
 @Module({
   imports: [
@@ -31,6 +37,7 @@ import { ScoreGroupsService } from './score-groups.service';
       { name: ContentGroup.name, schema: ContentGroupSchema },
       { name: Axis.name, schema: AxisSchema },
       { name: ScoreGroup.name, schema: ScoreGroupSchema },
+      { name: FormTemplate.name, schema: FormTemplateSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),
@@ -40,8 +47,21 @@ import { ScoreGroupsService } from './score-groups.service';
     ContentGroupsController,
     AxesController,
     ScoreGroupsController,
+    FormTemplatesController,
   ],
-  providers: [WorkContentsService, ContentGroupsService, AxesService, ScoreGroupsService],
-  exports: [WorkContentsService, ContentGroupsService, AxesService, ScoreGroupsService],
+  providers: [
+    WorkContentsService,
+    ContentGroupsService,
+    AxesService,
+    ScoreGroupsService,
+    FormTemplatesService,
+  ],
+  exports: [
+    WorkContentsService,
+    ContentGroupsService,
+    AxesService,
+    ScoreGroupsService,
+    FormTemplatesService,
+  ],
 })
 export class KpiFormConfigModule {}

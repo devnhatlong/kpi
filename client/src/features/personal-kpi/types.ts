@@ -72,6 +72,8 @@ export type PersonalTaskDraft = {
   qualitySelfScore: string;
   note: string;
   evidenceFiles: TaskEvidenceFile[];
+  /** Giá trị cột tự do của mẫu bảng gán cho trục, key = FormTemplateColumn.key. */
+  fieldValues: Record<string, string>;
 };
 
 /** Bản ghi nhiệm vụ KPI cá nhân trên danh sách. */
@@ -118,6 +120,7 @@ export function createEmptyTask(_index = 1): PersonalTaskDraft {
     qualitySelfScore: "",
     note: "",
     evidenceFiles: [],
+    fieldValues: {},
   };
 }
 

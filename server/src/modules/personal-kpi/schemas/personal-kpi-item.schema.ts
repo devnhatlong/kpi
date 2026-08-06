@@ -109,6 +109,13 @@ export class PersonalKpiItem {
   @Prop({ type: [PersonalKpiEvidenceFileSchema], default: [] })
   evidenceFiles!: PersonalKpiEvidenceFile[];
 
+  /**
+   * Giá trị các cột tự do của mẫu bảng gán cho trục, key = FormTemplateColumn.key.
+   * Cột có semanticKey vẫn nằm ở các field cứng phía trên.
+   */
+  @Prop({ type: Object, default: {} })
+  fieldValues!: Record<string, string | number>;
+
   @Prop({ type: Date, default: null })
   sentAt!: Date | null;
 

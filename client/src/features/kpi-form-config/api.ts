@@ -5,6 +5,8 @@ import type {
   AxisInput,
   ContentGroup,
   ContentGroupInput,
+  FormTemplate,
+  FormTemplateInput,
   ListQueryParams,
   PaginatedResult,
   ScoreGroup,
@@ -186,4 +188,67 @@ export function updateScoreGroup(id: string, input: Partial<ScoreGroupInput>) {
 
 export async function deleteScoreGroup(id: string) {
   await api.delete(`/kpi-form-config/score-groups/${id}`);
+}
+
+export const formTemplateKeys = {
+  all: ["form-templates"] as const,
+  list: (params: ListQueryParams) =>
+    [
+      "form-templates",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+    ] as const,
+  byAxis: (axisId: string) => ["form-template-by-axis", axisId] as const,
+};
+
+export async function fetchFormTemplatesPage(
+  params: ListQueryParams,
+): Promise<PaginatedResult<FormTemplate>> {
+  return unwrapPaginated(
+    api.get<ApiResponse<FormTemplate[]>>("/kpi-form-config/form-templates/all", {
+      params: buildListQuery(params),
+    }),
+  );
+}
+
+export async function fetchFormTemplatesAll() {
+  const result = await fetchFormTemplatesPage({ all: true });
+  return result.data.filter((item) => item.isActive);
+}
+
+/** Mẫu áp dụng cho trục - null nghĩa là trục chưa gán, dùng bộ cột mặc định. */
+export async function fetchFormTemplateByAxis(
+  axisId: string,
+): Promise<FormTemplate | null> {
+  if (!axisId) return null;
+  const data = await unwrapData(
+    api.get<ApiResponse<FormTemplate | null>>(
+      `/kpi-form-config/form-templates/by-axis/${axisId}`,
+    ),
+  );
+  return data ?? null;
+}
+
+export function createFormTemplate(input: FormTemplateInput) {
+  return unwrapData(
+    api.post<ApiResponse<FormTemplate>>("/kpi-form-config/form-templates", input),
+  );
+}
+
+export function updateFormTemplate(
+  id: string,
+  input: Partial<FormTemplateInput>,
+) {
+  return unwrapData(
+    api.patch<ApiResponse<FormTemplate>>(
+      `/kpi-form-config/form-templates/${id}`,
+      input,
+    ),
+  );
+}
+
+export async function deleteFormTemplate(id: string) {
+  await api.delete(`/kpi-form-config/form-templates/${id}`);
 }
