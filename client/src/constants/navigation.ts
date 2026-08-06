@@ -19,12 +19,14 @@ import {
   Users,
 } from "lucide-react";
 
+import { PERM } from "@/constants/permissions";
+
 export type NavSubItem = {
   title: string;
   href: string;
   icon: LucideIcon;
-  /** Nếu có: chỉ hiện khi user có ít nhất một trong các role này. */
-  roles?: string[];
+  /** Nếu có: chỉ hiện khi user có ít nhất một trong các quyền này. */
+  permissions?: string[];
 };
 
 export type NavItem = {
@@ -32,81 +34,12 @@ export type NavItem = {
   href?: string;
   icon: LucideIcon;
   children?: NavSubItem[];
-  /** Nếu có: chỉ hiện khi user có ít nhất một trong các role này. */
-  roles?: string[];
+  /**
+   * Nếu có: chỉ hiện khi user có ít nhất một trong các quyền này.
+   * Nhóm menu bỏ trống thì hiện khi còn ít nhất một mục con hiện được.
+   */
+  permissions?: string[];
 };
-
-export const SUPER_ADMIN_ONLY = ["SUPER_ADMIN"] as const;
-
-export const ALL_KPI_ROLES = [
-  "SUPER_ADMIN",
-  "UNIT_ADMIN",
-  "MANAGER",
-  "STAFF",
-] as const;
-
-/** Manager trở lên - giao KPI xuống. */
-export const KPI_ASSIGN_ROLES = [
-  "SUPER_ADMIN",
-  "UNIT_ADMIN",
-  "MANAGER",
-] as const;
-
-/** Chỉ Manager / Unit admin - tổng hợp & nâng cấp. */
-export const KPI_PROMOTE_ROLES = ["UNIT_ADMIN", "MANAGER"] as const;
-
-/** Unit admin / Superadmin - danh mục, quản trị. */
-export const KPI_ADMIN_ROLES = ["SUPER_ADMIN", "UNIT_ADMIN"] as const;
-
-/** @deprecated dùng KPI_ASSIGN_ROLES */
-export const KPI_OPERATOR_ROLES = KPI_ASSIGN_ROLES;
-
-export const SUPER_ADMIN_PATH_PREFIXES = [
-  "/organization",
-  "/settings",
-  "/kpi/form-config",
-] as const;
-
-export function isSuperAdminPath(pathname: string): boolean {
-  return SUPER_ADMIN_PATH_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
-}
-
-/** Kiểm tra user có được vào path theo role hay không (dùng chung guard + login). */
-export function pathRequiresRoles(pathname: string): readonly string[] | null {
-  if (isSuperAdminPath(pathname)) return SUPER_ADMIN_ONLY;
-
-  if (
-    pathname === "/kpi/received" ||
-    pathname.startsWith("/kpi/received/") ||
-    pathname === "/kpi/personal/inbox" ||
-    pathname.startsWith("/kpi/personal/inbox/")
-  ) {
-    return KPI_ASSIGN_ROLES;
-  }
-
-  if (
-    pathname === "/kpi/promote" ||
-    pathname.startsWith("/kpi/promote/")
-  ) {
-    return KPI_PROMOTE_ROLES;
-  }
-  if (
-    pathname === "/kpi/assign" ||
-    pathname.startsWith("/kpi/assign/")
-  ) {
-    return KPI_ASSIGN_ROLES;
-  }
-  if (
-    pathname === "/kpi/catalogs" ||
-    pathname.startsWith("/kpi/catalogs/")
-  ) {
-    return KPI_ADMIN_ROLES;
-  }
-
-  return null;
-}
 
 /**
  * Menu theo đặc tả:
@@ -124,40 +57,42 @@ export const NAV_ITEMS: NavItem[] = [
     title: "KPI của tôi",
     href: "/kpi/personal",
     icon: ClipboardList,
+    permissions: [PERM.EVALUATION_SELF],
   },
   {
     title: "Duyệt KPI cấp dưới",
     href: "/kpi/received",
     icon: MailOpen,
-    roles: [...KPI_ASSIGN_ROLES],
+    permissions: [PERM.EVALUATION_APPROVE],
   },
   {
     title: "KPI cấp trên giao",
     href: "/kpi/assigned",
     icon: Inbox,
+    permissions: [PERM.TASK_VIEW],
   },
   {
     title: "Tổng hợp & nâng cấp",
     href: "/kpi/promote",
     icon: Filter,
-    roles: [...KPI_PROMOTE_ROLES],
+    permissions: [PERM.EVALUATION_APPROVE],
   },
   {
     title: "Giao KPI xuống",
     href: "/kpi/assign",
     icon: ArrowDownToLine,
-    roles: [...KPI_ASSIGN_ROLES],
+    permissions: [PERM.TASK_ASSIGN],
   },
   {
     title: "Danh mục",
     href: "/kpi/catalogs",
     icon: BookMarked,
-    roles: [...KPI_ADMIN_ROLES],
+    permissions: [PERM.KPI_MANAGE],
   },
   {
     title: "Cấu hình form KPI",
     icon: FormInput,
-    roles: [...SUPER_ADMIN_ONLY],
+    permissions: [PERM.KPI_MANAGE],
     children: [
       {
         title: "Nhóm nội dung",
@@ -189,27 +124,97 @@ export const NAV_ITEMS: NavItem[] = [
   {
     title: "Tổ chức",
     icon: Network,
-    roles: [...SUPER_ADMIN_ONLY],
+    // Không đặt quyền ở nhóm: mỗi mục con tự quyết, nhóm hiện khi còn mục nào.
     children: [
-      { title: "Đơn vị", href: "/organization/units", icon: Network },
-      { title: "Cấp đơn vị", href: "/organization/levels", icon: Layers },
-      { title: "Vai trò", href: "/organization/roles", icon: Shield },
-      { title: "Quyền", href: "/organization/permissions", icon: KeyRound },
+      {
+        title: "Đơn vị",
+        href: "/organization/units",
+        icon: Network,
+        permissions: [PERM.DEPARTMENT_VIEW],
+      },
+      {
+        title: "Cấp đơn vị",
+        href: "/organization/levels",
+        icon: Layers,
+        permissions: [PERM.DEPARTMENT_VIEW],
+      },
+      {
+        title: "Vai trò",
+        href: "/organization/roles",
+        icon: Shield,
+        permissions: [PERM.ROLE_ASSIGN],
+      },
+      {
+        // Danh sách quyền đọc bằng role.assign; sửa mới cần system.config.
+        // Gán theo quyền đọc để menu không hiện ra trang load lên là 403.
+        title: "Quyền",
+        href: "/organization/permissions",
+        icon: KeyRound,
+        permissions: [PERM.ROLE_ASSIGN],
+      },
       {
         title: "Phân quyền giao KPI",
         href: "/organization/kpi-scope",
         icon: ShieldCheck,
+        permissions: [PERM.SYSTEM_CONFIG],
       },
-      { title: "Người dùng", href: "/organization/employees", icon: Users },
+      {
+        title: "Người dùng",
+        href: "/organization/employees",
+        icon: Users,
+        permissions: [PERM.USER_VIEW],
+      },
     ],
   },
   {
     title: "Cài đặt",
     href: "/settings",
     icon: Settings,
-    roles: [...SUPER_ADMIN_ONLY],
+    permissions: [PERM.SYSTEM_CONFIG],
   },
 ];
+
+/** Đường không nằm trong menu nhưng vẫn phải chặn. */
+const EXTRA_PATH_PERMISSIONS: Record<string, string[]> = {
+  "/kpi/personal/inbox": [PERM.EVALUATION_APPROVE],
+};
+
+/**
+ * Bảng đường dẫn → quyền, dựng thẳng từ NAV_ITEMS để menu và guard không bao
+ * giờ lệch nhau. Mục con không khai quyền thì thừa hưởng của nhóm.
+ */
+const PATH_PERMISSIONS: Array<[string, string[]]> = (() => {
+  const entries: Array<[string, string[]]> = [];
+
+  for (const item of NAV_ITEMS) {
+    if (item.href && item.permissions?.length) {
+      entries.push([item.href, item.permissions]);
+    }
+    for (const child of item.children ?? []) {
+      const permissions = child.permissions?.length
+        ? child.permissions
+        : item.permissions;
+      if (permissions?.length) entries.push([child.href, permissions]);
+    }
+  }
+
+  for (const [href, permissions] of Object.entries(EXTRA_PATH_PERMISSIONS)) {
+    entries.push([href, permissions]);
+  }
+
+  // Khớp đường dài trước, để /kpi/personal/inbox không bị /kpi/personal nuốt.
+  return entries.sort((a, b) => b[0].length - a[0].length);
+})();
+
+/** Quyền cần có để vào một path, null nghĩa là ai đăng nhập cũng vào được. */
+export function pathRequiresPermissions(
+  pathname: string,
+): readonly string[] | null {
+  const hit = PATH_PERMISSIONS.find(
+    ([href]) => pathname === href || pathname.startsWith(`${href}/`),
+  );
+  return hit ? hit[1] : null;
+}
 
 export const SIDEBAR_BRAND = {
   title: "KPI Manager",

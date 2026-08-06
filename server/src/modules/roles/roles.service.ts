@@ -37,19 +37,18 @@ const SYSTEM_ROLES: Array<{
     code: RoleCode.UNIT_ADMIN,
     name: 'Unit Admin',
     sortOrder: 20,
+    // Không có ROLE_ASSIGN / USER_MANAGE: hai quyền đó chưa bị giới hạn theo
+    // phạm vi đơn vị nên cấp cho quản trị đơn vị là họ tự gán được vai trò
+    // SUPER_ADMIN cho chính mình. DEPARTMENT_MANAGE cũng vậy - xoá được đơn vị
+    // của bất kỳ nhánh nào. Chỉ mở lại khi các route đó chặn theo cây đơn vị.
     permissions: [
       Permission.USER_VIEW,
-      Permission.USER_MANAGE,
       Permission.DEPARTMENT_VIEW,
-      Permission.DEPARTMENT_MANAGE,
-      Permission.ROLE_ASSIGN,
       Permission.KPI_MANAGE,
-      Permission.KPI_ASSIGN,
       Permission.TASK_ASSIGN,
       Permission.TASK_VIEW,
       Permission.EVALUATION_SELF,
       Permission.EVALUATION_APPROVE,
-      Permission.REPORT_VIEW,
     ],
   },
   {
@@ -59,23 +58,17 @@ const SYSTEM_ROLES: Array<{
     permissions: [
       Permission.USER_VIEW,
       Permission.DEPARTMENT_VIEW,
-      Permission.KPI_ASSIGN,
       Permission.TASK_ASSIGN,
       Permission.TASK_VIEW,
       Permission.EVALUATION_SELF,
       Permission.EVALUATION_APPROVE,
-      Permission.REPORT_VIEW,
     ],
   },
   {
     code: RoleCode.STAFF,
     name: 'Staff',
     sortOrder: 40,
-    permissions: [
-      Permission.TASK_VIEW,
-      Permission.EVALUATION_SELF,
-      Permission.REPORT_VIEW,
-    ],
+    permissions: [Permission.TASK_VIEW, Permission.EVALUATION_SELF],
   },
 ];
 

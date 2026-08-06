@@ -14,8 +14,10 @@ import { KpiScopeConfigService } from './kpi-scope-config.service';
 export class KpiScopeConfigController {
   constructor(private readonly service: KpiScopeConfigService) {}
 
+  // Đọc và ghi cùng một quyền: chỉ màn cấu hình gọi endpoint này, để TASK_VIEW
+  // thì ai xem nhiệm vụ cũng mở được trang mà không lưu nổi.
   @ApiOperation({ summary: 'Phạm vi giao KPI của từng vai trò' })
-  @Permissions(Permission.TASK_VIEW)
+  @Permissions(Permission.SYSTEM_CONFIG)
   @Get()
   findAll() {
     return this.service.findAll();

@@ -66,16 +66,11 @@ const SYSTEM_PERMISSIONS: Array<{
     sortOrder: 60,
   },
   {
-    code: Permission.KPI_ASSIGN,
-    name: 'Giao KPI',
-    module: 'kpi',
-    sortOrder: 70,
-  },
-  {
     code: Permission.TASK_ASSIGN,
-    name: 'Giao nhiệm vụ',
+    name: 'Giao nhiệm vụ KPI',
     module: 'task',
     sortOrder: 80,
+    description: 'Giao nhiệm vụ xuống đơn vị / cán bộ và giao tiếp xuống',
   },
   {
     code: Permission.TASK_VIEW,
@@ -94,12 +89,6 @@ const SYSTEM_PERMISSIONS: Array<{
     name: 'Duyệt đánh giá',
     module: 'evaluation',
     sortOrder: 110,
-  },
-  {
-    code: Permission.REPORT_VIEW,
-    name: 'Xem báo cáo',
-    module: 'report',
-    sortOrder: 120,
   },
   {
     code: Permission.SYSTEM_CONFIG,

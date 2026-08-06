@@ -726,7 +726,9 @@ export class KpiAssignmentsService {
     const unitLevelIds = await this.getKpiUnitLevelIds();
     if (!this.isUnitLevel(target.levelId, unitLevelIds)) {
       throw new BadRequestException(
-        `${at}"${target.name}" là cấp gom nhóm, không nhận nhiệm vụ - giao cho đơn vị bên trong nó.`,
+        target.levelId
+          ? `${at}"${target.name}" là cấp gom nhóm, không nhận nhiệm vụ - giao cho đơn vị bên trong nó.`
+          : `${at}"${target.name}" chưa gán cấp đơn vị nên chưa biết có nhận nhiệm vụ hay không - vào Tổ chức › Đơn vị gán cấp cho nó.`,
       );
     }
 

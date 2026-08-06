@@ -5,8 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useAuth } from "@/features/auth/auth-provider";
 import { DEFAULT_APP_PATH } from "@/features/auth/constants";
-import { userHasAnyRole } from "@/features/auth/types";
-import { pathRequiresRoles } from "@/constants/navigation";
+import { userHasAnyPermission } from "@/features/auth/types";
+import { pathRequiresPermissions } from "@/constants/navigation";
 import type { AuthUser } from "@/features/auth/types";
 
 function AuthLoading() {
@@ -44,17 +44,16 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 }
 
 function canAccessPath(pathname: string, user: AuthUser | null | undefined): boolean {
-  const required = pathRequiresRoles(pathname);
+  const required = pathRequiresPermissions(pathname);
   if (!required) return true;
-  return userHasAnyRole(user, required);
+  return userHasAnyPermission(user, required);
 }
 
 /**
- * Chặn trang quản trị:
- * - /organization, /settings → SUPER_ADMIN
- * - /kpi → SUPER_ADMIN | UNIT_ADMIN | MANAGER
+ * Chặn trang theo quyền khai trong NAV_ITEMS. Chỉ là lớp điều hướng cho đỡ vào
+ * trang rồi ăn 403 - server vẫn tự kiểm tra ở mọi request.
  */
-export function RestrictSuperAdminRoutes({ children }: { children: ReactNode }) {
+export function RestrictRoutesByPermission({ children }: { children: ReactNode }) {
   const { user, status } = useAuth();
   const router = useRouter();
   const pathname = usePathname();

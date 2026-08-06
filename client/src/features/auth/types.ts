@@ -47,6 +47,8 @@ export type AuthUser = {
   departmentId?: string;
   departmentName?: string | null;
   roleAssignments: AuthRoleAssignment[];
+  /** Mã quyền gộp từ các vai trò đang giữ - server tính trong /auth/me. */
+  permissions?: string[];
   isActive: boolean;
   lastLoginAt?: string | null;
 };
@@ -90,4 +92,19 @@ export function userHasAnyRole(
 
 export function isSuperAdmin(user: AuthUser | null | undefined): boolean {
   return userHasAnyRole(user, ["SUPER_ADMIN"]);
+}
+
+/**
+ * Có ít nhất một trong các quyền yêu cầu.
+ * Chỉ dùng để ẩn/hiện giao diện - chốt chặn thật nằm ở PermissionsGuard bên
+ * server, nên sai lệch ở đây không mở thêm được gì.
+ */
+export function userHasAnyPermission(
+  user: AuthUser | null | undefined,
+  permissions: readonly string[],
+): boolean {
+  if (permissions.length === 0) return true;
+  if (!user?.permissions?.length) return false;
+  const set = new Set(user.permissions);
+  return permissions.some((code) => set.has(code));
 }

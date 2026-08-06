@@ -163,17 +163,21 @@ export function TargetTreeSelect({
 
   const clearAll = () => onChange({ departmentIds: [], userIds: [] });
 
-  /** Các đơn vị nhận được nằm trong một nhánh - dùng cho nút "chọn hết". */
-  const receivableIn = (node: TreeNode, into: string[] = []) => {
+  /**
+   * Nơi nhận ở TẦNG ĐẦU TIÊN của nhánh - gặp đơn vị nhận được thì dừng, không
+   * đi sâu hơn. Chọn Khối = giao cho các Phòng trong khối, còn Đội/Tổ để phòng
+   * tự ban tiếp xuống. Chỉ xuyên qua cấp gom nhóm hoặc cấp chưa tới lượt giao.
+   */
+  const firstReceivableIn = (node: TreeNode, into: string[] = []) => {
     for (const child of node.children) {
       if (child.canReceive) into.push(child._id);
-      receivableIn(child, into);
+      else firstReceivableIn(child, into);
     }
     return into;
   };
 
   const selectBranch = (node: TreeNode) => {
-    const ids = receivableIn(node);
+    const ids = firstReceivableIn(node);
     if (!ids.length) return;
     const missing = ids.filter((id) => !value.departmentIds.includes(id));
     onChange({
@@ -188,7 +192,7 @@ export function TargetTreeSelect({
     if (visible && !visible.has(node._id)) return null;
     const isOpen = expanded.has(node._id) || !!visible;
     const checked = value.departmentIds.includes(node._id);
-    const branchIds = receivableIn(node);
+    const branchIds = firstReceivableIn(node);
     const branchSelected =
       branchIds.length > 0 &&
       branchIds.every((id) => value.departmentIds.includes(id));
@@ -262,7 +266,7 @@ export function TargetTreeSelect({
                   ? "border-primary bg-primary/10 text-primary"
                   : "text-muted-foreground hover:bg-background",
               )}
-              title="Tích hết các đơn vị nhận được trong nhánh này"
+              title={`Giao cho ${branchIds.length} đơn vị ngay trong ${node.name}, không kéo theo cấp sâu hơn`}
             >
               {branchSelected ? "bỏ hết" : `chọn hết ${branchIds.length}`}
             </button>
@@ -436,8 +440,9 @@ export function TargetTreeSelect({
 
         <p className="border-t px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
           Tích đơn vị nào thì <b>đơn vị đó</b> nhận, quản trị đơn vị tiếp nhận
-          rồi tự ban tiếp xuống. Dòng không có ô tích thuộc cấp gom nhóm - đổi ở
-          Tổ chức › Cấp đơn vị. Dòng mờ là nơi chưa tới lượt giao ở cấp của bạn.
+          rồi tự ban tiếp xuống. Ở cấp gom nhóm bấm <b>chọn hết</b> là giao cho
+          các đơn vị ngay trong nhóm, không kéo theo cấp sâu hơn. Dòng mờ là nơi
+          chưa tới lượt giao ở cấp của bạn.
         </p>
       </PopoverContent>
     </Popover>

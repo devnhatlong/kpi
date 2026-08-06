@@ -69,6 +69,7 @@ import type { Department } from "@/features/organization/types";
 import { entityId, levelOf } from "@/features/organization/types";
 import {
   activeBadgeClass,
+  groupLevelBadgeClass,
   inactiveBadgeClass,
   levelBadgeClass,
 } from "@/features/organization/badge-styles";
@@ -108,6 +109,8 @@ function TreeItem({
   const hasChildren = node.children.length > 0;
   const isOpen = expanded.has(node.id);
   const level = levelOf(node.department);
+  /** Cấp gom nhóm (Khối) - chỉ để gộp các đơn vị bên trong, không nhận KPI. */
+  const isGroup = level?.isKpiUnit === false;
   const selected = selectedId === node.id;
   const stubWidth = hasChildren ? TREE_STUB_BRANCH : TREE_STUB_LEAF;
   /** Lá sát trục; node có con cách ra để chỗ icon +/- */
@@ -165,12 +168,24 @@ function TreeItem({
           <Badge
             className={cn(
               "min-w-[2.75rem] shrink-0 justify-center rounded px-1.5 py-0 text-[10px] font-bold tracking-wide",
-              levelBadgeClass(level?.rank),
+              isGroup ? groupLevelBadgeClass : levelBadgeClass(level?.rank),
             )}
           >
             {node.department.code}
           </Badge>
-          <span className="whitespace-nowrap">{node.department.name}</span>
+          <span
+            className={cn(
+              "whitespace-nowrap",
+              isGroup && "text-muted-foreground",
+            )}
+          >
+            {node.department.name}
+          </span>
+          {isGroup ? (
+            <span className="shrink-0 rounded border border-dashed px-1 text-[10px] leading-4 text-muted-foreground">
+              nhóm
+            </span>
+          ) : null}
         </span>
       </button>
 
@@ -274,6 +289,7 @@ export function UnitsView() {
   const pagedUsers = unitUsers.slice((usersPage - 1) * usersLimit, usersPage * usersLimit);
 
   const selectedLevel = selected ? levelOf(selected) : null;
+  const selectedIsGroup = selectedLevel?.isKpiUnit === false;
   const crumb = selected ? breadcrumbPath(departments, effectiveSelectedId) : "";
 
   useEffect(() => {
@@ -456,7 +472,13 @@ export function UnitsView() {
                   <div className="min-w-0 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
                       {selectedLevel ? (
-                        <Badge className={levelBadgeClass(selectedLevel.rank)}>
+                        <Badge
+                          className={
+                            selectedIsGroup
+                              ? groupLevelBadgeClass
+                              : levelBadgeClass(selectedLevel.rank)
+                          }
+                        >
                           {selectedLevel.name}
                         </Badge>
                       ) : (
@@ -492,6 +514,15 @@ export function UnitsView() {
                     </Button>
                   </div>
                 </div>
+
+                {selectedIsGroup ? (
+                  <div className="mb-5 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                    Đây là <span className="font-medium text-foreground">cấp gom nhóm</span>, không
+                    phải đơn vị thật: không nhận nhiệm vụ KPI và không hiện trong danh sách nơi
+                    nhận. Nhiệm vụ giao thẳng cho các đơn vị bên trong, còn báo cáo vẫn tổng hợp
+                    được theo nhóm này.
+                  </div>
+                ) : null}
 
                 <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3">
                   <StatBox

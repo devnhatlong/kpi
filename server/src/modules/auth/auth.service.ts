@@ -1,7 +1,9 @@
 import {
+  Inject,
   Injectable,
   Logger,
   UnauthorizedException,
+  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -9,7 +11,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { createHash, randomBytes } from 'crypto';
 import { Model, Types } from 'mongoose';
 
+import { Permission } from '@/common/enums/permission.enum';
+import { RoleCode } from '@/common/enums/role-code.enum';
 import { UsersService } from '../users/users.service';
+import { RolesService } from '../roles/roles.service';
 import { UserDocument } from '../users/schemas/user.schema';
 import { UpdateProfileDto } from '../users/dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -26,6 +31,8 @@ export class AuthsService {
 
   constructor(
     private readonly usersService: UsersService,
+    @Inject(forwardRef(() => RolesService))
+    private readonly rolesService: RolesService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     @InjectModel(RefreshToken.name)
@@ -54,8 +61,29 @@ export class AuthsService {
 
     return {
       message: 'Lấy thông tin người dùng thành công.',
-      data: profile,
+      data: {
+        ...profile,
+        permissions: await this.resolvePermissions(profile.roleAssignments),
+      },
     };
+  }
+
+  /**
+   * Quyền thực tế của user, để client ẩn/hiện menu cho khớp với những gì
+   * PermissionsGuard sẽ cho qua. Super admin được guard bỏ qua vòng kiểm tra
+   * nên ở đây cũng trả về đủ, tránh menu ẩn mất thứ họ vẫn gọi được.
+   */
+  private async resolvePermissions(
+    roleAssignments?: Array<{ roleCode: string }>,
+  ): Promise<string[]> {
+    const roleCodes = (roleAssignments ?? [])
+      .map((item) => item?.roleCode)
+      .filter((code): code is string => Boolean(code));
+
+    if (roleCodes.includes(RoleCode.SUPER_ADMIN)) {
+      return Object.values(Permission);
+    }
+    return this.rolesService.getPermissionsByCodes(roleCodes);
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {

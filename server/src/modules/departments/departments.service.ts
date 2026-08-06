@@ -72,7 +72,7 @@ export class DepartmentsService {
 
     const sort = { depth: 1 as const, sortOrder: 1 as const, name: 1 as const };
     const populate = [
-      { path: 'levelId', select: 'code name rank' },
+      { path: 'levelId', select: 'code name rank isKpiUnit' },
       { path: 'parentId', select: 'code name' },
     ];
 
@@ -104,7 +104,7 @@ export class DepartmentsService {
   async findOne(id: string) {
     const department = await this.requireDepartment(id);
     await department.populate([
-      { path: 'levelId', select: 'code name rank' },
+      { path: 'levelId', select: 'code name rank isKpiUnit' },
       { path: 'parentId', select: 'code name' },
     ]);
     return department;

@@ -7,7 +7,7 @@ import { ChevronDown } from "lucide-react";
 
 import { NAV_ITEMS, SIDEBAR_BRAND, type NavItem } from "@/constants/navigation";
 import { useAuth } from "@/features/auth/auth-provider";
-import { userHasAnyRole } from "@/features/auth/types";
+import { userHasAnyPermission } from "@/features/auth/types";
 import {
   Collapsible,
   CollapsibleContent,
@@ -186,13 +186,31 @@ function NavGroup({
 export function AppSidebar() {
   const { user } = useAuth();
 
-  const visibleItems = useMemo(
-    () =>
-      NAV_ITEMS.filter(
-        (item) => !item.roles?.length || userHasAnyRole(user, item.roles),
-      ),
-    [user],
-  );
+  // Lọc cả mục con: nhóm chỉ còn lại những trang user thật sự vào được, và
+  // nhóm rỗng thì ẩn luôn thay vì bung ra một danh sách trống.
+  const visibleItems = useMemo(() => {
+    const items: NavItem[] = [];
+
+    for (const item of NAV_ITEMS) {
+      if (item.permissions?.length && !userHasAnyPermission(user, item.permissions)) {
+        continue;
+      }
+
+      if (!item.children?.length) {
+        items.push(item);
+        continue;
+      }
+
+      const children = item.children.filter(
+        (child) =>
+          !child.permissions?.length ||
+          userHasAnyPermission(user, child.permissions),
+      );
+      if (children.length) items.push({ ...item, children });
+    }
+
+    return items;
+  }, [user]);
 
   const allHrefs = useMemo(() => collectNavHrefs(visibleItems), [visibleItems]);
 

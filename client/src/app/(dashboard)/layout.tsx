@@ -4,7 +4,7 @@ import { Suspense, type ReactNode } from "react";
 
 import {
   RequireAuth,
-  RestrictSuperAdminRoutes,
+  RestrictRoutesByPermission,
 } from "@/features/auth/auth-guards";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { ServerTimeSync } from "@/components/server-time-sync";
@@ -23,10 +23,10 @@ export default function DashboardLayout({
       }
     >
       <RequireAuth>
-        <RestrictSuperAdminRoutes>
+        <RestrictRoutesByPermission>
           <ServerTimeSync />
           <DashboardShell>{children}</DashboardShell>
-        </RestrictSuperAdminRoutes>
+        </RestrictRoutesByPermission>
       </RequireAuth>
     </Suspense>
   );
