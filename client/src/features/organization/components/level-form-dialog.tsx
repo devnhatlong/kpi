@@ -39,6 +39,7 @@ export function LevelFormDialog({
   const [name, setName] = useState("");
   const [rank, setRank] = useState("1");
   const [isActive, setIsActive] = useState(true);
+  const [isKpiUnit, setIsKpiUnit] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -48,11 +49,13 @@ export function LevelFormDialog({
       setName(edit.name);
       setRank(String(edit.rank ?? 1));
       setIsActive(edit.isActive);
+      setIsKpiUnit(edit.isKpiUnit ?? false);
     } else {
       setCode("");
       setName("");
       setRank("1");
       setIsActive(true);
+      setIsKpiUnit(false);
     }
   }, [open, edit]);
 
@@ -73,6 +76,7 @@ export function LevelFormDialog({
       name: name.trim(),
       rank: rankNum,
       isActive,
+      isKpiUnit,
     };
 
     setSaving(true);
@@ -137,6 +141,22 @@ export function LevelFormDialog({
           <div className="flex h-9 items-center justify-between rounded-lg border px-3">
             <Label htmlFor="level-active">Đang hoạt động</Label>
             <Switch id="level-active" checked={isActive} onCheckedChange={setIsActive} />
+          </div>
+
+          <div className="space-y-2 rounded-lg border p-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="level-kpi-unit">Là đơn vị nhận KPI</Label>
+              <Switch
+                id="level-kpi-unit"
+                checked={isKpiUnit}
+                onCheckedChange={setIsKpiUnit}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Bật cho cấp thật sự nhận và thực hiện nhiệm vụ (Phòng, Xã). Tắt
+              cho cấp chỉ gom nhóm (Khối) - nhiệm vụ sẽ đi thẳng qua, không dừng
+              lại ở đó. Chưa cấp nào bật thì mọi cấp đều nhận được.
+            </p>
           </div>
         </div>
 

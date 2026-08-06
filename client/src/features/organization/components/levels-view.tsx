@@ -133,6 +133,7 @@ export function LevelsView() {
                   <TableHead className="w-[120px]">Mã</TableHead>
                   <TableHead>Tên cấp</TableHead>
                   <TableHead className="w-[100px]">Thứ tự</TableHead>
+                  <TableHead className="w-[150px]">Nhận KPI</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
                   <TableHead className="w-[100px] text-right">Thao tác</TableHead>
                 </TableRow>
@@ -140,13 +141,13 @@ export function LevelsView() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : levels.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                       <div className="inline-flex flex-col items-center gap-2">
                         <Layers className="h-8 w-8 opacity-40" />
                         <span>Chưa có cấp đơn vị nào.</span>
@@ -166,6 +167,17 @@ export function LevelsView() {
                       </TableCell>
                       <TableCell className="font-medium">{level.name}</TableCell>
                       <TableCell>{level.rank}</TableCell>
+                      <TableCell>
+                        {level.isKpiUnit ? (
+                          <Badge variant="outline" className={activeBadgeClass}>
+                            Đơn vị nhận KPI
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            Gom nhóm
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {level.isActive ? (
                           <Badge variant="outline" className={activeBadgeClass}>

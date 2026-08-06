@@ -56,6 +56,7 @@ export class DepartmentLevelsService implements OnModuleInit {
       slug: Helper.slugify(dto.name),
       rank: dto.rank,
       isActive: dto.isActive ?? true,
+      isKpiUnit: dto.isKpiUnit ?? false,
     });
 
     return {
@@ -119,6 +120,9 @@ export class DepartmentLevelsService implements OnModuleInit {
     }
     if (dto.isActive !== undefined) {
       level.isActive = dto.isActive;
+    }
+    if (dto.isKpiUnit !== undefined) {
+      level.isKpiUnit = dto.isKpiUnit;
     }
 
     await level.save();

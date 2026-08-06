@@ -43,6 +43,17 @@ export class DepartmentLevel {
         index: true,
     })
     isActive!: boolean;
+
+    /**
+     * Cấp này là đơn vị nhận KPI (Phòng, Xã...) hay chỉ để gom nhóm (Khối).
+     * Nhiệm vụ giao xuống chỉ dừng ở các cấp bật cờ này.
+     * Chưa cấp nào bật thì coi như mọi cấp đều nhận được.
+     */
+    @Prop({
+        default: false,
+        index: true,
+    })
+    isKpiUnit!: boolean;
 }
 
 export const DepartmentLevelSchema = SchemaFactory.createForClass(DepartmentLevel);

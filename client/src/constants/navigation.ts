@@ -14,6 +14,7 @@ import {
   Network,
   Settings,
   Shield,
+  ShieldCheck,
   Table2,
   Users,
 } from "lucide-react";
@@ -194,6 +195,11 @@ export const NAV_ITEMS: NavItem[] = [
       { title: "Cấp đơn vị", href: "/organization/levels", icon: Layers },
       { title: "Vai trò", href: "/organization/roles", icon: Shield },
       { title: "Quyền", href: "/organization/permissions", icon: KeyRound },
+      {
+        title: "Phân quyền giao KPI",
+        href: "/organization/kpi-scope",
+        icon: ShieldCheck,
+      },
       { title: "Người dùng", href: "/organization/employees", icon: Users },
     ],
   },

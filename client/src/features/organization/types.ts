@@ -7,6 +7,8 @@ export type DepartmentLevel = {
   name: string;
   rank: number;
   isActive: boolean;
+  /** Cấp này nhận KPI (Phòng, Xã...) hay chỉ gom nhóm (Khối). */
+  isKpiUnit?: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -16,6 +18,7 @@ export type CreateDepartmentLevelInput = {
   name: string;
   rank: number;
   isActive?: boolean;
+  isKpiUnit?: boolean;
 };
 
 export type UpdateDepartmentLevelInput = {
@@ -23,6 +26,7 @@ export type UpdateDepartmentLevelInput = {
   name?: string;
   rank?: number;
   isActive?: boolean;
+  isKpiUnit?: boolean;
 };
 
 export type AppPermission = {

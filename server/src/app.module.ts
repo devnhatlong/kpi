@@ -17,6 +17,8 @@ import { PermissionsModule } from './modules/permissions/permissions.module';
 import { SystemModule } from './modules/system/system.module';
 import { KpiFormConfigModule } from './modules/kpi-form-config/kpi-form-config.module';
 import { PersonalKpiModule } from './modules/personal-kpi/personal-kpi.module';
+import { KpiAssignmentsModule } from './modules/kpi-assignments/kpi-assignments.module';
+import { KpiScopeConfigModule } from './modules/kpi-scope-config/kpi-scope-config.module';
 import { mongooseConfig } from './config/database.config';
 import { JwtModule } from '@nestjs/jwt';
 import type { SignOptions } from 'jsonwebtoken';
@@ -51,6 +53,8 @@ import type { SignOptions } from 'jsonwebtoken';
     SystemModule,
     KpiFormConfigModule,
     PersonalKpiModule,
+    KpiScopeConfigModule,
+    KpiAssignmentsModule,
   ],
 })
 export class AppModule implements NestModule {
