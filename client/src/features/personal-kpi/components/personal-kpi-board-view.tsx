@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Check, Inbox, LayoutTemplate, Search, Send, TriangleAlert, Undo2 } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -579,11 +579,10 @@ function AxisBoardBlock({
                   group.rows.length > 0 &&
                   group.rows.every((row) => selected.has(row._id));
                 return (
-                  <>
-                    <TableRow
-                      key={`grp-${group.workContentId}`}
-                      className="bg-muted/40 hover:bg-muted/40"
-                    >
+                  // Fragment đầy đủ vì một group trả về nhiều <tr>; fragment
+                  // rút gọn <> không nhận key.
+                  <Fragment key={group.workContentId}>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
                       <TableCell colSpan={totalCols} className="py-2">
                         <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
                           <Checkbox
@@ -711,7 +710,7 @@ function AxisBoardBlock({
                         </TableCell>
                       </TableRow>
                     ))}
-                  </>
+                  </Fragment>
                 );
               })}
             </TableBody>
