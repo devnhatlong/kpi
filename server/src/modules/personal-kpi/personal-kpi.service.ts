@@ -722,12 +722,23 @@ export class PersonalKpiService {
       })),
     );
 
-    const counts = { pending: 0, approved: 0, returned: 0 };
-    for (const row of rows) {
-      if (row.reviewStatus === 'PENDING') counts.pending += 1;
-      else if (row.reviewStatus === 'APPROVED') counts.approved += 1;
-      else if (row.reviewStatus === 'RETURNED') counts.returned += 1;
-    }
+    // Đếm theo TOÀN BỘ việc đang ở chỗ mình, không theo bộ lọc trạng thái đang
+    // xem - để thanh tab luôn nói được còn bao nhiêu việc đã duyệt chờ gửi lên.
+    const countFilter = { ...filter };
+    delete countFilter.reviewStatus;
+    const countRows = await this.itemModel.aggregate<{
+      _id: PersonalKpiReviewStatus;
+      total: number;
+    }>([
+      { $match: countFilter },
+      { $group: { _id: '$reviewStatus', total: { $sum: 1 } } },
+    ]);
+    const countMap = new Map(countRows.map((row) => [row._id, row.total]));
+    const counts = {
+      pending: countMap.get('PENDING') ?? 0,
+      approved: countMap.get('APPROVED') ?? 0,
+      returned: countMap.get('RETURNED') ?? 0,
+    };
 
     return {
       message: 'OK',

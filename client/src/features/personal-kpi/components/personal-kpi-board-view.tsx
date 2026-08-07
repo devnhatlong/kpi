@@ -12,13 +12,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -147,6 +140,7 @@ export function PersonalKpiBoardView() {
   );
 
   const axes = data?.axes ?? [];
+  const counts = data?.counts ?? { pending: 0, approved: 0, returned: 0 };
 
   const allRows = useMemo(
     () => axes.flatMap((axis) => axis.groups.flatMap((group) => group.rows)),
@@ -202,7 +196,15 @@ export function PersonalKpiBoardView() {
     setBusy(true);
     try {
       const result = await reviewPersonalKpi({ itemIds, decision: "APPROVE" });
-      toast.success(`Đã duyệt ${result.count} nhiệm vụ.`);
+      // Duyệt xong việc rời khỏi tab "Chờ tôi duyệt" - chỉ luôn đường đi tiếp,
+      // không để người dùng tưởng nó biến mất.
+      toast.success(`Đã duyệt ${result.count} nhiệm vụ.`, {
+        description: "Việc đã duyệt nằm ở tab Tôi đã duyệt, chờ gửi lên cấp trên.",
+        action: {
+          label: "Xem ngay",
+          onClick: () => setStatus("APPROVED"),
+        },
+      });
       await afterAction();
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không duyệt được."));
@@ -269,7 +271,7 @@ export function PersonalKpiBoardView() {
 
       <Card>
         <CardContent className="space-y-3 pt-6">
-          <div className="grid gap-3 md:grid-cols-[1fr_200px_220px]">
+          <div className="grid gap-3 md:grid-cols-[1fr_220px]">
             <div className="space-y-1.5">
               <Label>Tìm nhiệm vụ</Label>
               <div className="relative">
@@ -290,26 +292,49 @@ export function PersonalKpiBoardView() {
                 onChange={(e) => setReportDate(e.target.value)}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Trạng thái</Label>
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_FILTERS.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          </div>
+
+          {/* Tab kèm số đếm: duyệt xong việc không biến mất, nó nằm ở tab kế bên. */}
+          <div className="flex flex-wrap gap-1 border-t pt-3">
+            {STATUS_FILTERS.map((item) => {
+              const count =
+                item.value === "PENDING"
+                  ? counts.pending
+                  : item.value === "APPROVED"
+                    ? counts.approved
+                    : item.value === "RETURNED"
+                      ? counts.returned
+                      : counts.pending + counts.approved + counts.returned;
+              const active = status === item.value;
+              return (
+                <Button
+                  key={item.value}
+                  type="button"
+                  size="sm"
+                  variant={active ? "default" : "ghost"}
+                  onClick={() => setStatus(item.value)}
+                >
+                  {item.label}
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "ml-1 h-5 px-1.5",
+                      active && "bg-white/20 text-white",
+                    )}
+                  >
+                    {count}
+                  </Badge>
+                </Button>
+              );
+            })}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 border-t pt-3">
             <span className="text-sm text-muted-foreground">
               Đã chọn <b className="text-foreground">{selected.size}</b> nhiệm vụ
+              {status === "APPROVED" && selected.size === 0 ? (
+                <> — tích chọn rồi bấm Gửi lên cấp trên.</>
+              ) : null}
             </span>
             <div className="ml-auto flex flex-wrap gap-2">
               <Button
@@ -383,7 +408,20 @@ export function PersonalKpiBoardView() {
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-14 text-muted-foreground">
             <Inbox className="size-10 opacity-40" />
-            <p className="text-sm">Không có nhiệm vụ nào ở trạng thái này.</p>
+            <p className="text-sm">
+              {status === "PENDING" && counts.approved > 0
+                ? "Đã duyệt hết. Việc đã duyệt nằm ở tab Tôi đã duyệt."
+                : "Không có nhiệm vụ nào ở trạng thái này."}
+            </p>
+            {status === "PENDING" && counts.approved > 0 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setStatus("APPROVED")}
+              >
+                Xem {counts.approved} việc đã duyệt
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
       ) : (
