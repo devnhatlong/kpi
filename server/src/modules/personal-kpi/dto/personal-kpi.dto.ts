@@ -1,279 +1,344 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayNotEmpty,
   IsArray,
+  IsBoolean,
+  IsIn,
   IsInt,
   IsMongoId,
   IsNumber,
   IsObject,
   IsOptional,
   IsString,
-  Max,
   MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  NumberNotRequired,
-  NumberRequired,
-  StringNotRequired,
-  StringRequired,
-} from '@/common/decorators';
 
-export class EvidenceFileDto {
-  @StringRequired('Key file', { example: 'local-abc' })
+import { PERSONAL_KPI_REVIEW_STATUSES } from '../schemas/personal-kpi-item.schema';
+
+export class PersonalKpiEvidenceFileDto {
+  @ApiProperty()
+  @IsString()
   key!: string;
 
-  @StringRequired('Tên file', { example: 'bang-chung.pdf' })
+  @ApiProperty()
+  @IsString()
   name!: string;
 
-  @NumberRequired('Kích thước (byte)', { example: 1024 })
+  @ApiProperty()
+  @IsNumber()
   @Min(0)
   size!: number;
 
-  @StringRequired('MIME type', { example: 'application/pdf' })
+  @ApiProperty()
+  @IsString()
   mimeType!: string;
 }
 
-export class CreatePersonalKpiDto {
-  @StringRequired('Trục', { example: '66af9f31f0e4d3e4f4305e92' })
-  @IsMongoId({ message: 'Trục không hợp lệ.' })
-  axisId!: string;
+/** Các trường nội dung dùng chung cho tạo / sửa / cấp trên sửa. */
+export class PersonalKpiContentDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  title?: string;
 
-  @StringRequired('Nội dung công việc', {
-    example: '66af9f31f0e4d3e4f4305e91',
-  })
-  @IsMongoId({ message: 'Nội dung công việc không hợp lệ.' })
-  workContentId!: string;
-
-  @StringRequired('Tên nhiệm vụ', { example: 'Hoàn thành báo cáo quý' })
-  title!: string;
-
-  @StringNotRequired('Thời hạn hoàn thành (YYYY-MM-DD)')
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
   deadline?: string;
 
-  @StringNotRequired('Sản phẩm dự kiến')
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
   product?: string;
 
-  @NumberRequired('Điểm chuẩn', { example: 5 })
-  @Min(0, { message: 'Điểm chuẩn phải ≥ 0.' })
-  standardScore!: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  standardScore?: number;
 
-  @StringNotRequired('Đơn vị thực hiện')
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
   executingUnit?: string;
 
-  @NumberNotRequired('KPI tiến độ %')
-  progressPercent?: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  progressPercent?: number | null;
 
-  @NumberNotRequired('Điểm tự chấm tiến độ')
-  progressSelfScore?: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  progressSelfScore?: number | null;
 
-  @NumberNotRequired('KPI chất lượng %')
-  qualityPercent?: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  qualityPercent?: number | null;
 
-  @NumberNotRequired('Điểm tự chấm chất lượng')
-  qualitySelfScore?: number;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  qualitySelfScore?: number | null;
 
-  @StringNotRequired('Đề nghị khác')
+  @ApiPropertyOptional({ description: 'Đạt - loại trừ với resultFailed' })
+  @IsOptional()
+  @IsBoolean()
+  resultPassed?: boolean | null;
+
+  @ApiPropertyOptional({ description: 'Không đạt - loại trừ với resultPassed' })
+  @IsOptional()
+  @IsBoolean()
+  resultFailed?: boolean | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
   note?: string;
 
-  @ApiPropertyOptional({ type: [EvidenceFileDto] })
+  @ApiPropertyOptional({ type: [PersonalKpiEvidenceFileDto] })
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => EvidenceFileDto)
-  evidenceFiles?: EvidenceFileDto[];
+  @Type(() => PersonalKpiEvidenceFileDto)
+  evidenceFiles?: PersonalKpiEvidenceFileDto[];
 
-  @ApiPropertyOptional({
-    description: 'Giá trị các cột tự do của mẫu bảng (key cột -> giá trị)',
-    type: Object,
-  })
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsObject({ message: 'fieldValues phải là object.' })
+  @IsObject()
   fieldValues?: Record<string, string | number>;
 }
 
+export class CreatePersonalKpiDto extends PersonalKpiContentDto {
+  @ApiProperty()
+  @IsMongoId()
+  axisId!: string;
+
+  @ApiProperty()
+  @IsMongoId()
+  workContentId!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(500)
+  declare title: string;
+}
+
 export class CreatePersonalKpiBatchDto {
-  @StringNotRequired('Ngày báo cáo YYYY-MM-DD (mặc định hôm nay theo giờ VN server)', {
-    example: '2026-08-04',
-  })
+  @ApiPropertyOptional({ description: 'YYYY-MM-DD, mặc định hôm nay' })
+  @IsOptional()
+  @IsString()
   reportDate?: string;
 
   @ApiProperty({ type: [CreatePersonalKpiDto] })
-  @IsArray({ message: 'items phải là mảng.' })
+  @IsArray()
+  @ArrayNotEmpty()
   @ValidateNested({ each: true })
   @Type(() => CreatePersonalKpiDto)
   items!: CreatePersonalKpiDto[];
 }
 
-export class UpdatePersonalKpiDto {
-  @StringNotRequired('Trục')
+export class UpdatePersonalKpiDto extends PersonalKpiContentDto {
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsMongoId({ message: 'Trục không hợp lệ.' })
+  @IsMongoId()
   axisId?: string;
 
-  @StringNotRequired('Nội dung công việc')
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsMongoId({ message: 'Nội dung công việc không hợp lệ.' })
+  @IsMongoId()
   workContentId?: string;
+}
 
-  @StringNotRequired('Tên nhiệm vụ')
-  title?: string;
+/** Cấp trên sửa nội dung nhiệm vụ đang nằm ở tay mình - bắt buộc nêu lý do. */
+export class ReviewerEditPersonalKpiDto extends PersonalKpiContentDto {
+  @ApiProperty({ description: 'Lý do sửa - hiện trong lịch sử nhiệm vụ' })
+  @IsString()
+  @MaxLength(500)
+  reason!: string;
+}
 
-  @StringNotRequired('Thời hạn hoàn thành')
-  deadline?: string;
+export class SubmitPersonalKpiDto {
+  @ApiProperty({ description: 'Người nhận - phải là cấp trên trong nhánh' })
+  @IsMongoId()
+  recipientId!: string;
 
-  @StringNotRequired('Sản phẩm dự kiến')
-  product?: string;
-
-  @NumberNotRequired('Điểm chuẩn')
-  @IsOptional()
-  @IsNumber({}, { message: 'Điểm chuẩn phải là số.' })
-  @Min(0, { message: 'Điểm chuẩn phải ≥ 0.' })
-  standardScore?: number;
-
-  @StringNotRequired('Đơn vị thực hiện')
-  executingUnit?: string;
-
-  @NumberNotRequired('KPI tiến độ %')
-  progressPercent?: number;
-
-  @NumberNotRequired('Điểm tự chấm tiến độ')
-  progressSelfScore?: number;
-
-  @NumberNotRequired('KPI chất lượng %')
-  qualityPercent?: number;
-
-  @NumberNotRequired('Điểm tự chấm chất lượng')
-  qualitySelfScore?: number;
-
-  @StringNotRequired('Đề nghị khác')
-  note?: string;
-
-  @ApiPropertyOptional({ type: [EvidenceFileDto] })
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => EvidenceFileDto)
-  evidenceFiles?: EvidenceFileDto[];
+  @ApiProperty()
+  @IsString()
+  @MaxLength(1000)
+  note!: string;
 
   @ApiPropertyOptional({
-    description: 'Giá trị các cột tự do của mẫu bảng (key cột -> giá trị)',
-    type: Object,
+    description: 'Bỏ trống = gửi hết nhiệm vụ gửi được trong ngày',
   })
   @IsOptional()
-  @IsObject({ message: 'fieldValues phải là object.' })
-  fieldValues?: Record<string, string | number>;
+  @IsArray()
+  @IsMongoId({ each: true })
+  itemIds?: string[];
+}
+
+/** Cấp trên gửi tiếp các nhiệm vụ đã duyệt lên cấp cao hơn. */
+export class ForwardPersonalKpiDto {
+  @ApiProperty()
+  @IsMongoId()
+  recipientId!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(1000)
+  note!: string;
+
+  @ApiProperty({ description: 'Các nhiệm vụ được tích trong bảng tổng' })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsMongoId({ each: true })
+  itemIds!: string[];
+}
+
+export class ReviewPersonalKpiDto {
+  @ApiProperty({ description: 'Các nhiệm vụ được tích trong bảng tổng' })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsMongoId({ each: true })
+  itemIds!: string[];
+
+  @ApiProperty({ enum: ['APPROVE', 'RETURN'] })
+  @IsIn(['APPROVE', 'RETURN'])
+  decision!: 'APPROVE' | 'RETURN';
+
+  @ApiPropertyOptional({ description: 'Bắt buộc khi trả lại' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
 }
 
 export class PersonalKpiListQueryDto {
-  @ApiPropertyOptional({ default: 1 })
+  @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'page phải là số nguyên.' })
+  @IsInt()
   @Min(1)
-  page?: number = 1;
+  page?: number;
 
-  @ApiPropertyOptional({ default: 10 })
+  @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'limit phải là số nguyên.' })
+  @IsInt()
   @Min(1)
-  @Max(100)
-  limit?: number = 10;
+  limit?: number;
 
-  @ApiPropertyOptional({
-    enum: ['DRAFT', 'SENT', 'REJECTED', 'COMPLETED'],
-  })
-  @IsOptional()
-  @IsString()
-  status?: string;
-
-  @ApiPropertyOptional({ description: 'Ngày báo cáo YYYY-MM-DD' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   reportDate?: string;
 
-  @ApiPropertyOptional({ description: 'Từ khóa tìm theo tên nhiệm vụ' })
+  @ApiPropertyOptional({ enum: PERSONAL_KPI_REVIEW_STATUSES })
+  @IsOptional()
+  @IsIn([...PERSONAL_KPI_REVIEW_STATUSES])
+  status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsMongoId()
+  axisId?: string;
+
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   q?: string;
-
-  @ApiPropertyOptional({ description: 'Lọc theo trục' })
-  @IsOptional()
-  @IsMongoId({ message: 'Trục không hợp lệ.' })
-  axisId?: string;
 }
 
 export class PersonalKpiReportsQueryDto {
-  @ApiPropertyOptional({ default: 1 })
+  @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'page phải là số nguyên.' })
+  @IsInt()
   @Min(1)
-  page?: number = 1;
+  page?: number;
 
-  @ApiPropertyOptional({ default: 10 })
+  @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
-  @IsInt({ message: 'limit phải là số nguyên.' })
+  @IsInt()
   @Min(1)
-  @Max(100)
-  limit?: number = 10;
+  limit?: number;
 
-  @ApiPropertyOptional({ description: 'Từ ngày (YYYY-MM-DD)' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   fromDate?: string;
 
-  @ApiPropertyOptional({ description: 'Đến ngày (YYYY-MM-DD)' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   toDate?: string;
 
-  @ApiPropertyOptional({
-    enum: ['DRAFT', 'SENT', 'REJECTED', 'COMPLETED'],
-    description: 'Lọc báo cáo có ít nhất 1 nhiệm vụ ở trạng thái này',
-  })
+  @ApiPropertyOptional({ enum: PERSONAL_KPI_REVIEW_STATUSES })
   @IsOptional()
-  @IsString()
+  @IsIn([...PERSONAL_KPI_REVIEW_STATUSES])
   status?: string;
 
-  @ApiPropertyOptional({ description: 'Tìm theo tên nhiệm vụ trong báo cáo' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   q?: string;
 }
 
-export class SendPersonalKpiDto {
-  @StringRequired('Người nhận', { example: '66af9f31f0e4d3e4f4305e91' })
-  @IsMongoId({ message: 'Người nhận không hợp lệ.' })
-  recipientId!: string;
-
-  @StringRequired('Nội dung gửi', { example: 'Kính gửi' })
-  @MaxLength(1000, { message: 'Nội dung gửi tối đa 1000 ký tự.' })
-  note!: string;
-
-  @ApiPropertyOptional({
-    description:
-      'Chỉ gửi các nhiệm vụ này (khi có Trả lại: chỉ gửi đúng nhiệm vụ Trả lại).',
-    type: [String],
-  })
+/** Bảng tổng theo trục cho cấp trên. */
+export class PersonalKpiBoardQueryDto {
+  @ApiPropertyOptional({ description: 'Bỏ trống = mọi ngày còn việc' })
   @IsOptional()
-  @IsArray()
-  @IsMongoId({ each: true, message: 'ID nhiệm vụ không hợp lệ.' })
-  itemIds?: string[];
-}
+  @IsString()
+  reportDate?: string;
 
-export class RejectPersonalKpiDto {
-  @StringRequired('Lý do trả lại', { example: 'Cần bổ sung sản phẩm đầu ra.' })
-  @MaxLength(1000, { message: 'Lý do trả lại tối đa 1000 ký tự.' })
-  reason!: string;
-}
-
-export class PersonalKpiInboxQueryDto extends PersonalKpiListQueryDto {
-  @ApiPropertyOptional({ description: 'Lọc theo người gửi' })
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsMongoId({ message: 'Người gửi không hợp lệ.' })
+  @IsString()
+  fromDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  toDate?: string;
+
+  @ApiPropertyOptional({ enum: PERSONAL_KPI_REVIEW_STATUSES })
+  @IsOptional()
+  @IsIn([...PERSONAL_KPI_REVIEW_STATUSES])
+  status?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsMongoId()
+  axisId?: string;
+
+  @ApiPropertyOptional({ description: 'Lọc theo người gửi lượt gần nhất' })
+  @IsOptional()
+  @IsMongoId()
+  senderId?: string;
+
+  @ApiPropertyOptional({ description: 'Lọc theo cán bộ tạo nhiệm vụ' })
+  @IsOptional()
+  @IsMongoId()
   ownerId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  @ApiPropertyOptional({ description: 'Gộp cả việc đã duyệt để gửi tiếp' })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  includeDecided?: boolean;
 }

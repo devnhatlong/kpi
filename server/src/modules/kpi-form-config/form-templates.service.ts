@@ -21,6 +21,10 @@ import {
   SINGLETON_SEMANTICS,
   type FormColumnSemantic,
 } from './schemas/form-template.schema';
+import {
+  FormTemplateVersion,
+  FormTemplateVersionDocument,
+} from './schemas/form-template-version.schema';
 import { Axis, AxisDocument } from './schemas/axis.schema';
 
 const AXIS_POPULATE = { path: 'axisIds', select: 'code name' };
@@ -30,9 +34,42 @@ export class FormTemplatesService {
   constructor(
     @InjectModel(FormTemplate.name)
     private readonly formTemplateModel: Model<FormTemplateDocument>,
+    @InjectModel(FormTemplateVersion.name)
+    private readonly versionModel: Model<FormTemplateVersionDocument>,
     @InjectModel(Axis.name)
     private readonly axisModel: Model<AxisDocument>,
   ) {}
+
+  /**
+   * Bộ cột đúng như lúc nhiệm vụ được gửi.
+   * Version còn là bản hiện hành thì lấy thẳng mẫu, cũ hơn thì lấy ảnh chụp.
+   */
+  async resolveVersion(templateId: Types.ObjectId | string, version: number) {
+    const template = await this.formTemplateModel.findById(templateId);
+    if (!template) return null;
+    if (template.version === version) {
+      return {
+        code: template.code,
+        name: template.name,
+        version: template.version,
+        columns: template.columns,
+        headerGroups: template.headerGroups,
+      };
+    }
+
+    const snapshot = await this.versionModel.findOne({
+      templateId: new Types.ObjectId(String(templateId)),
+      version,
+    });
+    if (!snapshot) return null;
+    return {
+      code: snapshot.code,
+      name: snapshot.name,
+      version: snapshot.version,
+      columns: snapshot.columns,
+      headerGroups: snapshot.headerGroups,
+    };
+  }
 
   async create(dto: CreateFormTemplateDto) {
     const code = dto.code?.trim()
@@ -137,6 +174,14 @@ export class FormTemplatesService {
               item.columns as unknown as FormTemplateColumnDto[],
               headerGroups,
             );
+
+      // Cột/nhóm đổi thật thì đóng băng bản cũ rồi mới tăng version, để báo cáo
+      // đã gửi vẫn dựng đúng bảng của thời điểm gửi.
+      if (this.layoutChanged(item, columns, headerGroups)) {
+        await this.archiveCurrentVersion(item);
+        item.version = (item.version ?? 1) + 1;
+      }
+
       item.headerGroups = headerGroups;
       item.columns = columns;
     }
@@ -154,6 +199,53 @@ export class FormTemplatesService {
     const item = await this.requireById(id);
     await item.deleteOne();
     return { message: 'Xoá mẫu bảng thành công.' };
+  }
+
+  /** So sánh bố cục, bỏ qua thứ tự key trong object để không tăng version oan. */
+  private layoutChanged(
+    item: FormTemplateDocument,
+    columns: FormTemplateColumn[],
+    headerGroups: FormHeaderGroup[],
+  ): boolean {
+    const shape = (
+      cols: FormTemplateColumn[],
+      groups: FormHeaderGroup[],
+    ) =>
+      JSON.stringify({
+        columns: cols.map((column) => [
+          column.id,
+          column.key,
+          column.title,
+          column.headerPath,
+          column.width,
+          column.visible,
+          column.dataType,
+          column.semanticKey,
+          column.required,
+        ]),
+        headerGroups: groups,
+      });
+
+    return (
+      shape(item.columns, item.headerGroups) !== shape(columns, headerGroups)
+    );
+  }
+
+  private async archiveCurrentVersion(item: FormTemplateDocument) {
+    await this.versionModel.updateOne(
+      { templateId: item._id, version: item.version ?? 1 },
+      {
+        $setOnInsert: {
+          templateId: item._id,
+          version: item.version ?? 1,
+          code: item.code,
+          name: item.name,
+          columns: item.columns,
+          headerGroups: item.headerGroups,
+        },
+      },
+      { upsert: true },
+    );
   }
 
   private async requireById(id: string) {

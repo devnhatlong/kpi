@@ -20,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   fetchPersonalKpiRecipients,
   type PersonalKpiRecipient,
-  type SendPersonalKpiPayload,
+  type SubmitPersonalKpiPayload,
 } from "@/features/personal-kpi/api";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -35,7 +35,7 @@ type SendRecipientDialogProps = {
   description?: string;
   confirmLabel?: string;
   submitting?: boolean;
-  onConfirm: (payload: SendPersonalKpiPayload) => Promise<void> | void;
+  onConfirm: (payload: SubmitPersonalKpiPayload) => Promise<void> | void;
 };
 
 type RecipientGroup = {
@@ -75,7 +75,7 @@ export function SendRecipientDialog({
         const data = await fetchPersonalKpiRecipients();
         if (cancelled) return;
         setPeople(data?.people ?? []);
-        setTargetRoleLabel(data?.targetRoleLabel ?? "cấp trên");
+        setTargetRoleLabel("cấp trên");
       } catch (error) {
         if (cancelled) return;
         setPeople([]);

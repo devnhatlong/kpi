@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 
-import { PersonalKpiInboxView } from "@/features/personal-kpi/components/personal-kpi-inbox-view";
+import { PersonalKpiBoardView } from "@/features/personal-kpi/components/personal-kpi-board-view";
 
 export const metadata: Metadata = {
   title: "Duyệt KPI cấp dưới",
 };
 
 export default function KpiReceivedPage() {
-  return <PersonalKpiInboxView />;
+  return <PersonalKpiBoardView />;
 }

@@ -40,10 +40,10 @@ function resolveTodayStatus(
   report: PersonalKpiDailyReport | null | undefined,
 ): TodayStatus {
   if (!report || report.taskCount === 0) return "none";
-  if (report.rejectedCount > 0) return "rejected";
+  if (report.returnedCount > 0) return "rejected";
   if (report.draftCount > 0) return "draft";
-  if (report.sentCount > 0) return "sent";
-  if (report.completedCount > 0) return "completed";
+  if (report.pendingCount > 0) return "sent";
+  if (report.approvedCount > 0) return "completed";
   return "none";
 }
 

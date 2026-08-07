@@ -8,16 +8,17 @@ import type { PersonalKpiStatus } from "@/features/personal-kpi/types";
 export const kpiStatusPillClass: Record<PersonalKpiStatus, string> = {
   DRAFT:
     "border-transparent bg-slate-100 text-slate-600 dark:bg-slate-800/80 dark:text-slate-300",
-  SENT:
+  PENDING:
     "border-transparent bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
-  REJECTED:
+  RETURNED:
     "border-transparent bg-rose-50 text-rose-600 dark:bg-rose-950/45 dark:text-rose-300",
-  COMPLETED:
+  APPROVED:
     "border-transparent bg-emerald-50 text-emerald-700 dark:bg-emerald-950/45 dark:text-emerald-300",
 };
 
 export function personalKpiStatusBadgeClass(status: PersonalKpiStatus) {
-  return kpiStatusPillClass[status];
+  // Bản ghi cũ / trạng thái lạ vẫn phải ra pill đọc được, không để rơi undefined.
+  return kpiStatusPillClass[status] ?? kpiStatusPillClass.DRAFT;
 }
 
 export const kpiTone = {

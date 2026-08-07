@@ -19,6 +19,10 @@ import {
   FormTemplate,
   FormTemplateSchema,
 } from './schemas/form-template.schema';
+import {
+  FormTemplateVersion,
+  FormTemplateVersionSchema,
+} from './schemas/form-template-version.schema';
 import { WorkContentsController } from './work-contents.controller';
 import { WorkContentsService } from './work-contents.service';
 import { ContentGroupsController } from './content-groups.controller';
@@ -38,6 +42,7 @@ import { FormTemplatesService } from './form-templates.service';
       { name: Axis.name, schema: AxisSchema },
       { name: ScoreGroup.name, schema: ScoreGroupSchema },
       { name: FormTemplate.name, schema: FormTemplateSchema },
+      { name: FormTemplateVersion.name, schema: FormTemplateVersionSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),

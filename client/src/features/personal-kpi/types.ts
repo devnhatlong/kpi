@@ -1,52 +1,45 @@
+/**
+ * Trạng thái duyệt tại cấp đang giữ nhiệm vụ - khớp `reviewStatus` bên server.
+ * - DRAFT    : còn ở chỗ mình, chưa gửi
+ * - PENDING  : đã gửi, đang chờ người nhận duyệt
+ * - APPROVED : cấp đang giữ đã duyệt
+ * - RETURNED : bị trả lại, quay về chỗ người gửi để sửa
+ */
 export type PersonalKpiStatus =
   | "DRAFT"
-  | "SENT"
-  | "REJECTED"
-  | "COMPLETED";
+  | "PENDING"
+  | "APPROVED"
+  | "RETURNED";
+
+export const PERSONAL_KPI_STATUSES: PersonalKpiStatus[] = [
+  "DRAFT",
+  "PENDING",
+  "APPROVED",
+  "RETURNED",
+];
 
 export const PERSONAL_KPI_STATUS_LABEL: Record<PersonalKpiStatus, string> = {
   DRAFT: "Nháp",
-  SENT: "Đã gửi",
-  REJECTED: "Trả lại",
-  COMPLETED: "Hoàn thành",
+  PENDING: "Chờ duyệt",
+  APPROVED: "Đã duyệt",
+  RETURNED: "Trả lại",
 };
 
-/** Chỉ nháp / trả lại mới sửa, xoá. */
+/**
+ * Chỉ nháp / trả lại mới sửa, gửi, xoá được.
+ * Trả lại một nhiệm vụ KHÔNG khoá các nhiệm vụ khác cùng ngày - cán bộ vẫn
+ * thêm và gửi việc mới bình thường.
+ */
 export function canEditPersonalKpi(status: PersonalKpiStatus) {
-  return status === "DRAFT" || status === "REJECTED";
+  return status === "DRAFT" || status === "RETURNED";
 }
 
 export function canSendPersonalKpi(status: PersonalKpiStatus) {
-  return status === "DRAFT" || status === "REJECTED";
+  return status === "DRAFT" || status === "RETURNED";
 }
 
 export function canDeletePersonalKpi(status: PersonalKpiStatus) {
-  return status === "DRAFT" || status === "REJECTED";
-}
-
-/**
- * Khi báo cáo còn nhiệm vụ Trả lại: chỉ được sửa/gửi lại đúng các nhiệm vụ Trả lại.
- * Không còn Trả lại thì xử lý Nháp như bình thường.
- */
-export function getResubmittableStatuses(
-  items: Array<{ status: PersonalKpiStatus }>,
-): PersonalKpiStatus[] {
-  const hasRejected = items.some((item) => item.status === "REJECTED");
-  return hasRejected ? ["REJECTED"] : ["DRAFT", "REJECTED"];
-}
-
-export function canEditPersonalKpiInReport(
-  status: PersonalKpiStatus,
-  items: Array<{ status: PersonalKpiStatus }>,
-) {
-  return getResubmittableStatuses(items).includes(status);
-}
-
-export function canSendPersonalKpiInReport(
-  status: PersonalKpiStatus,
-  items: Array<{ status: PersonalKpiStatus }>,
-) {
-  return getResubmittableStatuses(items).includes(status);
+  return status === "DRAFT" || status === "RETURNED";
 }
 
 export type TaskEvidenceFile = {
@@ -70,6 +63,9 @@ export type PersonalTaskDraft = {
   progressSelfScore: string;
   qualityPercent: string;
   qualitySelfScore: string;
+  /** Cặp Đạt / Không đạt - loại trừ nhau. */
+  resultPassed: boolean;
+  resultFailed: boolean;
   note: string;
   evidenceFiles: TaskEvidenceFile[];
   /** Giá trị cột tự do của mẫu bảng gán cho trục, key = FormTemplateColumn.key. */
@@ -80,6 +76,8 @@ export type PersonalTaskDraft = {
 export type PersonalKpiItem = {
   id: string;
   status: PersonalKpiStatus;
+  /** 0 = còn ở chỗ cán bộ, 1 = đang ở cấp thứ nhất... */
+  holderLevel: number;
   axisId: string;
   axisName: string;
   workContentId: string;
@@ -98,8 +96,17 @@ export type PersonalKpiItem = {
   rejectReason?: string;
 };
 
+/** Chỉ nhiệm vụ đang chờ duyệt mới duyệt / trả lại được. */
 export function canApprovePersonalKpi(status: PersonalKpiStatus) {
-  return status === "SENT";
+  return status === "PENDING";
+}
+
+/** Đã duyệt hoặc bị trả lại ở cấp trên thì gửi tiếp lên được. */
+export function canForwardPersonalKpi(
+  status: PersonalKpiStatus,
+  holderLevel: number,
+) {
+  return holderLevel >= 1 && (status === "APPROVED" || status === "RETURNED");
 }
 
 function localKey(prefix: string) {
@@ -118,6 +125,8 @@ export function createEmptyTask(_index = 1): PersonalTaskDraft {
     progressSelfScore: "",
     qualityPercent: "",
     qualitySelfScore: "",
+    resultPassed: false,
+    resultFailed: false,
     note: "",
     evidenceFiles: [],
     fieldValues: {},

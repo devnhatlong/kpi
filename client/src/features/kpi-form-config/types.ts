@@ -101,6 +101,7 @@ export const FORM_COLUMN_DATA_TYPES = [
   "datetime",
   "file",
   "auto_increment",
+  "boolean",
 ] as const;
 
 export type FormColumnDataType = (typeof FORM_COLUMN_DATA_TYPES)[number];
@@ -113,6 +114,7 @@ export const FORM_COLUMN_DATA_TYPE_LABEL: Record<FormColumnDataType, string> = {
   datetime: "Ngày giờ",
   file: "Tệp đính kèm",
   auto_increment: "Tự đánh số",
+  boolean: "Ô tích",
 };
 
 /**
@@ -132,6 +134,8 @@ export const FORM_COLUMN_SEMANTICS = [
   "progress_self_score",
   "quality_percent",
   "quality_self_score",
+  "result_passed",
+  "result_failed",
   "note",
   "evidence_files",
 ] as const;
@@ -151,18 +155,50 @@ export const FORM_COLUMN_SEMANTIC_LABEL: Record<FormColumnSemantic, string> = {
   progress_self_score: "Điểm tự chấm tiến độ",
   quality_percent: "KPI chất lượng %",
   quality_self_score: "Điểm tự chấm chất lượng",
+  result_passed: "Đạt",
+  result_failed: "Không đạt",
   note: "Ghi chú",
   evidence_files: "Tài liệu kiểm chứng",
 };
 
-/** Semantic dùng để chấm điểm - thiếu thì luồng duyệt mất dữ liệu. */
-export const SCORING_SEMANTICS: FormColumnSemantic[] = [
+/** Cặp Đạt / Không đạt - tích một bên thì bên kia tự tắt. */
+export const RESULT_PAIR_SEMANTICS: FormColumnSemantic[] = [
+  "result_passed",
+  "result_failed",
+];
+
+/**
+ * Hai cách chấm: theo phần trăm/điểm, hoặc theo cặp Đạt - Không đạt.
+ * Mẫu chỉ cần đủ MỘT trong hai cách là luồng duyệt có dữ liệu để tổng hợp.
+ */
+const PERCENT_SCORING_SEMANTICS: FormColumnSemantic[] = [
   "standard_score",
   "progress_percent",
   "progress_self_score",
   "quality_percent",
   "quality_self_score",
 ];
+
+/** @deprecated dùng missingScoringSemantics() để tính cả cách chấm Đạt/Không đạt. */
+export const SCORING_SEMANTICS = PERCENT_SCORING_SEMANTICS;
+
+/**
+ * Semantic chấm điểm còn thiếu.
+ * Mẫu đã dùng cặp Đạt/Không đạt thì coi như đủ - không đòi thêm cột phần trăm.
+ */
+export function missingScoringSemantics(
+  used: Set<FormColumnSemantic>,
+): FormColumnSemantic[] {
+  const hasResultPair = RESULT_PAIR_SEMANTICS.every((item) => used.has(item));
+  if (hasResultPair) return [];
+
+  const usesResultPair = RESULT_PAIR_SEMANTICS.some((item) => used.has(item));
+  if (usesResultPair) {
+    return RESULT_PAIR_SEMANTICS.filter((item) => !used.has(item));
+  }
+
+  return PERCENT_SCORING_SEMANTICS.filter((item) => !used.has(item));
+}
 
 /** Kiểu dữ liệu mặc định theo ý nghĩa cột - vẫn đổi được khi cấu hình. */
 export const SEMANTIC_DATA_TYPE: Partial<
@@ -175,6 +211,8 @@ export const SEMANTIC_DATA_TYPE: Partial<
   progress_self_score: "number",
   quality_percent: "number",
   quality_self_score: "number",
+  result_passed: "boolean",
+  result_failed: "boolean",
   evidence_files: "file",
 };
 
@@ -184,18 +222,20 @@ const INPUT_DATA_TYPES: FormColumnDataType[] = [
   "date",
   "time",
   "datetime",
+  "boolean",
 ];
 
 /**
  * Kiểu dữ liệu chọn được cho một cột.
- * STT luôn tự đánh số, Tài liệu kiểm chứng luôn là ô đính kèm - hai cột này
- * không phải ô nhập nên không đổi kiểu; còn lại chọn tự do.
+ * STT luôn tự đánh số, Tài liệu kiểm chứng luôn là ô đính kèm, Đạt/Không đạt
+ * luôn là ô tích - ba loại này không đổi kiểu; còn lại chọn tự do.
  */
 export function allowedDataTypes(
   semanticKey: FormColumnSemantic,
 ): FormColumnDataType[] {
   if (semanticKey === "stt") return ["auto_increment"];
   if (semanticKey === "evidence_files") return ["file"];
+  if (RESULT_PAIR_SEMANTICS.includes(semanticKey)) return ["boolean"];
   return INPUT_DATA_TYPES;
 }
 

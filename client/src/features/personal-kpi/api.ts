@@ -1,6 +1,10 @@
 import { api, buildListQuery, unwrapData, unwrapPaginated } from "@/lib/api-client";
 import type { ApiResponse } from "@/features/auth/types";
 import type {
+  FormHeaderGroup,
+  FormTemplateColumn,
+} from "@/features/kpi-form-config/types";
+import type {
   PersonalKpiItem,
   PersonalKpiStatus,
   PersonalTaskDraft,
@@ -18,7 +22,9 @@ type CatalogRef = {
 
 export type PersonalKpiApiRecord = {
   _id: string;
-  status: PersonalKpiStatus;
+  /** Trạng thái duyệt tại cấp đang giữ nhiệm vụ. */
+  reviewStatus: PersonalKpiStatus;
+  holderLevel?: number;
   reportDate?: string;
   ownerId?: string | CatalogRef;
   axisId: string | CatalogRef;
@@ -32,14 +38,15 @@ export type PersonalKpiApiRecord = {
   progressSelfScore?: number | null;
   qualityPercent?: number | null;
   qualitySelfScore?: number | null;
+  resultPassed?: boolean | null;
+  resultFailed?: boolean | null;
   note?: string;
   evidenceFiles?: TaskEvidenceFile[];
   fieldValues?: Record<string, string | number>;
-  sentAt?: string | null;
-  recipientId?: string | CatalogRef | null;
-  recipientName?: string;
-  sendNote?: string;
-  rejectReason?: string;
+  lastSentAt?: string | null;
+  currentRecipientId?: string | CatalogRef | null;
+  lastSenderId?: string | CatalogRef | null;
+  returnReason?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -48,22 +55,22 @@ export type PersonalKpiRecipient = {
   id: string;
   fullName: string;
   username: string;
+  position?: string;
   departmentId: string | null;
   departmentCode: string;
   departmentName: string;
-  roleCode?: string;
+  roleCodes?: string[];
 };
 
 export type PersonalKpiRecipientsResponse = {
-  targetRole: string;
-  targetRoleLabel: string;
+  higherRoles: string[];
   people: PersonalKpiRecipient[];
 };
 
-export type SendPersonalKpiPayload = {
+export type SubmitPersonalKpiPayload = {
   recipientId: string;
   note: string;
-  /** Chỉ gửi các nhiệm vụ này (khi có Trả lại: chỉ gửi đúng nhiệm vụ Trả lại). */
+  /** Bỏ trống = gửi hết nhiệm vụ gửi được trong ngày. */
   itemIds?: string[];
 };
 
@@ -71,9 +78,9 @@ export type PersonalKpiDailyReport = {
   reportDate: string;
   taskCount: number;
   draftCount: number;
-  sentCount: number;
-  rejectedCount: number;
-  completedCount: number;
+  pendingCount: number;
+  approvedCount: number;
+  returnedCount: number;
   createdAt: string;
   updatedAt: string;
   lastSentAt?: string | null;
@@ -88,21 +95,22 @@ export type PersonalKpiDashboardSummary = {
   todayDraftCount: number;
   pendingSentCount: number;
   rejectedCount: number;
+  approvedCount?: number;
 };
 
-export type PersonalKpiInboxReport = {
-  ownerId: string;
-  ownerName: string;
-  ownerUsername?: string;
+/** Một lượt gửi đến tôi. */
+export type PersonalKpiSubmission = {
+  _id: string;
   reportDate: string;
-  taskCount: number;
-  sentCount: number;
-  rejectedCount: number;
-  completedCount: number;
+  level: number;
+  senderId: string;
+  senderName: string;
+  recipientId: string;
+  recipientName: string;
+  itemIds: string[];
+  note: string;
+  status: "PENDING" | "REVIEWED";
   createdAt: string;
-  updatedAt: string;
-  lastSentAt?: string | null;
-  sendNote?: string;
 };
 
 export type PersonalKpiWriteInput = {
@@ -117,6 +125,8 @@ export type PersonalKpiWriteInput = {
   qualityPercent?: number;
   progressSelfScore?: number;
   qualitySelfScore?: number;
+  resultPassed?: boolean;
+  resultFailed?: boolean;
   note?: string;
   evidenceFiles?: Array<{
     key: string;
@@ -177,6 +187,8 @@ export function mapPersonalKpiFromApi(
     progressSelfScore: numToStr(row.progressSelfScore),
     qualityPercent: numToStr(row.qualityPercent),
     qualitySelfScore: numToStr(row.qualitySelfScore),
+    resultPassed: row.resultPassed === true,
+    resultFailed: row.resultFailed === true,
     note: row.note ?? "",
     evidenceFiles: (row.evidenceFiles ?? []).map((file) => ({
       key: file.key,
@@ -194,7 +206,8 @@ export function mapPersonalKpiFromApi(
 
   return {
     id: row._id,
-    status: row.status,
+    status: row.reviewStatus ?? "DRAFT",
+    holderLevel: row.holderLevel ?? 0,
     axisId: refId(row.axisId),
     axisName: refName(row.axisId),
     workContentId: refId(row.workContentId),
@@ -203,13 +216,16 @@ export function mapPersonalKpiFromApi(
     task,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    sentAt: row.sentAt || undefined,
+    sentAt: row.lastSentAt || undefined,
     ownerId: row.ownerId ? refId(row.ownerId) : undefined,
     ownerName: row.ownerId ? refName(row.ownerId) : undefined,
-    recipientId: row.recipientId ? refId(row.recipientId) : undefined,
-    recipientName: row.recipientName?.trim() || undefined,
-    sendNote: row.sendNote?.trim() || undefined,
-    rejectReason: row.rejectReason?.trim() || undefined,
+    recipientId: row.currentRecipientId
+      ? refId(row.currentRecipientId)
+      : undefined,
+    recipientName: row.currentRecipientId
+      ? refName(row.currentRecipientId) || undefined
+      : undefined,
+    rejectReason: row.returnReason?.trim() || undefined,
   };
 }
 
@@ -230,6 +246,8 @@ export function taskToWriteInput(
     progressSelfScore: optionalNumber(task.progressSelfScore),
     qualityPercent: optionalNumber(task.qualityPercent),
     qualitySelfScore: optionalNumber(task.qualitySelfScore),
+    resultPassed: task.resultPassed || undefined,
+    resultFailed: task.resultFailed || undefined,
     note: task.note || undefined,
     evidenceFiles: (task.evidenceFiles ?? []).map((file) => ({
       key: file.key,
@@ -382,32 +400,22 @@ export async function fetchPersonalKpiRecipients(q?: string) {
   );
 }
 
-export async function sendPersonalKpi(
-  id: string,
-  payload: SendPersonalKpiPayload,
-) {
-  const data = await unwrapData(
-    api.post<ApiResponse<PersonalKpiApiRecord>>(
-      `/personal-kpi/${id}/send`,
-      payload,
-    ),
-  );
-  return mapPersonalKpiFromApi(data);
-}
-
-export async function sendPersonalKpiReport(
+/** Cán bộ gửi báo cáo ngày lên cấp trên. */
+export async function submitPersonalKpiReport(
   reportDate: string,
-  payload: SendPersonalKpiPayload,
+  payload: SubmitPersonalKpiPayload,
 ) {
   return unwrapData(
     api.post<
       ApiResponse<{
+        submissionId: string;
         reportDate: string;
+        level: number;
         sentCount: number;
         recipientId: string;
         recipientName: string;
       }>
-    >(`/personal-kpi/reports/${reportDate}/send`, payload),
+    >(`/personal-kpi/reports/${reportDate}/submit`, payload),
   );
 }
 
@@ -415,97 +423,140 @@ export async function deletePersonalKpi(id: string) {
   await api.delete(`/personal-kpi/${id}`);
 }
 
-export async function fetchPersonalKpiInboxReports(
+// ----------------------------------------------------------- cấp trên duyệt
+
+export type PersonalKpiBoardRow = PersonalKpiApiRecord & {
+  ownerDepartmentId?: string | CatalogRef | null;
+  lastSenderDepartmentId?: string | CatalogRef | null;
+};
+
+export type PersonalKpiBoardGroup = {
+  workContentId: string;
+  workContentCode: string;
+  workContentName: string;
+  rows: PersonalKpiBoardRow[];
+};
+
+export type PersonalKpiBoardAxis = {
+  axisId: string;
+  axisCode: string;
+  axisName: string;
+  /** Bộ cột đã resolve theo phiên bản mẫu lúc gửi; null = trục chưa gán mẫu. */
+  template: {
+    code: string;
+    name: string;
+    version: number;
+    columns: FormTemplateColumn[];
+    headerGroups: FormHeaderGroup[];
+  } | null;
+  groups: PersonalKpiBoardGroup[];
+};
+
+export type PersonalKpiBoard = {
+  axes: PersonalKpiBoardAxis[];
+  counts: { pending: number; approved: number; returned: number };
+  rowCount: number;
+  truncated: boolean;
+};
+
+export type PersonalKpiBoardQuery = {
+  reportDate?: string;
+  fromDate?: string;
+  toDate?: string;
+  status?: PersonalKpiStatus | "";
+  axisId?: string;
+  senderId?: string;
+  ownerId?: string;
+  q?: string;
+  includeDecided?: boolean;
+};
+
+export async function fetchPersonalKpiBoard(params: PersonalKpiBoardQuery) {
+  return unwrapData(
+    api.get<ApiResponse<PersonalKpiBoard>>("/personal-kpi/board", {
+      params: buildListQuery({
+        reportDate: params.reportDate || undefined,
+        fromDate: params.fromDate || undefined,
+        toDate: params.toDate || undefined,
+        status: params.status || undefined,
+        axisId: params.axisId || undefined,
+        senderId: params.senderId || undefined,
+        ownerId: params.ownerId || undefined,
+        q: params.q,
+        includeDecided: params.includeDecided ? true : undefined,
+      }),
+    }),
+  );
+}
+
+/** Duyệt hoặc trả lại các nhiệm vụ đã tích trong bảng tổng. */
+export async function reviewPersonalKpi(input: {
+  itemIds: string[];
+  decision: "APPROVE" | "RETURN";
+  reason?: string;
+}) {
+  return unwrapData(
+    api.post<ApiResponse<{ count: number }>>("/personal-kpi/review", input),
+  );
+}
+
+/** Cấp trên gửi tiếp các nhiệm vụ đã duyệt lên cấp cao hơn. */
+export async function forwardPersonalKpi(input: {
+  itemIds: string[];
+  recipientId: string;
+  note: string;
+}) {
+  return unwrapData(
+    api.post<
+      ApiResponse<{
+        submissionId: string;
+        level: number;
+        sentCount: number;
+        recipientName: string;
+      }>
+    >("/personal-kpi/forward", input),
+  );
+}
+
+/** Cấp trên sửa nội dung nhiệm vụ - bắt buộc nêu lý do, luôn lưu vết. */
+export async function reviewerEditPersonalKpi(
+  id: string,
+  input: PersonalKpiWriteInput & { reason: string },
+) {
+  const data = await unwrapData(
+    api.patch<ApiResponse<PersonalKpiApiRecord>>(
+      `/personal-kpi/${id}/reviewer-edit`,
+      input,
+    ),
+  );
+  return mapPersonalKpiFromApi(data);
+}
+
+export async function fetchPersonalKpiSubmissions(
   params: PersonalKpiReportsQuery,
 ) {
   return unwrapPaginated(
-    api.get<ApiResponse<PersonalKpiInboxReport[]>>(
-      "/personal-kpi/inbox/reports",
+    api.get<ApiResponse<PersonalKpiSubmission[]>>(
+      "/personal-kpi/submissions",
       {
         params: buildListQuery({
           page: params.page,
           limit: params.limit,
-          q: params.q,
           fromDate: params.fromDate || undefined,
           toDate: params.toDate || undefined,
-          status: params.status || undefined,
         }),
       },
     ),
   );
 }
 
-export async function fetchPersonalKpiInbox(
-  params: PersonalKpiMineQuery & { ownerId?: string } = {},
-) {
-  return unwrapPaginated(
-    api.get<ApiResponse<PersonalKpiApiRecord[]>>("/personal-kpi/inbox", {
-      params: buildListQuery({
-        page: params.page,
-        limit: params.limit,
-        q: params.q,
-        reportDate: params.reportDate || undefined,
-        ownerId: params.ownerId || undefined,
-        status:
-          params.status && params.status !== "ALL"
-            ? params.status
-            : undefined,
-        axisId: params.axisId || undefined,
-      }),
-    }),
-  ).then((result) => ({
-    ...result,
-    data: result.data.map(mapPersonalKpiFromApi),
-  }));
-}
-
-export async function completePersonalKpi(id: string) {
-  const data = await unwrapData(
-    api.post<ApiResponse<PersonalKpiApiRecord>>(
-      `/personal-kpi/${id}/complete`,
-    ),
-  );
-  return mapPersonalKpiFromApi(data);
-}
-
-export async function rejectPersonalKpi(id: string, reason: string) {
-  const data = await unwrapData(
-    api.post<ApiResponse<PersonalKpiApiRecord>>(`/personal-kpi/${id}/reject`, {
-      reason,
-    }),
-  );
-  return mapPersonalKpiFromApi(data);
-}
-
-export async function completePersonalKpiInboxReport(
-  ownerId: string,
-  reportDate: string,
-) {
+export async function fetchPersonalKpiHistory(id: string) {
   return unwrapData(
-    api.post<
+    api.get<
       ApiResponse<{
-        completedCount: number;
-        reportDate: string;
-        ownerId: string;
+        item: PersonalKpiApiRecord;
+        submissions: PersonalKpiSubmission[];
       }>
-    >(`/personal-kpi/inbox/reports/${ownerId}/${reportDate}/complete`),
-  );
-}
-
-export async function rejectPersonalKpiInboxReport(
-  ownerId: string,
-  reportDate: string,
-  reason: string,
-) {
-  return unwrapData(
-    api.post<
-      ApiResponse<{
-        rejectedCount: number;
-        reportDate: string;
-        ownerId: string;
-      }>
-    >(`/personal-kpi/inbox/reports/${ownerId}/${reportDate}/reject`, {
-      reason,
-    }),
+    >(`/personal-kpi/${id}/history`),
   );
 }

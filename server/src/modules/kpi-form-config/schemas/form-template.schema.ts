@@ -12,6 +12,8 @@ export const FORM_COLUMN_DATA_TYPES = [
   'datetime',
   'file',
   'auto_increment',
+  /** Ô tích - dùng cho các cột kiểu Đạt / Không đạt. */
+  'boolean',
 ] as const;
 
 export type FormColumnDataType = (typeof FORM_COLUMN_DATA_TYPES)[number];
@@ -33,6 +35,9 @@ export const FORM_COLUMN_SEMANTICS = [
   'progress_self_score',
   'quality_percent',
   'quality_self_score',
+  /** Cặp kết quả đánh giá - tích một trong hai, loại trừ nhau. */
+  'result_passed',
+  'result_failed',
   'note',
   'evidence_files',
 ] as const;
@@ -120,6 +125,13 @@ export class FormTemplate {
 
   @Prop({ default: true, index: true })
   isActive!: boolean;
+
+  /**
+   * Tăng mỗi lần sửa cột/nhóm header. Nhiệm vụ đã gửi lưu lại số này để hiển
+   * thị đúng bảng lúc gửi, kể cả sau khi mẫu bị sửa.
+   */
+  @Prop({ default: 1, min: 1 })
+  version!: number;
 }
 
 export const FormTemplateSchema = SchemaFactory.createForClass(FormTemplate);

@@ -48,9 +48,9 @@ import { cn } from "@/lib/utils";
 const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: "ALL", label: "Tất cả trạng thái" },
   { value: "DRAFT", label: PERSONAL_KPI_STATUS_LABEL.DRAFT },
-  { value: "SENT", label: PERSONAL_KPI_STATUS_LABEL.SENT },
-  { value: "REJECTED", label: PERSONAL_KPI_STATUS_LABEL.REJECTED },
-  { value: "COMPLETED", label: PERSONAL_KPI_STATUS_LABEL.COMPLETED },
+  { value: "PENDING", label: PERSONAL_KPI_STATUS_LABEL.PENDING },
+  { value: "APPROVED", label: PERSONAL_KPI_STATUS_LABEL.APPROVED },
+  { value: "RETURNED", label: PERSONAL_KPI_STATUS_LABEL.RETURNED },
 ];
 
 function formatDateTime(value?: string | null) {
@@ -301,28 +301,28 @@ export function PersonalKpiListView() {
                               Nháp {report.draftCount}
                             </Badge>
                           ) : null}
-                          {report.sentCount > 0 ? (
+                          {report.pendingCount > 0 ? (
                             <Badge
                               variant="secondary"
-                              className={cn(kpiStatusPillClass.SENT)}
+                              className={cn(kpiStatusPillClass.PENDING)}
                             >
-                              Đã gửi {report.sentCount}
+                              Chờ duyệt {report.pendingCount}
                             </Badge>
                           ) : null}
-                          {report.rejectedCount > 0 ? (
+                          {report.returnedCount > 0 ? (
                             <Badge
                               variant="secondary"
-                              className={cn(kpiStatusPillClass.REJECTED)}
+                              className={cn(kpiStatusPillClass.RETURNED)}
                             >
-                              Trả lại {report.rejectedCount}
+                              Trả lại {report.returnedCount}
                             </Badge>
                           ) : null}
-                          {report.completedCount > 0 ? (
+                          {report.approvedCount > 0 ? (
                             <Badge
                               variant="secondary"
-                              className={cn(kpiStatusPillClass.COMPLETED)}
+                              className={cn(kpiStatusPillClass.APPROVED)}
                             >
-                              HT {report.completedCount}
+                              Đã duyệt {report.approvedCount}
                             </Badge>
                           ) : null}
                         </div>

@@ -17,8 +17,73 @@ export const SEMANTIC_TO_DRAFT_FIELD: Partial<
   progress_self_score: "progressSelfScore",
   quality_percent: "qualityPercent",
   quality_self_score: "qualitySelfScore",
+  result_passed: "resultPassed",
+  result_failed: "resultFailed",
   note: "note",
 };
+
+/** Cột Đạt/Không đạt vẽ ô tích chứ không phải ô nhập chữ. */
+export function isCheckboxColumn(
+  semanticKey: FormColumnSemantic,
+  dataType: FormColumnDataType,
+): boolean {
+  return (
+    dataType === "boolean" ||
+    semanticKey === "result_passed" ||
+    semanticKey === "result_failed"
+  );
+}
+
+/** Ô tích đọc giá trị boolean, không phải chuỗi. */
+export function readCheckboxValue(
+  task: PersonalTaskDraft,
+  semanticKey: FormColumnSemantic,
+  columnKey: string,
+): boolean {
+  const field = SEMANTIC_TO_DRAFT_FIELD[semanticKey];
+  if (field) return task[field] === true;
+  if (semanticKey === "custom") {
+    return task.fieldValues?.[columnKey] === "1";
+  }
+  return false;
+}
+
+/**
+ * Patch khi tích một ô boolean.
+ * Đạt và Không đạt loại trừ nhau - tích bên này thì bên kia tự tắt, để không
+ * lưu được dòng vừa đạt vừa không đạt.
+ */
+export function writeCheckboxValue(
+  task: PersonalTaskDraft,
+  semanticKey: FormColumnSemantic,
+  columnKey: string,
+  checked: boolean,
+): Partial<PersonalTaskDraft> {
+  if (semanticKey === "result_passed") {
+    return {
+      resultPassed: checked,
+      ...(checked ? { resultFailed: false } : {}),
+    };
+  }
+  if (semanticKey === "result_failed") {
+    return {
+      resultFailed: checked,
+      ...(checked ? { resultPassed: false } : {}),
+    };
+  }
+
+  const field = SEMANTIC_TO_DRAFT_FIELD[semanticKey];
+  if (field) return { [field]: checked } as Partial<PersonalTaskDraft>;
+  if (semanticKey === "custom") {
+    return {
+      fieldValues: {
+        ...(task.fieldValues ?? {}),
+        [columnKey]: checked ? "1" : "",
+      },
+    };
+  }
+  return {};
+}
 
 export type CellInputProps = {
   type?: string;

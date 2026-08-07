@@ -4,13 +4,17 @@ import { useRef, type ReactNode } from "react";
 import { Paperclip, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { TableCell, TableRow } from "@/components/ui/table";
 import type { FormTemplateColumn } from "@/features/kpi-form-config/types";
 import {
   cellInputProps,
+  isCheckboxColumn,
   readCellValue,
+  readCheckboxValue,
   writeCellValue,
+  writeCheckboxValue,
 } from "@/features/personal-kpi/task-column-utils";
 import type {
   PersonalTaskDraft,
@@ -182,6 +186,36 @@ export function PersonalTaskForm({
           return (
             <TableCell key={column.id} style={{ minWidth }}>
               {renderEvidenceCell()}
+            </TableCell>
+          );
+        }
+
+        if (isCheckboxColumn(column.semanticKey, column.dataType)) {
+          return (
+            <TableCell
+              key={column.id}
+              className="text-center align-middle"
+              style={{ minWidth }}
+            >
+              <Checkbox
+                checked={readCheckboxValue(
+                  task,
+                  column.semanticKey,
+                  column.key,
+                )}
+                onCheckedChange={(checked) =>
+                  onChange(
+                    writeCheckboxValue(
+                      task,
+                      column.semanticKey,
+                      column.key,
+                      checked === true,
+                    ),
+                  )
+                }
+                disabled={readOnly}
+                aria-label={column.title}
+              />
             </TableCell>
           );
         }

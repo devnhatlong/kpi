@@ -51,8 +51,8 @@ import {
   deletePersonalKpi,
   fetchMyPersonalKpi,
   personalKpiKeys,
-  sendPersonalKpi,
-  type SendPersonalKpiPayload,
+  submitPersonalKpiReport,
+  type SubmitPersonalKpiPayload,
 } from "@/features/personal-kpi/api";
 import { PersonalTaskDrawer } from "@/features/personal-kpi/components/personal-task-drawer";
 import { SendRecipientDialog } from "@/features/personal-kpi/components/send-recipient-dialog";
@@ -60,8 +60,8 @@ import { personalKpiStatusBadgeClass } from "@/features/personal-kpi/status-styl
 import {
   PERSONAL_KPI_STATUS_LABEL,
   canDeletePersonalKpi,
-  canEditPersonalKpiInReport,
-  canSendPersonalKpiInReport,
+  canEditPersonalKpi,
+  canSendPersonalKpi,
   type PersonalKpiItem,
   type PersonalKpiStatus,
 } from "@/features/personal-kpi/types";
@@ -72,9 +72,9 @@ import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
 const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: "ALL", label: "Tất cả trạng thái" },
   { value: "DRAFT", label: PERSONAL_KPI_STATUS_LABEL.DRAFT },
-  { value: "SENT", label: PERSONAL_KPI_STATUS_LABEL.SENT },
-  { value: "REJECTED", label: PERSONAL_KPI_STATUS_LABEL.REJECTED },
-  { value: "COMPLETED", label: PERSONAL_KPI_STATUS_LABEL.COMPLETED },
+  { value: "PENDING", label: PERSONAL_KPI_STATUS_LABEL.PENDING },
+  { value: "APPROVED", label: PERSONAL_KPI_STATUS_LABEL.APPROVED },
+  { value: "RETURNED", label: PERSONAL_KPI_STATUS_LABEL.RETURNED },
 ];
 
 function formatDateTime(value?: string) {
@@ -116,6 +116,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   const [deleting, setDeleting] = useState<PersonalKpiItem | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [sendingItem, setSendingItem] = useState<PersonalKpiItem | null>(null);
+  const [sendAllOpen, setSendAllOpen] = useState(false);
   const [sending, setSending] = useState(false);
 
   const { data: axes = [] } = useSWR(
@@ -141,30 +142,11 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     () => fetchMyPersonalKpi(listParams),
   );
 
-  const { data: rejectedProbe, mutate: mutateRejected } = useSWR(
-    personalKpiKeys.byDate({
-      reportDate,
-      status: "REJECTED",
-      page: 1,
-      limit: 1,
-    }),
-    () =>
-      fetchMyPersonalKpi({
-        reportDate,
-        status: "REJECTED",
-        page: 1,
-        limit: 1,
-      }),
-  );
-
   const items = data?.data ?? [];
   const meta = data?.meta ?? emptyPaginationMeta(limit);
-  const hasRejected = (rejectedProbe?.meta.total ?? 0) > 0;
-  const reportStatusContext = hasRejected
-    ? ([{ status: "REJECTED" as const }] as Array<{
-      status: PersonalKpiStatus;
-    }>)
-    : items;
+
+  /** Nhiệm vụ gửi được trong ngày - dùng cho nút "Gửi báo cáo". */
+  const sendableItems = items.filter((item) => canSendPersonalKpi(item.status));
 
   const resetFilters = () => {
     setQuery("");
@@ -179,13 +161,11 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   };
 
   const openEdit = (item: PersonalKpiItem) => {
-    if (!canEditPersonalKpiInReport(item.status, reportStatusContext)) {
+    if (!canEditPersonalKpi(item.status)) {
       toast.error(
-        hasRejected && item.status !== "REJECTED"
-          ? "Báo cáo còn nhiệm vụ Trả lại - chỉ sửa được đúng nhiệm vụ đã trả lại."
-          : item.status === "SENT"
-            ? "Đã gửi - không sửa trực tiếp."
-            : "Nhiệm vụ đã hoàn thành - không sửa được.",
+        item.status === "PENDING"
+          ? "Đã gửi, đang chờ cấp trên duyệt - không sửa được."
+          : "Nhiệm vụ đã duyệt - không sửa được.",
       );
       return;
     }
@@ -194,34 +174,37 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   };
 
   const openSend = (item: PersonalKpiItem) => {
-    if (!canSendPersonalKpiInReport(item.status, reportStatusContext)) {
-      toast.error(
-        hasRejected && item.status !== "REJECTED"
-          ? "Báo cáo còn nhiệm vụ Trả lại - chỉ gửi lại đúng nhiệm vụ đã trả lại."
-          : "Chỉ gửi được khi đang Nháp hoặc Trả lại.",
-      );
+    if (!canSendPersonalKpi(item.status)) {
+      toast.error("Chỉ gửi được khi đang Nháp hoặc bị Trả lại.");
       return;
     }
     setSendingItem(item);
   };
 
   const refreshDay = async () => {
-    await Promise.all([mutate(), mutateRejected()]);
+    await mutate();
   };
 
-  const confirmSend = async (payload: SendPersonalKpiPayload) => {
-    if (!sendingItem) return;
+  /**
+   * Gửi luôn đi qua API báo cáo ngày; gửi một dòng chỉ là truyền đúng một id.
+   * Nhờ vậy mỗi lần gửi vẫn sinh ra một lượt gửi có người nhận và ghi chú.
+   */
+  const confirmSend = async (payload: SubmitPersonalKpiPayload) => {
+    const targets = sendingItem ? [sendingItem] : sendableItems;
+    if (!targets.length) return;
     setSending(true);
-    setActingId(sendingItem.id);
+    setActingId(sendingItem?.id ?? null);
     try {
-      await sendPersonalKpi(sendingItem.id, payload);
+      const result = await submitPersonalKpiReport(reportDate, {
+        ...payload,
+        itemIds: targets.map((item) => item.id),
+      });
       await refreshDay();
       toast.success(
-        sendingItem.status === "REJECTED"
-          ? "Đã gửi lại nhiệm vụ."
-          : "Đã gửi nhiệm vụ.",
+        `Đã gửi ${result.sentCount} nhiệm vụ tới ${result.recipientName}.`,
       );
       setSendingItem(null);
+      setSendAllOpen(false);
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không gửi được nhiệm vụ."));
     } finally {
@@ -267,16 +250,27 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
             <p className="text-sm text-muted-foreground">
               Chi tiết nhiệm vụ trong báo cáo ngày{" "}
               <span className="font-mono">{reportDate}</span>
-              {hasRejected
-                ? " - đang có nhiệm vụ Trả lại: chỉ sửa/gửi lại đúng các nhiệm vụ đó."
-                : null}
             </p>
           </div>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          Thêm nhiệm vụ
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Thêm nhiệm vụ
+          </Button>
+          <Button
+            onClick={() => setSendAllOpen(true)}
+            disabled={sendableItems.length === 0}
+            title={
+              sendableItems.length === 0
+                ? "Không còn nhiệm vụ Nháp hoặc Trả lại nào để gửi"
+                : undefined
+            }
+          >
+            <Send className="h-4 w-4" />
+            Gửi báo cáo ({sendableItems.length})
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -433,18 +427,13 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
                             onClick={() => openEdit(item)}
                             aria-label="Sửa"
                             disabled={
-                              !canEditPersonalKpiInReport(
-                                item.status,
-                                reportStatusContext,
-                              ) || actingId === item.id
+                              !canEditPersonalKpi(item.status) ||
+                              actingId === item.id
                             }
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          {canSendPersonalKpiInReport(
-                            item.status,
-                            reportStatusContext,
-                          ) ? (
+                          {canSendPersonalKpi(item.status) ? (
                             <Button
                               size="icon"
                               variant="ghost"
@@ -523,11 +512,17 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
       </AlertDialog>
 
       <SendRecipientDialog
-        open={!!sendingItem}
+        open={!!sendingItem || sendAllOpen}
         onOpenChange={(open) => {
-          if (!open && !sending) setSendingItem(null);
+          if (open || sending) return;
+          setSendingItem(null);
+          setSendAllOpen(false);
         }}
-        title="Gửi nhiệm vụ"
+        title={
+          sendingItem
+            ? "Gửi nhiệm vụ"
+            : `Gửi báo cáo ngày (${sendableItems.length} nhiệm vụ)`
+        }
         submitting={sending}
         onConfirm={confirmSend}
       />

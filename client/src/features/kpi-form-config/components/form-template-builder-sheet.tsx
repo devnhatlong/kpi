@@ -63,7 +63,7 @@ import {
   FORM_COLUMN_SEMANTIC_LABEL,
   FORM_COLUMN_SEMANTICS,
   localId,
-  SCORING_SEMANTICS,
+  missingScoringSemantics,
   SEMANTIC_DATA_TYPE,
   type FormColumnDataType,
   type FormColumnSemantic,
@@ -161,8 +161,8 @@ export function FormTemplateBuilderSheet({
     return map;
   }, [columns]);
 
-  const missingScoring = SCORING_SEMANTICS.filter(
-    (semantic) => !usedSemantics.has(semantic),
+  const missingScoring = missingScoringSemantics(
+    new Set(usedSemantics.keys()),
   );
 
   const patchColumn = (id: string, patch: Partial<FormTemplateColumn>) => {

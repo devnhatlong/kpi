@@ -19,17 +19,17 @@ import { AxisTaskTable } from "@/features/personal-kpi/components/axis-task-tabl
 import {
   fetchMyPersonalKpi,
   personalKpiKeys,
-  sendPersonalKpiReport,
+  submitPersonalKpiReport,
   taskToWriteInput,
   updatePersonalKpi,
-  type SendPersonalKpiPayload,
+  type SubmitPersonalKpiPayload,
 } from "@/features/personal-kpi/api";
 import { PersonalTaskForm } from "@/features/personal-kpi/components/personal-task-form";
 import { SendRecipientDialog } from "@/features/personal-kpi/components/send-recipient-dialog";
 import {
   PERSONAL_KPI_STATUS_LABEL,
-  canEditPersonalKpiInReport,
-  canSendPersonalKpiInReport,
+  canEditPersonalKpi,
+  canSendPersonalKpi,
   type PersonalKpiItem,
   type PersonalKpiStatus,
   type PersonalTaskDraft,
@@ -135,12 +135,13 @@ export function PersonalReportDetailDrawer({
   }, [open, data]);
 
   const groups = useMemo(() => groupByAxisContent(items), [items]);
-  const hasRejected = items.some((item) => item.status === "REJECTED");
+  // Có nhiệm vụ bị trả lại - chỉ dùng để đổi lời nhắc, KHÔNG khoá nhiệm vụ khác.
+  const hasRejected = items.some((item) => item.status === "RETURNED");
   const canShowEdit = items.some((item) =>
-    canEditPersonalKpiInReport(item.status, items),
+    canEditPersonalKpi(item.status),
   );
   const sendableItems = items.filter((item) =>
-    canSendPersonalKpiInReport(item.status, items),
+    canSendPersonalKpi(item.status),
   );
   const sendableCount = sendableItems.length;
   const isEditing = mode === "edit";
@@ -149,7 +150,7 @@ export function PersonalReportDetailDrawer({
     if (!isEditing) return;
     setItems((prev) =>
       prev.map((item) => {
-        if (item.id !== id || !canEditPersonalKpiInReport(item.status, prev)) {
+        if (item.id !== id || !canEditPersonalKpi(item.status)) {
           return item;
         }
         return { ...item, task: { ...item.task, ...patch } };
@@ -176,7 +177,7 @@ export function PersonalReportDetailDrawer({
 
   const handleSave = async () => {
     const editableItems = items.filter((item) =>
-      canEditPersonalKpiInReport(item.status, items),
+      canEditPersonalKpi(item.status),
     );
     if (editableItems.length === 0) {
       toast.error(
@@ -222,7 +223,7 @@ export function PersonalReportDetailDrawer({
     }
   };
 
-  const handleSend = async (payload: SendPersonalKpiPayload) => {
+  const handleSend = async (payload: SubmitPersonalKpiPayload) => {
     if (!reportDate || isEditing) return;
     if (sendableCount === 0) {
       toast.error(
@@ -235,7 +236,7 @@ export function PersonalReportDetailDrawer({
 
     setSending(true);
     try {
-      const result = await sendPersonalKpiReport(reportDate, {
+      const result = await submitPersonalKpiReport(reportDate, {
         ...payload,
         itemIds: sendableItems.map((item) => item.id),
       });
@@ -353,7 +354,7 @@ export function PersonalReportDetailDrawer({
                           content.items.map((item, taskIndex) => {
                             const editable =
                               isEditing &&
-                              canEditPersonalKpiInReport(item.status, items);
+                              canEditPersonalKpi(item.status);
                             return (
                               <PersonalTaskForm
                                 key={item.id}
