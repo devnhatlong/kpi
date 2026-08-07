@@ -93,7 +93,10 @@ export type PersonalKpiItem = {
   recipientId?: string;
   recipientName?: string;
   sendNote?: string;
+  /** Lý do cấp trên trả lại - do người duyệt gõ, không phải cảnh báo hệ thống. */
   rejectReason?: string;
+  decidedByName?: string;
+  decidedAt?: string;
 };
 
 /** Chỉ nhiệm vụ đang chờ duyệt mới duyệt / trả lại được. */

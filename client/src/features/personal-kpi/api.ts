@@ -47,6 +47,9 @@ export type PersonalKpiApiRecord = {
   currentRecipientId?: string | CatalogRef | null;
   lastSenderId?: string | CatalogRef | null;
   returnReason?: string;
+  /** Người ra quyết định duyệt / trả lại gần nhất. */
+  lastDecidedById?: string | CatalogRef | null;
+  lastDecidedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -226,6 +229,10 @@ export function mapPersonalKpiFromApi(
       ? refName(row.currentRecipientId) || undefined
       : undefined,
     rejectReason: row.returnReason?.trim() || undefined,
+    decidedByName: row.lastDecidedById
+      ? refName(row.lastDecidedById) || undefined
+      : undefined,
+    decidedAt: row.lastDecidedAt || undefined,
   };
 }
 
@@ -472,19 +479,25 @@ export type PersonalKpiBoardQuery = {
 };
 
 export async function fetchPersonalKpiBoard(params: PersonalKpiBoardQuery) {
+  // KHÔNG dùng buildListQuery: nó luôn thêm page/limit, mà /board không phân
+  // trang nên DTO không khai hai trường đó -> ValidationPipe trả 400.
+  const query: Record<string, string | boolean> = {};
+  const put = (key: string, value?: string) => {
+    if (value?.trim()) query[key] = value.trim();
+  };
+  put("reportDate", params.reportDate);
+  put("fromDate", params.fromDate);
+  put("toDate", params.toDate);
+  put("status", params.status || undefined);
+  put("axisId", params.axisId);
+  put("senderId", params.senderId);
+  put("ownerId", params.ownerId);
+  put("q", params.q);
+  if (params.includeDecided) query.includeDecided = true;
+
   return unwrapData(
     api.get<ApiResponse<PersonalKpiBoard>>("/personal-kpi/board", {
-      params: buildListQuery({
-        reportDate: params.reportDate || undefined,
-        fromDate: params.fromDate || undefined,
-        toDate: params.toDate || undefined,
-        status: params.status || undefined,
-        axisId: params.axisId || undefined,
-        senderId: params.senderId || undefined,
-        ownerId: params.ownerId || undefined,
-        q: params.q,
-        includeDecided: params.includeDecided ? true : undefined,
-      }),
+      params: query,
     }),
   );
 }

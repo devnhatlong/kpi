@@ -218,7 +218,8 @@ export class PersonalKpiService {
         .skip((page - 1) * limit)
         .limit(limit)
         .populate('axisId', 'code name description')
-        .populate('workContentId', 'code name description'),
+        .populate('workContentId', 'code name description')
+        .populate('lastDecidedById', 'fullName username'),
       this.itemModel.countDocuments(filter),
     ]);
 
@@ -407,6 +408,7 @@ export class PersonalKpiService {
 
     // Chốt mẫu bảng ở lần gửi đầu tiên để báo cáo không méo khi mẫu bị sửa.
     await this.stampTemplates(items);
+    await this.assertRequiredColumnsFilled(items);
 
     return this.createSubmission({
       level: 1,
@@ -926,6 +928,95 @@ export class PersonalKpiService {
       item.formTemplateId = template._id as Types.ObjectId;
       item.formTemplateVersion = template.version ?? 1;
       await item.save();
+    }
+  }
+
+  /**
+   * Cột super admin tích "bắt buộc" trong mẫu phải có dữ liệu trước khi gửi.
+   * Kiểm ở đây chứ không chỉ ở client, vì cờ required chỉ có nghĩa khi server
+   * thật sự chặn.
+   */
+  private async assertRequiredColumnsFilled(
+    items: PersonalKpiItemDocument[],
+  ) {
+    const templateIds = [
+      ...new Set(
+        items
+          .map((item) => item.formTemplateId)
+          .filter((id): id is Types.ObjectId => Boolean(id))
+          .map((id) => String(id)),
+      ),
+    ];
+    if (!templateIds.length) return;
+
+    const templates = await this.formTemplateModel.find({
+      _id: { $in: templateIds.map((id) => new Types.ObjectId(id)) },
+    });
+    const byId = new Map(templates.map((row) => [String(row._id), row]));
+
+    const problems: string[] = [];
+    for (const item of items) {
+      const template = byId.get(String(item.formTemplateId ?? ''));
+      if (!template) continue;
+
+      const missing = template.columns
+        .filter(
+          (column) =>
+            column.visible &&
+            column.required &&
+            column.semanticKey !== 'stt' &&
+            this.isColumnEmpty(item, column.semanticKey, column.key),
+        )
+        .map((column) => column.title);
+
+      if (missing.length) {
+        problems.push(`"${item.title}": ${missing.join(', ')}`);
+      }
+    }
+
+    if (problems.length) {
+      throw new BadRequestException(
+        `Chưa nhập cột bắt buộc - ${problems.join('; ')}.`,
+      );
+    }
+  }
+
+  private isColumnEmpty(
+    item: PersonalKpiItemDocument,
+    semanticKey: string,
+    columnKey: string,
+  ): boolean {
+    switch (semanticKey) {
+      case 'task_title':
+        return !item.title?.trim();
+      case 'deadline':
+        return !item.deadline?.trim();
+      case 'product':
+        return !item.product?.trim();
+      case 'standard_score':
+        return item.standardScore == null;
+      case 'executing_unit':
+        return !item.executingUnit?.trim();
+      case 'progress_percent':
+        return item.progressPercent == null;
+      case 'progress_self_score':
+        return item.progressSelfScore == null;
+      case 'quality_percent':
+        return item.qualityPercent == null;
+      case 'quality_self_score':
+        return item.qualitySelfScore == null;
+      case 'result_passed':
+        return item.resultPassed !== true;
+      case 'result_failed':
+        return item.resultFailed !== true;
+      case 'note':
+        return !item.note?.trim();
+      case 'evidence_files':
+        return !item.evidenceFiles?.length;
+      case 'work_content':
+        return !item.workContentId;
+      default:
+        return !String(item.fieldValues?.[columnKey] ?? '').trim();
     }
   }
 

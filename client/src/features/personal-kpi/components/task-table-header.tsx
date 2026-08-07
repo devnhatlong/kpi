@@ -75,6 +75,11 @@ export function TaskTableHeader({
               )}
             >
               {cell.label}
+              {cell.required ? (
+                <span className="ml-0.5 text-destructive" title="Bắt buộc nhập">
+                  *
+                </span>
+              ) : null}
             </TableHead>
           ))}
           {rowIdx === 0 ? (
@@ -83,7 +88,7 @@ export function TaskTableHeader({
               className={cn(
                 "sticky right-0 z-20 bg-muted/50",
                 actionLabel
-                  ? "w-[110px] text-center align-middle text-sm font-medium"
+                  ? "w-[200px] text-center align-middle text-sm font-medium"
                   : "w-14",
               )}
             >

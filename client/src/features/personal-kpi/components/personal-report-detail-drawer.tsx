@@ -1,12 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Send } from "lucide-react";
+import { Check, Pencil, Send, Undo2, X } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Sheet,
   SheetContent,
@@ -15,7 +23,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import type { FormTemplateColumn } from "@/features/kpi-form-config/types";
 import { AxisTaskTable } from "@/features/personal-kpi/components/axis-task-table";
+import { missingRequiredColumns } from "@/features/personal-kpi/task-column-utils";
 import {
   fetchMyPersonalKpi,
   personalKpiKeys,
@@ -64,11 +74,7 @@ function groupByAxisContent(items: PersonalKpiItem[]): AxisGroup[] {
   for (const item of items) {
     let axis = axisMap.get(item.axisId);
     if (!axis) {
-      axis = {
-        axisId: item.axisId,
-        axisName: item.axisName,
-        contents: [],
-      };
+      axis = { axisId: item.axisId, axisName: item.axisName, contents: [] };
       axisMap.set(item.axisId, axis);
     }
 
@@ -103,154 +109,127 @@ export function PersonalReportDetailDrawer({
   onChanged,
 }: PersonalReportDetailDrawerProps) {
   const [items, setItems] = useState<PersonalKpiItem[]>([]);
-  const [mode, setMode] = useState<"view" | "edit">("view");
-  const [saving, setSaving] = useState(false);
+  /** Sửa theo TỪNG DÒNG, không bật chế độ sửa cho cả báo cáo. */
+  const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [sendOpen, setSendOpen] = useState(false);
+  /** Các nhiệm vụ sẽ gửi khi xác nhận người nhận; rỗng = đang đóng. */
+  const [sendIds, setSendIds] = useState<string[]>([]);
+  /** Nhiệm vụ đang xem lý do trả lại. */
+  const [reasonItem, setReasonItem] = useState<PersonalKpiItem | null>(null);
 
   const { data, isLoading, mutate } = useSWR(
     open && reportDate
-      ? personalKpiKeys.byDate({
-        reportDate,
-        page: 1,
-        limit: 100,
-      })
+      ? personalKpiKeys.byDate({ reportDate, page: 1, limit: 100 })
       : null,
-    () =>
-      fetchMyPersonalKpi({
-        reportDate: reportDate!,
-        page: 1,
-        limit: 100,
-      }),
+    () => fetchMyPersonalKpi({ reportDate: reportDate!, page: 1, limit: 100 }),
   );
 
   useEffect(() => {
     if (!open) {
       setItems([]);
-      setMode("view");
+      setEditingIds(new Set());
+      setSendIds([]);
       return;
     }
     if (data?.data) setItems(data.data);
-    setMode("view");
   }, [open, data]);
 
   const groups = useMemo(() => groupByAxisContent(items), [items]);
-  // Có nhiệm vụ bị trả lại - chỉ dùng để đổi lời nhắc, KHÔNG khoá nhiệm vụ khác.
-  const hasRejected = items.some((item) => item.status === "RETURNED");
-  const canShowEdit = items.some((item) =>
-    canEditPersonalKpi(item.status),
+
+  /**
+   * Nhiệm vụ bị Trả lại KHÔNG gửi lại được cho tới khi sửa và lưu - lưu xong
+   * server chuyển nó về Nháp. Gửi lại y nguyên chỉ khiến cấp trên trả về lần
+   * nữa, nên chặn ngay ở đây.
+   */
+  const sendableItems = items.filter(
+    (item) => item.status === "DRAFT" && !editingIds.has(item.id),
   );
-  const sendableItems = items.filter((item) =>
-    canSendPersonalKpi(item.status),
-  );
-  const sendableCount = sendableItems.length;
-  const isEditing = mode === "edit";
+  const returnedItems = items.filter((item) => item.status === "RETURNED");
+  const hasReturned = returnedItems.length > 0;
 
   const updateTask = (id: string, patch: Partial<PersonalTaskDraft>) => {
-    if (!isEditing) return;
     setItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== id || !canEditPersonalKpi(item.status)) {
-          return item;
-        }
-        return { ...item, task: { ...item.task, ...patch } };
-      }),
+      prev.map((item) =>
+        item.id === id ? { ...item, task: { ...item.task, ...patch } } : item,
+      ),
     );
   };
 
-  const startEdit = () => {
-    if (!canShowEdit) {
-      toast.error(
-        hasRejected
-          ? "Chỉ sửa được nhiệm vụ Trả lại."
-          : "Chỉ sửa được khi có nhiệm vụ Nháp hoặc Trả lại.",
-      );
-      return;
-    }
-    setMode("edit");
+  const startEditRow = (id: string) => {
+    setEditingIds((prev) => new Set(prev).add(id));
   };
 
-  const cancelEdit = () => {
-    setItems(data?.data ?? []);
-    setMode("view");
+  const cancelEditRow = (id: string) => {
+    const original = data?.data.find((item) => item.id === id);
+    if (original) {
+      setItems((prev) =>
+        prev.map((item) => (item.id === id ? original : item)),
+      );
+    }
+    setEditingIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   };
 
-  const handleSave = async () => {
-    const editableItems = items.filter((item) =>
-      canEditPersonalKpi(item.status),
-    );
-    if (editableItems.length === 0) {
-      toast.error(
-        hasRejected
-          ? "Chỉ sửa được nhiệm vụ Trả lại."
-          : "Không có nhiệm vụ nào được phép sửa.",
-      );
+  const saveRow = async (item: PersonalKpiItem, columns: FormTemplateColumn[]) => {
+    if (!item.task.title.trim()) {
+      toast.error("Vui lòng nhập tên nhiệm vụ.");
+      return;
+    }
+    const score = Number(item.task.standardScore);
+    if (!Number.isFinite(score) || score < 0) {
+      toast.error("Điểm chuẩn phải là số ≥ 0.");
+      return;
+    }
+    // Cột super admin tích "bắt buộc" trong mẫu phải có dữ liệu.
+    const missing = missingRequiredColumns(item.task, columns);
+    if (missing.length) {
+      toast.error(`Chưa nhập cột bắt buộc: ${missing.join(", ")}.`);
       return;
     }
 
-    for (const item of editableItems) {
-      if (!item.task.title.trim()) {
-        toast.error("Vui lòng nhập tên nhiệm vụ.");
-        return;
-      }
-      const score = Number(item.task.standardScore);
-      if (!Number.isFinite(score) || score < 0) {
-        toast.error("Điểm chuẩn phải là số ≥ 0.");
-        return;
-      }
-    }
-
-    setSaving(true);
+    setSavingId(item.id);
     try {
-      await Promise.all(
-        editableItems.map((item) =>
-          updatePersonalKpi(
-            item.id,
-            taskToWriteInput(item.axisId, item.workContentId, item.task),
-          ),
-        ),
+      await updatePersonalKpi(
+        item.id,
+        taskToWriteInput(item.axisId, item.workContentId, item.task),
       );
+      setEditingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
       toast.success(
-        hasRejected ? "Đã lưu nhiệm vụ Trả lại." : "Đã lưu nháp.",
+        item.status === "RETURNED"
+          ? "Đã lưu. Giờ gửi lại được nhiệm vụ này."
+          : "Đã lưu nháp.",
       );
       await mutate();
       await onChanged();
-      setMode("view");
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Không lưu được nháp."));
+      toast.error(getApiErrorMessage(error, "Không lưu được nhiệm vụ."));
     } finally {
-      setSaving(false);
+      setSavingId(null);
     }
   };
 
   const handleSend = async (payload: SubmitPersonalKpiPayload) => {
-    if (!reportDate || isEditing) return;
-    if (sendableCount === 0) {
-      toast.error(
-        hasRejected
-          ? "Không còn nhiệm vụ Trả lại để gửi lại."
-          : "Không còn nhiệm vụ nháp/trả lại để gửi.",
-      );
-      return;
-    }
-
+    if (!reportDate || sendIds.length === 0) return;
     setSending(true);
     try {
       const result = await submitPersonalKpiReport(reportDate, {
         ...payload,
-        itemIds: sendableItems.map((item) => item.id),
+        itemIds: sendIds,
       });
       toast.success(
-        result?.sentCount
-          ? hasRejected
-            ? `Đã gửi lại ${result.sentCount} nhiệm vụ Trả lại tới ${result.recipientName}.`
-            : `Đã gửi ${result.sentCount} nhiệm vụ tới ${result.recipientName}.`
-          : "Đã gửi báo cáo.",
+        `Đã gửi ${result.sentCount} nhiệm vụ tới ${result.recipientName}.`,
       );
-      setSendOpen(false);
+      setSendIds([]);
       await mutate();
       await onChanged();
-      onOpenChange(false);
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không gửi được báo cáo."));
     } finally {
@@ -258,20 +237,7 @@ export function PersonalReportDetailDrawer({
     }
   };
 
-  const openSendDialog = () => {
-    if (!reportDate || isEditing) return;
-    if (sendableCount === 0) {
-      toast.error(
-        hasRejected
-          ? "Không còn nhiệm vụ Trả lại để gửi lại."
-          : "Không còn nhiệm vụ nháp/trả lại để gửi.",
-      );
-      return;
-    }
-    setSendOpen(true);
-  };
-
-  const busy = saving || sending;
+  const busy = savingId !== null || sending;
   let contentStt = 0;
 
   return (
@@ -285,13 +251,9 @@ export function PersonalReportDetailDrawer({
             {reportDate ? formatReportDate(reportDate) : "Chi tiết báo cáo"}
           </SheetTitle>
           <SheetDescription>
-            {isEditing
-              ? hasRejected
-                ? "Chỉ chỉnh sửa nhiệm vụ Trả lại. Nhiệm vụ Đã gửi / Nháp khác bị khoá."
-                : "Đang chỉnh sửa nhiệm vụ Nháp / Trả lại. Lưu xong mới gửi được."
-              : hasRejected
-                ? "Có nhiệm vụ Trả lại - chỉ được sửa và gửi lại đúng các nhiệm vụ đó."
-                : "Chế độ xem. Bấm Chỉnh sửa nếu còn nhiệm vụ Nháp / Trả lại."}
+            {hasReturned
+              ? `${returnedItems.length} nhiệm vụ bị trả lại - sửa và lưu từng dòng, lưu xong mới gửi lại được.`
+              : "Bấm Sửa ở dòng cần chỉnh. Nhiệm vụ đang chờ duyệt thì khoá."}
           </SheetDescription>
           {items.length > 0 ? (
             <div className="flex flex-wrap gap-1 pt-1">
@@ -308,9 +270,8 @@ export function PersonalReportDetailDrawer({
                     status as PersonalKpiStatus,
                   )}
                 >
-                  {PERSONAL_KPI_STATUS_LABEL[
-                    status as keyof typeof PERSONAL_KPI_STATUS_LABEL
-                  ] ?? status}{" "}
+                  {PERSONAL_KPI_STATUS_LABEL[status as PersonalKpiStatus] ??
+                    status}{" "}
                   {count}
                 </Badge>
               ))}
@@ -352,9 +313,8 @@ export function PersonalReportDetailDrawer({
                       >
                         {(columns) =>
                           content.items.map((item, taskIndex) => {
-                            const editable =
-                              isEditing &&
-                              canEditPersonalKpi(item.status);
+                            const editing = editingIds.has(item.id);
+                            const canEdit = canEditPersonalKpi(item.status);
                             return (
                               <PersonalTaskForm
                                 key={item.id}
@@ -362,7 +322,7 @@ export function PersonalReportDetailDrawer({
                                 taskNumber={taskIndex + 1}
                                 task={item.task}
                                 columns={columns}
-                                readOnly={!editable}
+                                readOnly={!editing}
                                 canRemove={false}
                                 showWorkContentCell={taskIndex === 0}
                                 showSttCell={taskIndex === 0}
@@ -370,15 +330,24 @@ export function PersonalReportDetailDrawer({
                                 workContentRowSpan={content.items.length}
                                 onChange={(patch) => updateTask(item.id, patch)}
                                 onRemove={() => undefined}
+                                rowClassName={
+                                  item.status === "RETURNED"
+                                    ? "bg-rose-50/70 hover:bg-rose-50 dark:bg-rose-950/25 dark:hover:bg-rose-950/40"
+                                    : undefined
+                                }
                                 actions={
-                                  <Badge
-                                    variant="secondary"
-                                    className={personalKpiStatusBadgeClass(
-                                      item.status,
-                                    )}
-                                  >
-                                    {PERSONAL_KPI_STATUS_LABEL[item.status]}
-                                  </Badge>
+                                  <RowActions
+                                    item={item}
+                                    editing={editing}
+                                    canEdit={canEdit}
+                                    busy={busy}
+                                    saving={savingId === item.id}
+                                    onEdit={() => startEditRow(item.id)}
+                                    onCancel={() => cancelEditRow(item.id)}
+                                    onSave={() => void saveRow(item, columns)}
+                                    onSend={() => setSendIds([item.id])}
+                                    onShowReason={() => setReasonItem(item)}
+                                  />
                                 }
                               />
                             );
@@ -394,80 +363,213 @@ export function PersonalReportDetailDrawer({
         </div>
 
         <SheetFooter className="border-t pt-4 sm:justify-end">
-          <div className="flex flex-wrap gap-2">
-            {isEditing ? (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="bg-background"
-                  onClick={cancelEdit}
-                  disabled={busy}
-                >
-                  Hủy
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => void handleSave()}
-                  disabled={busy || isLoading}
-                >
-                  {saving ? "Đang lưu..." : "Lưu"}
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="bg-background"
-                  onClick={() => onOpenChange(false)}
-                  disabled={busy}
-                >
-                  Đóng
-                </Button>
-                {canShowEdit ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="bg-background"
-                    onClick={startEdit}
-                    disabled={busy || isLoading}
-                  >
-                    <Pencil className="h-4 w-4" />
-                    Chỉnh sửa
-                  </Button>
-                ) : null}
-                {sendableCount > 0 ? (
-                  <Button
-                    type="button"
-                    onClick={openSendDialog}
-                    disabled={busy || isLoading}
-                  >
-                    <Send className="h-4 w-4" />
-                    {sending
-                      ? "Đang gửi..."
-                      : hasRejected
-                        ? `Gửi lại (${sendableCount})`
-                        : `Gửi (${sendableCount})`}
-                  </Button>
-                ) : null}
-              </>
-            )}
+          <div className="flex flex-wrap items-center gap-2">
+            {hasReturned ? (
+              <span className="mr-auto text-xs text-muted-foreground">
+                {returnedItems.length} nhiệm vụ bị trả lại chưa sửa - chưa gửi
+                lại được.
+              </span>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-background"
+              onClick={() => onOpenChange(false)}
+              disabled={busy}
+            >
+              Đóng
+            </Button>
+            {sendableItems.length > 0 ? (
+              <Button
+                type="button"
+                onClick={() =>
+                  setSendIds(sendableItems.map((item) => item.id))
+                }
+                disabled={busy || isLoading}
+              >
+                <Send className="h-4 w-4" />
+                {sending
+                  ? "Đang gửi..."
+                  : `Gửi (${sendableItems.length})`}
+              </Button>
+            ) : null}
           </div>
         </SheetFooter>
       </SheetContent>
 
       <SendRecipientDialog
-        open={sendOpen}
-        onOpenChange={setSendOpen}
+        open={sendIds.length > 0}
+        onOpenChange={(next) => {
+          if (!next && !sending) setSendIds([]);
+        }}
         title={
-          hasRejected
-            ? `Gửi lại ${sendableCount} nhiệm vụ Trả lại`
-            : `Gửi ${sendableCount} nhiệm vụ`
+          sendIds.length === 1
+            ? "Gửi nhiệm vụ"
+            : `Gửi ${sendIds.length} nhiệm vụ`
         }
         submitting={sending}
         onConfirm={handleSend}
       />
+
+      <Dialog
+        open={!!reasonItem}
+        onOpenChange={(next) => {
+          if (!next) setReasonItem(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Undo2 className="size-4 text-rose-600 dark:text-rose-400" />
+              Nhiệm vụ bị trả lại
+            </DialogTitle>
+            <DialogDescription className="line-clamp-2">
+              {reasonItem?.task.title}
+            </DialogDescription>
+          </DialogHeader>
+
+          <dl className="space-y-3 text-sm">
+            <div className="flex gap-3">
+              <dt className="w-24 shrink-0 text-muted-foreground">Người trả</dt>
+              <dd className="font-medium">
+                {reasonItem?.decidedByName || "Không rõ"}
+              </dd>
+            </div>
+            <div className="flex gap-3">
+              <dt className="w-24 shrink-0 text-muted-foreground">Thời điểm</dt>
+              <dd>{formatDateTime(reasonItem?.decidedAt)}</dd>
+            </div>
+            <div className="space-y-1.5">
+              <dt className="text-muted-foreground">Lý do</dt>
+              <dd className="whitespace-pre-wrap rounded-md border border-rose-200 bg-rose-50 p-3 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
+                {reasonItem?.rejectReason?.trim() || "Không ghi lý do."}
+              </dd>
+            </div>
+          </dl>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReasonItem(null)}>
+              Đóng
+            </Button>
+            {reasonItem && canEditPersonalKpi(reasonItem.status) ? (
+              <Button
+                onClick={() => {
+                  startEditRow(reasonItem.id);
+                  setReasonItem(null);
+                }}
+              >
+                <Pencil className="size-4" />
+                Sửa nhiệm vụ
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sheet>
+  );
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("vi-VN");
+}
+
+/** Ô cuối mỗi dòng: trạng thái, lý do trả lại, và thao tác của chính dòng đó. */
+function RowActions({
+  item,
+  editing,
+  canEdit,
+  busy,
+  saving,
+  onEdit,
+  onCancel,
+  onSave,
+  onSend,
+  onShowReason,
+}: {
+  item: PersonalKpiItem;
+  editing: boolean;
+  canEdit: boolean;
+  busy: boolean;
+  saving: boolean;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSave: () => void;
+  onSend: () => void;
+  onShowReason: () => void;
+}) {
+  if (editing) {
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <Button
+          size="sm"
+          onClick={onSave}
+          disabled={busy}
+          title="Lưu nhiệm vụ này"
+        >
+          <Check className="h-4 w-4" />
+          {saving ? "Đang lưu" : "Lưu"}
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={onCancel}
+          disabled={busy}
+          aria-label="Hủy sửa"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5 text-right">
+      <Badge
+        variant="secondary"
+        className={personalKpiStatusBadgeClass(item.status)}
+      >
+        {PERSONAL_KPI_STATUS_LABEL[item.status]}
+      </Badge>
+
+      {item.status === "RETURNED" ? (
+        <button
+          type="button"
+          onClick={onShowReason}
+          className="inline-flex w-full items-center justify-end gap-1 rounded-md px-1 py-0.5 text-[11px] font-medium text-rose-600 underline-offset-2 hover:underline dark:text-rose-400"
+        >
+          <Undo2 className="size-3 shrink-0" />
+          Xem lý do trả lại
+        </button>
+      ) : null}
+
+      <div className="flex justify-end gap-1">
+        {canEdit ? (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 bg-background px-2 text-xs"
+            onClick={onEdit}
+            disabled={busy}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Sửa
+          </Button>
+        ) : null}
+        {canSendPersonalKpi(item.status) && item.status !== "RETURNED" ? (
+          <Button
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={onSend}
+            disabled={busy}
+          >
+            <Send className="h-3.5 w-3.5" />
+            Gửi
+          </Button>
+        ) : null}
+      </div>
+    </div>
   );
 }

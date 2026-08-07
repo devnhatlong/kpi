@@ -11,6 +11,8 @@ export type HeaderCell = {
   colSpan: number;
   rowSpan: number;
   minWidth?: number;
+  /** Cột bắt buộc nhập - header gắn dấu * để người nhập biết trước. */
+  required?: boolean;
 };
 
 export type ResolvedTemplate = {
@@ -95,6 +97,7 @@ export function buildHeaderRows(
     id: item.id,
     title: item.title.trim() || "(Chưa đặt nhãn)",
     width: item.width,
+    required: item.required,
     pathLabels: resolvePathLabels(groups, item.headerPath ?? []),
   }));
 
@@ -122,6 +125,7 @@ export function buildHeaderRows(
           colSpan: 1,
           rowSpan,
           minWidth: column.width,
+          required: column.required,
         });
         for (let row = level; row < totalRows; row += 1) {
           occupied[row]![index] = true;
@@ -165,6 +169,7 @@ export function buildHeaderRows(
       colSpan: 1,
       rowSpan: 1,
       minWidth: column.width,
+      required: column.required,
     });
     occupied[leafLevel]![index] = true;
   }

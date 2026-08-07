@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { TableCell, TableRow } from "@/components/ui/table";
 import type { FormTemplateColumn } from "@/features/kpi-form-config/types";
+import { cn } from "@/lib/utils";
 import {
   cellInputProps,
   isCheckboxColumn,
@@ -41,6 +42,8 @@ type PersonalTaskFormProps = {
   readOnly?: boolean;
   /** Ô thao tác bên phải (ví dụ Duyệt / Từ chối) */
   actions?: ReactNode;
+  /** Tô nền cả dòng - dùng để làm nổi nhiệm vụ bị trả lại. */
+  rowClassName?: string;
 };
 
 const cellInputClass = "h-8";
@@ -65,6 +68,7 @@ export function PersonalTaskForm({
   workContentRowSpan = 1,
   readOnly = false,
   actions,
+  rowClassName,
 }: PersonalTaskFormProps) {
   const titlePlaceholder = `Nhiệm vụ ${taskNumber ?? index}`;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -149,7 +153,7 @@ export function PersonalTaskForm({
   );
 
   return (
-    <TableRow>
+    <TableRow className={rowClassName}>
       {columns.map((column) => {
         const minWidth = `${column.width}px`;
 
@@ -252,7 +256,13 @@ export function PersonalTaskForm({
         );
       })}
 
-      <TableCell className="sticky right-0 z-10 min-w-[140px] bg-background text-right align-middle">
+      {/* Dòng có tô màu thì ô sticky phải ăn theo, không sẽ hở một mảng nền khác màu. */}
+      <TableCell
+        className={cn(
+          "sticky right-0 z-10 min-w-[200px] text-right align-middle",
+          rowClassName ? "bg-inherit" : "bg-background",
+        )}
+      >
         {actions ? (
           actions
         ) : !readOnly ? (

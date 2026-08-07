@@ -118,7 +118,8 @@ export function PersonalKpiBoardView() {
   const [status, setStatus] = useState("PENDING");
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [returnOpen, setReturnOpen] = useState(false);
+  /** Nhiệm vụ đang chờ nhập lý do để trả lại; rỗng = hộp thoại đóng. */
+  const [returnIds, setReturnIds] = useState<string[]>([]);
   const [returnReason, setReturnReason] = useState("");
   const [forwardOpen, setForwardOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -134,7 +135,7 @@ export function PersonalKpiBoardView() {
     [reportDate, status, q],
   );
 
-  const { data, isLoading, mutate } = useSWR(
+  const { data, error, isLoading, mutate } = useSWR(
     [
       "personal-kpi-board",
       params.reportDate ?? "",
@@ -195,14 +196,12 @@ export function PersonalKpiBoardView() {
     await mutate();
   };
 
-  const doApprove = async () => {
-    if (!selectedPending.length) return;
+  /** Duyệt: dùng chung cho nút hàng loạt và nút trên từng dòng. */
+  const doApprove = async (itemIds: string[]) => {
+    if (!itemIds.length) return;
     setBusy(true);
     try {
-      const result = await reviewPersonalKpi({
-        itemIds: selectedPending.map((row) => row._id),
-        decision: "APPROVE",
-      });
+      const result = await reviewPersonalKpi({ itemIds, decision: "APPROVE" });
       toast.success(`Đã duyệt ${result.count} nhiệm vụ.`);
       await afterAction();
     } catch (error) {
@@ -221,12 +220,12 @@ export function PersonalKpiBoardView() {
     setBusy(true);
     try {
       const result = await reviewPersonalKpi({
-        itemIds: selectedPending.map((row) => row._id),
+        itemIds: returnIds,
         decision: "RETURN",
         reason,
       });
       toast.success(`Đã trả lại ${result.count} nhiệm vụ.`);
-      setReturnOpen(false);
+      setReturnIds([]);
       setReturnReason("");
       await afterAction();
     } catch (error) {
@@ -315,7 +314,9 @@ export function PersonalKpiBoardView() {
             <div className="ml-auto flex flex-wrap gap-2">
               <Button
                 size="sm"
-                onClick={() => void doApprove()}
+                onClick={() =>
+                  void doApprove(selectedPending.map((row) => row._id))
+                }
                 disabled={busy || selectedPending.length === 0}
               >
                 <Check className="size-4" />
@@ -324,7 +325,10 @@ export function PersonalKpiBoardView() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => setReturnOpen(true)}
+                className="border-rose-400 text-rose-600 hover:border-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-800 dark:text-rose-400 dark:hover:border-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-300"
+                onClick={() =>
+                  setReturnIds(selectedPending.map((row) => row._id))
+                }
                 disabled={busy || selectedPending.length === 0}
               >
                 <Undo2 className="size-4" />
@@ -349,7 +353,27 @@ export function PersonalKpiBoardView() {
         </CardContent>
       </Card>
 
-      {isLoading ? (
+      {error ? (
+        <Card className="border-destructive/40">
+          <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+            <TriangleAlert className="size-8 text-destructive" />
+            <p className="text-sm font-medium text-destructive">
+              Không tải được bảng tổng
+            </p>
+            <p className="max-w-lg text-xs text-muted-foreground">
+              {getApiErrorMessage(error, "Lỗi không xác định.")}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-1"
+              onClick={() => void mutate()}
+            >
+              Thử lại
+            </Button>
+          </CardContent>
+        </Card>
+      ) : isLoading ? (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
             Đang tải bảng tổng...
@@ -368,8 +392,11 @@ export function PersonalKpiBoardView() {
             key={`${axis.axisId}-${axis.template?.version ?? "live"}`}
             axis={axis}
             selected={selected}
+            busy={busy}
             onToggleRow={toggleRow}
             onToggleGroup={toggleGroup}
+            onApproveRow={(id) => void doApprove([id])}
+            onReturnRow={(id) => setReturnIds([id])}
           />
         ))
       )}
@@ -381,13 +408,18 @@ export function PersonalKpiBoardView() {
         </p>
       ) : null}
 
-      <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
+      <Dialog
+        open={returnIds.length > 0}
+        onOpenChange={(next) => {
+          if (!next && !busy) setReturnIds([]);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Trả lại nhiệm vụ</DialogTitle>
             <DialogDescription>
-              {selectedPending.length} nhiệm vụ sẽ quay về chỗ người đã gửi để
-              sửa lại.
+              {returnIds.length} nhiệm vụ sẽ quay về chỗ người đã gửi để sửa
+              lại.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -405,7 +437,7 @@ export function PersonalKpiBoardView() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setReturnOpen(false)}
+              onClick={() => setReturnIds([])}
               disabled={busy}
             >
               Hủy
@@ -433,13 +465,19 @@ export function PersonalKpiBoardView() {
 function AxisBoardBlock({
   axis,
   selected,
+  busy,
   onToggleRow,
   onToggleGroup,
+  onApproveRow,
+  onReturnRow,
 }: {
   axis: PersonalKpiBoardAxis;
   selected: Set<string>;
+  busy: boolean;
   onToggleRow: (id: string) => void;
   onToggleGroup: (rows: PersonalKpiBoardRow[]) => void;
+  onApproveRow: (id: string) => void;
+  onReturnRow: (id: string) => void;
 }) {
   const template = axis.template;
 
@@ -523,7 +561,14 @@ function AxisBoardBlock({
                     </TableRow>
 
                     {group.rows.map((row) => (
-                      <TableRow key={row._id}>
+                      <TableRow
+                        key={row._id}
+                        // Dòng bị trả lại nhuộm hồng nhạt để lướt mắt là thấy.
+                        className={cn(
+                          row.reviewStatus === "RETURNED" &&
+                            "bg-rose-50/70 hover:bg-rose-50 dark:bg-rose-950/25 dark:hover:bg-rose-950/40",
+                        )}
+                      >
                         <TableCell className="align-middle">
                           <Checkbox
                             checked={selected.has(row._id)}
@@ -574,7 +619,18 @@ function AxisBoardBlock({
                           );
                         })}
 
-                        <TableCell className="align-middle text-center">
+                        {/* Bám phải cho khớp ô header cũng sticky, nếu không
+                            cuộn ngang là hai bên lệch và chữ đè lên nhau. */}
+                        <TableCell
+                          className={cn(
+                            "sticky right-0 z-10 space-y-1.5 text-center align-middle",
+                            // Ô sticky phải tự tô nền, nếu không nó trong suốt
+                            // và chữ bên dưới trôi qua khi cuộn ngang.
+                            row.reviewStatus === "RETURNED"
+                              ? "bg-rose-50 dark:bg-rose-950/60"
+                              : "bg-background",
+                          )}
+                        >
                           <Badge
                             variant="secondary"
                             className={cn(
@@ -584,8 +640,33 @@ function AxisBoardBlock({
                             {PERSONAL_KPI_STATUS_LABEL[row.reviewStatus] ??
                               row.reviewStatus}
                           </Badge>
+
+                          {row.reviewStatus === "PENDING" ? (
+                            <div className="flex justify-center gap-1">
+                              <Button
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => onApproveRow(row._id)}
+                                disabled={busy}
+                              >
+                                <Check className="size-3.5" />
+                                Duyệt
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 border-rose-400 bg-background px-2 text-xs text-rose-600 hover:border-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-800 dark:text-rose-400 dark:hover:border-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-300"
+                                onClick={() => onReturnRow(row._id)}
+                                disabled={busy}
+                              >
+                                <Undo2 className="size-3.5" />
+                                Trả lại
+                              </Button>
+                            </div>
+                          ) : null}
+
                           {row.returnReason ? (
-                            <p className="mt-1 max-w-[180px] text-xs text-rose-600">
+                            <p className="mx-auto max-w-[180px] text-left text-[11px] leading-snug text-rose-600">
                               {row.returnReason}
                             </p>
                           ) : null}

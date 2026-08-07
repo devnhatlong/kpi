@@ -1,6 +1,7 @@
 import type {
   FormColumnDataType,
   FormColumnSemantic,
+  FormTemplateColumn,
 } from "@/features/kpi-form-config/types";
 import type { PersonalTaskDraft } from "@/features/personal-kpi/types";
 
@@ -125,6 +126,42 @@ export function cellInputProps(
   const hint = SEMANTIC_HINT[semanticKey] ?? {};
   if (type !== "number") return { type, placeholder: hint.placeholder };
   return { type, ...hint };
+}
+
+/**
+ * Cột bắt buộc mà chưa có dữ liệu.
+ * Đọc cờ `required` do super admin tích khi cấu hình mẫu - trước đây cờ này
+ * chỉ nằm trong DB chứ không chặn gì.
+ */
+export function missingRequiredColumns(
+  task: PersonalTaskDraft,
+  columns: FormTemplateColumn[],
+): string[] {
+  const missing: string[] = [];
+
+  for (const column of columns) {
+    if (!column.visible || !column.required) continue;
+    // STT tự đánh số, không phải ô nhập nên không xét.
+    if (column.semanticKey === "stt") continue;
+
+    if (column.semanticKey === "evidence_files") {
+      if (!task.evidenceFiles?.length) missing.push(column.title);
+      continue;
+    }
+
+    if (isCheckboxColumn(column.semanticKey, column.dataType)) {
+      if (!readCheckboxValue(task, column.semanticKey, column.key)) {
+        missing.push(column.title);
+      }
+      continue;
+    }
+
+    if (!readCellValue(task, column.semanticKey, column.key).trim()) {
+      missing.push(column.title);
+    }
+  }
+
+  return missing;
 }
 
 /** Giá trị hiển thị của một ô theo cột. */
