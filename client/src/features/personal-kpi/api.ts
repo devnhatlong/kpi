@@ -461,7 +461,14 @@ export type PersonalKpiBoardAxis = {
 
 export type PersonalKpiBoard = {
   axes: PersonalKpiBoardAxis[];
-  counts: { pending: number; approved: number; returned: number };
+  counts: {
+    pending: number;
+    approved: number;
+    returned: number;
+    completed: number;
+  };
+  /** false = không còn ai ở trên, đây là cấp cuối của chuỗi. */
+  canForwardUp: boolean;
   rowCount: number;
   truncated: boolean;
 };
@@ -505,7 +512,7 @@ export async function fetchPersonalKpiBoard(params: PersonalKpiBoardQuery) {
 /** Duyệt hoặc trả lại các nhiệm vụ đã tích trong bảng tổng. */
 export async function reviewPersonalKpi(input: {
   itemIds: string[];
-  decision: "APPROVE" | "RETURN";
+  decision: "RETURN" | "COMPLETE";
   reason?: string;
 }) {
   return unwrapData(

@@ -9,13 +9,15 @@ export type PersonalKpiStatus =
   | "DRAFT"
   | "PENDING"
   | "APPROVED"
-  | "RETURNED";
+  | "RETURNED"
+  | "COMPLETED";
 
 export const PERSONAL_KPI_STATUSES: PersonalKpiStatus[] = [
   "DRAFT",
   "PENDING",
   "APPROVED",
   "RETURNED",
+  "COMPLETED",
 ];
 
 export const PERSONAL_KPI_STATUS_LABEL: Record<PersonalKpiStatus, string> = {
@@ -23,6 +25,7 @@ export const PERSONAL_KPI_STATUS_LABEL: Record<PersonalKpiStatus, string> = {
   PENDING: "Chờ duyệt",
   APPROVED: "Đã duyệt",
   RETURNED: "Trả lại",
+  COMPLETED: "Hoàn thành",
 };
 
 /**
@@ -110,6 +113,11 @@ export function canForwardPersonalKpi(
   holderLevel: number,
 ) {
   return holderLevel >= 1 && (status === "APPROVED" || status === "RETURNED");
+}
+
+/** Chốt hoàn thành được khi việc đang ở chỗ mình và chưa chốt. */
+export function canCompletePersonalKpi(status: PersonalKpiStatus) {
+  return status === "PENDING" || status === "APPROVED";
 }
 
 function localKey(prefix: string) {

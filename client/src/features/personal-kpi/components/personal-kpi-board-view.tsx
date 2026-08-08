@@ -1,7 +1,16 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { Check, Inbox, LayoutTemplate, Search, Send, TriangleAlert, Undo2 } from "lucide-react";
+import {
+  Check,
+  CheckCheck,
+  Inbox,
+  LayoutTemplate,
+  Search,
+  Send,
+  TriangleAlert,
+  Undo2,
+} from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 
@@ -47,8 +56,10 @@ import { cn } from "@/lib/utils";
 
 const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: "PENDING", label: "Chờ tôi duyệt" },
-  { value: "APPROVED", label: "Tôi đã duyệt" },
+  // Không có nhiệm vụ mới nào rơi vào đây nữa - giữ để dữ liệu cũ còn chỗ xử lý.
+  { value: "APPROVED", label: "Duyệt tồn (cũ)" },
   { value: "RETURNED", label: "Tôi đã trả lại" },
+  { value: "COMPLETED", label: "Đã hoàn thành" },
   { value: "ALL", label: "Tất cả đang ở chỗ tôi" },
 ];
 
@@ -140,7 +151,14 @@ export function PersonalKpiBoardView() {
   );
 
   const axes = data?.axes ?? [];
-  const counts = data?.counts ?? { pending: 0, approved: 0, returned: 0 };
+  const counts = data?.counts ?? {
+    pending: 0,
+    approved: 0,
+    returned: 0,
+    completed: 0,
+  };
+  /** Không còn ai ở trên -> mời Hoàn thành thay vì Gửi lên cấp trên. */
+  const canForwardUp = data?.canForwardUp ?? true;
 
   const allRows = useMemo(
     () => axes.flatMap((axis) => axis.groups.flatMap((group) => group.rows)),
@@ -154,13 +172,16 @@ export function PersonalKpiBoardView() {
   const selectedRows = [...selected]
     .map((id) => byId.get(id))
     .filter((row): row is PersonalKpiBoardRow => Boolean(row));
+  /** Trả lại: chỉ việc đang chờ mình quyết. */
   const selectedPending = selectedRows.filter(
     (row) => row.reviewStatus === "PENDING",
   );
-  const selectedForwardable = selectedRows.filter(
-    (row) =>
-      (row.holderLevel ?? 0) >= 1 &&
-      (row.reviewStatus === "APPROVED" || row.reviewStatus === "RETURNED"),
+  /** Hoàn thành và Chuyển lên đều là quyết định duyệt - áp cho việc chưa chốt. */
+  const selectedOpen = selectedRows.filter(
+    (row) => row.reviewStatus !== "COMPLETED",
+  );
+  const selectedForwardable = selectedOpen.filter(
+    (row) => (row.holderLevel ?? 0) >= 1,
   );
 
   const toggleRow = (id: string) => {
@@ -173,7 +194,11 @@ export function PersonalKpiBoardView() {
   };
 
   const toggleGroup = (rows: PersonalKpiBoardRow[]) => {
-    const ids = rows.map((row) => row._id);
+    // Bỏ qua việc đã chốt: chọn cả nhóm không được kéo theo thứ không xử lý được.
+    const ids = rows
+      .filter((row) => row.reviewStatus !== "COMPLETED")
+      .map((row) => row._id);
+    if (!ids.length) return;
     const allOn = ids.every((id) => selected.has(id));
     setSelected((prev) => {
       const next = new Set(prev);
@@ -190,24 +215,16 @@ export function PersonalKpiBoardView() {
     await mutate();
   };
 
-  /** Duyệt: dùng chung cho nút hàng loạt và nút trên từng dòng. */
-  const doApprove = async (itemIds: string[]) => {
+  /** Chốt hoàn thành: điểm dừng của chuỗi, không gửi lên nữa. */
+  const doComplete = async (itemIds: string[]) => {
     if (!itemIds.length) return;
     setBusy(true);
     try {
-      const result = await reviewPersonalKpi({ itemIds, decision: "APPROVE" });
-      // Duyệt xong việc rời khỏi tab "Chờ tôi duyệt" - chỉ luôn đường đi tiếp,
-      // không để người dùng tưởng nó biến mất.
-      toast.success(`Đã duyệt ${result.count} nhiệm vụ.`, {
-        description: "Việc đã duyệt nằm ở tab Tôi đã duyệt, chờ gửi lên cấp trên.",
-        action: {
-          label: "Xem ngay",
-          onClick: () => setStatus("APPROVED"),
-        },
-      });
+      const result = await reviewPersonalKpi({ itemIds, decision: "COMPLETE" });
+      toast.success(`Đã chốt hoàn thành ${result.count} nhiệm vụ.`);
       await afterAction();
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Không duyệt được."));
+      toast.error(getApiErrorMessage(error, "Không chốt được."));
     } finally {
       setBusy(false);
     }
@@ -304,7 +321,12 @@ export function PersonalKpiBoardView() {
                     ? counts.approved
                     : item.value === "RETURNED"
                       ? counts.returned
-                      : counts.pending + counts.approved + counts.returned;
+                      : item.value === "COMPLETED"
+                        ? counts.completed
+                        : counts.pending +
+                          counts.approved +
+                          counts.returned +
+                          counts.completed;
               const active = status === item.value;
               return (
                 <Button
@@ -332,21 +354,11 @@ export function PersonalKpiBoardView() {
           <div className="flex flex-wrap items-center gap-2 border-t pt-3">
             <span className="text-sm text-muted-foreground">
               Đã chọn <b className="text-foreground">{selected.size}</b> nhiệm vụ
-              {status === "APPROVED" && selected.size === 0 ? (
-                <> — tích chọn rồi bấm Gửi lên cấp trên.</>
+              {selected.size === 0 && counts.pending > 0 ? (
+                <> — tích chọn rồi chọn một trong ba: Trả lại, Chuyển lên, Hoàn thành.</>
               ) : null}
             </span>
             <div className="ml-auto flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                onClick={() =>
-                  void doApprove(selectedPending.map((row) => row._id))
-                }
-                disabled={busy || selectedPending.length === 0}
-              >
-                <Check className="size-4" />
-                Duyệt ({selectedPending.length})
-              </Button>
               <Button
                 size="sm"
                 variant="outline"
@@ -359,19 +371,29 @@ export function PersonalKpiBoardView() {
                 <Undo2 className="size-4" />
                 Trả lại ({selectedPending.length})
               </Button>
+              {canForwardUp ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setForwardOpen(true)}
+                  disabled={busy || selectedForwardable.length === 0}
+                  title="Duyệt rồi chuyển tiếp lên cấp trên"
+                >
+                  <Send className="size-4" />
+                  Duyệt &amp; chuyển lên ({selectedForwardable.length})
+                </Button>
+              ) : null}
               <Button
                 size="sm"
-                variant="secondary"
-                onClick={() => setForwardOpen(true)}
-                disabled={busy || selectedForwardable.length === 0}
-                title={
-                  selectedForwardable.length === 0
-                    ? "Phải duyệt trước khi gửi lên cấp trên"
-                    : undefined
+                className="bg-teal-600 text-white hover:bg-teal-700 disabled:bg-muted disabled:text-muted-foreground"
+                onClick={() =>
+                  void doComplete(selectedOpen.map((row) => row._id))
                 }
+                disabled={busy || selectedOpen.length === 0}
+                title="Duyệt và chốt tại cấp mình, không gửi lên nữa"
               >
-                <Send className="size-4" />
-                Gửi lên cấp trên ({selectedForwardable.length})
+                <CheckCheck className="size-4" />
+                Hoàn thành ({selectedOpen.length})
               </Button>
             </div>
           </div>
@@ -410,7 +432,7 @@ export function PersonalKpiBoardView() {
             <Inbox className="size-10 opacity-40" />
             <p className="text-sm">
               {status === "PENDING" && counts.approved > 0
-                ? "Đã duyệt hết. Việc đã duyệt nằm ở tab Tôi đã duyệt."
+                ? "Hết việc chờ duyệt. Còn vài việc duyệt tồn từ trước chưa xử lý."
                 : "Không có nhiệm vụ nào ở trạng thái này."}
             </p>
             {status === "PENDING" && counts.approved > 0 ? (
@@ -419,7 +441,7 @@ export function PersonalKpiBoardView() {
                 variant="outline"
                 onClick={() => setStatus("APPROVED")}
               >
-                Xem {counts.approved} việc đã duyệt
+                Xem {counts.approved} việc duyệt tồn
               </Button>
             ) : null}
           </CardContent>
@@ -433,8 +455,13 @@ export function PersonalKpiBoardView() {
             busy={busy}
             onToggleRow={toggleRow}
             onToggleGroup={toggleGroup}
-            onApproveRow={(id) => void doApprove([id])}
+            canForwardUp={canForwardUp}
             onReturnRow={(id) => setReturnIds([id])}
+            onForwardRow={(id) => {
+              setSelected(new Set([id]));
+              setForwardOpen(true);
+            }}
+            onCompleteRow={(id) => void doComplete([id])}
           />
         ))
       )}
@@ -492,7 +519,7 @@ export function PersonalKpiBoardView() {
         onOpenChange={(open) => {
           if (!open && !busy) setForwardOpen(false);
         }}
-        title={`Gửi lên cấp trên (${selectedForwardable.length} nhiệm vụ)`}
+        title={`Duyệt & chuyển lên (${selectedForwardable.length} nhiệm vụ)`}
         submitting={busy}
         onConfirm={doForward}
       />
@@ -506,16 +533,20 @@ function AxisBoardBlock({
   busy,
   onToggleRow,
   onToggleGroup,
-  onApproveRow,
+  canForwardUp,
   onReturnRow,
+  onForwardRow,
+  onCompleteRow,
 }: {
   axis: PersonalKpiBoardAxis;
   selected: Set<string>;
   busy: boolean;
   onToggleRow: (id: string) => void;
   onToggleGroup: (rows: PersonalKpiBoardRow[]) => void;
-  onApproveRow: (id: string) => void;
+  canForwardUp: boolean;
   onReturnRow: (id: string) => void;
+  onForwardRow: (id: string) => void;
+  onCompleteRow: (id: string) => void;
 }) {
   const template = axis.template;
 
@@ -575,18 +606,32 @@ function AxisBoardBlock({
             />
             <TableBody>
               {axis.groups.map((group) => {
+                // Việc đã chốt không tính vào ô tích cả nhóm.
+                const selectableRows = group.rows.filter(
+                  (row) => row.reviewStatus !== "COMPLETED",
+                );
                 const allOn =
-                  group.rows.length > 0 &&
-                  group.rows.every((row) => selected.has(row._id));
+                  selectableRows.length > 0 &&
+                  selectableRows.every((row) => selected.has(row._id));
                 return (
                   // Fragment đầy đủ vì một group trả về nhiều <tr>; fragment
                   // rút gọn <> không nhận key.
                   <Fragment key={group.workContentId}>
                     <TableRow className="bg-muted/40 hover:bg-muted/40">
                       <TableCell colSpan={totalCols} className="py-2">
-                        <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+                        {/* Nhóm toàn việc đã chốt thì không tích được, bỏ luôn
+                            con trỏ bàn tay để khỏi mời gọi. */}
+                        <label
+                          className={cn(
+                            "flex items-center gap-2 text-sm font-semibold",
+                            selectableRows.length > 0
+                              ? "cursor-pointer"
+                              : "cursor-default",
+                          )}
+                        >
                           <Checkbox
                             checked={allOn}
+                            disabled={selectableRows.length === 0}
                             onCheckedChange={() => onToggleGroup(group.rows)}
                           />
                           {group.workContentName || group.workContentCode}
@@ -604,12 +649,20 @@ function AxisBoardBlock({
                         className={cn(
                           row.reviewStatus === "RETURNED" &&
                             "bg-rose-50/70 hover:bg-rose-50 dark:bg-rose-950/25 dark:hover:bg-rose-950/40",
+                          // Đã chốt thì không còn thao tác nào. Ép "!" để chắc
+                          // chắn đè được hover:bg-muted/50 của TableRow, không
+                          // phụ thuộc thứ tự gộp class.
+                          row.reviewStatus === "COMPLETED" &&
+                            "bg-teal-50 hover:!bg-teal-50 dark:bg-teal-950/40 dark:hover:!bg-teal-950/40",
                         )}
                       >
                         <TableCell className="align-middle">
+                          {/* Đã chốt thì mọi thao tác đều loại nó ra, tích
+                              chọn cũng vô nghĩa - khoá luôn ô tích. */}
                           <Checkbox
                             checked={selected.has(row._id)}
                             onCheckedChange={() => onToggleRow(row._id)}
+                            disabled={row.reviewStatus === "COMPLETED"}
                             aria-label={`Chọn ${row.title}`}
                           />
                         </TableCell>
@@ -665,7 +718,9 @@ function AxisBoardBlock({
                             // và chữ bên dưới trôi qua khi cuộn ngang.
                             row.reviewStatus === "RETURNED"
                               ? "bg-rose-50 dark:bg-rose-950/60"
-                              : "bg-background",
+                              : row.reviewStatus === "COMPLETED"
+                                ? "bg-teal-50 dark:bg-teal-950/40"
+                                : "bg-background",
                           )}
                         >
                           <Badge
@@ -678,26 +733,44 @@ function AxisBoardBlock({
                               row.reviewStatus}
                           </Badge>
 
-                          {row.reviewStatus === "PENDING" ? (
-                            <div className="flex justify-center gap-1">
+                          {/* Chưa chốt thì mỗi dòng có đúng ba lựa chọn, cái
+                              nào cũng dứt điểm - không còn bước duyệt lửng. */}
+                          {row.reviewStatus !== "COMPLETED" ? (
+                            <div className="flex flex-wrap justify-center gap-1">
+                              {row.reviewStatus === "PENDING" ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 border-rose-400 bg-background px-2 text-xs text-rose-600 hover:border-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-800 dark:text-rose-400 dark:hover:border-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-300"
+                                  onClick={() => onReturnRow(row._id)}
+                                  disabled={busy}
+                                >
+                                  <Undo2 className="size-3.5" />
+                                  Trả lại
+                                </Button>
+                              ) : null}
+                              {canForwardUp ? (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => onForwardRow(row._id)}
+                                  disabled={busy}
+                                  title="Duyệt rồi chuyển tiếp lên cấp trên"
+                                >
+                                  <Send className="size-3.5" />
+                                  Chuyển lên
+                                </Button>
+                              ) : null}
                               <Button
                                 size="sm"
-                                className="h-7 px-2 text-xs"
-                                onClick={() => onApproveRow(row._id)}
+                                className="h-7 bg-teal-600 px-2 text-xs text-white hover:bg-teal-700 disabled:bg-muted disabled:text-muted-foreground"
+                                onClick={() => onCompleteRow(row._id)}
                                 disabled={busy}
+                                title="Duyệt và chốt tại cấp mình"
                               >
-                                <Check className="size-3.5" />
-                                Duyệt
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 border-rose-400 bg-background px-2 text-xs text-rose-600 hover:border-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-800 dark:text-rose-400 dark:hover:border-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-300"
-                                onClick={() => onReturnRow(row._id)}
-                                disabled={busy}
-                              >
-                                <Undo2 className="size-3.5" />
-                                Trả lại
+                                <CheckCheck className="size-3.5" />
+                                Hoàn thành
                               </Button>
                             </div>
                           ) : null}

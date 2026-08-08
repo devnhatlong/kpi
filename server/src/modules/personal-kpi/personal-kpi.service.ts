@@ -430,21 +430,25 @@ export class PersonalKpiService {
     const note = this.requireNote(dto.note);
 
     const ids = dto.itemIds.map((id) => this.requireObjectId(id, 'Nhiệm vụ'));
+
+    // Chuyển lên trên CHÍNH LÀ hành động duyệt - nhận cả việc đang chờ duyệt,
+    // không bắt bấm "Duyệt" trước rồi mới được gửi. Việc đã chốt hoàn thành thì
+    // không nằm trong danh sách này nữa.
     const items = await this.itemModel.find({
       _id: { $in: ids },
       currentRecipientId: actor.id,
       holderLevel: { $gte: 1 },
-      reviewStatus: { $in: ['APPROVED', 'RETURNED'] },
+      reviewStatus: { $in: ['PENDING', 'APPROVED', 'RETURNED'] },
     });
 
     if (!items.length) {
       throw new BadRequestException(
-        'Không có nhiệm vụ nào gửi lên được. Phải duyệt trước khi gửi tiếp.',
+        'Không có nhiệm vụ nào chuyển lên được - việc đã chốt hoàn thành thì không gửi nữa.',
       );
     }
     if (items.length !== ids.length) {
       throw new BadRequestException(
-        'Một số nhiệm vụ chưa duyệt hoặc không nằm ở chỗ bạn.',
+        'Một số nhiệm vụ không nằm ở chỗ bạn hoặc đã chốt hoàn thành.',
       );
     }
 
@@ -492,23 +496,31 @@ export class PersonalKpiService {
     const actor = await this.requireActor(userId);
     const ids = dto.itemIds.map((id) => this.requireObjectId(id, 'Nhiệm vụ'));
 
+    // Chốt hoàn thành áp cho việc đã duyệt; duyệt/trả lại áp cho việc đang chờ.
+    const allowed: PersonalKpiReviewStatus[] =
+      dto.decision === 'COMPLETE' ? ['PENDING', 'APPROVED'] : ['PENDING'];
+
     const items = await this.itemModel.find({
       _id: { $in: ids },
       currentRecipientId: actor.id,
-      reviewStatus: 'PENDING',
+      reviewStatus: { $in: allowed },
     });
     if (!items.length) {
-      throw new BadRequestException('Không có nhiệm vụ nào đang chờ bạn duyệt.');
+      throw new BadRequestException(
+        dto.decision === 'COMPLETE'
+          ? 'Không có nhiệm vụ nào ở chỗ bạn để chốt hoàn thành.'
+          : 'Không có nhiệm vụ nào đang chờ bạn duyệt.',
+      );
     }
 
     const now = new Date();
 
-    if (dto.decision === 'APPROVE') {
+    if (dto.decision === 'COMPLETE') {
       await this.itemModel.updateMany(
         { _id: { $in: items.map((item) => item._id) } },
         {
           $set: {
-            reviewStatus: 'APPROVED',
+            reviewStatus: 'COMPLETED',
             returnReason: '',
             lastDecidedById: actor.id,
             lastDecidedAt: now,
@@ -517,7 +529,7 @@ export class PersonalKpiService {
       );
       await this.closeSubmissionsIfSettled(items);
       return {
-        message: `Đã duyệt ${items.length} nhiệm vụ.`,
+        message: `Đã chốt hoàn thành ${items.length} nhiệm vụ.`,
         data: { count: items.length },
       };
     }
@@ -612,7 +624,7 @@ export class PersonalKpiService {
     filter.reviewStatus = query.status
       ? query.status
       : query.includeDecided
-        ? { $in: ['PENDING', 'APPROVED', 'RETURNED'] }
+        ? { $in: ['PENDING', 'APPROVED', 'RETURNED', 'COMPLETED'] }
         : 'PENDING';
 
     if (query.reportDate) {
@@ -738,13 +750,25 @@ export class PersonalKpiService {
       pending: countMap.get('PENDING') ?? 0,
       approved: countMap.get('APPROVED') ?? 0,
       returned: countMap.get('RETURNED') ?? 0,
+      completed: countMap.get('COMPLETED') ?? 0,
     };
+
+    // Không còn ai ở trên thì đây là cấp cuối - giao diện phải mời "Hoàn thành"
+    // thay vì "Gửi lên cấp trên", nếu không người dùng sẽ kẹt ở tab Đã duyệt.
+    let canForwardUp = false;
+    try {
+      const up = await this.findRecipientsUp(userId);
+      canForwardUp = up.people.length > 0;
+    } catch {
+      canForwardUp = false;
+    }
 
     return {
       message: 'OK',
       data: {
         axes,
         counts,
+        canForwardUp,
         rowCount: rows.length,
         truncated: rows.length >= BOARD_MAX_ROWS,
       },
@@ -866,6 +890,10 @@ export class PersonalKpiService {
           lastSenderId: sender.id,
           lastSenderDepartmentId: sender.departmentId,
           lastSentAt: now,
+          // Cấp trên chuyển lên tức là đã duyệt - ghi lại người quyết định.
+          ...(level > 1
+            ? { lastDecidedById: sender.id, lastDecidedAt: now }
+            : {}),
         },
       },
     );

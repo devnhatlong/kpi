@@ -13,12 +13,14 @@ export type PersonalKpiItemDocument = HydratedDocument<PersonalKpiItem>;
  * - PENDING  : đang chờ người nhận hiện tại duyệt
  * - APPROVED : cấp đang giữ đã duyệt, có thể gửi tiếp lên trên
  * - RETURNED : bị trả lại, nằm ở chỗ người gửi lượt đó để sửa
+ * - COMPLETED: chốt xong, không gửi lên nữa - điểm dừng của chuỗi
  */
 export const PERSONAL_KPI_REVIEW_STATUSES = [
   'DRAFT',
   'PENDING',
   'APPROVED',
   'RETURNED',
+  'COMPLETED',
 ] as const;
 
 export type PersonalKpiReviewStatus =

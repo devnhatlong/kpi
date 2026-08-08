@@ -211,9 +211,15 @@ export class ReviewPersonalKpiDto {
   @IsMongoId({ each: true })
   itemIds!: string[];
 
-  @ApiProperty({ enum: ['APPROVE', 'RETURN'] })
-  @IsIn(['APPROVE', 'RETURN'])
-  decision!: 'APPROVE' | 'RETURN';
+  /**
+   * Mỗi quyết định là dứt điểm, không có bước "duyệt tạm":
+   * - COMPLETE: chốt tại cấp mình, kết thúc chuỗi
+   * - RETURN  : trả về người gửi để sửa
+   * Duyệt rồi chuyển lên cấp trên nằm ở endpoint /forward.
+   */
+  @ApiProperty({ enum: ['RETURN', 'COMPLETE'] })
+  @IsIn(['RETURN', 'COMPLETE'])
+  decision!: 'RETURN' | 'COMPLETE';
 
   @ApiPropertyOptional({ description: 'Bắt buộc khi trả lại' })
   @IsOptional()
