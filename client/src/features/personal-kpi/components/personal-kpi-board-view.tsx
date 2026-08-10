@@ -5,7 +5,6 @@ import {
   Check,
   CheckCheck,
   Inbox,
-  LayoutTemplate,
   Search,
   Send,
   TriangleAlert,
@@ -559,7 +558,13 @@ function AxisBoardBlock({
       <Card>
         <CardContent className="space-y-2 pt-6">
           <p className="text-sm font-semibold">
-            Trục: {axis.axisName || axis.axisCode}
+            {axis.axisName || axis.axisCode}
+            {axis.axisDescription ? (
+              <span className="font-normal text-muted-foreground">
+                {" – "}
+                {axis.axisDescription}
+              </span>
+            ) : null}
           </p>
           <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-amber-500/40 bg-amber-500/5 p-6 text-center">
             <TriangleAlert className="size-6 text-amber-600 dark:text-amber-500" />
@@ -586,15 +591,15 @@ function AxisBoardBlock({
   return (
     <Card>
       <CardContent className="space-y-2 pt-6">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-semibold">
-            Trục: {axis.axisName || axis.axisCode}
-          </p>
-          <Badge variant="outline" className="gap-1.5 font-normal">
-            <LayoutTemplate className="size-3.5" />
-            Mẫu: {template.code} · {template.name} · v{template.version}
-          </Badge>
-        </div>
+        <p className="text-sm font-semibold">
+          {axis.axisName || axis.axisCode}
+          {axis.axisDescription ? (
+            <span className="font-normal text-muted-foreground">
+              {" – "}
+              {axis.axisDescription}
+            </span>
+          ) : null}
+        </p>
 
         <div className="overflow-auto rounded-md border bg-card">
           <Table style={{ minWidth }}>
@@ -635,6 +640,12 @@ function AxisBoardBlock({
                             onCheckedChange={() => onToggleGroup(group.rows)}
                           />
                           {group.workContentName || group.workContentCode}
+                          {group.workContentDescription ? (
+                            <span className="font-normal text-muted-foreground">
+                              {" – "}
+                              {group.workContentDescription}
+                            </span>
+                          ) : null}
                           <span className="font-normal text-muted-foreground">
                             · {group.rows.length} nhiệm vụ
                           </span>

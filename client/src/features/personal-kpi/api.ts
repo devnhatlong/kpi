@@ -441,6 +441,7 @@ export type PersonalKpiBoardGroup = {
   workContentId: string;
   workContentCode: string;
   workContentName: string;
+  workContentDescription: string;
   rows: PersonalKpiBoardRow[];
 };
 
@@ -448,6 +449,7 @@ export type PersonalKpiBoardAxis = {
   axisId: string;
   axisCode: string;
   axisName: string;
+  axisDescription: string;
   /** Bộ cột đã resolve theo phiên bản mẫu lúc gửi; null = trục chưa gán mẫu. */
   template: {
     code: string;

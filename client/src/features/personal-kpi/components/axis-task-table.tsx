@@ -1,9 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { LayoutTemplate, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import type { FormTemplateColumn } from "@/features/kpi-form-config/types";
 import { TaskTableHeader } from "@/features/personal-kpi/components/task-table-header";
@@ -63,11 +62,6 @@ export function AxisTaskTable({
 
   return (
     <div className="space-y-1.5">
-      <Badge variant="outline" className="gap-1.5 font-normal">
-        <LayoutTemplate className="size-3.5" />
-        Mẫu: {template.code} · {template.name}
-      </Badge>
-
       <div className="overflow-auto rounded-md border bg-card">
         <Table style={{ minWidth }}>
           <TaskTableHeader

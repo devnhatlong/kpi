@@ -298,7 +298,7 @@ export function PersonalReportDetailDrawer({
                 key={group.axisId}
                 className="space-y-3 rounded-lg border bg-card p-3"
               >
-                <p className="text-sm font-medium">Trục: {group.axisName}</p>
+                <p className="text-sm font-medium">{group.axisName}</p>
                 {group.contents.map((content) => {
                   contentStt += 1;
                   const stt = contentStt;
@@ -308,7 +308,7 @@ export function PersonalReportDetailDrawer({
                       className="space-y-2 rounded-md border border-dashed p-3"
                     >
                       <p className="text-sm text-muted-foreground">
-                        Nội dung công việc: {content.workContentName}
+                        {content.workContentName}
                       </p>
                       <AxisTaskTable
                         axisId={group.axisId}

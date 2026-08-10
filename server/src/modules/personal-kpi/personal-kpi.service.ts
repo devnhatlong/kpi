@@ -655,8 +655,8 @@ export class PersonalKpiService {
       .find(filter)
       .sort({ reportDate: -1, axisId: 1, workContentId: 1, createdAt: 1 })
       .limit(BOARD_MAX_ROWS)
-      .populate('axisId', 'code name sortOrder')
-      .populate('workContentId', 'code name sortOrder')
+      .populate('axisId', 'code name description sortOrder')
+      .populate('workContentId', 'code name description sortOrder')
       .populate('ownerId', 'fullName username')
       .populate('ownerDepartmentId', 'code name')
       .populate('lastSenderId', 'fullName username')
@@ -668,6 +668,7 @@ export class PersonalKpiService {
         axisId: string;
         axisCode: string;
         axisName: string;
+        axisDescription: string;
         formTemplateId: string | null;
         formTemplateVersion: number | null;
         groups: Map<
@@ -676,6 +677,7 @@ export class PersonalKpiService {
             workContentId: string;
             workContentCode: string;
             workContentName: string;
+            workContentDescription: string;
             rows: PersonalKpiItemDocument[];
           }
         >;
@@ -687,11 +689,13 @@ export class PersonalKpiService {
         _id: Types.ObjectId;
         code?: string;
         name?: string;
+        description?: string;
       };
       const content = row.workContentId as unknown as {
         _id: Types.ObjectId;
         code?: string;
         name?: string;
+        description?: string;
       };
       const axisId = String(axis?._id ?? row.axisId);
       const version = row.formTemplateVersion ?? null;
@@ -703,6 +707,7 @@ export class PersonalKpiService {
           axisId,
           axisCode: axis?.code ?? '',
           axisName: axis?.name ?? '',
+          axisDescription: axis?.description ?? '',
           formTemplateId: row.formTemplateId ? String(row.formTemplateId) : null,
           formTemplateVersion: version,
           groups: new Map(),
@@ -717,6 +722,7 @@ export class PersonalKpiService {
           workContentId: contentId,
           workContentCode: content?.code ?? '',
           workContentName: content?.name ?? '',
+          workContentDescription: content?.description ?? '',
           rows: [],
         };
         block.groups.set(contentId, group);
@@ -729,6 +735,7 @@ export class PersonalKpiService {
         axisId: block.axisId,
         axisCode: block.axisCode,
         axisName: block.axisName,
+        axisDescription: block.axisDescription,
         template: await this.resolveBoardTemplate(
           block.axisId,
           block.formTemplateId,
