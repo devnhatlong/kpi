@@ -5,105 +5,48 @@ import type {
 } from "@/features/kpi-form-config/types";
 import type { PersonalTaskDraft } from "@/features/personal-kpi/types";
 
-/** Cột có semantic ghi thẳng vào field cứng của nhiệm vụ. */
+/**
+ * Cột lấy giá trị từ danh mục ghi thẳng vào field id của nhiệm vụ.
+ * Mọi cột còn lại là cột tự do, giá trị nằm trong fieldValues theo khoá cột.
+ */
 export const SEMANTIC_TO_DRAFT_FIELD: Partial<
   Record<FormColumnSemantic, keyof PersonalTaskDraft>
 > = {
-  task_title: "title",
-  deadline: "deadline",
-  product: "product",
-  standard_score: "standardScore",
-  executing_unit: "executingUnit",
-  progress_percent: "progressPercent",
-  progress_self_score: "progressSelfScore",
-  quality_percent: "qualityPercent",
-  quality_self_score: "qualitySelfScore",
-  result_passed: "resultPassed",
-  result_failed: "resultFailed",
-  note: "note",
+  score_group: "scoreGroupId",
+  quality_level: "qualityLevelId",
 };
 
-/** Cột Đạt/Không đạt vẽ ô tích chứ không phải ô nhập chữ. */
-export function isCheckboxColumn(
-  semanticKey: FormColumnSemantic,
-  dataType: FormColumnDataType,
-): boolean {
-  return (
-    dataType === "boolean" ||
-    semanticKey === "result_passed" ||
-    semanticKey === "result_failed"
-  );
+/**
+ * Ô tích hay ô nhập - chỉ còn quyết định bằng kiểu dữ liệu admin cấu hình.
+ * Cột danh mục bị khoá ở kiểu "select" nên không bao giờ rơi vào nhánh này.
+ */
+export function isCheckboxColumn(dataType: FormColumnDataType): boolean {
+  return dataType === "boolean";
 }
 
-/** Ô tích đọc giá trị boolean, không phải chuỗi. */
+/** Ô tích lưu chuỗi "1" trong fieldValues. */
 export function readCheckboxValue(
   task: PersonalTaskDraft,
-  semanticKey: FormColumnSemantic,
   columnKey: string,
 ): boolean {
-  const field = SEMANTIC_TO_DRAFT_FIELD[semanticKey];
-  if (field) return task[field] === true;
-  if (semanticKey === "custom") {
-    return task.fieldValues?.[columnKey] === "1";
-  }
-  return false;
+  return task.fieldValues?.[columnKey] === "1";
 }
 
-/**
- * Patch khi tích một ô boolean.
- * Đạt và Không đạt loại trừ nhau - tích bên này thì bên kia tự tắt, để không
- * lưu được dòng vừa đạt vừa không đạt.
- */
 export function writeCheckboxValue(
   task: PersonalTaskDraft,
-  semanticKey: FormColumnSemantic,
   columnKey: string,
   checked: boolean,
 ): Partial<PersonalTaskDraft> {
-  if (semanticKey === "result_passed") {
-    return {
-      resultPassed: checked,
-      ...(checked ? { resultFailed: false } : {}),
-    };
-  }
-  if (semanticKey === "result_failed") {
-    return {
-      resultFailed: checked,
-      ...(checked ? { resultPassed: false } : {}),
-    };
-  }
-
-  const field = SEMANTIC_TO_DRAFT_FIELD[semanticKey];
-  if (field) return { [field]: checked } as Partial<PersonalTaskDraft>;
-  if (semanticKey === "custom") {
-    return {
-      fieldValues: {
-        ...(task.fieldValues ?? {}),
-        [columnKey]: checked ? "1" : "",
-      },
-    };
-  }
-  return {};
+  return {
+    fieldValues: {
+      ...(task.fieldValues ?? {}),
+      [columnKey]: checked ? "1" : "",
+    },
+  };
 }
 
 export type CellInputProps = {
   type?: string;
-  min?: number;
-  max?: number;
-  step?: number;
-  placeholder?: string;
-};
-
-/** Ràng buộc & gợi ý nhập theo ý nghĩa cột - không quyết định loại ô. */
-const SEMANTIC_HINT: Partial<Record<FormColumnSemantic, CellInputProps>> = {
-  product: { placeholder: "Sản phẩm dự kiến" },
-  standard_score: { min: 0, step: 0.5, placeholder: "0 *" },
-  executing_unit: { placeholder: "Đơn vị thực hiện" },
-  progress_percent: { min: 0, max: 100, placeholder: "%" },
-  progress_self_score: { min: 0, step: 0.5, placeholder: "Điểm" },
-  quality_percent: { min: 0, max: 100, placeholder: "%" },
-  quality_self_score: { min: 0, step: 0.5, placeholder: "Điểm" },
-  note: { placeholder: "Đề nghị khác" },
 };
 
 const DATA_TYPE_INPUT: Partial<Record<FormColumnDataType, string>> = {
@@ -113,25 +56,14 @@ const DATA_TYPE_INPUT: Partial<Record<FormColumnDataType, string>> = {
   datetime: "datetime-local",
 };
 
-/**
- * Thuộc tính input của một ô.
- * Loại ô lấy theo kiểu dữ liệu admin cấu hình; semantic chỉ bổ sung
- * min/max/step/placeholder, và các ràng buộc số bị bỏ khi cột không phải số.
- */
-export function cellInputProps(
-  semanticKey: FormColumnSemantic,
-  dataType: FormColumnDataType,
-): CellInputProps {
-  const type = DATA_TYPE_INPUT[dataType];
-  const hint = SEMANTIC_HINT[semanticKey] ?? {};
-  if (type !== "number") return { type, placeholder: hint.placeholder };
-  return { type, ...hint };
+/** Loại ô nhập, lấy theo kiểu dữ liệu admin cấu hình. */
+export function cellInputProps(dataType: FormColumnDataType): CellInputProps {
+  return { type: DATA_TYPE_INPUT[dataType] };
 }
 
 /**
  * Cột bắt buộc mà chưa có dữ liệu.
- * Đọc cờ `required` do super admin tích khi cấu hình mẫu - trước đây cờ này
- * chỉ nằm trong DB chứ không chặn gì.
+ * Đọc cờ `required` do super admin tích khi cấu hình mẫu.
  */
 export function missingRequiredColumns(
   task: PersonalTaskDraft,
@@ -144,15 +76,8 @@ export function missingRequiredColumns(
     // STT tự đánh số, không phải ô nhập nên không xét.
     if (column.semanticKey === "stt") continue;
 
-    if (column.semanticKey === "evidence_files") {
-      if (!task.evidenceFiles?.length) missing.push(column.title);
-      continue;
-    }
-
-    if (isCheckboxColumn(column.semanticKey, column.dataType)) {
-      if (!readCheckboxValue(task, column.semanticKey, column.key)) {
-        missing.push(column.title);
-      }
+    if (isCheckboxColumn(column.dataType)) {
+      if (!readCheckboxValue(task, column.key)) missing.push(column.title);
       continue;
     }
 
@@ -172,8 +97,7 @@ export function readCellValue(
 ): string {
   const field = SEMANTIC_TO_DRAFT_FIELD[semanticKey];
   if (field) return String(task[field] ?? "");
-  if (semanticKey === "custom") return task.fieldValues?.[columnKey] ?? "";
-  return "";
+  return task.fieldValues?.[columnKey] ?? "";
 }
 
 /** Patch tương ứng khi người dùng sửa một ô. */
@@ -185,8 +109,5 @@ export function writeCellValue(
 ): Partial<PersonalTaskDraft> {
   const field = SEMANTIC_TO_DRAFT_FIELD[semanticKey];
   if (field) return { [field]: value } as Partial<PersonalTaskDraft>;
-  if (semanticKey === "custom") {
-    return { fieldValues: { ...(task.fieldValues ?? {}), [columnKey]: value } };
-  }
-  return {};
+  return { fieldValues: { ...(task.fieldValues ?? {}), [columnKey]: value } };
 }

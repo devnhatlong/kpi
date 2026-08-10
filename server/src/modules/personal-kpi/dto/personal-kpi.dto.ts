@@ -18,104 +18,34 @@ import {
 
 import { PERSONAL_KPI_REVIEW_STATUSES } from '../schemas/personal-kpi-item.schema';
 
-export class PersonalKpiEvidenceFileDto {
-  @ApiProperty()
-  @IsString()
-  key!: string;
-
-  @ApiProperty()
-  @IsString()
-  name!: string;
-
-  @ApiProperty()
-  @IsNumber()
-  @Min(0)
-  size!: number;
-
-  @ApiProperty()
-  @IsString()
-  mimeType!: string;
-}
-
 /** Các trường nội dung dùng chung cho tạo / sửa / cấp trên sửa. */
 export class PersonalKpiContentDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Chọn từ danh mục Nhóm điểm' })
   @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  title?: string;
+  @IsMongoId()
+  scoreGroupId?: string | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Chọn từ danh mục Chất lượng thực hiện' })
   @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  deadline?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  product?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  standardScore?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(300)
-  executingUnit?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsNumber()
-  progressPercent?: number | null;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsNumber()
-  progressSelfScore?: number | null;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsNumber()
-  qualityPercent?: number | null;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsNumber()
-  qualitySelfScore?: number | null;
-
-  @ApiPropertyOptional({ description: 'Đạt - loại trừ với resultFailed' })
-  @IsOptional()
-  @IsBoolean()
-  resultPassed?: boolean | null;
-
-  @ApiPropertyOptional({ description: 'Không đạt - loại trừ với resultPassed' })
-  @IsOptional()
-  @IsBoolean()
-  resultFailed?: boolean | null;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  note?: string;
-
-  @ApiPropertyOptional({ type: [PersonalKpiEvidenceFileDto] })
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => PersonalKpiEvidenceFileDto)
-  evidenceFiles?: PersonalKpiEvidenceFileDto[];
+  @IsMongoId()
+  qualityLevelId?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsObject()
   fieldValues?: Record<string, string | number>;
+
+  /**
+   * Tệp đính kèm theo khoá cột: { "<khoá cột>": [{ id, name, size, mimeType }] }.
+   * Chỉ kiểm kiểu thô ở đây; service lọc lại theo id tệp có thật trong DB nên
+   * client không nhét được tệp giả hay tệp không tồn tại.
+   */
+  @ApiPropertyOptional({
+    description: 'Tệp đính kèm theo khoá cột, id lấy từ POST /uploads',
+  })
+  @IsOptional()
+  @IsObject()
+  attachments?: Record<string, unknown>;
 }
 
 export class CreatePersonalKpiDto extends PersonalKpiContentDto {
@@ -126,11 +56,6 @@ export class CreatePersonalKpiDto extends PersonalKpiContentDto {
   @ApiProperty()
   @IsMongoId()
   workContentId!: string;
-
-  @ApiProperty()
-  @IsString()
-  @MaxLength(500)
-  declare title: string;
 }
 
 export class CreatePersonalKpiBatchDto {

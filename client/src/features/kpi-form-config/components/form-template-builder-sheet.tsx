@@ -19,7 +19,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -57,14 +59,18 @@ import {
 } from "@/features/kpi-form-config/form-template-utils";
 import {
   allowedDataTypes,
+  CATALOG_LABEL,
+  catalogOfSemantic,
   createDefaultTemplateDraft,
   entityId,
   FORM_COLUMN_DATA_TYPE_LABEL,
   FORM_COLUMN_SEMANTIC_LABEL,
-  FORM_COLUMN_SEMANTICS,
+  kindOfSemantic,
   localId,
-  missingScoringSemantics,
   SEMANTIC_DATA_TYPE,
+  SEMANTIC_KIND_HINT,
+  SEMANTIC_KIND_LABEL,
+  semanticsByKind,
   type FormColumnDataType,
   type FormColumnSemantic,
   type FormHeaderGroup,
@@ -151,20 +157,6 @@ export function FormTemplateBuilderSheet({
     [columns, headerGroups],
   );
 
-  /** Semantic đã dùng ở cột khác - chặn gán trùng ngay trên UI. */
-  const usedSemantics = useMemo(() => {
-    const map = new Map<FormColumnSemantic, string>();
-    for (const column of columns) {
-      if (column.semanticKey === "custom") continue;
-      if (!map.has(column.semanticKey)) map.set(column.semanticKey, column.id);
-    }
-    return map;
-  }, [columns]);
-
-  const missingScoring = missingScoringSemantics(
-    new Set(usedSemantics.keys()),
-  );
-
   const patchColumn = (id: string, patch: Partial<FormTemplateColumn>) => {
     setColumns((prev) =>
       prev.map((column) =>
@@ -173,25 +165,41 @@ export function FormTemplateBuilderSheet({
     );
   };
 
+  /**
+   * Khoá cột phải là duy nhất trong mẫu (server chặn trùng khoá).
+   * Ánh xạ dùng được ở nhiều cột, nên cột thứ hai trở đi phải thêm hậu tố.
+   */
+  const uniqueColumnKey = (base: string, ownColumnId: string) => {
+    const taken = new Set(
+      columns.filter((c) => c.id !== ownColumnId).map((c) => c.key),
+    );
+    if (!taken.has(base)) return base;
+    let n = 2;
+    while (taken.has(`${base}-${n}`)) n += 1;
+    return `${base}-${n}`;
+  };
+
   const changeSemantic = (
     column: FormTemplateColumn,
     semanticKey: FormColumnSemantic,
   ) => {
-    const owner = usedSemantics.get(semanticKey);
-    if (semanticKey !== "custom" && owner && owner !== column.id) {
-      toast.error("Ý nghĩa này đã gán cho cột khác.");
-      return;
-    }
-    // Giữ kiểu dữ liệu admin đã chọn nếu ý nghĩa mới vẫn cho phép.
+    // Giữ kiểu dữ liệu admin đã chọn nếu ánh xạ mới vẫn cho phép.
     const allowed = allowedDataTypes(semanticKey);
     patchColumn(column.id, {
       semanticKey,
-      // Khoá lưu dữ liệu bám theo ý nghĩa; cột tự do sinh khoá riêng.
-      key: semanticKey === "custom" ? localId("field") : semanticKey,
+      // Cột tự do sinh khoá riêng; cột có ánh xạ lấy tên ánh xạ làm khoá.
+      key:
+        semanticKey === "custom"
+          ? localId("field")
+          : uniqueColumnKey(semanticKey, column.id),
       dataType: allowed.includes(column.dataType)
         ? column.dataType
         : (SEMANTIC_DATA_TYPE[semanticKey] ?? allowed[0] ?? "text"),
-      title: column.title || FORM_COLUMN_SEMANTIC_LABEL[semanticKey],
+      // Cột tự do không có tên gợi ý - lấy nhãn "Không ánh xạ" làm tiêu đề thì vô nghĩa.
+      title:
+        semanticKey === "custom"
+          ? column.title
+          : column.title || FORM_COLUMN_SEMANTIC_LABEL[semanticKey],
     });
   };
 
@@ -241,10 +249,6 @@ export function FormTemplateBuilderSheet({
     const untitled = columns.find((column) => !column.title.trim());
     if (untitled) {
       toast.error("Còn cột chưa đặt tiêu đề.");
-      return;
-    }
-    if (!usedSemantics.has("task_title")) {
-      toast.error('Mẫu bảng phải có một cột mang ý nghĩa "Nhiệm vụ".');
       return;
     }
 
@@ -474,16 +478,6 @@ export function FormTemplateBuilderSheet({
               </Button>
             </div>
 
-            {columns.length && missingScoring.length ? (
-              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                Thiếu cột chấm điểm:{" "}
-                {missingScoring
-                  .map((item) => FORM_COLUMN_SEMANTIC_LABEL[item])
-                  .join(", ")}
-                . Báo cáo theo mẫu này sẽ không có dữ liệu đó khi duyệt và thống
-                kê.
-              </p>
-            ) : null}
 
             <div className="overflow-x-auto rounded-md border">
               <Table className="min-w-[1100px]">
@@ -491,7 +485,7 @@ export function FormTemplateBuilderSheet({
                   <TableRow>
                     <TableHead className="w-20">Thứ tự</TableHead>
                     <TableHead className="min-w-[200px]">Tiêu đề cột</TableHead>
-                    <TableHead className="w-[190px]">Ý nghĩa</TableHead>
+                    <TableHead className="w-[220px]">Ánh xạ dữ liệu</TableHead>
                     <TableHead className="w-[150px]">Kiểu dữ liệu</TableHead>
                     <TableHead className="w-[190px]">Nhóm header</TableHead>
                     <TableHead className="w-[90px]">Rộng</TableHead>
@@ -573,24 +567,27 @@ export function FormTemplateBuilderSheet({
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                {FORM_COLUMN_SEMANTICS.map((semantic) => {
-                                  const owner = usedSemantics.get(semantic);
-                                  return (
-                                    <SelectItem
-                                      key={semantic}
-                                      value={semantic}
-                                      disabled={
-                                        semantic !== "custom" &&
-                                        !!owner &&
-                                        owner !== column.id
-                                      }
-                                    >
-                                      {FORM_COLUMN_SEMANTIC_LABEL[semantic]}
-                                    </SelectItem>
-                                  );
-                                })}
+                                {/* Gom theo kiểu ánh xạ để người cấu hình thấy
+                                    ngay cột sẽ thành ô nhập, dropdown hay tự điền. */}
+                                {semanticsByKind().map((group) => (
+                                  <SelectGroup key={group.kind}>
+                                    <SelectLabel>
+                                      {SEMANTIC_KIND_LABEL[group.kind]}
+                                    </SelectLabel>
+                                    {group.items.map((semantic) => (
+                                      <SelectItem key={semantic} value={semantic}>
+                                        {FORM_COLUMN_SEMANTIC_LABEL[semantic]}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectGroup>
+                                ))}
                               </SelectContent>
                             </Select>
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              {SEMANTIC_KIND_HINT[
+                                kindOfSemantic(column.semanticKey)
+                              ]}
+                            </p>
                           </TableCell>
                           <TableCell>
                             <Select
@@ -613,6 +610,18 @@ export function FormTemplateBuilderSheet({
                                 ))}
                               </SelectContent>
                             </Select>
+                            {/* Nói rõ cột lấy giá trị ở danh mục nào, để người
+                                cấu hình biết lúc nhập sẽ ra dropdown gì. */}
+                            {catalogOfSemantic(column.semanticKey) ? (
+                              <p className="mt-1 text-[11px] text-muted-foreground">
+                                Nguồn:{" "}
+                                {
+                                  CATALOG_LABEL[
+                                    catalogOfSemantic(column.semanticKey)!
+                                  ]
+                                }
+                              </p>
+                            ) : null}
                           </TableCell>
                           <TableCell>
                             <Select

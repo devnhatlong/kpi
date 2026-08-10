@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
-import { Paperclip, Trash2, X } from "lucide-react";
+import { type ReactNode } from "react";
+import { Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { AttachmentCell } from "@/features/personal-kpi/components/attachment-cell";
 import type { FormTemplateColumn } from "@/features/kpi-form-config/types";
 import { cn } from "@/lib/utils";
 import {
@@ -17,10 +18,7 @@ import {
   writeCellValue,
   writeCheckboxValue,
 } from "@/features/personal-kpi/task-column-utils";
-import type {
-  PersonalTaskDraft,
-  TaskEvidenceFile,
-} from "@/features/personal-kpi/types";
+import type { PersonalTaskDraft } from "@/features/personal-kpi/types";
 
 type PersonalTaskFormProps = {
   index: number;
@@ -48,12 +46,6 @@ type PersonalTaskFormProps = {
 
 const cellInputClass = "h-8";
 
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export function PersonalTaskForm({
   index,
   taskNumber,
@@ -70,88 +62,6 @@ export function PersonalTaskForm({
   actions,
   rowClassName,
 }: PersonalTaskFormProps) {
-  const titlePlaceholder = `Nhiệm vụ ${taskNumber ?? index}`;
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const evidenceFiles = task.evidenceFiles ?? [];
-
-  const addFiles = (fileList: FileList | null) => {
-    if (readOnly || !fileList?.length) return;
-    const next: TaskEvidenceFile[] = [...evidenceFiles];
-    for (const file of Array.from(fileList)) {
-      next.push({
-        key: `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name: file.name,
-        size: file.size,
-        mimeType: file.type || "application/octet-stream",
-        file,
-      });
-    }
-    onChange({ evidenceFiles: next });
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const removeFile = (fileKey: string) => {
-    if (readOnly) return;
-    onChange({
-      evidenceFiles: evidenceFiles.filter((item) => item.key !== fileKey),
-    });
-  };
-
-  const renderEvidenceCell = () => (
-    <div className="flex flex-col gap-1.5">
-      {!readOnly ? (
-        <>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.webp,.zip,.rar"
-            onChange={(e) => addFiles(e.target.files)}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            className="h-8 w-full justify-start px-2 py-0 text-xs"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Paperclip className="h-3.5 w-3.5" />
-            Upload
-          </Button>
-        </>
-      ) : null}
-      {evidenceFiles.length > 0 ? (
-        <ul className="space-y-1">
-          {evidenceFiles.map((file) => (
-            <li
-              key={file.key}
-              className="flex items-start gap-1 rounded border bg-muted/30 px-1.5 py-1 text-xs"
-            >
-              <span
-                className="min-w-0 flex-1 break-all leading-snug"
-                title={`${file.name} (${formatFileSize(file.size)})`}
-              >
-                {file.name}
-              </span>
-              {!readOnly ? (
-                <button
-                  type="button"
-                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-background hover:text-destructive"
-                  onClick={() => removeFile(file.key)}
-                  aria-label={`Xoá ${file.name}`}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : readOnly ? (
-        <span className="text-xs text-muted-foreground">-</span>
-      ) : null}
-    </div>
-  );
-
   return (
     <TableRow className={rowClassName}>
       {columns.map((column) => {
@@ -186,15 +96,27 @@ export function PersonalTaskForm({
           );
         }
 
-        if (column.semanticKey === "evidence_files") {
+        if (column.dataType === "file") {
           return (
             <TableCell key={column.id} style={{ minWidth }}>
-              {renderEvidenceCell()}
+              <AttachmentCell
+                files={task.attachments?.[column.key] ?? []}
+                onChange={(next) =>
+                  onChange({
+                    attachments: {
+                      ...(task.attachments ?? {}),
+                      [column.key]: next,
+                    },
+                  })
+                }
+                readOnly={readOnly}
+                label={column.title}
+              />
             </TableCell>
           );
         }
 
-        if (isCheckboxColumn(column.semanticKey, column.dataType)) {
+        if (isCheckboxColumn(column.dataType)) {
           return (
             <TableCell
               key={column.id}
@@ -202,19 +124,10 @@ export function PersonalTaskForm({
               style={{ minWidth }}
             >
               <Checkbox
-                checked={readCheckboxValue(
-                  task,
-                  column.semanticKey,
-                  column.key,
-                )}
+                checked={readCheckboxValue(task, column.key)}
                 onCheckedChange={(checked) =>
                   onChange(
-                    writeCheckboxValue(
-                      task,
-                      column.semanticKey,
-                      column.key,
-                      checked === true,
-                    ),
+                    writeCheckboxValue(task, column.key, checked === true),
                   )
                 }
                 disabled={readOnly}
@@ -224,20 +137,13 @@ export function PersonalTaskForm({
           );
         }
 
-        const inputProps = cellInputProps(column.semanticKey, column.dataType);
-        const placeholder =
-          column.semanticKey === "task_title"
-            ? titlePlaceholder
-            : (inputProps.placeholder ?? column.title);
+        const inputProps = cellInputProps(column.dataType);
 
         return (
           <TableCell key={column.id} style={{ minWidth }}>
             <Input
               className={cellInputClass}
               type={inputProps.type}
-              min={inputProps.min}
-              max={inputProps.max}
-              step={inputProps.step}
               value={readCellValue(task, column.semanticKey, column.key)}
               onChange={(e) =>
                 onChange(
@@ -249,7 +155,7 @@ export function PersonalTaskForm({
                   ),
                 )
               }
-              placeholder={placeholder}
+              placeholder={column.title}
               disabled={readOnly}
             />
           </TableCell>

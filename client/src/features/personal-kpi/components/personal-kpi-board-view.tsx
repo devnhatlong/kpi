@@ -52,6 +52,7 @@ import {
   type PersonalKpiBoardRow,
   type PersonalKpiBoardQuery,
 } from "@/features/personal-kpi/api";
+import { AttachmentCell } from "@/features/personal-kpi/components/attachment-cell";
 import { SendRecipientDialog } from "@/features/personal-kpi/components/send-recipient-dialog";
 import { TaskTableHeader } from "@/features/personal-kpi/components/task-table-header";
 import { personalKpiStatusBadgeClass } from "@/features/personal-kpi/status-styles";
@@ -80,41 +81,21 @@ function refLabel(value: unknown): string {
   return ref.fullName ?? ref.name ?? ref.username ?? "";
 }
 
-/** Giá trị hiển thị của một ô theo ý nghĩa cột của mẫu. */
+/** Giá trị hiển thị của một ô theo ánh xạ cột của mẫu. */
 function cellText(row: PersonalKpiBoardRow, column: FormTemplateColumn): string {
   switch (column.semanticKey) {
-    case "task_title":
-      return row.title ?? "";
     case "work_content":
       return refLabel(row.workContentId);
-    case "deadline":
-      return row.deadline ?? "";
-    case "product":
-      return row.product ?? "";
-    case "standard_score":
-      return row.standardScore == null ? "" : String(row.standardScore);
-    case "executing_unit":
-      return row.executingUnit ?? "";
-    case "progress_percent":
-      return row.progressPercent == null ? "" : `${row.progressPercent}%`;
-    case "progress_self_score":
-      return row.progressSelfScore == null ? "" : String(row.progressSelfScore);
-    case "quality_percent":
-      return row.qualityPercent == null ? "" : `${row.qualityPercent}%`;
-    case "quality_self_score":
-      return row.qualitySelfScore == null ? "" : String(row.qualitySelfScore);
-    case "note":
-      return row.note ?? "";
-    case "evidence_files":
-      return row.evidenceFiles?.length
-        ? `${row.evidenceFiles.length} tệp`
-        : "";
-    case "custom": {
+    case "score_group":
+      return refLabel(row.scoreGroupId);
+    case "quality_level":
+      return refLabel(row.qualityLevelId);
+    case "stt":
+      return "";
+    default: {
       const value = row.fieldValues?.[column.key];
       return value == null ? "" : String(value);
     }
-    default:
-      return "";
   }
 }
 
@@ -122,8 +103,6 @@ function isTickedCell(
   row: PersonalKpiBoardRow,
   column: FormTemplateColumn,
 ): boolean {
-  if (column.semanticKey === "result_passed") return row.resultPassed === true;
-  if (column.semanticKey === "result_failed") return row.resultFailed === true;
   return row.fieldValues?.[column.key] === "1";
 }
 
@@ -804,7 +783,7 @@ function AxisBoardBlock({
                             checked={selected.has(row._id)}
                             onCheckedChange={() => onToggleRow(row._id)}
                             disabled={row.reviewStatus === "COMPLETED"}
-                            aria-label={`Chọn ${row.title}`}
+                            aria-label={`Chọn ${refLabel(row.workContentId) || "nhiệm vụ"}`}
                           />
                         </TableCell>
                         <TableCell className="align-middle text-sm">
@@ -821,6 +800,22 @@ function AxisBoardBlock({
                         </TableCell>
 
                         {visible.map((column) => {
+                          if (column.dataType === "file") {
+                            return (
+                              <TableCell
+                                key={column.id}
+                                className="align-middle"
+                                style={{ minWidth: column.width }}
+                              >
+                                <AttachmentCell
+                                  files={row.attachments?.[column.key] ?? []}
+                                  onChange={() => {}}
+                                  readOnly
+                                  label={column.title}
+                                />
+                              </TableCell>
+                            );
+                          }
                           if (column.dataType === "boolean") {
                             return (
                               <TableCell

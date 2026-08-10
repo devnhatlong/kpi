@@ -352,10 +352,8 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-14">STT</TableHead>
-                  <TableHead>Nhiệm vụ</TableHead>
+                  <TableHead>Nội dung công việc</TableHead>
                   <TableHead className="w-[160px]">Trục</TableHead>
-                  <TableHead className="w-[220px]">Nội dung công việc</TableHead>
-                  <TableHead className="w-[100px]">Điểm chuẩn</TableHead>
                   <TableHead className="w-[110px]">Trạng thái</TableHead>
                   <TableHead className="w-[160px]">Ngày tạo</TableHead>
                   <TableHead className="w-[160px]">Ngày gửi</TableHead>
@@ -366,7 +364,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
                 {isLoading ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={7}
                       className="h-28 text-center text-muted-foreground"
                     >
                       Đang tải...
@@ -375,7 +373,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
                 ) : items.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={7}
                       className="h-28 text-center text-muted-foreground"
                     >
                       <div className="inline-flex flex-col items-center gap-2">
@@ -391,7 +389,9 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
                         {rowIndex(page, limit, index)}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium">{item.task.title}</div>
+                        <div className="font-medium">
+                          {item.workContentName}
+                        </div>
                         {item.rejectReason ? (
                           <div className="text-xs text-amber-600 dark:text-amber-400">
                             Lý do trả lại: {item.rejectReason}
@@ -400,12 +400,6 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {item.axisName}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {item.workContentName}
-                      </TableCell>
-                      <TableCell className="tabular-nums">
-                        {item.task.standardScore || "-"}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -502,7 +496,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
             <AlertDialogDescription>
               Bạn sắp xoá{" "}
               <span className="font-medium text-foreground">
-                {deleting?.task.title}
+                {deleting?.workContentName}
               </span>
               .
             </AlertDialogDescription>

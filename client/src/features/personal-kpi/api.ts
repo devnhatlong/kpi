@@ -8,7 +8,7 @@ import type {
   PersonalKpiItem,
   PersonalKpiStatus,
   PersonalTaskDraft,
-  TaskEvidenceFile,
+  TaskAttachment,
 } from "@/features/personal-kpi/types";
 
 type CatalogRef = {
@@ -29,20 +29,11 @@ export type PersonalKpiApiRecord = {
   ownerId?: string | CatalogRef;
   axisId: string | CatalogRef;
   workContentId: string | CatalogRef;
-  title: string;
-  deadline?: string;
-  product?: string;
-  standardScore?: number;
-  executingUnit?: string;
-  progressPercent?: number | null;
-  progressSelfScore?: number | null;
-  qualityPercent?: number | null;
-  qualitySelfScore?: number | null;
-  resultPassed?: boolean | null;
-  resultFailed?: boolean | null;
-  note?: string;
-  evidenceFiles?: TaskEvidenceFile[];
+  /** Cột chọn từ danh mục - server populate sẵn tên để hiển thị. */
+  scoreGroupId?: string | CatalogRef | null;
+  qualityLevelId?: string | CatalogRef | null;
   fieldValues?: Record<string, string | number>;
+  attachments?: Record<string, TaskAttachment[]>;
   lastSentAt?: string | null;
   currentRecipientId?: string | CatalogRef | null;
   lastSenderId?: string | CatalogRef | null;
@@ -119,26 +110,12 @@ export type PersonalKpiSubmission = {
 export type PersonalKpiWriteInput = {
   axisId: string;
   workContentId: string;
-  title: string;
-  deadline?: string;
-  product?: string;
-  standardScore: number;
-  executingUnit?: string;
-  progressPercent?: number;
-  qualityPercent?: number;
-  progressSelfScore?: number;
-  qualitySelfScore?: number;
-  resultPassed?: boolean;
-  resultFailed?: boolean;
-  note?: string;
-  evidenceFiles?: Array<{
-    key: string;
-    name: string;
-    size: number;
-    mimeType: string;
-  }>;
-  /** Giá trị các cột tự do của mẫu bảng gán cho trục. */
+  scoreGroupId?: string;
+  qualityLevelId?: string;
+  /** Giá trị các cột chữ/số của mẫu bảng gán cho trục. */
   fieldValues?: Record<string, string>;
+  /** Tệp của các cột kiểu "Tệp đính kèm", key = khoá cột. */
+  attachments?: Record<string, TaskAttachment[]>;
 };
 
 export type PersonalKpiReportsQuery = {
@@ -150,7 +127,8 @@ export type PersonalKpiReportsQuery = {
   q?: string;
 };
 
-function refId(value: string | CatalogRef): string {
+function refId(value: string | CatalogRef | null | undefined): string {
+  if (!value) return "";
   return typeof value === "string" ? value : value._id;
 }
 
@@ -164,47 +142,20 @@ function refCode(value: string | CatalogRef, fallback = ""): string {
   return value.code ?? fallback;
 }
 
-function numToStr(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "";
-  return String(value);
-}
-
-function optionalNumber(value: string): number | undefined {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const n = Number(trimmed);
-  return Number.isFinite(n) ? n : undefined;
-}
-
 export function mapPersonalKpiFromApi(
   row: PersonalKpiApiRecord,
 ): PersonalKpiItem {
   const task: PersonalTaskDraft = {
     key: row._id,
-    title: row.title ?? "",
-    deadline: row.deadline ?? "",
-    product: row.product ?? "",
-    standardScore: numToStr(row.standardScore),
-    executingUnit: row.executingUnit ?? "",
-    progressPercent: numToStr(row.progressPercent),
-    progressSelfScore: numToStr(row.progressSelfScore),
-    qualityPercent: numToStr(row.qualityPercent),
-    qualitySelfScore: numToStr(row.qualitySelfScore),
-    resultPassed: row.resultPassed === true,
-    resultFailed: row.resultFailed === true,
-    note: row.note ?? "",
-    evidenceFiles: (row.evidenceFiles ?? []).map((file) => ({
-      key: file.key,
-      name: file.name,
-      size: file.size,
-      mimeType: file.mimeType,
-    })),
+    scoreGroupId: refId(row.scoreGroupId),
+    qualityLevelId: refId(row.qualityLevelId),
     fieldValues: Object.fromEntries(
       Object.entries(row.fieldValues ?? {}).map(([key, value]) => [
         key,
         value == null ? "" : String(value),
       ]),
     ),
+    attachments: row.attachments ?? {},
   };
 
   return {
@@ -244,27 +195,17 @@ export function taskToWriteInput(
   return {
     axisId,
     workContentId,
-    title: task.title.trim(),
-    deadline: task.deadline || undefined,
-    product: task.product || undefined,
-    standardScore: Number(task.standardScore),
-    executingUnit: task.executingUnit || undefined,
-    progressPercent: optionalNumber(task.progressPercent),
-    progressSelfScore: optionalNumber(task.progressSelfScore),
-    qualityPercent: optionalNumber(task.qualityPercent),
-    qualitySelfScore: optionalNumber(task.qualitySelfScore),
-    resultPassed: task.resultPassed || undefined,
-    resultFailed: task.resultFailed || undefined,
-    note: task.note || undefined,
-    evidenceFiles: (task.evidenceFiles ?? []).map((file) => ({
-      key: file.key,
-      name: file.name,
-      size: file.size,
-      mimeType: file.mimeType,
-    })),
+    scoreGroupId: task.scoreGroupId || undefined,
+    qualityLevelId: task.qualityLevelId || undefined,
     fieldValues: Object.fromEntries(
       Object.entries(task.fieldValues ?? {}).filter(([, value]) =>
         value.trim(),
+      ),
+    ),
+    // Bỏ cột không còn tệp nào, khỏi lưu mảng rỗng vô nghĩa.
+    attachments: Object.fromEntries(
+      Object.entries(task.attachments ?? {}).filter(
+        ([, files]) => files.length > 0,
       ),
     ),
   };

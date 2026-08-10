@@ -18,6 +18,7 @@ import {
   FormTemplateDocument,
 } from '@/modules/kpi-form-config/schemas/form-template.schema';
 import { FormTemplatesService } from '@/modules/kpi-form-config/form-templates.service';
+import { UploadsService } from '@/modules/uploads/uploads.service';
 import {
   Department,
   DepartmentDocument,
@@ -36,6 +37,7 @@ import {
   UpdatePersonalKpiDto,
 } from './dto/personal-kpi.dto';
 import {
+  PersonalKpiAttachment,
   PersonalKpiItem,
   PersonalKpiItemDocument,
   PersonalKpiReviewStatus,
@@ -63,18 +65,8 @@ const ROLE_LADDER: RoleCode[] = [
 
 /** Nhãn cột để hiển thị trong lịch sử sửa. */
 const CONTENT_FIELD_LABELS: Record<string, string> = {
-  title: 'Tên nhiệm vụ',
-  deadline: 'Thời hạn',
-  product: 'Sản phẩm',
-  standardScore: 'Điểm chuẩn',
-  executingUnit: 'Đơn vị thực hiện',
-  progressPercent: 'KPI tiến độ %',
-  progressSelfScore: 'Điểm tự chấm tiến độ',
-  qualityPercent: 'KPI chất lượng %',
-  qualitySelfScore: 'Điểm tự chấm chất lượng',
-  resultPassed: 'Đạt',
-  resultFailed: 'Không đạt',
-  note: 'Ghi chú',
+  scoreGroupId: 'Nhóm điểm',
+  qualityLevelId: 'Chất lượng thực hiện',
 };
 
 const BOARD_MAX_ROWS = 2000;
@@ -103,6 +95,7 @@ export class PersonalKpiService {
     @InjectModel(Department.name)
     private readonly departmentModel: Model<DepartmentDocument>,
     private readonly formTemplatesService: FormTemplatesService,
+    private readonly uploadsService: UploadsService,
   ) {}
 
   // ============================================================ cán bộ nhập
@@ -121,13 +114,12 @@ export class PersonalKpiService {
         dto.workContentId,
       );
       const doc = await this.itemModel.create({
-        ...this.mapContent(dto),
+        ...(await this.mapContent(dto)),
         ownerId: actor.id,
         ownerDepartmentId: actor.departmentId,
         reportDate,
         axisId: axis._id,
         workContentId: workContent._id,
-        title: dto.title.trim(),
         reviewStatus: 'DRAFT' as const,
         holderLevel: 0,
       });
@@ -172,7 +164,7 @@ export class PersonalKpiService {
       item.workContentId = workContent._id;
     }
 
-    this.applyContent(item, dto);
+    await this.applyContent(item, dto);
 
     // Sửa xong là hết "bị trả lại", quay về nháp để gửi lại.
     item.reviewStatus = 'DRAFT';
@@ -213,7 +205,7 @@ export class PersonalKpiService {
     if (query.axisId) {
       filter.axisId = this.requireObjectId(query.axisId, 'Trục');
     }
-    if (query.q?.trim()) filter.title = this.likeRegex(query.q);
+    if (query.q?.trim()) Object.assign(filter, this.contentMatches(query.q));
 
     const [data, total] = await Promise.all([
       this.itemModel
@@ -223,6 +215,8 @@ export class PersonalKpiService {
         .limit(limit)
         .populate('axisId', 'code name description')
         .populate('workContentId', 'code name description')
+        .populate('scoreGroupId', 'code name')
+        .populate('qualityLevelId', 'code name percent')
         .populate('lastDecidedById', 'fullName username'),
       this.itemModel.countDocuments(filter),
     ]);
@@ -238,7 +232,7 @@ export class PersonalKpiService {
 
     const match: Record<string, unknown> = { ownerId: owner };
     if (query.status) match.reviewStatus = query.status;
-    if (query.q?.trim()) match.title = this.likeRegex(query.q);
+    if (query.q?.trim()) Object.assign(match, this.contentMatches(query.q));
 
     const range: Record<string, string> = {};
     if (query.fromDate) range.$gte = this.requireYmd(query.fromDate, 'fromDate');
@@ -403,13 +397,6 @@ export class PersonalKpiService {
         'Một số nhiệm vụ không gửi được - không thuộc báo cáo này hoặc đã gửi rồi.',
       );
     }
-    const missingTitle = items.find((item) => !item.title.trim());
-    if (missingTitle) {
-      throw new BadRequestException(
-        'Có nhiệm vụ chưa đặt tên - hãy sửa trước khi gửi.',
-      );
-    }
-
     // Chốt mẫu bảng ở lần gửi đầu tiên để báo cáo không méo khi mẫu bị sửa.
     await this.stampTemplates(items);
     await this.assertRequiredColumnsFilled(items);
@@ -594,7 +581,7 @@ export class PersonalKpiService {
       throw new BadRequestException('Không có thay đổi nào để lưu.');
     }
 
-    this.applyContent(item, dto);
+    await this.applyContent(item, dto);
     item.edits.push({
       byId: actor.id,
       byName: actor.name,
@@ -664,7 +651,7 @@ export class PersonalKpiService {
         { lastSenderDepartmentId: dept },
       ];
     }
-    if (query.q?.trim()) filter.title = this.likeRegex(query.q);
+    if (query.q?.trim()) Object.assign(filter, this.contentMatches(query.q));
 
     const rows = await this.itemModel
       .find(filter)
@@ -673,6 +660,8 @@ export class PersonalKpiService {
       .populate('axisId', 'code name description sortOrder')
       .populate('workContentId', 'code name description sortOrder')
       .populate('ownerId', 'fullName username')
+      .populate('scoreGroupId', 'code name')
+      .populate('qualityLevelId', 'code name percent')
       .populate('ownerDepartmentId', 'code name')
       .populate('lastSenderId', 'fullName username')
       .populate('lastSenderDepartmentId', 'code name');
@@ -871,6 +860,32 @@ export class PersonalKpiService {
   }
 
   /**
+   * Điều kiện tìm theo từ khoá trên nội dung nhiệm vụ.
+   * Không còn cột "tên nhiệm vụ" cố định để tìm, nên quét hết giá trị các cột
+   * trong fieldValues.
+   */
+  private contentMatches(value: string) {
+    const escaped = value.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return {
+      $expr: {
+        $anyElementTrue: {
+          $map: {
+            input: { $objectToArray: { $ifNull: ['$fieldValues', {}] } },
+            as: 'kv',
+            in: {
+              $regexMatch: {
+                input: { $toString: '$$kv.v' },
+                regex: escaped,
+                options: 'i',
+              },
+            },
+          },
+        },
+      },
+    };
+  }
+
+  /**
    * Ghi một lượt gửi rồi đẩy toàn bộ nhiệm vụ sang người nhận.
    * Validate xong mới ghi, để không có lượt gửi dở dang.
    */
@@ -1020,7 +1035,7 @@ export class PersonalKpiService {
     const byId = new Map(templates.map((row) => [String(row._id), row]));
 
     const problems: string[] = [];
-    for (const item of items) {
+    for (const [index, item] of items.entries()) {
       const template = byId.get(String(item.formTemplateId ?? ''));
       if (!template) continue;
 
@@ -1030,12 +1045,13 @@ export class PersonalKpiService {
             column.visible &&
             column.required &&
             column.semanticKey !== 'stt' &&
-            this.isColumnEmpty(item, column.semanticKey, column.key),
+            this.isColumnEmpty(item, column),
         )
         .map((column) => column.title);
 
+      // Không còn cột "tên nhiệm vụ" cố định để gọi tên dòng, nên chỉ ra số thứ tự.
       if (missing.length) {
-        problems.push(`"${item.title}": ${missing.join(', ')}`);
+        problems.push(`dòng ${index + 1}: ${missing.join(', ')}`);
       }
     }
 
@@ -1048,40 +1064,21 @@ export class PersonalKpiService {
 
   private isColumnEmpty(
     item: PersonalKpiItemDocument,
-    semanticKey: string,
-    columnKey: string,
+    column: { semanticKey: string; key: string; dataType: string },
   ): boolean {
-    switch (semanticKey) {
-      case 'task_title':
-        return !item.title?.trim();
-      case 'deadline':
-        return !item.deadline?.trim();
-      case 'product':
-        return !item.product?.trim();
-      case 'standard_score':
-        return item.standardScore == null;
-      case 'executing_unit':
-        return !item.executingUnit?.trim();
-      case 'progress_percent':
-        return item.progressPercent == null;
-      case 'progress_self_score':
-        return item.progressSelfScore == null;
-      case 'quality_percent':
-        return item.qualityPercent == null;
-      case 'quality_self_score':
-        return item.qualitySelfScore == null;
-      case 'result_passed':
-        return item.resultPassed !== true;
-      case 'result_failed':
-        return item.resultFailed !== true;
-      case 'note':
-        return !item.note?.trim();
-      case 'evidence_files':
-        return !item.evidenceFiles?.length;
+    switch (column.semanticKey) {
+      case 'score_group':
+        return !item.scoreGroupId;
+      case 'quality_level':
+        return !item.qualityLevelId;
       case 'work_content':
         return !item.workContentId;
       default:
-        return !String(item.fieldValues?.[columnKey] ?? '').trim();
+        // Cột tệp đính kèm nằm ở attachments chứ không phải fieldValues.
+        if (column.dataType === 'file') {
+          return !item.attachments?.[column.key]?.length;
+        }
+        return !String(item.fieldValues?.[column.key] ?? '').trim();
     }
   }
 
@@ -1241,77 +1238,82 @@ export class PersonalKpiService {
     return value;
   }
 
-  private mapContent(dto: CreatePersonalKpiDto) {
+  private async mapContent(dto: CreatePersonalKpiDto) {
     return {
-      deadline: dto.deadline?.trim() ?? '',
-      product: dto.product?.trim() ?? '',
-      standardScore: dto.standardScore ?? 0,
-      executingUnit: dto.executingUnit?.trim() ?? '',
-      progressPercent: dto.progressPercent ?? null,
-      progressSelfScore: dto.progressSelfScore ?? null,
-      qualityPercent: dto.qualityPercent ?? null,
-      qualitySelfScore: dto.qualitySelfScore ?? null,
-      ...this.resolveResultPair(dto.resultPassed, dto.resultFailed),
-      note: dto.note?.trim() ?? '',
-      evidenceFiles: dto.evidenceFiles ?? [],
+      scoreGroupId: dto.scoreGroupId ? new Types.ObjectId(dto.scoreGroupId) : null,
+      qualityLevelId: dto.qualityLevelId
+        ? new Types.ObjectId(dto.qualityLevelId)
+        : null,
       fieldValues: dto.fieldValues ?? {},
+      attachments: await this.sanitizeAttachments(dto.attachments),
     };
   }
 
   /**
-   * Đạt / Không đạt loại trừ nhau: tích một bên thì bên kia tự tắt.
-   * Không cho lưu trạng thái vừa đạt vừa không đạt dù client gửi kiểu gì.
+   * Lọc danh sách tệp client gửi lên: chỉ giữ id thật sự có trong collection
+   * uploads. Không tin tên/cỡ client gửi thì cũng không hiển thị được gì, nên
+   * chép lại nhưng cắt độ dài; điều quan trọng là id phải có thật.
    */
-  private resolveResultPair(
-    passed: boolean | null | undefined,
-    failed: boolean | null | undefined,
-  ): { resultPassed: boolean | null; resultFailed: boolean | null } {
-    if (passed) return { resultPassed: true, resultFailed: false };
-    if (failed) return { resultPassed: false, resultFailed: true };
-    if (passed === undefined && failed === undefined) {
-      return { resultPassed: null, resultFailed: null };
+  private async sanitizeAttachments(
+    raw: Record<string, unknown> | undefined,
+  ): Promise<Record<string, PersonalKpiAttachment[]>> {
+    if (!raw) return {};
+
+    const candidates: Array<{ key: string; file: PersonalKpiAttachment }> = [];
+    for (const [key, value] of Object.entries(raw)) {
+      if (!Array.isArray(value)) continue;
+      for (const entry of value) {
+        if (!entry || typeof entry !== 'object') continue;
+        const row = entry as Record<string, unknown>;
+        const id = typeof row.id === 'string' ? row.id.trim() : '';
+        if (!id) continue;
+        candidates.push({
+          key,
+          file: {
+            id,
+            name: String(row.name ?? '').slice(0, 255),
+            size: Number(row.size) || 0,
+            mimeType: String(row.mimeType ?? 'application/octet-stream'),
+          },
+        });
+      }
     }
-    return { resultPassed: null, resultFailed: null };
+    if (!candidates.length) return {};
+
+    const existing = await this.uploadsService.keepExistingIds(
+      candidates.map((item) => item.file.id),
+    );
+
+    const result: Record<string, PersonalKpiAttachment[]> = {};
+    for (const item of candidates) {
+      if (!existing.has(item.file.id)) continue;
+      (result[item.key] ??= []).push(item.file);
+    }
+    return result;
   }
 
-  private applyContent(
+  private async applyContent(
     item: PersonalKpiItemDocument,
     dto: UpdatePersonalKpiDto | ReviewerEditPersonalKpiDto,
   ) {
-    if (dto.title !== undefined) item.title = dto.title.trim();
-    if (dto.deadline !== undefined) item.deadline = dto.deadline.trim();
-    if (dto.product !== undefined) item.product = dto.product.trim();
-    if (dto.standardScore !== undefined) item.standardScore = dto.standardScore;
-    if (dto.executingUnit !== undefined) {
-      item.executingUnit = dto.executingUnit.trim();
+    if (dto.scoreGroupId !== undefined) {
+      item.scoreGroupId = dto.scoreGroupId
+        ? new Types.ObjectId(dto.scoreGroupId)
+        : null;
     }
-    if (dto.progressPercent !== undefined) {
-      item.progressPercent = dto.progressPercent;
-    }
-    if (dto.progressSelfScore !== undefined) {
-      item.progressSelfScore = dto.progressSelfScore;
-    }
-    if (dto.qualityPercent !== undefined) {
-      item.qualityPercent = dto.qualityPercent;
-    }
-    if (dto.qualitySelfScore !== undefined) {
-      item.qualitySelfScore = dto.qualitySelfScore;
-    }
-    if (dto.resultPassed !== undefined || dto.resultFailed !== undefined) {
-      const pair = this.resolveResultPair(
-        dto.resultPassed ?? (dto.resultFailed ? false : item.resultPassed),
-        dto.resultFailed ?? (dto.resultPassed ? false : item.resultFailed),
-      );
-      item.resultPassed = pair.resultPassed;
-      item.resultFailed = pair.resultFailed;
-    }
-    if (dto.note !== undefined) item.note = dto.note.trim();
-    if (dto.evidenceFiles !== undefined) {
-      item.evidenceFiles = dto.evidenceFiles;
+    if (dto.qualityLevelId !== undefined) {
+      item.qualityLevelId = dto.qualityLevelId
+        ? new Types.ObjectId(dto.qualityLevelId)
+        : null;
     }
     if (dto.fieldValues !== undefined) {
       item.fieldValues = { ...item.fieldValues, ...dto.fieldValues };
       item.markModified('fieldValues');
+    }
+    // Thay nguyên bản đồ tệp chứ không trộn - trộn thì gỡ tệp ra không được.
+    if (dto.attachments !== undefined) {
+      item.attachments = await this.sanitizeAttachments(dto.attachments);
+      item.markModified('attachments');
     }
   }
 
@@ -1341,18 +1343,8 @@ export class PersonalKpiService {
       });
     };
 
-    compare('title', dto.title);
-    compare('deadline', dto.deadline);
-    compare('product', dto.product);
-    compare('standardScore', dto.standardScore);
-    compare('executingUnit', dto.executingUnit);
-    compare('progressPercent', dto.progressPercent);
-    compare('progressSelfScore', dto.progressSelfScore);
-    compare('qualityPercent', dto.qualityPercent);
-    compare('qualitySelfScore', dto.qualitySelfScore);
-    compare('resultPassed', dto.resultPassed);
-    compare('resultFailed', dto.resultFailed);
-    compare('note', dto.note);
+    compare('scoreGroupId', dto.scoreGroupId);
+    compare('qualityLevelId', dto.qualityLevelId);
 
     for (const [key, next] of Object.entries(dto.fieldValues ?? {})) {
       const current = item.fieldValues?.[key];

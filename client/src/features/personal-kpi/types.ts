@@ -45,34 +45,24 @@ export function canDeletePersonalKpi(status: PersonalKpiStatus) {
   return status === "DRAFT" || status === "RETURNED";
 }
 
-export type TaskEvidenceFile = {
-  key: string;
+/** Một tệp đã tải lên - `id` là bản ghi upload trên server. */
+export type TaskAttachment = {
+  id: string;
   name: string;
   size: number;
   mimeType: string;
-  /** Giữ File trên client tới khi có API upload */
-  file?: File;
 };
 
 export type PersonalTaskDraft = {
   /** client-only id for list keys */
   key: string;
-  title: string;
-  deadline: string;
-  product: string;
-  standardScore: string;
-  executingUnit: string;
-  progressPercent: string;
-  progressSelfScore: string;
-  qualityPercent: string;
-  qualitySelfScore: string;
-  /** Cặp Đạt / Không đạt - loại trừ nhau. */
-  resultPassed: boolean;
-  resultFailed: boolean;
-  note: string;
-  evidenceFiles: TaskEvidenceFile[];
-  /** Giá trị cột tự do của mẫu bảng gán cho trục, key = FormTemplateColumn.key. */
+  /** Id đã chọn ở các cột lấy giá trị từ danh mục. */
+  scoreGroupId: string;
+  qualityLevelId: string;
+  /** Giá trị mọi cột chữ/số của mẫu bảng, key = FormTemplateColumn.key. */
   fieldValues: Record<string, string>;
+  /** Tệp của các cột kiểu "Tệp đính kèm", key = FormTemplateColumn.key. */
+  attachments: Record<string, TaskAttachment[]>;
 };
 
 /** Bản ghi nhiệm vụ KPI cá nhân trên danh sách. */
@@ -127,20 +117,10 @@ function localKey(prefix: string) {
 export function createEmptyTask(_index = 1): PersonalTaskDraft {
   return {
     key: localKey("task"),
-    title: "",
-    deadline: "",
-    product: "",
-    standardScore: "",
-    executingUnit: "",
-    progressPercent: "",
-    progressSelfScore: "",
-    qualityPercent: "",
-    qualitySelfScore: "",
-    resultPassed: false,
-    resultFailed: false,
-    note: "",
-    evidenceFiles: [],
+    scoreGroupId: "",
+    qualityLevelId: "",
     fieldValues: {},
+    attachments: {},
   };
 }
 

@@ -18,7 +18,6 @@ import {
   FormTemplate,
   FormTemplateColumn,
   FormTemplateDocument,
-  SINGLETON_SEMANTICS,
   type FormColumnSemantic,
 } from './schemas/form-template.schema';
 import {
@@ -336,7 +335,6 @@ export class FormTemplatesService {
 
     const ids = new Set<string>();
     const keys = new Set<string>();
-    const semantics = new Map<FormColumnSemantic, string>();
 
     const normalized = columns.map((column) => {
       const id = column.id.trim();
@@ -354,16 +352,8 @@ export class FormTemplatesService {
       ids.add(id);
       keys.add(key);
 
+      // Một ánh xạ dùng được ở nhiều cột - chỉ khoá cột là phải duy nhất.
       const semanticKey: FormColumnSemantic = column.semanticKey ?? 'custom';
-      if (SINGLETON_SEMANTICS.includes(semanticKey)) {
-        const owner = semantics.get(semanticKey);
-        if (owner) {
-          throw new BadRequestException(
-            `Ý nghĩa cột "${semanticKey}" đã dùng ở cột "${owner}" - mỗi ý nghĩa chỉ được gán cho một cột.`,
-          );
-        }
-        semantics.set(semanticKey, title);
-      }
 
       const headerPath = (column.headerPath ?? []).map((part) => part.trim());
       this.ensureHeaderPathExists(headerPath, headerGroups, title);
@@ -380,12 +370,6 @@ export class FormTemplatesService {
         required: column.required ?? false,
       };
     });
-
-    if (!semantics.has('task_title')) {
-      throw new BadRequestException(
-        'Mẫu bảng phải có một cột mang ý nghĩa "Nhiệm vụ" (task_title).',
-      );
-    }
 
     return normalized;
   }

@@ -26,24 +26,17 @@ export const PERSONAL_KPI_REVIEW_STATUSES = [
 export type PersonalKpiReviewStatus =
   (typeof PERSONAL_KPI_REVIEW_STATUSES)[number];
 
-@Schema({ _id: false })
-export class PersonalKpiEvidenceFile {
-  @Prop({ required: true, trim: true })
-  key!: string;
-
-  @Prop({ required: true, trim: true })
-  name!: string;
-
-  @Prop({ required: true, min: 0 })
-  size!: number;
-
-  @Prop({ required: true, trim: true })
-  mimeType!: string;
-}
-
-export const PersonalKpiEvidenceFileSchema = SchemaFactory.createForClass(
-  PersonalKpiEvidenceFile,
-);
+/**
+ * Một tệp đã đính vào cột kiểu "file".
+ * `id` trỏ tới bản ghi trong collection uploads; tên và cỡ chép lại để hiển thị
+ * danh sách mà không phải join.
+ */
+export type PersonalKpiAttachment = {
+  id: string;
+  name: string;
+  size: number;
+  mimeType: string;
+};
 
 /** Một trường bị cấp trên sửa - giữ cả giá trị trước và sau. */
 @Schema({ _id: false })
@@ -134,55 +127,33 @@ export class PersonalKpiItem {
   })
   workContentId!: Types.ObjectId;
 
-  @Prop({ required: true, trim: true })
-  title!: string;
+  /** Cột chọn từ danh mục - lưu id, tên và phần trăm tra ngược qua populate. */
+  @Prop({ type: Types.ObjectId, ref: 'ScoreGroup', default: null, index: true })
+  scoreGroupId!: Types.ObjectId | null;
 
-  @Prop({ trim: true, default: '' })
-  deadline!: string;
-
-  @Prop({ trim: true, default: '' })
-  product!: string;
-
-  @Prop({ default: 0, min: 0 })
-  standardScore!: number;
-
-  @Prop({ trim: true, default: '' })
-  executingUnit!: string;
-
-  @Prop({ type: Number, default: null })
-  progressPercent!: number | null;
-
-  @Prop({ type: Number, default: null })
-  progressSelfScore!: number | null;
-
-  @Prop({ type: Number, default: null })
-  qualityPercent!: number | null;
-
-  @Prop({ type: Number, default: null })
-  qualitySelfScore!: number | null;
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'QualityLevel',
+    default: null,
+    index: true,
+  })
+  qualityLevelId!: Types.ObjectId | null;
 
   /**
-   * Cặp kết quả Đạt / Không đạt. Loại trừ nhau - tích cái này thì cái kia tắt.
-   * null = chưa đánh giá, để phân biệt với "đã đánh giá là không đạt".
-   */
-  @Prop({ type: Boolean, default: null })
-  resultPassed!: boolean | null;
-
-  @Prop({ type: Boolean, default: null })
-  resultFailed!: boolean | null;
-
-  @Prop({ trim: true, default: '' })
-  note!: string;
-
-  @Prop({ type: [PersonalKpiEvidenceFileSchema], default: [] })
-  evidenceFiles!: PersonalKpiEvidenceFile[];
-
-  /**
-   * Giá trị các cột tự do của mẫu bảng, key = FormTemplateColumn.key.
-   * Cột có semanticKey vẫn nằm ở các field cứng phía trên.
+   * Giá trị mọi cột chữ/số của mẫu bảng, key = FormTemplateColumn.key.
+   * Chỉ cột lấy từ danh mục mới có field cứng riêng (workContentId,
+   * scoreGroupId, qualityLevelId); còn lại nằm hết ở đây.
    */
   @Prop({ type: Object, default: {} })
   fieldValues!: Record<string, string | number>;
+
+  /**
+   * Tệp đính kèm của các cột kiểu "file", key = FormTemplateColumn.key.
+   * Để riêng khỏi fieldValues vì giá trị là danh sách chứ không phải chuỗi -
+   * nhét JSON vào fieldValues sẽ làm hỏng cả hiển thị lẫn tìm kiếm.
+   */
+  @Prop({ type: Object, default: {} })
+  attachments!: Record<string, PersonalKpiAttachment[]>;
 
   // --------------------------------------------------------- mẫu bảng khoá
 

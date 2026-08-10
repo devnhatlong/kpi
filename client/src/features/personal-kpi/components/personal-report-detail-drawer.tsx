@@ -177,15 +177,6 @@ export function PersonalReportDetailDrawer({
   };
 
   const saveRow = async (item: PersonalKpiItem, columns: FormTemplateColumn[]) => {
-    if (!item.task.title.trim()) {
-      toast.error("Vui lòng nhập tên nhiệm vụ.");
-      return;
-    }
-    const score = Number(item.task.standardScore);
-    if (!Number.isFinite(score) || score < 0) {
-      toast.error("Điểm chuẩn phải là số ≥ 0.");
-      return;
-    }
     // Cột super admin tích "bắt buộc" trong mẫu phải có dữ liệu.
     const missing = missingRequiredColumns(item.task, columns);
     if (missing.length) {
@@ -430,7 +421,7 @@ export function PersonalReportDetailDrawer({
               Nhiệm vụ bị trả lại
             </DialogTitle>
             <DialogDescription className="line-clamp-2">
-              {reasonItem?.task.title}
+              {reasonItem?.workContentName}
             </DialogDescription>
           </DialogHeader>
 

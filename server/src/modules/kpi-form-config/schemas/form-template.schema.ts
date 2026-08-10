@@ -14,39 +14,50 @@ export const FORM_COLUMN_DATA_TYPES = [
   'auto_increment',
   /** Ô tích - dùng cho các cột kiểu Đạt / Không đạt. */
   'boolean',
+  /** Chọn từ danh mục có sẵn - nguồn suy ra từ semanticKey. */
+  'select',
 ] as const;
 
 export type FormColumnDataType = (typeof FORM_COLUMN_DATA_TYPES)[number];
 
 /**
- * Ý nghĩa cột - khai báo tường minh khi cấu hình, KHÔNG đoán theo tiêu đề.
- * Cột `custom` lưu vào PersonalKpiItem.fieldValues theo `key`.
+ * Ánh xạ cột -> trường dữ liệu hệ thống. Khai tường minh khi cấu hình, KHÔNG
+ * đoán theo tiêu đề. Cột `custom` lưu vào PersonalKpiItem.fieldValues theo `key`.
+ *
+ * LUẬT: chỉ có mặt ở đây khi hệ thống thực sự làm gì đó khác với giá trị - lấy
+ * từ danh mục, hoặc cần ô nhập không phải ô chữ. Cột chỉ lưu rồi hiện lại thì
+ * để `custom`; gán ánh xạ cho nó cũng không đổi được hành vi nào.
  */
 export const FORM_COLUMN_SEMANTICS = [
   'custom',
+  /** Tự đánh số, không phải ô nhập. */
   'stt',
+  /** Chọn từ danh mục Nội dung công việc; cấp trên gom bảng theo cột này. */
   'work_content',
-  'task_title',
-  'deadline',
-  'product',
-  'standard_score',
-  'executing_unit',
-  'progress_percent',
-  'progress_self_score',
-  'quality_percent',
-  'quality_self_score',
-  /** Cặp kết quả đánh giá - tích một trong hai, loại trừ nhau. */
-  'result_passed',
-  'result_failed',
-  'note',
-  'evidence_files',
+  /** Chọn từ danh mục Nhóm điểm. */
+  'score_group',
+  /** Chọn từ danh mục Chất lượng thực hiện (100/75/50/25/0%). */
+  'quality_level',
 ] as const;
 
 export type FormColumnSemantic = (typeof FORM_COLUMN_SEMANTICS)[number];
 
-/** Semantic chỉ được xuất hiện tối đa 1 lần trong một mẫu. */
-export const SINGLETON_SEMANTICS: FormColumnSemantic[] =
-  FORM_COLUMN_SEMANTICS.filter((item) => item !== 'custom');
+/**
+ * Cột lấy giá trị từ danh mục nào.
+ * Khai ở đây một lần, cả cấu hình lẫn form nhập đều đọc bảng này - không nơi
+ * nào tự đoán theo tiêu đề cột.
+ */
+export const SEMANTIC_CATALOG: Partial<
+  Record<FormColumnSemantic, 'work_content' | 'score_group' | 'quality_level'>
+> = {
+  work_content: 'work_content',
+  score_group: 'score_group',
+  quality_level: 'quality_level',
+};
+
+export function catalogOfSemantic(semanticKey: FormColumnSemantic) {
+  return SEMANTIC_CATALOG[semanticKey] ?? null;
+}
 
 /** Nhóm header (gộp ô) - lồng nhau nhiều tầng. */
 export class FormHeaderGroup {

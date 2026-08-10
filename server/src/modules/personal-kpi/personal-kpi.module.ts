@@ -16,6 +16,7 @@ import {
   FormTemplateSchema,
 } from '../kpi-form-config/schemas/form-template.schema';
 import { KpiFormConfigModule } from '../kpi-form-config/kpi-form-config.module';
+import { UploadsModule } from '../uploads/uploads.module';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { PersonalKpiController } from './personal-kpi.controller';
 import { PersonalKpiService } from './personal-kpi.service';
@@ -43,6 +44,8 @@ import {
     forwardRef(() => RolesModule),
     // Lấy FormTemplatesService để dựng lại đúng phiên bản mẫu lúc gửi.
     forwardRef(() => KpiFormConfigModule),
+    // Kiểm tệp đính kèm có thật trước khi lưu vào nhiệm vụ.
+    forwardRef(() => UploadsModule),
   ],
   controllers: [PersonalKpiController],
   providers: [PersonalKpiService],

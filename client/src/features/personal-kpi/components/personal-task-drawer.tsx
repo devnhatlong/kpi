@@ -240,12 +240,7 @@ export function PersonalTaskDrawer({
             {
               key: `content-edit-${edit.id}`,
               workContentId: edit.workContentId,
-              tasks: [
-                {
-                  ...edit.task,
-                  evidenceFiles: edit.task.evidenceFiles ?? [],
-                },
-              ],
+              tasks: [{ ...edit.task }],
             },
           ],
         },
@@ -501,15 +496,6 @@ export function PersonalTaskDrawer({
         }
 
         for (const task of content.tasks) {
-          if (!task.title.trim()) {
-            toast.error("Vui lòng nhập tên nhiệm vụ.");
-            return;
-          }
-          const score = Number(task.standardScore);
-          if (!Number.isFinite(score) || score < 0) {
-            toast.error("Điểm chuẩn phải là số ≥ 0.");
-            return;
-          }
           payloads.push(
             taskToWriteInput(block.axisId, content.workContentId, task),
           );
