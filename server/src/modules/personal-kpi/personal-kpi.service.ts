@@ -50,11 +50,15 @@ import { isYmd, serverDateYmd, shiftYmd } from './personal-kpi.time';
 const OWNER_EDITABLE: PersonalKpiReviewStatus[] = ['DRAFT', 'RETURNED'];
 
 /** Bậc vai trò tăng dần - dùng để biết ai là cấp trên. */
+/**
+ * Chuỗi báo cáo đi lên. KHÔNG có SUPER_ADMIN - tài khoản đó chỉ để cấu hình,
+ * báo cáo nghiệp vụ dừng ở CAT_ADMIN.
+ */
 const ROLE_LADDER: RoleCode[] = [
   RoleCode.STAFF,
   RoleCode.MANAGER,
   RoleCode.UNIT_ADMIN,
-  RoleCode.SUPER_ADMIN,
+  RoleCode.CAT_ADMIN,
 ];
 
 /** Nhãn cột để hiển thị trong lịch sử sửa. */
@@ -1110,6 +1114,11 @@ export class PersonalKpiService {
         ROLE_LADDER.indexOf(item.roleCode as RoleCode),
       ),
     );
+    // Không giữ vai trò nào trong chuỗi báo cáo (ví dụ tài khoản chỉ có
+    // SUPER_ADMIN) thì không tham gia gửi báo cáo nghiệp vụ.
+    if (myRank < 0) {
+      return { higherRoles: [], people: [] };
+    }
     const higherRoles = ROLE_LADDER.slice(myRank + 1);
     if (!higherRoles.length) {
       return { higherRoles: [], people: [] };

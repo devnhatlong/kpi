@@ -50,7 +50,8 @@ export type SaveKpiScopeConfigInput = {
 
 /** Mô tả ngắn cấp quản lý của vai trò, hiện trên thẻ tóm tắt. */
 export const ROLE_LEVEL_HINT: Record<string, string> = {
-  SUPER_ADMIN: "Toàn hệ thống",
+  SUPER_ADMIN: "Chỉ cấu hình",
+  CAT_ADMIN: "Toàn hệ thống",
   UNIT_ADMIN: "Đơn vị phụ trách",
   MANAGER: "Đơn vị phụ trách",
   STAFF: "Cá nhân",

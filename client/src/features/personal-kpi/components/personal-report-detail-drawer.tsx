@@ -147,6 +147,8 @@ export function PersonalReportDetailDrawer({
   );
   const returnedItems = items.filter((item) => item.status === "RETURNED");
   const hasReturned = returnedItems.length > 0;
+  /** Báo cáo đã từng gửi đi lần nào chưa - quyết định gửi cả lượt hay gửi lại lẻ. */
+  const everSent = items.some((item) => Boolean(item.sentAt));
 
   const updateTask = (id: string, patch: Partial<PersonalTaskDraft>) => {
     setItems((prev) =>
@@ -253,7 +255,9 @@ export function PersonalReportDetailDrawer({
           <SheetDescription>
             {hasReturned
               ? `${returnedItems.length} nhiệm vụ bị trả lại - sửa và lưu từng dòng, lưu xong mới gửi lại được.`
-              : "Bấm Sửa ở dòng cần chỉnh. Nhiệm vụ đang chờ duyệt thì khoá."}
+              : everSent
+                ? "Bấm Sửa ở dòng cần chỉnh. Nhiệm vụ đang chờ duyệt thì khoá."
+                : "Báo cáo chưa gửi lần nào - soạn xong bấm Gửi báo cáo ở dưới để gửi cả lượt."}
           </SheetDescription>
           {items.length > 0 ? (
             <div className="flex flex-wrap gap-1 pt-1">
@@ -390,7 +394,9 @@ export function PersonalReportDetailDrawer({
                 <Send className="h-4 w-4" />
                 {sending
                   ? "Đang gửi..."
-                  : `Gửi (${sendableItems.length})`}
+                  : everSent
+                    ? `Gửi lại (${sendableItems.length})`
+                    : `Gửi báo cáo (${sendableItems.length})`}
               </Button>
             ) : null}
           </div>
@@ -558,7 +564,12 @@ function RowActions({
             Sửa
           </Button>
         ) : null}
-        {canSendPersonalKpi(item.status) && item.status !== "RETURNED" ? (
+        {/*
+          Chỉ dòng ĐÃ TỪNG gửi đi (tức bị trả lại rồi sửa lại) mới có nút gửi
+          riêng. Báo cáo mới lập thì gửi cả lượt bằng nút dưới chân trang - gửi
+          lẻ lúc đó chỉ đẻ ra nhiều lượt gửi vụn cho cùng một người nhận.
+        */}
+        {item.status === "DRAFT" && item.sentAt ? (
           <Button
             size="sm"
             className="h-7 px-2 text-xs"
@@ -566,7 +577,7 @@ function RowActions({
             disabled={busy}
           >
             <Send className="h-3.5 w-3.5" />
-            Gửi
+            Gửi lại
           </Button>
         ) : null}
       </div>

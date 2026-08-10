@@ -167,10 +167,11 @@ export const NAV_ITEMS: NavItem[] = [
     ],
   },
   {
+    // Hồ sơ + đổi mật khẩu của CHÍNH người dùng, không phải cấu hình hệ thống.
+    // Ai đăng nhập cũng phải vào được, nên không gắn quyền.
     title: "Cài đặt",
     href: "/settings",
     icon: Settings,
-    permissions: [PERM.SYSTEM_CONFIG],
   },
 ];
 

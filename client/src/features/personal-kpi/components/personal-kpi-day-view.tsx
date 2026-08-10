@@ -147,6 +147,8 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
 
   /** Nhiệm vụ gửi được trong ngày - dùng cho nút "Gửi báo cáo". */
   const sendableItems = items.filter((item) => canSendPersonalKpi(item.status));
+  /** Báo cáo đã từng gửi lần nào chưa - đổi nhãn nút cho đúng việc. */
+  const everSent = items.some((item) => Boolean(item.sentAt));
 
   const resetFilters = () => {
     setQuery("");
@@ -268,7 +270,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
             }
           >
             <Send className="h-4 w-4" />
-            Gửi báo cáo ({sendableItems.length})
+            {everSent ? "Gửi lại" : "Gửi báo cáo"} ({sendableItems.length})
           </Button>
         </div>
       </div>
@@ -433,12 +435,15 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          {canSendPersonalKpi(item.status) ? (
+                          {/* Chỉ dòng đã từng gửi (bị trả lại rồi sửa) mới gửi
+                              lẻ được; báo cáo mới thì gửi cả lượt ở trên. */}
+                          {item.status === "DRAFT" && item.sentAt ? (
                             <Button
                               size="icon"
                               variant="ghost"
                               onClick={() => openSend(item)}
-                              aria-label="Gửi"
+                              aria-label="Gửi lại"
+                              title="Gửi lại nhiệm vụ này"
                               disabled={actingId === item.id}
                             >
                               <Send className="h-4 w-4" />

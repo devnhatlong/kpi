@@ -57,6 +57,7 @@ export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
 export const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: "Quản trị hệ thống",
+  CAT_ADMIN: "Quản trị Công an tỉnh",
   UNIT_ADMIN: "Quản trị đơn vị",
   MANAGER: "Quản lý",
   STAFF: "Cán bộ",

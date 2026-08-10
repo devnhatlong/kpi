@@ -34,6 +34,22 @@ const SYSTEM_ROLES: Array<{
     permissions: ALL_PERMISSIONS,
   },
   {
+    // Cấp cao nhất của chuỗi nghiệp vụ: nhận báo cáo tổng hợp từ các đơn vị,
+    // duyệt và chốt. Không có quyền cấu hình hệ thống - việc đó của SUPER_ADMIN.
+    code: RoleCode.CAT_ADMIN,
+    name: 'Quản trị Công an tỉnh',
+    sortOrder: 15,
+    permissions: [
+      Permission.USER_VIEW,
+      Permission.DEPARTMENT_VIEW,
+      Permission.KPI_MANAGE,
+      Permission.TASK_ASSIGN,
+      Permission.TASK_VIEW,
+      Permission.EVALUATION_SELF,
+      Permission.EVALUATION_APPROVE,
+    ],
+  },
+  {
     code: RoleCode.UNIT_ADMIN,
     name: 'Unit Admin',
     sortOrder: 20,

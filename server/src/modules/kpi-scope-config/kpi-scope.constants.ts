@@ -72,7 +72,15 @@ export type KpiScopeSeed = {
 /** Mặc định hệ thống - nút "Mặc định" trên trang cấu hình khôi phục về đây. */
 export const KPI_SCOPE_SEEDS: KpiScopeSeed[] = [
   {
+    // Chỉ để cấu hình hệ thống, không tham gia giao/nhận KPI nghiệp vụ.
     roleCode: RoleCode.SUPER_ADMIN,
+    isEnabled: false,
+    scopes: [],
+    requireApproval: true,
+    note: 'Tài khoản cấu hình hệ thống - không giao KPI. Việc đó của Quản trị Công an tỉnh.',
+  },
+  {
+    roleCode: RoleCode.CAT_ADMIN,
     isEnabled: true,
     scopes: ['CHILD_UNITS', 'DESCENDANT_UNITS', 'USERS_IN_OWN_UNIT'],
     requireApproval: true,

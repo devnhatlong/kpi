@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, Settings, UserRound } from "lucide-react";
+import { Lock, LogOut, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/features/auth/auth-provider";
@@ -56,16 +56,18 @@ export function UserMenu() {
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-48">
+        {/* Hai mục vào hai tab khác nhau của cùng trang tài khoản - trước đây
+            cả hai đổ về đúng một màn hình nên bấm cái nào cũng như nhau. */}
         <DropdownMenuItem asChild>
-          <Link href="/profile">
+          <Link href="/settings?tab=profile">
             <UserRound />
             Hồ sơ
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href="/settings">
-            <Settings />
-            Cài đặt
+          <Link href="/settings?tab=security">
+            <Lock />
+            Đổi mật khẩu
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

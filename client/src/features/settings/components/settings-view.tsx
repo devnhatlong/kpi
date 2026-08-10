@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, UserRound } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
@@ -16,14 +17,28 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 export function SettingsView() {
-  const [tab, setTab] = useState<TabKey>("profile");
+  // Mở đúng tab theo ?tab= để menu tài khoản trỏ thẳng được vào từng mục,
+  // thay vì hai mục cùng đổ về một màn hình giống hệt nhau.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTab: TabKey =
+    searchParams.get("tab") === "security" ? "security" : "profile";
+  const [tab, setTab] = useState<TabKey>(initialTab);
+
+  /** Đổi tab thì URL đổi theo, để copy link ra là mở đúng chỗ. */
+  const selectTab = (key: TabKey) => {
+    setTab(key);
+    router.replace(`/settings?tab=${key}`, { scroll: false });
+  };
 
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Cài đặt</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight">
+          Tài khoản của tôi
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Tùy chỉnh hệ thống KPI, tài khoản và tích hợp
+          Thông tin cá nhân và mật khẩu đăng nhập
         </p>
       </div>
 
@@ -39,7 +54,7 @@ export function SettingsView() {
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setTab(key)}
+                  onClick={() => selectTab(key)}
                   aria-current={active ? "page" : undefined}
                   className={cn(
                     "relative flex shrink-0 cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
