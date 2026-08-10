@@ -37,7 +37,14 @@ import {
   fetchScoreGroupsPage,
   scoreGroupKeys,
 } from "@/features/kpi-form-config/api";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { ScoreGroupFormDialog } from "@/features/kpi-form-config/components/score-group-form-dialog";
+import { QualityLevelsPanel } from "@/features/kpi-form-config/components/quality-levels-panel";
 import {
   formatScoreGroupRange,
 } from "@/features/kpi-form-config/score-group.constants";
@@ -88,20 +95,38 @@ export function ScoreGroupsView() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">
-            Nhóm điểm
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            03 nhóm điểm chia theo dải: 0 đến dưới 50, 50 đến dưới 70, 70 đến 100.
-          </p>
-        </div>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          Thêm nhóm điểm
-        </Button>
+      <div className="space-y-1">
+        <h1 className="font-display text-2xl font-semibold tracking-tight">
+          Nhóm điểm
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Thang chấm dùng chung cho toàn hệ thống
+        </p>
       </div>
+
+      <Tabs defaultValue="score-groups" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="score-groups">Nhóm điểm</TabsTrigger>
+          <TabsTrigger value="quality-levels">
+            Chất lượng thực hiện
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="quality-levels" className="space-y-4">
+          <QualityLevelsPanel />
+        </TabsContent>
+
+        <TabsContent value="score-groups" className="space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              03 nhóm điểm chia theo dải: 0 đến dưới 50, 50 đến dưới 70, 70 đến
+              100.
+            </p>
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-4 w-4" />
+              Thêm nhóm điểm
+            </Button>
+          </div>
 
       <Card>
         <CardContent className="space-y-4 pt-6">
@@ -220,6 +245,8 @@ export function ScoreGroupsView() {
           />
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
 
       <ScoreGroupFormDialog
         open={formOpen}

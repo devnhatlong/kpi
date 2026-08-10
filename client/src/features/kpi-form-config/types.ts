@@ -93,6 +93,28 @@ export type ScoreGroupInput = {
   isActive?: boolean;
 };
 
+/** Mức chất lượng thực hiện - danh mục giá trị rời rạc (100%, 75%...). */
+export type QualityLevel = {
+  _id: string;
+  id?: string;
+  code: string;
+  name: string;
+  description?: string;
+  percent: number;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem?: boolean;
+};
+
+export type QualityLevelInput = {
+  code?: string;
+  name: string;
+  description?: string;
+  percent: number;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
 export const FORM_COLUMN_DATA_TYPES = [
   "text",
   "number",

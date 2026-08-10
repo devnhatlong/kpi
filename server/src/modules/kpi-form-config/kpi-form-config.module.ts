@@ -33,6 +33,12 @@ import { ScoreGroupsController } from './score-groups.controller';
 import { ScoreGroupsService } from './score-groups.service';
 import { FormTemplatesController } from './form-templates.controller';
 import { FormTemplatesService } from './form-templates.service';
+import { QualityLevelsController } from './quality-levels.controller';
+import { QualityLevelsService } from './quality-levels.service';
+import {
+  QualityLevel,
+  QualityLevelSchema,
+} from './schemas/quality-level.schema';
 
 @Module({
   imports: [
@@ -43,6 +49,7 @@ import { FormTemplatesService } from './form-templates.service';
       { name: ScoreGroup.name, schema: ScoreGroupSchema },
       { name: FormTemplate.name, schema: FormTemplateSchema },
       { name: FormTemplateVersion.name, schema: FormTemplateVersionSchema },
+      { name: QualityLevel.name, schema: QualityLevelSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),
@@ -53,6 +60,7 @@ import { FormTemplatesService } from './form-templates.service';
     AxesController,
     ScoreGroupsController,
     FormTemplatesController,
+    QualityLevelsController,
   ],
   providers: [
     WorkContentsService,
@@ -60,6 +68,7 @@ import { FormTemplatesService } from './form-templates.service';
     AxesService,
     ScoreGroupsService,
     FormTemplatesService,
+    QualityLevelsService,
   ],
   exports: [
     WorkContentsService,
@@ -67,6 +76,7 @@ import { FormTemplatesService } from './form-templates.service';
     AxesService,
     ScoreGroupsService,
     FormTemplatesService,
+    QualityLevelsService,
   ],
 })
 export class KpiFormConfigModule {}

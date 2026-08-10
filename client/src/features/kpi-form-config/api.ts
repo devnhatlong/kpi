@@ -9,6 +9,8 @@ import type {
   FormTemplateInput,
   ListQueryParams,
   PaginatedResult,
+  QualityLevel,
+  QualityLevelInput,
   ScoreGroup,
   ScoreGroupInput,
   WorkContent,
@@ -188,6 +190,59 @@ export function updateScoreGroup(id: string, input: Partial<ScoreGroupInput>) {
 
 export async function deleteScoreGroup(id: string) {
   await api.delete(`/kpi-form-config/score-groups/${id}`);
+}
+
+export const qualityLevelKeys = {
+  all: ["quality-levels"] as const,
+  list: (params: ListQueryParams) =>
+    [
+      "quality-levels",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+    ] as const,
+};
+
+export async function fetchQualityLevelsPage(
+  params: ListQueryParams,
+): Promise<PaginatedResult<QualityLevel>> {
+  return unwrapPaginated(
+    api.get<ApiResponse<QualityLevel[]>>(
+      "/kpi-form-config/quality-levels/all",
+      { params: buildListQuery(params) },
+    ),
+  );
+}
+
+export async function fetchQualityLevelsAll() {
+  const result = await fetchQualityLevelsPage({ all: true });
+  return result.data.filter((item) => item.isActive);
+}
+
+export function createQualityLevel(input: QualityLevelInput) {
+  return unwrapData(
+    api.post<ApiResponse<QualityLevel>>(
+      "/kpi-form-config/quality-levels",
+      input,
+    ),
+  );
+}
+
+export function updateQualityLevel(
+  id: string,
+  input: Partial<QualityLevelInput>,
+) {
+  return unwrapData(
+    api.patch<ApiResponse<QualityLevel>>(
+      `/kpi-form-config/quality-levels/${id}`,
+      input,
+    ),
+  );
+}
+
+export async function deleteQualityLevel(id: string) {
+  await api.delete(`/kpi-form-config/quality-levels/${id}`);
 }
 
 export const formTemplateKeys = {
