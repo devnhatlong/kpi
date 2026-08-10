@@ -327,6 +327,18 @@ export class PersonalKpiBoardQueryDto {
   @IsMongoId()
   axisId?: string;
 
+  @ApiPropertyOptional({ description: 'Nội dung công việc thuộc trục' })
+  @IsOptional()
+  @IsMongoId()
+  workContentId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Đơn vị - khớp cả đơn vị của cán bộ lẫn đơn vị gửi lên',
+  })
+  @IsOptional()
+  @IsMongoId()
+  departmentId?: string;
+
   @ApiPropertyOptional({ description: 'Lọc theo người gửi lượt gần nhất' })
   @IsOptional()
   @IsMongoId()

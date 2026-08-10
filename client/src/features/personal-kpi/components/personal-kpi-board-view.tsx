@@ -19,6 +19,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/common/searchable-select";
 import {
   Table,
   TableBody,
@@ -34,7 +35,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { FormTemplateColumn } from "@/features/kpi-form-config/types";
+import {
+  fetchAxesAll,
+  fetchWorkContentsAll,
+} from "@/features/kpi-form-config/api";
+import {
+  entityId,
+  type FormTemplateColumn,
+} from "@/features/kpi-form-config/types";
+import { fetchDepartments } from "@/features/organization/api";
 import {
   fetchPersonalKpiBoard,
   forwardPersonalKpi,
@@ -52,6 +61,8 @@ import {
 } from "@/features/personal-kpi/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+
+const ALL = "ALL";
 
 const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: "PENDING", label: "Chờ tôi duyệt" },
@@ -120,12 +131,46 @@ export function PersonalKpiBoardView() {
   const [reportDate, setReportDate] = useState("");
   const [status, setStatus] = useState("PENDING");
   const [q, setQ] = useState("");
+  const [axisId, setAxisId] = useState(ALL);
+  const [workContentId, setWorkContentId] = useState(ALL);
+  const [departmentId, setDepartmentId] = useState(ALL);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   /** Nhiệm vụ đang chờ nhập lý do để trả lại; rỗng = hộp thoại đóng. */
   const [returnIds, setReturnIds] = useState<string[]>([]);
   const [returnReason, setReturnReason] = useState("");
   const [forwardOpen, setForwardOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const { data: axes4Filter = [] } = useSWR(
+    ["axes", "all", "kpi-board"],
+    fetchAxesAll,
+  );
+  const { data: contents4Filter = [] } = useSWR(
+    ["work-contents", "all", "kpi-board"],
+    fetchWorkContentsAll,
+  );
+  const { data: departments4Filter = [] } = useSWR(
+    ["departments", "all", "kpi-board"],
+    fetchDepartments,
+  );
+
+  /** Nội dung công việc bám theo trục đang chọn, tránh danh sách dài vô nghĩa. */
+  const contentOptions = useMemo(() => {
+    const list =
+      axisId === ALL
+        ? contents4Filter
+        : contents4Filter.filter(
+            (item) => entityId(item.axisId as never) === axisId,
+          );
+    return [
+      { value: ALL, label: "Tất cả nội dung" },
+      ...list.map((item) => ({
+        value: entityId(item),
+        label: item.name,
+        keywords: item.code,
+      })),
+    ];
+  }, [contents4Filter, axisId]);
 
   const params: PersonalKpiBoardQuery = useMemo(
     () => ({
@@ -134,8 +179,11 @@ export function PersonalKpiBoardView() {
         status === "ALL" ? undefined : (status as PersonalKpiStatus),
       includeDecided: status === "ALL",
       q: q.trim() || undefined,
+      axisId: axisId === ALL ? undefined : axisId,
+      workContentId: workContentId === ALL ? undefined : workContentId,
+      departmentId: departmentId === ALL ? undefined : departmentId,
     }),
-    [reportDate, status, q],
+    [reportDate, status, q, axisId, workContentId, departmentId],
   );
 
   const { data, error, isLoading, mutate } = useSWR(
@@ -145,9 +193,27 @@ export function PersonalKpiBoardView() {
       params.status ?? "",
       params.q ?? "",
       params.includeDecided ? "1" : "",
+      params.axisId ?? "",
+      params.workContentId ?? "",
+      params.departmentId ?? "",
     ],
     () => fetchPersonalKpiBoard(params),
   );
+
+  const hasFilter =
+    Boolean(reportDate) ||
+    Boolean(q.trim()) ||
+    axisId !== ALL ||
+    workContentId !== ALL ||
+    departmentId !== ALL;
+
+  const resetFilters = () => {
+    setReportDate("");
+    setQ("");
+    setAxisId(ALL);
+    setWorkContentId(ALL);
+    setDepartmentId(ALL);
+  };
 
   const axes = data?.axes ?? [];
   const counts = data?.counts ?? {
@@ -309,6 +375,70 @@ export function PersonalKpiBoardView() {
               />
             </div>
           </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label>Đơn vị</Label>
+              <SearchableSelect
+                value={departmentId}
+                onValueChange={setDepartmentId}
+                searchPlaceholder="Tìm đơn vị..."
+                emptyText="Không có đơn vị nào."
+                options={[
+                  { value: ALL, label: "Tất cả đơn vị" },
+                  ...departments4Filter.map((item) => ({
+                    value: entityId(item),
+                    label: item.name,
+                    keywords: item.code,
+                  })),
+                ]}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Trục</Label>
+              <SearchableSelect
+                value={axisId}
+                onValueChange={(next) => {
+                  setAxisId(next);
+                  // Đổi trục thì nội dung cũ không còn thuộc trục đó nữa.
+                  setWorkContentId(ALL);
+                }}
+                searchPlaceholder="Tìm trục..."
+                emptyText="Không có trục nào."
+                options={[
+                  { value: ALL, label: "Tất cả trục" },
+                  ...axes4Filter.map((item) => ({
+                    value: entityId(item),
+                    label: item.name,
+                    keywords: item.code,
+                  })),
+                ]}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nội dung công việc</Label>
+              <SearchableSelect
+                value={workContentId}
+                onValueChange={setWorkContentId}
+                searchPlaceholder="Tìm nội dung..."
+                emptyText="Trục này chưa có nội dung nào."
+                options={contentOptions}
+              />
+            </div>
+          </div>
+
+          {hasFilter ? (
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs"
+                onClick={resetFilters}
+              >
+                Xoá bộ lọc
+              </Button>
+            </div>
+          ) : null}
 
           {/* Tab kèm số đếm: duyệt xong việc không biến mất, nó nằm ở tab kế bên. */}
           <div className="flex flex-wrap gap-1 border-t pt-3">

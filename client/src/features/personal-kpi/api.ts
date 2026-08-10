@@ -481,6 +481,8 @@ export type PersonalKpiBoardQuery = {
   toDate?: string;
   status?: PersonalKpiStatus | "";
   axisId?: string;
+  workContentId?: string;
+  departmentId?: string;
   senderId?: string;
   ownerId?: string;
   q?: string;
@@ -499,6 +501,8 @@ export async function fetchPersonalKpiBoard(params: PersonalKpiBoardQuery) {
   put("toDate", params.toDate);
   put("status", params.status || undefined);
   put("axisId", params.axisId);
+  put("workContentId", params.workContentId);
+  put("departmentId", params.departmentId);
   put("senderId", params.senderId);
   put("ownerId", params.ownerId);
   put("q", params.q);

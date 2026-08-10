@@ -643,11 +643,26 @@ export class PersonalKpiService {
     }
 
     if (query.axisId) filter.axisId = this.requireObjectId(query.axisId, 'Trục');
+    if (query.workContentId) {
+      filter.workContentId = this.requireObjectId(
+        query.workContentId,
+        'Nội dung công việc',
+      );
+    }
     if (query.senderId) {
       filter.lastSenderId = this.requireObjectId(query.senderId, 'Người gửi');
     }
     if (query.ownerId) {
       filter.ownerId = this.requireObjectId(query.ownerId, 'Cán bộ');
+    }
+    if (query.departmentId) {
+      // Khớp cả đơn vị của cán bộ lẫn đơn vị đã gửi lên, vì ở cấp cao nhiệm vụ
+      // có thể do Đội tạo nhưng Phòng mới là nơi chuyển lên.
+      const dept = this.requireObjectId(query.departmentId, 'Đơn vị');
+      filter.$or = [
+        { ownerDepartmentId: dept },
+        { lastSenderDepartmentId: dept },
+      ];
     }
     if (query.q?.trim()) filter.title = this.likeRegex(query.q);
 
