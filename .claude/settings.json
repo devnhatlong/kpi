@@ -10,7 +10,21 @@
       "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(s\\);console.log\\(j.message\\);console.log\\('ID='+\\(j.data?._id||''\\)\\)}\\)\")",
       "Bash(curl -s -X DELETE http://localhost:8080/api/v1/kpi-form-config/form-templates/6a7a87168aee143c7009c05e -H 'Authorization: Bearer __TRACKED_VAR__')",
       "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>console.log\\('don mau thu:',JSON.parse\\(s\\).message\\)\\)\")",
-      "Bash(rm -f /tmp/adm.txt)"
+      "Bash(rm -f /tmp/adm.txt)",
+      "Read(//d/Project/WebApp/baocaongay/docs/**)",
+      "Bash(rm -f src/modules/uploads/schemas/upload.schema.ts)",
+      "Bash(rmdir src/modules/uploads/schemas)",
+      "Bash(mv \"huong dan su dung.pdf\" \"hướng dẫn sử dụng.pdf\")",
+      "Bash(curl -s -X POST http://localhost:8080/api/v1/uploads -H 'Authorization: Bearer __TRACKED_VAR__' -F 'file=@hướng dẫn sử dụng.pdf')",
+      "Bash(curl -s -X POST http://localhost:8080/api/v1/uploads -H 'Authorization: Bearer __TRACKED_VAR__' -F file=@gia-mao.pdf)",
+      "Bash(curl -s -X POST http://localhost:8080/api/v1/uploads -H 'Authorization: Bearer __TRACKED_VAR__' -F 'file=@tam.pdf;filename=hướng dẫn sử dụng.pdf')",
+      "Bash(sed -i 's#fs.readFileSync\\('\\\\''/tmp/tok.txt'\\\\'','\\\\''utf8'\\\\''\\).trim\\(\\)#'\\\\''__TRACKED_VAR__'\\\\''#' /tmp/e2e.js)",
+      "Bash(node /tmp/e2e.js)",
+      "Bash(sed -i \"s#console.log\\('   ten server luu:',r1.data?.name\\);#console.log\\('   PHAN HOI:',JSON.stringify\\(r1\\)\\);#\" /tmp/e2e.js)",
+      "Bash(node /tmp/e2e1.js)",
+      "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(s\\);const r=\\(j.data||[]\\)[0];console.log\\('  ',j.message\\);console.log\\('   attachments:',JSON.stringify\\(r&&r.attachments\\)\\);console.log\\(r?r._id:''\\)}\\)\")",
+      "Bash(rm -rf uploads)",
+      "Read(//d/Project/WebApp/baocaongay/server/middlewares/**)"
     ]
   }
 }

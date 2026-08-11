@@ -40,6 +40,8 @@ export function AttachmentCell({
 }: AttachmentCellProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  /** Phần trăm thật của tệp đang tải; null = không có tệp nào đang tải. */
+  const [percent, setPercent] = useState<number | null>(null);
 
   const pickFiles = async (fileList: FileList | null) => {
     if (!fileList?.length) return;
@@ -59,7 +61,8 @@ export function AttachmentCell({
     try {
       // Tải tuần tự để lỗi ở tệp nào thì biết đúng tệp đó.
       for (const file of chosen) {
-        uploaded.push(await uploadFile(file));
+        setPercent(0);
+        uploaded.push(await uploadFile(file, setPercent));
       }
       onChange([...files, ...uploaded]);
       toast.success(
@@ -73,6 +76,7 @@ export function AttachmentCell({
       toast.error(getApiErrorMessage(error, "Tải tệp lên thất bại."));
     } finally {
       setUploading(false);
+      setPercent(null);
       if (inputRef.current) inputRef.current.value = "";
     }
   };
@@ -109,8 +113,20 @@ export function AttachmentCell({
             ) : (
               <Paperclip className="h-3.5 w-3.5" />
             )}
-            {uploading ? "Đang tải..." : "Chọn tệp"}
+            {uploading
+              ? percent === null
+                ? "Đang tải..."
+                : `Đang tải ${percent}%`
+              : "Chọn tệp"}
           </Button>
+          {uploading && percent !== null ? (
+            <div className="h-1 w-full overflow-hidden rounded bg-muted">
+              <div
+                className="h-full bg-primary transition-all"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+          ) : null}
         </>
       ) : null}
 

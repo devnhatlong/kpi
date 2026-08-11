@@ -1,38 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { createReadStream, existsSync } from 'fs';
-import { join, resolve } from 'path';
-import { Upload, UploadDocument } from './schemas/upload.schema';
+import {
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { InjectConnection } from '@nestjs/mongoose';
+import { Connection, Types, mongo } from 'mongoose';
 
-/** Thư mục gốc chứa tệp - nằm cạnh mã nguồn, không nằm trong dist. */
-export const UPLOAD_ROOT = resolve(process.cwd(), 'uploads');
-
-export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
-
-/**
- * Đuôi tệp cho phép. Chặn theo đuôi chứ không theo mime trình duyệt gửi - mime
- * client gửi lên sửa được, còn đuôi quyết định cách máy chủ phục vụ lại tệp.
- */
-export const ALLOWED_UPLOAD_EXTENSIONS = new Set([
-  '.pdf',
-  '.doc',
-  '.docx',
-  '.xls',
-  '.xlsx',
-  '.ppt',
-  '.pptx',
-  '.txt',
-  '.csv',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.zip',
-  '.rar',
-  '.7z',
-]);
+/** Tên bucket -> hai collection uploads.files và uploads.chunks. */
+const BUCKET_NAME = 'uploads';
 
 export type UploadRef = {
   id: string;
@@ -41,64 +16,92 @@ export type UploadRef = {
   mimeType: string;
 };
 
+/**
+ * Lưu tệp trong GridFS, không đụng tới ổ đĩa của máy chủ.
+ * Nhờ vậy nhiều tiến trình chạy song song vẫn đọc được cùng một tệp, sao lưu
+ * DB là sao lưu luôn tệp, và không để lại rác trên đĩa khi container bị xoá.
+ */
 @Injectable()
 export class UploadsService {
-  constructor(
-    @InjectModel(Upload.name)
-    private readonly uploadModel: Model<UploadDocument>,
-  ) {}
+  /** Dựng một lần rồi dùng lại - bucket chỉ là con trỏ tới hai collection. */
+  private cachedBucket: mongo.GridFSBucket | null = null;
 
-  async register(input: {
+  constructor(@InjectConnection() private readonly connection: Connection) {}
+
+  private bucket() {
+    if (this.cachedBucket) return this.cachedBucket;
+    if (!this.connection.db) {
+      throw new ServiceUnavailableException(
+        'Chưa kết nối được cơ sở dữ liệu, thử lại sau ít giây.',
+      );
+    }
+    this.cachedBucket = new mongo.GridFSBucket(this.connection.db, {
+      bucketName: BUCKET_NAME,
+    });
+    return this.cachedBucket;
+  }
+
+  /** Ghi buffer vào GridFS, trả về con trỏ để nghiệp vụ lưu lại. */
+  async saveBuffer(input: {
     originalName: string;
-    relativePath: string;
     mimeType: string;
-    size: number;
+    buffer: Buffer;
     uploadedById: string;
   }): Promise<UploadRef> {
-    const doc = await this.uploadModel.create({
-      originalName: input.originalName,
-      // Chuẩn hoá dấu gạch để đường dẫn lưu trên Windows đọc lại được ở nơi khác.
-      path: input.relativePath.split('\\').join('/'),
-      mimeType: input.mimeType,
-      size: input.size,
-      uploadedById: new Types.ObjectId(input.uploadedById),
+    const bucket = this.bucket();
+    const stream = bucket.openUploadStream(input.originalName, {
+      metadata: {
+        contentType: input.mimeType,
+        uploadedById: new Types.ObjectId(input.uploadedById),
+        uploadedAt: new Date(),
+      },
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      stream.on('finish', () => resolve());
+      stream.on('error', (error) => reject(error));
+      // Tệp đã nằm sẵn trong RAM nên ghi thẳng, không cần bọc thêm Readable.
+      stream.end(input.buffer);
     });
 
     return {
-      id: String(doc._id),
-      name: doc.originalName,
-      size: doc.size,
-      mimeType: doc.mimeType,
+      id: String(stream.id),
+      name: input.originalName,
+      size: input.buffer.length,
+      mimeType: input.mimeType,
     };
   }
 
-  /** Bản ghi + luồng đọc để tải tệp về. */
+  /** Thông tin tệp + luồng đọc để tải về. */
   async openForDownload(id: string) {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException('Không tìm thấy tệp.');
     }
-    const doc = await this.uploadModel.findById(id);
-    if (!doc) throw new NotFoundException('Không tìm thấy tệp.');
 
-    const absolute = resolve(join(UPLOAD_ROOT, doc.path));
-    // Chặn path traversal: đường dẫn ghép ra phải vẫn nằm trong UPLOAD_ROOT.
-    if (!absolute.startsWith(UPLOAD_ROOT)) {
-      throw new NotFoundException('Không tìm thấy tệp.');
-    }
-    if (!existsSync(absolute)) {
-      throw new NotFoundException('Tệp không còn trên máy chủ.');
-    }
+    const bucket = this.bucket();
+    const objectId = new Types.ObjectId(id);
+    const [file] = await bucket.find({ _id: objectId }).limit(1).toArray();
+    if (!file) throw new NotFoundException('Không tìm thấy tệp.');
 
-    return { doc, stream: createReadStream(absolute) };
+    const metadata = (file.metadata ?? {}) as { contentType?: string };
+    return {
+      fileName: file.filename,
+      size: file.length,
+      mimeType: metadata.contentType || 'application/octet-stream',
+      stream: bucket.openDownloadStream(objectId),
+    };
   }
 
   /** Lọc ra id tệp thật sự tồn tại - dùng khi lưu nhiệm vụ. */
   async keepExistingIds(ids: string[]): Promise<Set<string>> {
     const valid = ids.filter((id) => Types.ObjectId.isValid(id));
     if (!valid.length) return new Set();
-    const rows = await this.uploadModel
+
+    const files = await this.bucket()
       .find({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) } })
-      .select('_id');
-    return new Set(rows.map((row) => String(row._id)));
+      .project({ _id: 1 })
+      .toArray();
+
+    return new Set(files.map((file) => String(file._id)));
   }
 }

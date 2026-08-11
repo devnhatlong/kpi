@@ -11,15 +11,26 @@ export const ACCEPT_UPLOAD =
 /**
  * Tải một tệp lên, trả về bản ghi để gắn vào nhiệm vụ.
  * Không đặt Content-Type - để trình duyệt tự sinh boundary cho multipart.
+ *
+ * `onProgress` nhận phần trăm thật từ axios, không phải thanh chạy giả.
  */
-export async function uploadFile(file: File): Promise<TaskAttachment> {
+export async function uploadFile(
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<TaskAttachment> {
   const form = new FormData();
   form.append("file", file);
 
   const { data } = await api.post<ApiEnvelope<TaskAttachment>>(
     "/uploads",
     form,
-    { headers: { "Content-Type": undefined } },
+    {
+      headers: { "Content-Type": undefined },
+      onUploadProgress: (event) => {
+        if (!onProgress || !event.total) return;
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      },
+    },
   );
   return data.data;
 }

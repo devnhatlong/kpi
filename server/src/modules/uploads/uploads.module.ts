@@ -1,15 +1,14 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
 import { AuthsModule } from '../auth/auth.module';
 import { UploadsController } from './uploads.controller';
 import { UploadsService } from './uploads.service';
-import { Upload, UploadSchema } from './schemas/upload.schema';
 
+/**
+ * Tệp nằm trong GridFS nên module này không đăng ký schema nào -
+ * mongoose tự quản hai collection uploads.files và uploads.chunks.
+ */
 @Module({
-  imports: [
-    MongooseModule.forFeature([{ name: Upload.name, schema: UploadSchema }]),
-    forwardRef(() => AuthsModule),
-  ],
+  imports: [forwardRef(() => AuthsModule)],
   controllers: [UploadsController],
   providers: [UploadsService],
   exports: [UploadsService],

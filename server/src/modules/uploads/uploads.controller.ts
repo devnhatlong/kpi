@@ -6,6 +6,7 @@ import {
   Post,
   Res,
   UploadedFile,
+  UseFilters,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -18,32 +19,27 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { diskStorage } from 'multer';
-import { mkdirSync } from 'fs';
-import { extname, join } from 'path';
-import { randomBytes } from 'crypto';
+import { memoryStorage } from 'multer';
 import { CurrentUser } from '@/common/decorators';
 import type { JwtPayloadUser } from '@/common/interfaces/jwt-payload-user.interface';
 import { JwtGuard } from '../auth/guards/jwt.guard';
+import { UploadsService } from './uploads.service';
+import { UploadExceptionFilter } from './upload-exception.filter';
 import {
   ALLOWED_UPLOAD_EXTENSIONS,
   MAX_UPLOAD_BYTES,
-  UPLOAD_ROOT,
-  UploadsService,
-} from './uploads.service';
-
-/** Năm/tháng để một thư mục không phình ra hàng vạn tệp. */
-function monthFolder() {
-  const now = new Date();
-  return join(
-    String(now.getFullYear()),
-    String(now.getMonth() + 1).padStart(2, '0'),
-  );
-}
+  asciiFallbackName,
+  contentMatchesExtension,
+  fixOriginalName,
+  isAllowedExtension,
+} from './upload-file.utils';
 
 @ApiTags('Uploads')
 @ApiBearerAuth()
+// Guard chạy trước interceptor, nên request thiếu token bị chặn TRƯỚC khi
+// multer nạp 20MB vào RAM.
 @UseGuards(JwtGuard)
+@UseFilters(UploadExceptionFilter)
 @Controller('uploads')
 export class UploadsController {
   constructor(private readonly uploadsService: UploadsService) {}
@@ -59,32 +55,9 @@ export class UploadsController {
   @Post()
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          const absolute = join(UPLOAD_ROOT, monthFolder());
-          mkdirSync(absolute, { recursive: true });
-          cb(null, absolute);
-        },
-        filename: (_req, file, cb) => {
-          const ext = extname(file.originalname).toLowerCase();
-          cb(null, `${randomBytes(16).toString('hex')}${ext}`);
-        },
-      }),
-      limits: { fileSize: MAX_UPLOAD_BYTES },
-      // Chặn trước khi ghi ra đĩa, không để tệp lạ nằm lại trong uploads/.
-      fileFilter: (_req, file, cb) => {
-        const ext = extname(file.originalname).toLowerCase();
-        if (!ALLOWED_UPLOAD_EXTENSIONS.has(ext)) {
-          cb(
-            new BadRequestException(
-              `Không nhận tệp đuôi "${ext || 'không rõ'}".`,
-            ),
-            false,
-          );
-          return;
-        }
-        cb(null, true);
-      },
+      // Giữ trong RAM rồi đẩy thẳng vào GridFS - không sinh tệp tạm trên đĩa.
+      storage: memoryStorage(),
+      limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
     }),
   )
   async upload(
@@ -93,11 +66,24 @@ export class UploadsController {
   ) {
     if (!file) throw new BadRequestException('Chưa chọn tệp.');
 
-    const data = await this.uploadsService.register({
-      originalName: file.originalname,
-      relativePath: join(monthFolder(), file.filename),
+    // Tên tiếng Việt bị busboy đọc thành Latin-1; phải sửa trước khi lưu.
+    const originalName = fixOriginalName(file.originalname);
+
+    if (!isAllowedExtension(originalName)) {
+      throw new BadRequestException(
+        `Chỉ nhận tệp: ${ALLOWED_UPLOAD_EXTENSIONS.join(', ')}.`,
+      );
+    }
+    if (!contentMatchesExtension(file.buffer, originalName)) {
+      throw new BadRequestException(
+        'Nội dung tệp không đúng định dạng - có thể tệp hỏng hoặc bị đổi đuôi.',
+      );
+    }
+
+    const data = await this.uploadsService.saveBuffer({
+      originalName,
       mimeType: file.mimetype,
-      size: file.size,
+      buffer: file.buffer,
       uploadedById: user.uid,
     });
 
@@ -107,15 +93,21 @@ export class UploadsController {
   @ApiOperation({ summary: 'Tải tệp về theo id' })
   @Get(':id')
   async download(@Param('id') id: string, @Res() res: Response) {
-    const { doc, stream } = await this.uploadsService.openForDownload(id);
+    const file = await this.uploadsService.openForDownload(id);
 
-    res.setHeader('Content-Type', doc.mimeType);
-    res.setHeader('Content-Length', String(doc.size));
-    // encodeURIComponent để tên tiếng Việt không làm hỏng header.
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Length', String(file.size));
+    // Vừa có bản ASCII cho trình duyệt cũ, vừa có bản UTF-8 giữ tên tiếng Việt.
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename*=UTF-8''${encodeURIComponent(doc.originalName)}`,
+      `attachment; filename="${asciiFallbackName(file.fileName)}"; ` +
+        `filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
     );
-    stream.pipe(res);
+    // Không cache: mở lại cùng một tệp sau khi thay nội dung không bị bản cũ.
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    file.stream.pipe(res);
   }
 }
