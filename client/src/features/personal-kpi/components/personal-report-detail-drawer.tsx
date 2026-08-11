@@ -24,8 +24,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { FormTemplateColumn } from "@/features/kpi-form-config/types";
+import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import { AxisTaskTable } from "@/features/personal-kpi/components/axis-task-table";
-import { missingRequiredColumns } from "@/features/personal-kpi/task-column-utils";
+import {
+  missingRequiredColumns,
+  outOfRangeColumns,
+} from "@/features/personal-kpi/task-column-utils";
 import {
   fetchMyPersonalKpi,
   personalKpiKeys,
@@ -117,6 +121,8 @@ export function PersonalReportDetailDrawer({
   const [sendIds, setSendIds] = useState<string[]>([]);
   /** Nhiệm vụ đang xem lý do trả lại. */
   const [reasonItem, setReasonItem] = useState<PersonalKpiItem | null>(null);
+  /** Dải điểm hợp lệ theo nhóm điểm - dùng để chặn trước khi gọi API. */
+  const scoreGroupById = useScoreGroupMap(open);
 
   const { data, isLoading, mutate } = useSWR(
     open && reportDate
@@ -181,6 +187,12 @@ export function PersonalReportDetailDrawer({
     const missing = missingRequiredColumns(item.task, columns);
     if (missing.length) {
       toast.error(`Chưa nhập cột bắt buộc: ${missing.join(", ")}.`);
+      return;
+    }
+    // Điểm phải nằm trong dải của nhóm điểm đã chọn.
+    const outOfRange = outOfRangeColumns(item.task, columns, scoreGroupById);
+    if (outOfRange.length) {
+      toast.error(`Điểm không hợp lệ: ${outOfRange.join("; ")}.`);
       return;
     }
 

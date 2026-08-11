@@ -221,6 +221,7 @@ export class FormTemplatesService {
           column.dataType,
           column.semanticKey,
           column.required,
+          column.rangeFromColumnKey,
         ]),
         headerGroups: groups,
       });
@@ -368,8 +369,30 @@ export class FormTemplatesService {
         dataType: column.dataType ?? 'text',
         semanticKey,
         required: column.required ?? false,
+        rangeFromColumnKey: column.rangeFromColumnKey?.trim() || null,
       };
     });
+
+    // Kiểm ràng buộc dải điểm sau khi có đủ cột, vì cột được trỏ tới có thể
+    // đứng sau cột trỏ đi.
+    const scoreGroupKeys = new Set(
+      normalized
+        .filter((column) => column.semanticKey === 'score_group')
+        .map((column) => column.key),
+    );
+    for (const column of normalized) {
+      if (!column.rangeFromColumnKey) continue;
+      if (column.dataType !== 'number') {
+        throw new BadRequestException(
+          `Cột "${column.title}" không phải kiểu số nên không giới hạn theo nhóm điểm được.`,
+        );
+      }
+      if (!scoreGroupKeys.has(column.rangeFromColumnKey)) {
+        throw new BadRequestException(
+          `Cột "${column.title}" giới hạn theo một cột Nhóm điểm không tồn tại trong mẫu.`,
+        );
+      }
+    }
 
     return normalized;
   }

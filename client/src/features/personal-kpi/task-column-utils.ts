@@ -1,8 +1,11 @@
 import {
   catalogOfSemantic,
+  formatScoreRange,
+  isScoreInGroupRange,
   type FormColumnDataType,
   type FormColumnSemantic,
   type FormTemplateColumn,
+  type ScoreGroup,
 } from "@/features/kpi-form-config/types";
 import type { PersonalTaskDraft } from "@/features/personal-kpi/types";
 
@@ -77,6 +80,42 @@ export function missingRequiredColumns(
   }
 
   return missing;
+}
+
+/**
+ * Cột điểm có giá trị nằm ngoài dải của nhóm điểm đã chọn.
+ * Trả về mô tả sẵn để hiện toast, khỏi phải chờ server trả lỗi.
+ */
+export function outOfRangeColumns(
+  task: PersonalTaskDraft,
+  columns: FormTemplateColumn[],
+  scoreGroupById: Map<string, ScoreGroup>,
+): string[] {
+  const problems: string[] = [];
+
+  for (const column of columns) {
+    if (!column.visible || !column.rangeFromColumnKey) continue;
+
+    const groupId = task.catalogValues?.[column.rangeFromColumnKey] ?? "";
+    const group = scoreGroupById.get(groupId);
+    if (!group) continue;
+
+    const raw = task.fieldValues?.[column.key] ?? "";
+    if (!raw.trim()) continue;
+
+    const score = Number(raw);
+    if (!Number.isFinite(score)) {
+      problems.push(`"${column.title}" không phải số`);
+      continue;
+    }
+    if (!isScoreInGroupRange(score, group)) {
+      problems.push(
+        `"${column.title}" phải trong dải ${formatScoreRange(group)} của ${group.name}`,
+      );
+    }
+  }
+
+  return problems;
 }
 
 /**

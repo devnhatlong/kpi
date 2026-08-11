@@ -9,8 +9,11 @@ import { Input } from "@/components/ui/input";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { AttachmentCell } from "@/features/personal-kpi/components/attachment-cell";
 import { CatalogSelectCell } from "@/features/personal-kpi/components/catalog-select-cell";
+import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import {
   catalogOfSemantic,
+  formatScoreRange,
+  isScoreInGroupRange,
   type FormTemplateColumn,
 } from "@/features/kpi-form-config/types";
 import { cn } from "@/lib/utils";
@@ -66,6 +69,11 @@ export function PersonalTaskForm({
   actions,
   rowClassName,
 }: PersonalTaskFormProps) {
+  // Chỉ gọi danh mục khi mẫu thật sự có cột điểm bị giới hạn.
+  const scoreGroupById = useScoreGroupMap(
+    columns.some((column) => column.rangeFromColumnKey),
+  );
+
   return (
     <TableRow className={rowClassName}>
       {columns.map((column) => {
@@ -162,13 +170,31 @@ export function PersonalTaskForm({
         }
 
         const inputProps = cellInputProps(column.dataType);
+        // Cột điểm bị giới hạn thì ô nhập ăn theo nhóm điểm đang chọn ở dòng này.
+        const boundGroup = column.rangeFromColumnKey
+          ? scoreGroupById.get(
+              task.catalogValues?.[column.rangeFromColumnKey] ?? "",
+            )
+          : undefined;
+        const value = readCellValue(task, column.semanticKey, column.key);
+        const outOfRange =
+          Boolean(boundGroup) &&
+          value.trim() !== "" &&
+          Number.isFinite(Number(value)) &&
+          !isScoreInGroupRange(Number(value), boundGroup!);
 
         return (
           <TableCell key={column.id} style={{ minWidth }}>
             <Input
-              className={cellInputClass}
+              className={cn(
+                cellInputClass,
+                outOfRange &&
+                  "border-rose-500 focus-visible:ring-rose-500 dark:border-rose-500",
+              )}
               type={inputProps.type}
-              value={readCellValue(task, column.semanticKey, column.key)}
+              min={boundGroup?.minScore}
+              max={boundGroup?.maxScore}
+              value={value}
               onChange={(e) =>
                 onChange(
                   writeCellValue(
@@ -179,8 +205,20 @@ export function PersonalTaskForm({
                   ),
                 )
               }
-              placeholder={column.title}
+              placeholder={
+                column.rangeFromColumnKey
+                  ? boundGroup
+                    ? formatScoreRange(boundGroup)
+                    : "Chọn nhóm điểm trước"
+                  : column.title
+              }
               disabled={readOnly}
+              aria-invalid={outOfRange}
+              title={
+                outOfRange
+                  ? `Ngoài dải ${formatScoreRange(boundGroup!)} của ${boundGroup!.name}`
+                  : undefined
+              }
             />
           </TableCell>
         );

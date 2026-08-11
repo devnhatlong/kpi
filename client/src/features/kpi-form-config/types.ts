@@ -297,7 +297,37 @@ export type FormTemplateColumn = {
   dataType: FormColumnDataType;
   semanticKey: FormColumnSemantic;
   required: boolean;
+  /**
+   * Khoá cột Nhóm điểm quyết định dải điểm hợp lệ cho cột này.
+   * Chỉ đặt được cho cột kiểu số; null = không giới hạn.
+   */
+  rangeFromColumnKey?: string | null;
 };
+
+/** Các cột Nhóm điểm trong mẫu - nguồn giới hạn cho cột điểm. */
+export function scoreGroupColumns(
+  columns: FormTemplateColumn[],
+): FormTemplateColumn[] {
+  return columns.filter((column) => column.semanticKey === "score_group");
+}
+
+/** Dải điểm của một nhóm, dạng chữ để hiện lên ô nhập. */
+export function formatScoreRange(group: {
+  minScore: number;
+  maxScore: number;
+  maxInclusive: boolean;
+}): string {
+  return `${group.minScore} → ${group.maxInclusive ? group.maxScore : `dưới ${group.maxScore}`}`;
+}
+
+/** Điểm có nằm trong dải của nhóm không - khớp đúng luật bên server. */
+export function isScoreInGroupRange(
+  score: number,
+  group: { minScore: number; maxScore: number; maxInclusive: boolean },
+): boolean {
+  if (score < group.minScore) return false;
+  return group.maxInclusive ? score <= group.maxScore : score < group.maxScore;
+}
 
 export type FormTemplate = {
   _id: string;

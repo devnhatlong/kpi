@@ -3,7 +3,14 @@
     "allow": [
       "Bash(curl -s -X DELETE http://localhost:8080/api/v1/personal-kpi/6a7a79472b9213872703f359 -H 'Authorization: Bearer __TRACKED_VAR__')",
       "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>console.log\\('don thu nghiem:',JSON.parse\\(s\\).message\\)\\)\")",
-      "Bash(rm -f /tmp/tok.txt /tmp/env.txt)"
+      "Bash(rm -f /tmp/tok.txt /tmp/env.txt)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(s\\);console.log\\('luu nhap:',j.message\\);console.log\\(JSON.parse\\(s\\).data[0]._id\\)}\\)\")",
+      "Bash(curl -s -X POST http://localhost:8080/api/v1/kpi-form-config/form-templates -H 'Authorization: Bearer __TRACKED_VAR__' -H 'Content-Type: application/json' -d '{\"name\":\"ZZ thu vong luu\",\"axisIds\":[],\"isActive\":false,\"headerGroups\":[],\"columns\":[{\"id\":\"c1\",\"key\":\"nhom_diem_A\",\"title\":\"Nhom diem A\",\"semanticKey\":\"score_group\",\"dataType\":\"select\",\"headerPath\":[],\"width\":120,\"visible\":true,\"required\":false},{\"id\":\"c2\",\"key\":\"diem_1\",\"title\":\"Diem 1\",\"semanticKey\":\"custom\",\"dataType\":\"number\",\"headerPath\":[],\"width\":100,\"visible\":true,\"required\":false,\"rangeFromColumnKey\":\"nhom_diem_A\"}]}')",
+      "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(s\\);console.log\\(j.message\\);console.log\\('ID='+\\(j.data?._id||''\\)\\)}\\)\")",
+      "Bash(curl -s -X DELETE http://localhost:8080/api/v1/kpi-form-config/form-templates/6a7a87168aee143c7009c05e -H 'Authorization: Bearer __TRACKED_VAR__')",
+      "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>console.log\\('don mau thu:',JSON.parse\\(s\\).message\\)\\)\")",
+      "Bash(rm -f /tmp/adm.txt)"
     ]
   }
 }

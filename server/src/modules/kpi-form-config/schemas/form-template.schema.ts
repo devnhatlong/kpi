@@ -104,6 +104,14 @@ export class FormTemplateColumn {
 
   @Prop({ default: false })
   required!: boolean;
+
+  /**
+   * Khoá của cột Nhóm điểm quyết định dải điểm hợp lệ cho cột này.
+   * Chỉ đặt cho cột kiểu số. Một mẫu có thể có nhiều cột Nhóm điểm nên phải
+   * chỉ đích danh, không đoán ngầm.
+   */
+  @Prop({ type: String, default: null })
+  rangeFromColumnKey!: string | null;
 }
 
 export const FormTemplateColumnSchema =

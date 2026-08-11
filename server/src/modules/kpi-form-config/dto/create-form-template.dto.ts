@@ -71,6 +71,14 @@ export class FormTemplateColumnDto {
 
   @BooleanNotRequired('Bắt buộc nhập', { example: false })
   required?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Khoá cột Nhóm điểm quyết định dải điểm hợp lệ cho cột này',
+    example: 'score_group',
+  })
+  @IsOptional()
+  @IsString({ message: 'rangeFromColumnKey phải là chuỗi.' })
+  rangeFromColumnKey?: string | null;
 }
 
 export class CreateFormTemplateDto {

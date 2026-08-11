@@ -67,6 +67,7 @@ import {
   FORM_COLUMN_SEMANTIC_LABEL,
   kindOfSemantic,
   localId,
+  scoreGroupColumns,
   SEMANTIC_DATA_TYPE,
   SEMANTIC_KIND_HINT,
   SEMANTIC_KIND_LABEL,
@@ -81,6 +82,7 @@ import { getApiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 const NO_GROUP = "__none__";
+const NO_RANGE = "__norange__";
 
 type FormTemplateBuilderSheetProps = {
   open: boolean;
@@ -102,6 +104,7 @@ function newColumn(): FormTemplateColumn {
     dataType: "text",
     semanticKey: "custom",
     required: false,
+    rangeFromColumnKey: null,
   };
 }
 
@@ -156,6 +159,9 @@ export function FormTemplateBuilderSheet({
     () => buildHeaderRows(columns, headerGroups),
     [columns, headerGroups],
   );
+
+  /** Cột Nhóm điểm trong mẫu - nguồn giới hạn cho các cột điểm. */
+  const scoreColumns = useMemo(() => scoreGroupColumns(columns), [columns]);
 
   const patchColumn = (id: string, patch: Partial<FormTemplateColumn>) => {
     setColumns((prev) =>
@@ -596,6 +602,10 @@ export function FormTemplateBuilderSheet({
                               onValueChange={(value) =>
                                 patchColumn(column.id, {
                                   dataType: value as FormColumnDataType,
+                                  // Chỉ cột số mới giới hạn theo nhóm điểm được.
+                                  ...(value === "number"
+                                    ? {}
+                                    : { rangeFromColumnKey: null }),
                                 })
                               }
                             >
@@ -621,6 +631,35 @@ export function FormTemplateBuilderSheet({
                                   ]
                                 }
                               </p>
+                            ) : null}
+
+                            {/* Cột điểm ăn theo dải của nhóm điểm nào - phải
+                                chỉ đích danh vì mẫu có thể có nhiều cột nhóm điểm. */}
+                            {column.dataType === "number" &&
+                            scoreColumns.length > 0 ? (
+                              <Select
+                                value={column.rangeFromColumnKey || NO_RANGE}
+                                onValueChange={(value) =>
+                                  patchColumn(column.id, {
+                                    rangeFromColumnKey:
+                                      value === NO_RANGE ? null : value,
+                                  })
+                                }
+                              >
+                                <SelectTrigger className="mt-1 h-7 text-[11px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value={NO_RANGE}>
+                                    Không giới hạn điểm
+                                  </SelectItem>
+                                  {scoreColumns.map((item) => (
+                                    <SelectItem key={item.key} value={item.key}>
+                                      Theo &quot;{item.title}&quot;
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             ) : null}
                           </TableCell>
                           <TableCell>

@@ -20,6 +20,10 @@ import {
 import { FormTemplatesService } from '@/modules/kpi-form-config/form-templates.service';
 import { UploadsService } from '@/modules/uploads/uploads.service';
 import {
+  formatScoreGroupRange,
+  isScoreInGroupRange,
+} from '@/modules/kpi-form-config/score-group.constants';
+import {
   Department,
   DepartmentDocument,
 } from '@/modules/departments/schemas/department.schema';
@@ -409,6 +413,7 @@ export class PersonalKpiService {
     // Chốt mẫu bảng ở lần gửi đầu tiên để báo cáo không méo khi mẫu bị sửa.
     await this.stampTemplates(items);
     await this.assertRequiredColumnsFilled(items);
+    await this.assertScoreRangesValid(items);
 
     return this.createSubmission({
       level: 1,
@@ -1066,6 +1071,91 @@ export class PersonalKpiService {
       throw new BadRequestException(
         `Chưa nhập cột bắt buộc - ${problems.join('; ')}.`,
       );
+    }
+  }
+
+  /**
+   * Điểm nhập phải nằm trong dải của nhóm điểm đã chọn ở cột được trỏ tới.
+   * Chặn ở server chứ không chỉ ở ô nhập, vì min/max trên input chỉ là gợi ý -
+   * gọi thẳng API vẫn lưu được số ngoài dải.
+   */
+  private async assertScoreRangesValid(items: PersonalKpiItemDocument[]) {
+    const templateIds = [
+      ...new Set(
+        items
+          .map((item) => item.formTemplateId)
+          .filter((id): id is Types.ObjectId => Boolean(id))
+          .map((id) => String(id)),
+      ),
+    ];
+    if (!templateIds.length) return;
+
+    const templates = await this.formTemplateModel.find({
+      _id: { $in: templateIds.map((id) => new Types.ObjectId(id)) },
+    });
+    const byId = new Map(templates.map((row) => [String(row._id), row]));
+
+    // Gom id nhóm điểm của mọi nhiệm vụ rồi tra một lượt.
+    const groupIds = new Set<string>();
+    for (const item of items) {
+      const template = byId.get(String(item.formTemplateId ?? ''));
+      if (!template) continue;
+      for (const column of template.columns) {
+        if (!column.rangeFromColumnKey) continue;
+        const picked = item.catalogValues?.[column.rangeFromColumnKey]?.id;
+        if (picked) groupIds.add(picked);
+      }
+    }
+    if (!groupIds.size) return;
+
+    const groups = await this.scoreGroupModel.find({
+      _id: { $in: [...groupIds].map((id) => new Types.ObjectId(id)) },
+    });
+    const groupById = new Map(groups.map((row) => [String(row._id), row]));
+
+    const problems: string[] = [];
+    for (const [index, item] of items.entries()) {
+      const template = byId.get(String(item.formTemplateId ?? ''));
+      if (!template) continue;
+
+      for (const column of template.columns) {
+        if (!column.visible || !column.rangeFromColumnKey) continue;
+
+        const groupId = item.catalogValues?.[column.rangeFromColumnKey]?.id;
+        const group = groupId ? groupById.get(groupId) : null;
+        if (!group) continue;
+
+        const raw = item.fieldValues?.[column.key];
+        if (raw === undefined || raw === null || String(raw).trim() === '') {
+          continue;
+        }
+
+        const score = Number(raw);
+        if (!Number.isFinite(score)) {
+          problems.push(`dòng ${index + 1} - "${column.title}" không phải số`);
+          continue;
+        }
+        if (
+          !isScoreInGroupRange(
+            score,
+            group.minScore,
+            group.maxScore,
+            group.maxInclusive,
+          )
+        ) {
+          problems.push(
+            `dòng ${index + 1} - "${column.title}" = ${score}, ngoài dải ${formatScoreGroupRange(
+              group.minScore,
+              group.maxScore,
+              group.maxInclusive,
+            )} của ${group.name}`,
+          );
+        }
+      }
+    }
+
+    if (problems.length) {
+      throw new BadRequestException(`Điểm không hợp lệ - ${problems.join('; ')}.`);
     }
   }
 
