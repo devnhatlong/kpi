@@ -5,8 +5,13 @@ type ApiEnvelope<T> = { message: string; data: T };
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
+/**
+ * Bộ lọc của hộp thoại chọn tệp.
+ * Phải khớp ALLOWED_UPLOAD_EXTENSIONS bên server - server mới là nơi quyết
+ * định, danh sách này chỉ để người dùng khỏi chọn nhầm rồi bị từ chối.
+ */
 export const ACCEPT_UPLOAD =
-  ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.zip,.rar,.7z";
+  ".bm3,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.zip,.rar,.7z";
 
 /**
  * Tải một tệp lên, trả về bản ghi để gắn vào nhiệm vụ.

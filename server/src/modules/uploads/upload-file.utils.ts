@@ -7,6 +7,7 @@ export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
  * trình duyệt gửi lên - trường đó client sửa được.
  */
 export const ALLOWED_UPLOAD_EXTENSIONS = [
+  '.bm3',
   '.pdf',
   '.doc',
   '.docx',
@@ -121,6 +122,14 @@ export function contentMatchesExtension(
   if (buffer.length < 4) return false;
 
   switch (ext) {
+    // Tệp mã hoá của hệ thống báo cáo ngày. AC ED 00 05 là header chung của
+    // Java serialization (STREAM_MAGIC + STREAM_VERSION), nên check này chỉ
+    // khẳng định "đúng là luồng Java serialize", không khẳng định được đây là
+    // bm3 hợp lệ - đủ để chặn đổi đuôi nhầm, không chặn được giả mạo cố ý.
+    // KPI chỉ cất và trả lại nguyên byte, không deserialize, nên không dính
+    // rủi ro thực thi mã của Java serialization.
+    case '.bm3':
+      return startsWith(buffer, [0xac, 0xed, 0x00, 0x05]);
     case '.pdf':
       return startsWith(buffer, [0x25, 0x50, 0x44, 0x46]); // %PDF
     case '.doc':
