@@ -1,20 +1,10 @@
-import type {
-  FormColumnDataType,
-  FormColumnSemantic,
-  FormTemplateColumn,
+import {
+  catalogOfSemantic,
+  type FormColumnDataType,
+  type FormColumnSemantic,
+  type FormTemplateColumn,
 } from "@/features/kpi-form-config/types";
 import type { PersonalTaskDraft } from "@/features/personal-kpi/types";
-
-/**
- * Cột lấy giá trị từ danh mục ghi thẳng vào field id của nhiệm vụ.
- * Mọi cột còn lại là cột tự do, giá trị nằm trong fieldValues theo khoá cột.
- */
-export const SEMANTIC_TO_DRAFT_FIELD: Partial<
-  Record<FormColumnSemantic, keyof PersonalTaskDraft>
-> = {
-  score_group: "scoreGroupId",
-  quality_level: "qualityLevelId",
-};
 
 /**
  * Ô tích hay ô nhập - chỉ còn quyết định bằng kiểu dữ liệu admin cấu hình.
@@ -89,14 +79,18 @@ export function missingRequiredColumns(
   return missing;
 }
 
-/** Giá trị hiển thị của một ô theo cột. */
+/**
+ * Giá trị hiển thị của một ô theo cột.
+ * Cột danh mục trả về id đã chọn (dropdown cần id), cột còn lại trả chuỗi.
+ */
 export function readCellValue(
   task: PersonalTaskDraft,
   semanticKey: FormColumnSemantic,
   columnKey: string,
 ): string {
-  const field = SEMANTIC_TO_DRAFT_FIELD[semanticKey];
-  if (field) return String(task[field] ?? "");
+  if (catalogOfSemantic(semanticKey)) {
+    return task.catalogValues?.[columnKey] ?? "";
+  }
   return task.fieldValues?.[columnKey] ?? "";
 }
 
@@ -107,7 +101,10 @@ export function writeCellValue(
   columnKey: string,
   value: string,
 ): Partial<PersonalTaskDraft> {
-  const field = SEMANTIC_TO_DRAFT_FIELD[semanticKey];
-  if (field) return { [field]: value } as Partial<PersonalTaskDraft>;
+  if (catalogOfSemantic(semanticKey)) {
+    return {
+      catalogValues: { ...(task.catalogValues ?? {}), [columnKey]: value },
+    };
+  }
   return { fieldValues: { ...(task.fieldValues ?? {}), [columnKey]: value } };
 }

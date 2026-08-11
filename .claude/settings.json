@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -X DELETE http://localhost:8080/api/v1/personal-kpi/6a7a79472b9213872703f359 -H 'Authorization: Bearer __TRACKED_VAR__')",
+      "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>console.log\\('don thu nghiem:',JSON.parse\\(s\\).message\\)\\)\")",
+      "Bash(rm -f /tmp/tok.txt /tmp/env.txt)"
+    ]
+  }
+}

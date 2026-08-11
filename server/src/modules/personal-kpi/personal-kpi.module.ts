@@ -15,6 +15,14 @@ import {
   FormTemplate,
   FormTemplateSchema,
 } from '../kpi-form-config/schemas/form-template.schema';
+import {
+  ScoreGroup,
+  ScoreGroupSchema,
+} from '../kpi-form-config/schemas/score-group.schema';
+import {
+  QualityLevel,
+  QualityLevelSchema,
+} from '../kpi-form-config/schemas/quality-level.schema';
 import { KpiFormConfigModule } from '../kpi-form-config/kpi-form-config.module';
 import { UploadsModule } from '../uploads/uploads.module';
 import { User, UserSchema } from '../users/schemas/user.schema';
@@ -37,6 +45,8 @@ import {
       { name: Axis.name, schema: AxisSchema },
       { name: WorkContent.name, schema: WorkContentSchema },
       { name: FormTemplate.name, schema: FormTemplateSchema },
+      { name: ScoreGroup.name, schema: ScoreGroupSchema },
+      { name: QualityLevel.name, schema: QualityLevelSchema },
       { name: User.name, schema: UserSchema },
       { name: Department.name, schema: DepartmentSchema },
     ]),

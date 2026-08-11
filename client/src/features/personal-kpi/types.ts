@@ -56,11 +56,14 @@ export type TaskAttachment = {
 export type PersonalTaskDraft = {
   /** client-only id for list keys */
   key: string;
-  /** Id đã chọn ở các cột lấy giá trị từ danh mục. */
-  scoreGroupId: string;
-  qualityLevelId: string;
   /** Giá trị mọi cột chữ/số của mẫu bảng, key = FormTemplateColumn.key. */
   fieldValues: Record<string, string>;
+  /**
+   * Id đã chọn ở các cột lấy từ danh mục, key = FormTemplateColumn.key.
+   * Theo khoá cột chứ không theo loại danh mục, để hai cột cùng lấy một danh
+   * mục vẫn giữ được hai giá trị khác nhau.
+   */
+  catalogValues: Record<string, string>;
   /** Tệp của các cột kiểu "Tệp đính kèm", key = FormTemplateColumn.key. */
   attachments: Record<string, TaskAttachment[]>;
 };
@@ -117,9 +120,8 @@ function localKey(prefix: string) {
 export function createEmptyTask(_index = 1): PersonalTaskDraft {
   return {
     key: localKey("task"),
-    scoreGroupId: "",
-    qualityLevelId: "",
     fieldValues: {},
+    catalogValues: {},
     attachments: {},
   };
 }

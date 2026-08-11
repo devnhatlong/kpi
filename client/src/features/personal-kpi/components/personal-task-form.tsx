@@ -8,7 +8,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { AttachmentCell } from "@/features/personal-kpi/components/attachment-cell";
-import type { FormTemplateColumn } from "@/features/kpi-form-config/types";
+import { CatalogSelectCell } from "@/features/personal-kpi/components/catalog-select-cell";
+import {
+  catalogOfSemantic,
+  type FormTemplateColumn,
+} from "@/features/kpi-form-config/types";
 import { cn } from "@/lib/utils";
 import {
   cellInputProps,
@@ -92,6 +96,26 @@ export function PersonalTaskForm({
               style={{ minWidth }}
             >
               {workContentLabel}
+            </TableCell>
+          );
+        }
+
+        // Cột gắn danh mục -> dropdown lấy đúng danh mục đã cấu hình, người
+        // nhập không gõ được giá trị ngoài danh sách.
+        const catalog = catalogOfSemantic(column.semanticKey);
+        if (catalog) {
+          return (
+            <TableCell key={column.id} style={{ minWidth }}>
+              <CatalogSelectCell
+                catalog={catalog}
+                value={readCellValue(task, column.semanticKey, column.key)}
+                onValueChange={(next) =>
+                  onChange(
+                    writeCellValue(task, column.semanticKey, column.key, next),
+                  )
+                }
+                disabled={readOnly}
+              />
             </TableCell>
           );
         }

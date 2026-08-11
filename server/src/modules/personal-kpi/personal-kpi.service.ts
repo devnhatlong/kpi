@@ -38,10 +38,19 @@ import {
 } from './dto/personal-kpi.dto';
 import {
   PersonalKpiAttachment,
+  PersonalKpiCatalogValue,
   PersonalKpiItem,
   PersonalKpiItemDocument,
   PersonalKpiReviewStatus,
 } from './schemas/personal-kpi-item.schema';
+import {
+  ScoreGroup,
+  ScoreGroupDocument,
+} from '@/modules/kpi-form-config/schemas/score-group.schema';
+import {
+  QualityLevel,
+  QualityLevelDocument,
+} from '@/modules/kpi-form-config/schemas/quality-level.schema';
 import {
   PersonalKpiSubmission,
   PersonalKpiSubmissionDocument,
@@ -65,8 +74,6 @@ const ROLE_LADDER: RoleCode[] = [
 
 /** Nhãn cột để hiển thị trong lịch sử sửa. */
 const CONTENT_FIELD_LABELS: Record<string, string> = {
-  scoreGroupId: 'Nhóm điểm',
-  qualityLevelId: 'Chất lượng thực hiện',
 };
 
 const BOARD_MAX_ROWS = 2000;
@@ -90,6 +97,10 @@ export class PersonalKpiService {
     private readonly workContentModel: Model<WorkContentDocument>,
     @InjectModel(FormTemplate.name)
     private readonly formTemplateModel: Model<FormTemplateDocument>,
+    @InjectModel(ScoreGroup.name)
+    private readonly scoreGroupModel: Model<ScoreGroupDocument>,
+    @InjectModel(QualityLevel.name)
+    private readonly qualityLevelModel: Model<QualityLevelDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
     @InjectModel(Department.name)
@@ -215,8 +226,6 @@ export class PersonalKpiService {
         .limit(limit)
         .populate('axisId', 'code name description')
         .populate('workContentId', 'code name description')
-        .populate('scoreGroupId', 'code name')
-        .populate('qualityLevelId', 'code name percent')
         .populate('lastDecidedById', 'fullName username'),
       this.itemModel.countDocuments(filter),
     ]);
@@ -660,8 +669,6 @@ export class PersonalKpiService {
       .populate('axisId', 'code name description sortOrder')
       .populate('workContentId', 'code name description sortOrder')
       .populate('ownerId', 'fullName username')
-      .populate('scoreGroupId', 'code name')
-      .populate('qualityLevelId', 'code name percent')
       .populate('ownerDepartmentId', 'code name')
       .populate('lastSenderId', 'fullName username')
       .populate('lastSenderDepartmentId', 'code name');
@@ -1068,9 +1075,8 @@ export class PersonalKpiService {
   ): boolean {
     switch (column.semanticKey) {
       case 'score_group':
-        return !item.scoreGroupId;
       case 'quality_level':
-        return !item.qualityLevelId;
+        return !item.catalogValues?.[column.key]?.id;
       case 'work_content':
         return !item.workContentId;
       default:
@@ -1240,13 +1246,48 @@ export class PersonalKpiService {
 
   private async mapContent(dto: CreatePersonalKpiDto) {
     return {
-      scoreGroupId: dto.scoreGroupId ? new Types.ObjectId(dto.scoreGroupId) : null,
-      qualityLevelId: dto.qualityLevelId
-        ? new Types.ObjectId(dto.qualityLevelId)
-        : null,
       fieldValues: dto.fieldValues ?? {},
+      catalogValues: await this.resolveCatalogValues(dto.catalogValues),
       attachments: await this.sanitizeAttachments(dto.attachments),
     };
+  }
+
+  /**
+   * Tra tên cho các id danh mục client gửi lên, bỏ id không có thật.
+   * Tra ở cả hai danh mục thay vì suy từ mẫu bảng: mẫu có thể chưa được khoá
+   * lúc lưu nháp, còn id thì luôn đủ để biết nó thuộc danh mục nào.
+   */
+  private async resolveCatalogValues(
+    raw: Record<string, unknown> | undefined,
+  ): Promise<Record<string, PersonalKpiCatalogValue>> {
+    if (!raw) return {};
+
+    const wanted = new Map<string, string>();
+    for (const [key, value] of Object.entries(raw)) {
+      const id = typeof value === 'string' ? value.trim() : '';
+      if (id && Types.ObjectId.isValid(id)) wanted.set(key, id);
+    }
+    if (!wanted.size) return {};
+
+    const ids = [...new Set(wanted.values())].map(
+      (id) => new Types.ObjectId(id),
+    );
+    const [scoreGroups, qualityLevels] = await Promise.all([
+      this.scoreGroupModel.find({ _id: { $in: ids } }).select('name'),
+      this.qualityLevelModel.find({ _id: { $in: ids } }).select('name'),
+    ]);
+
+    const nameById = new Map<string, string>();
+    for (const row of [...scoreGroups, ...qualityLevels]) {
+      nameById.set(String(row._id), row.name);
+    }
+
+    const result: Record<string, PersonalKpiCatalogValue> = {};
+    for (const [key, id] of wanted) {
+      const name = nameById.get(id);
+      if (name) result[key] = { id, name };
+    }
+    return result;
   }
 
   /**
@@ -1296,15 +1337,9 @@ export class PersonalKpiService {
     item: PersonalKpiItemDocument,
     dto: UpdatePersonalKpiDto | ReviewerEditPersonalKpiDto,
   ) {
-    if (dto.scoreGroupId !== undefined) {
-      item.scoreGroupId = dto.scoreGroupId
-        ? new Types.ObjectId(dto.scoreGroupId)
-        : null;
-    }
-    if (dto.qualityLevelId !== undefined) {
-      item.qualityLevelId = dto.qualityLevelId
-        ? new Types.ObjectId(dto.qualityLevelId)
-        : null;
+    if (dto.catalogValues !== undefined) {
+      item.catalogValues = await this.resolveCatalogValues(dto.catalogValues);
+      item.markModified('catalogValues');
     }
     if (dto.fieldValues !== undefined) {
       item.fieldValues = { ...item.fieldValues, ...dto.fieldValues };
@@ -1343,8 +1378,6 @@ export class PersonalKpiService {
       });
     };
 
-    compare('scoreGroupId', dto.scoreGroupId);
-    compare('qualityLevelId', dto.qualityLevelId);
 
     for (const [key, next] of Object.entries(dto.fieldValues ?? {})) {
       const current = item.fieldValues?.[key];

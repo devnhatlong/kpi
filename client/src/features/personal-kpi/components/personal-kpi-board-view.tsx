@@ -86,10 +86,10 @@ function cellText(row: PersonalKpiBoardRow, column: FormTemplateColumn): string 
   switch (column.semanticKey) {
     case "work_content":
       return refLabel(row.workContentId);
+    // Cột danh mục lấy theo khoá cột, để hai cột cùng danh mục không lẫn nhau.
     case "score_group":
-      return refLabel(row.scoreGroupId);
     case "quality_level":
-      return refLabel(row.qualityLevelId);
+      return row.catalogValues?.[column.key]?.name ?? "";
     case "stt":
       return "";
     default: {

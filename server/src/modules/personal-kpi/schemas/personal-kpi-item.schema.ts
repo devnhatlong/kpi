@@ -38,6 +38,16 @@ export type PersonalKpiAttachment = {
   mimeType: string;
 };
 
+/**
+ * Giá trị đã chọn ở một cột lấy từ danh mục.
+ * Tên chép lại lúc lưu để báo cáo đã gửi giữ nguyên chữ tại thời điểm đó, kể cả
+ * khi danh mục bị sửa về sau - cùng nguyên tắc với việc khoá phiên bản mẫu bảng.
+ */
+export type PersonalKpiCatalogValue = {
+  id: string;
+  name: string;
+};
+
 /** Một trường bị cấp trên sửa - giữ cả giá trị trước và sau. */
 @Schema({ _id: false })
 export class PersonalKpiFieldChange {
@@ -127,17 +137,13 @@ export class PersonalKpiItem {
   })
   workContentId!: Types.ObjectId;
 
-  /** Cột chọn từ danh mục - lưu id, tên và phần trăm tra ngược qua populate. */
-  @Prop({ type: Types.ObjectId, ref: 'ScoreGroup', default: null, index: true })
-  scoreGroupId!: Types.ObjectId | null;
-
-  @Prop({
-    type: Types.ObjectId,
-    ref: 'QualityLevel',
-    default: null,
-    index: true,
-  })
-  qualityLevelId!: Types.ObjectId | null;
+  /**
+   * Giá trị các cột lấy từ danh mục, key = FormTemplateColumn.key.
+   * Theo khoá cột chứ không theo loại danh mục, để hai cột cùng lấy một danh
+   * mục vẫn giữ được hai giá trị khác nhau.
+   */
+  @Prop({ type: Object, default: {} })
+  catalogValues!: Record<string, PersonalKpiCatalogValue>;
 
   /**
    * Giá trị mọi cột chữ/số của mẫu bảng, key = FormTemplateColumn.key.

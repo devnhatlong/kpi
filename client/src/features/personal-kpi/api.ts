@@ -29,9 +29,8 @@ export type PersonalKpiApiRecord = {
   ownerId?: string | CatalogRef;
   axisId: string | CatalogRef;
   workContentId: string | CatalogRef;
-  /** Cột chọn từ danh mục - server populate sẵn tên để hiển thị. */
-  scoreGroupId?: string | CatalogRef | null;
-  qualityLevelId?: string | CatalogRef | null;
+  /** Cột danh mục theo khoá cột - server chép sẵn tên để khỏi join. */
+  catalogValues?: Record<string, { id: string; name: string }>;
   fieldValues?: Record<string, string | number>;
   attachments?: Record<string, TaskAttachment[]>;
   lastSentAt?: string | null;
@@ -110,8 +109,8 @@ export type PersonalKpiSubmission = {
 export type PersonalKpiWriteInput = {
   axisId: string;
   workContentId: string;
-  scoreGroupId?: string;
-  qualityLevelId?: string;
+  /** Cột danh mục: { "<khoá cột>": "<id>" }. */
+  catalogValues?: Record<string, string>;
   /** Giá trị các cột chữ/số của mẫu bảng gán cho trục. */
   fieldValues?: Record<string, string>;
   /** Tệp của các cột kiểu "Tệp đính kèm", key = khoá cột. */
@@ -147,8 +146,13 @@ export function mapPersonalKpiFromApi(
 ): PersonalKpiItem {
   const task: PersonalTaskDraft = {
     key: row._id,
-    scoreGroupId: refId(row.scoreGroupId),
-    qualityLevelId: refId(row.qualityLevelId),
+    // Dropdown cần id; tên do server chép sẵn chỉ dùng cho bảng duyệt.
+    catalogValues: Object.fromEntries(
+      Object.entries(row.catalogValues ?? {}).map(([key, value]) => [
+        key,
+        value?.id ?? "",
+      ]),
+    ),
     fieldValues: Object.fromEntries(
       Object.entries(row.fieldValues ?? {}).map(([key, value]) => [
         key,
@@ -195,8 +199,9 @@ export function taskToWriteInput(
   return {
     axisId,
     workContentId,
-    scoreGroupId: task.scoreGroupId || undefined,
-    qualityLevelId: task.qualityLevelId || undefined,
+    catalogValues: Object.fromEntries(
+      Object.entries(task.catalogValues ?? {}).filter(([, id]) => id),
+    ),
     fieldValues: Object.fromEntries(
       Object.entries(task.fieldValues ?? {}).filter(([, value]) =>
         value.trim(),

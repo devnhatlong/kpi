@@ -20,15 +20,16 @@ import { PERSONAL_KPI_REVIEW_STATUSES } from '../schemas/personal-kpi-item.schem
 
 /** Các trường nội dung dùng chung cho tạo / sửa / cấp trên sửa. */
 export class PersonalKpiContentDto {
-  @ApiPropertyOptional({ description: 'Chọn từ danh mục Nhóm điểm' })
+  /**
+   * Giá trị cột danh mục theo khoá cột: { "<khoá cột>": "<id trong danh mục>" }.
+   * Service tra lại tên trong danh mục nên id không có thật sẽ bị bỏ.
+   */
+  @ApiPropertyOptional({
+    description: 'Cột lấy từ danh mục: { "<khoá cột>": "<id>" }',
+  })
   @IsOptional()
-  @IsMongoId()
-  scoreGroupId?: string | null;
-
-  @ApiPropertyOptional({ description: 'Chọn từ danh mục Chất lượng thực hiện' })
-  @IsOptional()
-  @IsMongoId()
-  qualityLevelId?: string | null;
+  @IsObject()
+  catalogValues?: Record<string, unknown>;
 
   @ApiPropertyOptional()
   @IsOptional()
