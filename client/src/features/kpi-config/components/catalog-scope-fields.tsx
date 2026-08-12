@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { fetchDepartments } from "@/features/organization/api";
 import { entityId } from "@/features/organization/types";
-import type { CatalogScope } from "../types";
+import type { CatalogScope, DepartmentRef } from "../types";
 import { CatalogScopeBadge } from "./catalog-scope-badge";
 
 type CatalogScopeFieldsProps = {
@@ -25,7 +25,7 @@ type CatalogScopeFieldsProps = {
   readOnly?: boolean;
   readOnlyOwnerDepartmentId?: {
     scope?: CatalogScope;
-    ownerDepartmentId?: { code: string; name: string } | string | null;
+    ownerDepartmentId?: DepartmentRef | string | null;
   };
 };
 

@@ -637,7 +637,9 @@ export function KpiConfigView() {
             users={users}
             initialTemplateId={selectedTemplateId}
             initialConfigTab={templateConfigTab}
-            onTemplatesChange={() => systemTemplatesQuery.mutate()}
+            onTemplatesChange={() => {
+              void systemTemplatesQuery.mutate();
+            }}
           />
         </TabsContent>
       </Tabs>

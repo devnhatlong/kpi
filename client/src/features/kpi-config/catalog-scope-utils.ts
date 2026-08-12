@@ -1,7 +1,7 @@
 import { entityId } from "@/features/organization/types";
 import type { CatalogScope, DepartmentRef } from "./types";
 
-type ScopedCatalogItem = {
+export type ScopedCatalogItem = {
   scope?: CatalogScope;
   ownerDepartmentId?: DepartmentRef | string | null;
 };
@@ -41,11 +41,13 @@ export function canUserMutateCatalogItem(
   return isDepartmentCatalog(item);
 }
 
-export function groupsForCatalogScope(
-  groups: Array<{ scope?: CatalogScope; ownerDepartmentId?: DepartmentRef | string | null }>,
+// Generic để giữ nguyên kiểu thật của phần tử (_id, name, ...) cho phía gọi,
+// thay vì thu hẹp về ScopedCatalogItem.
+export function groupsForCatalogScope<T extends ScopedCatalogItem>(
+  groups: readonly T[],
   scope: CatalogScope,
   ownerDepartmentId: string,
-): typeof groups {
+): T[] {
   if (scope === "SYSTEM") {
     return groups.filter((group) => !isDepartmentCatalog(group));
   }
