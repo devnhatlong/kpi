@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
@@ -219,13 +220,22 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild tooltip={SIDEBAR_BRAND.title}>
+            <SidebarMenuButton
+              size="lg"
+              asChild
+              tooltip={SIDEBAR_BRAND.title}
+              className="h-14 group-data-[collapsible=icon]:h-14 group-data-[collapsible=icon]:p-1"
+            >
               <Link href="/dashboard">
-                <div
-                  className="flex aspect-square size-8 items-center justify-center rounded-lg text-sm font-bold text-primary-foreground"
-                  style={{ background: "var(--gradient-hero)" }}
-                >
-                  K
+                <div className="relative aspect-square size-10 shrink-0 overflow-hidden rounded-lg">
+                  <Image
+                    src={SIDEBAR_BRAND.logo}
+                    alt={SIDEBAR_BRAND.title}
+                    fill
+                    sizes="40px"
+                    className="object-contain"
+                    priority
+                  />
                 </div>
                 <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-display font-semibold">

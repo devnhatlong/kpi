@@ -218,6 +218,7 @@ export function pathRequiresPermissions(
 }
 
 export const SIDEBAR_BRAND = {
-  title: "KPI Manager",
-  subtitle: "Performance",
+  title: "Quản lý KPI",
+  subtitle: "Công an Lâm Đồng",
+  logo: "/icons/logo_main.png",
 } as const;

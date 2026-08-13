@@ -19,8 +19,8 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata: Metadata = {
   title: {
-    default: "KPI Manager",
-    template: "KPI Manager - %s",
+    default: "Quản lý KPI - Công an Lâm Đồng",
+    template: "%s - Quản lý KPI",
   },
   description: "Hệ thống chấm điểm và quản lý KPI",
 };
