@@ -5,7 +5,7 @@ import { api, unwrapData } from "@/lib/api-client";
 import { clearTokens, getRefreshToken, setTokens } from "@/lib/auth-storage";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8080/api/v1";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "/api/v1";
 
 /** Login dùng raw axios để tránh gắn Bearer / kích hoạt refresh interceptor. */
 export async function loginRequest(username: string, password: string): Promise<AuthTokens> {
