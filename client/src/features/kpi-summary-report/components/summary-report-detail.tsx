@@ -197,7 +197,7 @@ export function SummaryReportDetail({ reportId }: SummaryReportDetailProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start gap-3">
-        <Button asChild size="sm" variant="ghost" className="px-2">
+        <Button asChild size="sm" variant="outline" className="bg-background">
           <Link href="/kpi/promote">
             <ArrowLeft className="size-4" />
             Danh sách
