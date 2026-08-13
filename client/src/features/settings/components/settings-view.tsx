@@ -2,27 +2,35 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Lock, UserRound } from "lucide-react";
+import { Lock, Usb, UserRound } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { ProfileSettings } from "@/features/settings/components/profile-settings";
 import { SecuritySettings } from "@/features/settings/components/security-settings";
+import { UsbTokenSettings } from "@/features/settings/components/usb-token-settings";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { key: "profile", label: "Hồ sơ", icon: UserRound },
   { key: "security", label: "Bảo mật", icon: Lock },
+  { key: "usb-token", label: "USB Token", icon: Usb },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
+
+const TAB_KEYS = TABS.map((item) => item.key) as readonly string[];
 
 export function SettingsView() {
   // Mở đúng tab theo ?tab= để menu tài khoản trỏ thẳng được vào từng mục,
   // thay vì hai mục cùng đổ về một màn hình giống hệt nhau.
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialTab: TabKey =
-    searchParams.get("tab") === "security" ? "security" : "profile";
+  // Đối chiếu với danh sách tab thay vì so từng chuỗi, để thêm tab sau này
+  // không phải sửa thêm chỗ nào ở đây nữa.
+  const requestedTab = searchParams.get("tab") ?? "";
+  const initialTab: TabKey = TAB_KEYS.includes(requestedTab)
+    ? (requestedTab as TabKey)
+    : "profile";
   const [tab, setTab] = useState<TabKey>(initialTab);
 
   /** Đổi tab thì URL đổi theo, để copy link ra là mở đúng chỗ. */
@@ -38,7 +46,7 @@ export function SettingsView() {
           Tài khoản của tôi
         </h1>
         <p className="text-sm text-muted-foreground">
-          Thông tin cá nhân và mật khẩu đăng nhập
+          Thông tin cá nhân, mật khẩu đăng nhập và chứng thư số
         </p>
       </div>
 
@@ -74,7 +82,9 @@ export function SettingsView() {
           </nav>
 
           <div className="min-w-0 flex-1 p-5 md:p-6">
-            {tab === "profile" ? <ProfileSettings /> : <SecuritySettings />}
+            {tab === "profile" ? <ProfileSettings /> : null}
+            {tab === "security" ? <SecuritySettings /> : null}
+            {tab === "usb-token" ? <UsbTokenSettings /> : null}
           </div>
         </div>
       </Card>
