@@ -220,5 +220,5 @@ export function pathRequiresPermissions(
 export const SIDEBAR_BRAND = {
   title: "Quản lý KPI",
   subtitle: "Công an Lâm Đồng",
-  logo: "/icons/logo_main.png",
+  logo: "/icons/logo_cand.png",
 } as const;

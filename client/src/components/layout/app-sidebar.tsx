@@ -227,7 +227,7 @@ export function AppSidebar() {
               className="h-14 group-data-[collapsible=icon]:h-14 group-data-[collapsible=icon]:p-1"
             >
               <Link href="/dashboard">
-                <div className="relative aspect-square size-10 shrink-0 overflow-hidden rounded-lg">
+                <div className="relative aspect-square size-10 shrink-0">
                   <Image
                     src={SIDEBAR_BRAND.logo}
                     alt={SIDEBAR_BRAND.title}
