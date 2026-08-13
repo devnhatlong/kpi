@@ -83,6 +83,15 @@
   --sidebar-border: oklch(0.93 0.01 255);
   --sidebar-ring: oklch(0.55 0.20 265);
 
+  /*
+   * Màu chuỗi dữ liệu cho biểu đồ. Không lấy --primary: token giao diện đổi
+   * theo thẩm mỹ, còn hai màu này phải giữ nguyên vì đã kiểm đạt ngưỡng phân
+   * biệt cho người mù màu trên đúng nền card của dự án (ΔE 24.7 protan sáng,
+   * 26.8 tối). Đổi màu ở đây thì phải kiểm lại.
+   */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+
   --gradient-hero: linear-gradient(135deg, oklch(0.55 0.20 265), oklch(0.72 0.18 255));
   --gradient-mesh: radial-gradient(at 20% 20%, oklch(0.72 0.18 255 / 0.35), transparent 55%),
     radial-gradient(at 80% 30%, oklch(0.55 0.20 265 / 0.20), transparent 55%),
@@ -123,6 +132,10 @@
   --sidebar-accent-foreground: oklch(0.97 0.01 250);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.72 0.18 255);
+
+  /* Cùng hai sắc, nhưng lấy bậc dựng riêng cho nền tối - không phải lật màu. */
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
 }
 
 @layer base {

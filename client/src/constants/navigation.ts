@@ -6,16 +6,16 @@ import {
   FileSpreadsheet,
   FormInput,
   Gauge,
-  Inbox,
   KeyRound,
   Layers,
   ListTree,
-  MailOpen,
   Network,
   Settings,
   Shield,
   ShieldCheck,
+  Stamp,
   Table2,
+  Target,
   Users,
 } from "lucide-react";
 
@@ -62,13 +62,16 @@ export const NAV_ITEMS: NavItem[] = [
   {
     title: "Duyệt KPI cấp dưới",
     href: "/kpi/received",
-    icon: MailOpen,
+    // Con dấu: việc ở đây là duyệt. Trước dùng phong bì, trùng dáng với mục
+    // ngay dưới nên hai dòng nhìn như một.
+    icon: Stamp,
     permissions: [PERM.EVALUATION_APPROVE],
   },
   {
     title: "KPI cấp trên giao",
     href: "/kpi/assigned",
-    icon: Inbox,
+    // Bia ngắm: đây là chỉ tiêu được giao xuống, không phải hộp thư đến.
+    icon: Target,
     permissions: [PERM.TASK_VIEW],
   },
   {

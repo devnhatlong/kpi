@@ -21,6 +21,7 @@ import {
   PersonalKpiBoardQueryDto,
   PersonalKpiListQueryDto,
   PersonalKpiReportsQueryDto,
+  PersonalKpiStatisticsQueryDto,
   ReviewPersonalKpiDto,
   ReviewerEditPersonalKpiDto,
   SubmitPersonalKpiDto,
@@ -52,6 +53,16 @@ export class PersonalKpiController {
   @Get('summary')
   summary(@CurrentUser() user: JwtPayloadUser) {
     return this.personalKpiService.getDashboardSummary(user.uid);
+  }
+
+  @ApiOperation({ summary: 'Số liệu cho trang Thống kê' })
+  @Permissions(Permission.EVALUATION_SELF)
+  @Get('statistics')
+  statistics(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: PersonalKpiStatisticsQueryDto,
+  ) {
+    return this.personalKpiService.statistics(user.uid, query);
   }
 
   @ApiOperation({ summary: 'Danh sách báo cáo theo ngày của tôi' })

@@ -286,3 +286,32 @@ export class PersonalKpiBoardQueryDto {
   @IsBoolean()
   includeDecided?: boolean;
 }
+
+export const PERSONAL_KPI_STAT_SCOPES = ['mine', 'unit'] as const;
+export type PersonalKpiStatScope = (typeof PERSONAL_KPI_STAT_SCOPES)[number];
+
+export class PersonalKpiStatisticsQueryDto {
+  @ApiPropertyOptional({ description: 'Bỏ trống = 30 ngày gần nhất' })
+  @IsOptional()
+  @IsString()
+  fromDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  toDate?: string;
+
+  @ApiPropertyOptional({
+    enum: PERSONAL_KPI_STAT_SCOPES,
+    description:
+      'mine = nhiệm vụ của tôi; unit = cả cây đơn vị của tôi, cần quyền duyệt',
+  })
+  @IsOptional()
+  @IsIn([...PERSONAL_KPI_STAT_SCOPES])
+  scope?: PersonalKpiStatScope;
+
+  @ApiPropertyOptional({ description: 'Lọc theo một trục' })
+  @IsOptional()
+  @IsMongoId()
+  axisId?: string;
+}

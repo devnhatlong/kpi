@@ -69,7 +69,11 @@
       "Bash(git -C /d/Project/WebApp/KPI stash push -q -- client/src/features/kpi-form-config/components/form-template-builder-sheet.tsx client/src/features/personal-kpi/components/personal-kpi-board-view.tsx)",
       "Bash(git -C /d/Project/WebApp/KPI stash pop -q)",
       "Bash(git -C /d/Project/WebApp/KPI status --short)",
-      "Bash(git -C /d/Project/WebApp/KPI stash push -q -- client/src/features/kpi-form-config/components/axis-form-dialog.tsx)"
+      "Bash(git -C /d/Project/WebApp/KPI stash push -q -- client/src/features/kpi-form-config/components/axis-form-dialog.tsx)",
+      "Bash(node scripts/validate_palette.js \"#2a78d6,#eb6834\" --mode light --surface \"#ffffff\")",
+      "Bash(node scripts/validate_palette.js \"#3987e5,#d95926\" --mode dark --surface \"#101a2d\")",
+      "Bash(node scripts/validate_palette.js \"#0ca30c,#2a78d6,#fab219,#d03b3b,#898781\" --mode light --surface \"#ffffff\")",
+      "Bash(grep -iE \"^\\(stamp|target|clipboard-check|badge-check|package-open|crosshair\\)\\\\.js$\")"
     ]
   }
 }

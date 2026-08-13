@@ -35,11 +35,17 @@ import {
   PersonalKpiBoardQueryDto,
   PersonalKpiListQueryDto,
   PersonalKpiReportsQueryDto,
+  PersonalKpiStatisticsQueryDto,
   ReviewPersonalKpiDto,
   ReviewerEditPersonalKpiDto,
   SubmitPersonalKpiDto,
   UpdatePersonalKpiDto,
+  type PersonalKpiStatScope,
 } from './dto/personal-kpi.dto';
+import {
+  computeAxisScore,
+  type ScoreCatalogs,
+} from './personal-kpi-score.util';
 import {
   PersonalKpiAttachment,
   PersonalKpiCatalogValue,
@@ -81,6 +87,13 @@ const CONTENT_FIELD_LABELS: Record<string, string> = {
 };
 
 const BOARD_MAX_ROWS = 2000;
+
+/**
+ * Trang Thống kê phải quét rộng hơn bảng duyệt vì còn xếp hạng theo cán bộ.
+ * Chạm ngưỡng thì trả kèm cờ `truncated` để màn hình nói rõ số liệu chưa đủ,
+ * thay vì im lặng đưa ra một bảng xếp hạng thiếu người.
+ */
+const STATS_MAX_ROWS = 20000;
 
 type ActorInfo = {
   id: Types.ObjectId;
@@ -367,6 +380,487 @@ export class PersonalKpiService {
         approvedCount: statusMap.get('APPROVED') ?? 0,
       },
     };
+  }
+
+  // ============================================================== thống kê
+
+  /**
+   * Số liệu cho trang Thống kê. Tất cả đều đếm/cộng từ nhiệm vụ có thật, không
+   * có con số dựng sẵn nào.
+   *
+   * Phạm vi:
+   *   mine = nhiệm vụ do tôi tạo;
+   *   unit = mọi nhiệm vụ của cây đơn vị tôi đứng đầu, chỉ mở cho người có
+   *          quyền duyệt - không thì ai cũng đọc được số của đơn vị khác.
+   */
+  async statistics(userId: string, query: PersonalKpiStatisticsQueryDto) {
+    const actor = await this.requireActor(userId);
+    const today = serverDateYmd();
+    const toDate = query.toDate
+      ? this.requireYmd(query.toDate, 'toDate')
+      : today;
+    const fromDate = query.fromDate
+      ? this.requireYmd(query.fromDate, 'fromDate')
+      : shiftYmd(toDate, -29);
+    if (fromDate > toDate) {
+      throw new BadRequestException('Khoảng ngày không hợp lệ.');
+    }
+
+    const scope = await this.resolveStatScope(userId, actor, query.scope);
+    const filter: Record<string, unknown> = {
+      ...scope.filter,
+      reportDate: { $gte: fromDate, $lte: toDate },
+    };
+    if (query.axisId) filter.axisId = this.requireObjectId(query.axisId, 'Trục');
+
+    const [statusRows, dailyRows, axisRows, departmentRows, contentRows] =
+      await Promise.all([
+        this.itemModel.aggregate<{ _id: PersonalKpiReviewStatus; total: number }>(
+          [
+            { $match: filter },
+            { $group: { _id: '$reviewStatus', total: { $sum: 1 } } },
+          ],
+        ),
+        this.itemModel.aggregate<{
+          _id: string;
+          total: number;
+          sent: number;
+          completed: number;
+        }>([
+          { $match: filter },
+          {
+            $group: {
+              _id: '$reportDate',
+              total: { $sum: 1 },
+              sent: {
+                $sum: { $cond: [{ $ne: ['$reviewStatus', 'DRAFT'] }, 1, 0] },
+              },
+              completed: this.countIf('COMPLETED'),
+            },
+          },
+          { $sort: { _id: 1 } },
+        ]),
+        this.itemModel.aggregate<{ _id: Types.ObjectId; total: number }>([
+          { $match: filter },
+          { $group: { _id: '$axisId', total: { $sum: 1 } } },
+        ]),
+        this.itemModel.aggregate<{
+          _id: Types.ObjectId | null;
+          total: number;
+          completed: number;
+        }>([
+          { $match: filter },
+          {
+            $group: {
+              _id: '$ownerDepartmentId',
+              total: { $sum: 1 },
+              completed: this.countIf('COMPLETED'),
+            },
+          },
+          { $sort: { total: -1 } },
+          { $limit: 12 },
+        ]),
+        this.itemModel.aggregate<{ _id: Types.ObjectId; total: number }>([
+          { $match: filter },
+          { $group: { _id: '$workContentId', total: { $sum: 1 } } },
+          { $sort: { total: -1 } },
+          { $limit: 10 },
+        ]),
+      ]);
+
+    // Kỳ trước = cùng độ dài, liền kề phía trước - để nói "so với kỳ trước"
+    // mà không phải đoán độ dài tháng.
+    const rangeDays = this.daysBetween(fromDate, toDate);
+    const prevToDate = shiftYmd(fromDate, -1);
+    const prevFromDate = shiftYmd(prevToDate, -(rangeDays - 1));
+    const prevFilter = {
+      ...scope.filter,
+      reportDate: { $gte: prevFromDate, $lte: prevToDate },
+      ...(query.axisId ? { axisId: filter.axisId } : {}),
+    };
+
+    const [breakdown, departments, contents, prevStatusRows, prevStaff, staff] =
+      await Promise.all([
+        this.scoreBreakdown(filter),
+        this.departmentModel
+          .find({
+            _id: {
+              $in: departmentRows
+                .map((row) => row._id)
+                .filter((id): id is Types.ObjectId => Boolean(id)),
+            },
+          })
+          .select('code name'),
+        this.workContentModel
+          .find({ _id: { $in: contentRows.map((row) => row._id) } })
+          .select('code name'),
+        this.itemModel.aggregate<{
+          _id: PersonalKpiReviewStatus;
+          total: number;
+        }>([
+          { $match: prevFilter },
+          { $group: { _id: '$reviewStatus', total: { $sum: 1 } } },
+        ]),
+        // Đếm qua aggregate thay vì distinct: distinct đòi kiểu filter chặt,
+        // còn filter ở đây dựng động theo phạm vi và bộ lọc.
+        this.itemModel.aggregate<{ count: number }>([
+          { $match: prevFilter },
+          { $group: { _id: '$ownerId' } },
+          { $count: 'count' },
+        ]),
+        this.itemModel.aggregate<{ count: number }>([
+          { $match: filter },
+          { $group: { _id: '$ownerId' } },
+          { $count: 'count' },
+        ]),
+      ]);
+
+    const statusMap = new Map(statusRows.map((row) => [row._id, row.total]));
+    const axisCountMap = new Map(
+      axisRows.map((row) => [String(row._id), row.total]),
+    );
+    const departmentById = new Map(
+      departments.map((row) => [String(row._id), row]),
+    );
+    const contentById = new Map(contents.map((row) => [String(row._id), row]));
+
+    const totalTasks = statusRows.reduce((sum, row) => sum + row.total, 0);
+
+    // Chuỗi ngày liên tục để biểu đồ không bị đứt đoạn ở ngày không có việc.
+    const daily: Array<{
+      date: string;
+      total: number;
+      sent: number;
+      completed: number;
+    }> = [];
+    const dailyByDate = new Map(dailyRows.map((row) => [row._id, row]));
+    for (let day = fromDate; day <= toDate; day = shiftYmd(day, 1)) {
+      const row = dailyByDate.get(day);
+      daily.push({
+        date: day,
+        total: row?.total ?? 0,
+        sent: row?.sent ?? 0,
+        completed: row?.completed ?? 0,
+      });
+    }
+
+    const prevStatusMap = new Map(
+      prevStatusRows.map((row) => [row._id, row.total]),
+    );
+    const prevTasks = prevStatusRows.reduce((sum, row) => sum + row.total, 0);
+
+    // Điểm trung bình mỗi đơn vị = trung bình điểm của cán bộ đơn vị đó có việc
+    // trong kỳ. Không cộng dồn điểm cả đơn vị: thang xếp loại là thang 100 của
+    // một người, cộng lại thì không còn nghĩa gì.
+    const scoreByDepartment = new Map<string, { sum: number; people: number }>();
+    for (const person of breakdown.leaderboard) {
+      const key = person.departmentId ?? '';
+      const bucket = scoreByDepartment.get(key) ?? { sum: 0, people: 0 };
+      bucket.sum += person.score;
+      bucket.people += 1;
+      scoreByDepartment.set(key, bucket);
+    }
+
+    return {
+      message: 'OK',
+      data: {
+        range: { fromDate, toDate, today, days: rangeDays },
+        previousRange: { fromDate: prevFromDate, toDate: prevToDate },
+        scope: scope.applied,
+        scopeLabel: scope.label,
+        canViewUnit: scope.canViewUnit,
+        truncated: breakdown.truncated,
+        totalMaxScore: breakdown.totalMaxScore,
+        totals: {
+          tasks: totalTasks,
+          draft: statusMap.get('DRAFT') ?? 0,
+          pending: statusMap.get('PENDING') ?? 0,
+          approved: statusMap.get('APPROVED') ?? 0,
+          returned: statusMap.get('RETURNED') ?? 0,
+          completed: statusMap.get('COMPLETED') ?? 0,
+          reportedDays: dailyRows.filter((row) => row.total > 0).length,
+          rangeDays: daily.length,
+          staffCount: staff[0]?.count ?? 0,
+        },
+        /** Cùng chỉ số ở kỳ liền trước - màn hình tự tính phần trăm chênh. */
+        previousTotals: {
+          tasks: prevTasks,
+          pending: prevStatusMap.get('PENDING') ?? 0,
+          completed: prevStatusMap.get('COMPLETED') ?? 0,
+          returned: prevStatusMap.get('RETURNED') ?? 0,
+          staffCount: prevStaff[0]?.count ?? 0,
+        },
+        daily,
+        axes: breakdown.axes.map((axis) => ({
+          ...axis,
+          taskCount: axisCountMap.get(axis.axisId) ?? axis.taskCount,
+        })),
+        leaderboard: breakdown.leaderboard.map((person) => ({
+          ...person,
+          departmentName: person.departmentId
+            ? (departmentById.get(person.departmentId)?.name ?? '')
+            : '',
+        })),
+        departments: departmentRows.map((row) => {
+          const key = row._id ? String(row._id) : '';
+          const dept = row._id ? departmentById.get(key) : null;
+          const scored = scoreByDepartment.get(key);
+          return {
+            departmentId: row._id ? String(row._id) : null,
+            code: dept?.code ?? '',
+            name: dept?.name ?? 'Chưa gán đơn vị',
+            taskCount: row.total,
+            completedCount: row.completed,
+            staffCount: scored?.people ?? 0,
+            /** null = không có ai trong đơn vị tính được điểm. */
+            averageScore: scored?.people ? scored.sum / scored.people : null,
+          };
+        }),
+        workContents: contentRows.map((row) => {
+          const content = contentById.get(String(row._id));
+          return {
+            workContentId: String(row._id),
+            code: content?.code ?? '',
+            name: content?.name ?? '',
+            taskCount: row.total,
+          };
+        }),
+      },
+    };
+  }
+
+  /** Số ngày trong khoảng, tính cả hai đầu. */
+  private daysBetween(fromDate: string, toDate: string): number {
+    let days = 1;
+    for (let day = fromDate; day < toDate; day = shiftYmd(day, 1)) days += 1;
+    return days;
+  }
+
+  /**
+   * Điểm quy đổi trong phạm vi đang xem - tính một lượt rồi cắt theo hai chiều:
+   * gộp toàn bộ theo trục, và gộp theo từng cán bộ để xếp hạng.
+   *
+   * Lấy mẫu đang gán cho trục chứ không theo phiên bản khoá lúc gửi: thống kê
+   * là ảnh chụp hiện tại theo cách chấm hiện hành, khác với bảng duyệt phải
+   * dựng lại đúng bảng của thời điểm gửi.
+   */
+  private async scoreBreakdown(filter: Record<string, unknown>) {
+    const rows = await this.itemModel
+      .find(filter)
+      .select('ownerId ownerDepartmentId axisId fieldValues catalogValues')
+      .limit(STATS_MAX_ROWS);
+
+    const [allAxes, templates, scoreGroups, qualityLevels] = await Promise.all([
+      this.axisModel.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }),
+      this.formTemplateModel.find({ isActive: true }),
+      this.scoreGroupModel
+        .find({ isActive: true })
+        .select('code name minScore maxScore maxInclusive formulaScore sortOrder')
+        .sort({ sortOrder: 1, minScore: 1 }),
+      this.qualityLevelModel.find().select('percent'),
+    ]);
+
+    const catalogs: ScoreCatalogs = {
+      scoreGroups: new Map(
+        scoreGroups.map((group) => [
+          String(group._id),
+          {
+            maxScore: group.maxScore,
+            maxInclusive: group.maxInclusive,
+            formulaScore: group.formulaScore,
+          },
+        ]),
+      ),
+      qualityLevels: new Map(
+        qualityLevels.map((level) => [
+          String(level._id),
+          { percent: level.percent },
+        ]),
+      ),
+    };
+
+    const templateByAxis = new Map<string, FormTemplateDocument>();
+    for (const template of templates) {
+      for (const axisId of template.axisIds) {
+        templateByAxis.set(String(axisId), template);
+      }
+    }
+
+    /**
+     * Mẫu số của thang xếp hạng: tổng trần của MỌI trục đang hoạt động, không
+     * phải chỉ những trục cán bộ có việc. Bỏ trắng một trục là mất điểm trục
+     * đó, chứ không phải được chấm trên thang nhỏ hơn.
+     */
+    const totalMaxScore = allAxes.reduce(
+      (sum, axis) => sum + (axis.maxScore ?? 0),
+      0,
+    );
+
+    const scoreOf = (
+      bucket: Map<string, PersonalKpiItemDocument[]>,
+    ) =>
+      allAxes.map((axis) => {
+        const axisId = String(axis._id);
+        const template = templateByAxis.get(axisId);
+        const axisRows = bucket.get(axisId) ?? [];
+        const score = computeAxisScore(
+          axisRows,
+          template?.columns ?? [],
+          template?.footer,
+          axis.maxScore ?? 0,
+          catalogs,
+        );
+        return {
+          axisId,
+          axisCode: axis.code,
+          axisName: axis.name,
+          axisMaxScore: axis.maxScore ?? 0,
+          /** null = trục chưa cấu hình công thức hoặc chưa có số liệu để chia. */
+          axisScore: score.axisScore,
+          convertedScore: score.convertedScore,
+          hasFormula: template?.footer?.enabled === true,
+          taskCount: axisRows.length,
+        };
+      });
+
+    const pushInto = <K>(map: Map<K, Map<string, PersonalKpiItemDocument[]>>, key: K, row: PersonalKpiItemDocument) => {
+      let byAxis = map.get(key);
+      if (!byAxis) {
+        byAxis = new Map();
+        map.set(key, byAxis);
+      }
+      const axisKey = String(row.axisId);
+      const bucket = byAxis.get(axisKey);
+      if (bucket) bucket.push(row);
+      else byAxis.set(axisKey, [row]);
+    };
+
+    const globalByAxis = new Map<string, PersonalKpiItemDocument[]>();
+    const byOwner = new Map<string, Map<string, PersonalKpiItemDocument[]>>();
+    const ownerDepartment = new Map<string, string | null>();
+    for (const row of rows) {
+      const axisKey = String(row.axisId);
+      const bucket = globalByAxis.get(axisKey);
+      if (bucket) bucket.push(row);
+      else globalByAxis.set(axisKey, [row]);
+
+      const ownerKey = String(row.ownerId);
+      pushInto(byOwner, ownerKey, row);
+      if (!ownerDepartment.has(ownerKey)) {
+        ownerDepartment.set(
+          ownerKey,
+          row.ownerDepartmentId ? String(row.ownerDepartmentId) : null,
+        );
+      }
+    }
+
+    const owners = await this.userModel
+      .find({ _id: { $in: [...byOwner.keys()].map((id) => new Types.ObjectId(id)) } })
+      .select('fullName username position');
+    const ownerById = new Map(owners.map((row) => [String(row._id), row]));
+
+    const leaderboard = [...byOwner.entries()]
+      .map(([ownerId, bucket]) => {
+        const axes = scoreOf(bucket);
+        const score = axes.reduce(
+          (sum, axis) => sum + (axis.convertedScore ?? 0),
+          0,
+        );
+        const user = ownerById.get(ownerId);
+        const groupIndex = scoreGroups.findIndex((item) =>
+          isScoreInGroupRange(
+            score,
+            item.minScore,
+            item.maxScore,
+            item.maxInclusive,
+          ),
+        );
+        const group = groupIndex >= 0 ? scoreGroups[groupIndex] : undefined;
+        return {
+          ownerId,
+          fullName: user?.fullName?.trim() || user?.username || 'Không rõ',
+          position: user?.position ?? '',
+          departmentId: ownerDepartment.get(ownerId) ?? null,
+          taskCount: [...bucket.values()].reduce(
+            (sum, list) => sum + list.length,
+            0,
+          ),
+          score,
+          maxScore: totalMaxScore,
+          /** Xếp loại lấy thẳng từ danh mục Nhóm điểm, không đặt ngưỡng riêng. */
+          scoreGroupCode: group?.code ?? null,
+          scoreGroupName: group?.name ?? null,
+          /**
+           * Bậc của nhóm trong danh mục (0 = thấp nhất) và tổng số nhóm. Gửi
+           * kèm để màn hình tô màu theo bậc thay vì tự đặt ngưỡng phần trăm -
+           * đơn vị sửa dải điểm thì màu đi theo, không lệch với nhãn.
+           */
+          scoreGroupIndex: groupIndex >= 0 ? groupIndex : null,
+          scoreGroupCount: scoreGroups.length,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    return {
+      totalMaxScore,
+      axes: scoreOf(globalByAxis),
+      leaderboard,
+      /** Quá ngưỡng thì số liệu chỉ tính trên phần đã nạp - phải nói ra. */
+      truncated: rows.length >= STATS_MAX_ROWS,
+    };
+  }
+
+  /**
+   * Phạm vi thống kê thật sự được xem.
+   * Xin `unit` mà không có quyền duyệt thì lùi về `mine` chứ không báo lỗi -
+   * trang Thống kê ai cũng vào được, chỉ khác nhau ở lượng số liệu.
+   */
+  private async resolveStatScope(
+    userId: string,
+    actor: ActorInfo,
+    requested: PersonalKpiStatScope | undefined,
+  ) {
+    const user = await this.userModel
+      .findById(this.requireObjectId(userId, 'Người dùng'))
+      .select('roleAssignments');
+    const roleCodes = (user?.roleAssignments ?? []).map(
+      (item) => item.roleCode,
+    );
+    const canViewUnit =
+      actor.departmentId !== null &&
+      roleCodes.some((code) =>
+        [
+          RoleCode.MANAGER,
+          RoleCode.UNIT_ADMIN,
+          RoleCode.CAT_ADMIN,
+          RoleCode.SUPER_ADMIN,
+        ].includes(code as RoleCode),
+      );
+
+    if (requested === 'unit' && canViewUnit && actor.departmentId) {
+      const departmentIds = await this.departmentSubtreeIds(actor.departmentId);
+      return {
+        applied: 'unit' as const,
+        canViewUnit,
+        label: 'Đơn vị của tôi và các đơn vị trực thuộc',
+        filter: { ownerDepartmentId: { $in: departmentIds } },
+      };
+    }
+
+    return {
+      applied: 'mine' as const,
+      canViewUnit,
+      label: 'Nhiệm vụ của tôi',
+      filter: { ownerId: actor.id },
+    };
+  }
+
+  /** Đơn vị đang đứng cùng toàn bộ đơn vị con - bám cây qua mảng ancestors. */
+  private async departmentSubtreeIds(departmentId: Types.ObjectId) {
+    const descendants = await this.departmentModel
+      .find({ ancestors: departmentId })
+      .select('_id');
+    return [departmentId, ...descendants.map((row) => row._id as Types.ObjectId)];
   }
 
   // =========================================================== gửi lên trên
