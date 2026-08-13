@@ -37,6 +37,7 @@ export class AxesService {
       code,
       name: dto.name.trim(),
       description: dto.description?.trim() ?? '',
+      maxScore: dto.maxScore ?? 0,
       sortOrder: dto.sortOrder ?? 0,
       isActive: dto.isActive ?? true,
     });
@@ -84,6 +85,12 @@ export class AxesService {
     }
     if (dto.name !== undefined) item.name = dto.name.trim();
     if (dto.description !== undefined) item.description = dto.description.trim();
+    if (dto.maxScore !== undefined) {
+      if (dto.maxScore < 0) {
+        throw new BadRequestException('Điểm tối đa của trục không được âm.');
+      }
+      item.maxScore = dto.maxScore;
+    }
     if (dto.sortOrder !== undefined) item.sortOrder = dto.sortOrder;
     if (dto.isActive !== undefined) item.isActive = dto.isActive;
     await item.save();

@@ -668,7 +668,7 @@ export class PersonalKpiService {
       .find(filter)
       .sort({ reportDate: -1, axisId: 1, workContentId: 1, createdAt: 1 })
       .limit(BOARD_MAX_ROWS)
-      .populate('axisId', 'code name description sortOrder')
+      .populate('axisId', 'code name description sortOrder maxScore')
       .populate('workContentId', 'code name description sortOrder')
       .populate('ownerId', 'fullName username')
       .populate('ownerDepartmentId', 'code name')
@@ -1110,6 +1110,7 @@ export class PersonalKpiService {
         axisCode: string;
         axisName: string;
         axisDescription: string;
+        axisMaxScore: number;
         formTemplateId: string | null;
         formTemplateVersion: number | null;
         groups: Map<
@@ -1131,6 +1132,7 @@ export class PersonalKpiService {
         code?: string;
         name?: string;
         description?: string;
+        maxScore?: number;
       };
       const content = row.workContentId as unknown as {
         _id: Types.ObjectId;
@@ -1149,6 +1151,7 @@ export class PersonalKpiService {
           axisCode: axis?.code ?? '',
           axisName: axis?.name ?? '',
           axisDescription: axis?.description ?? '',
+          axisMaxScore: axis?.maxScore ?? 0,
           formTemplateId: row.formTemplateId ? String(row.formTemplateId) : null,
           formTemplateVersion: version,
           groups: new Map(),
@@ -1177,6 +1180,7 @@ export class PersonalKpiService {
         axisCode: block.axisCode,
         axisName: block.axisName,
         axisDescription: block.axisDescription,
+        axisMaxScore: block.axisMaxScore,
         template: await this.resolveBoardTemplate(
           block.axisId,
           block.formTemplateId,
@@ -1212,6 +1216,7 @@ export class PersonalKpiService {
       version: live.version ?? 1,
       columns: live.columns,
       headerGroups: live.headerGroups,
+      footer: live.footer,
     };
   }
 

@@ -17,6 +17,11 @@ export class CreateAxisDto {
   @StringNotRequired('Mô tả')
   description?: string;
 
+  @NumberNotRequired('Điểm tối đa của trục (dùng cho dòng Điểm quy đổi)', {
+    example: 40,
+  })
+  maxScore?: number;
+
   @NumberNotRequired('Thứ tự hiển thị', { example: 0 })
   sortOrder?: number;
 

@@ -6,6 +6,8 @@ import {
   FormTemplate,
   FormTemplateColumn,
   FormTemplateColumnSchema,
+  FormTemplateFooter,
+  FormTemplateFooterSchema,
 } from './form-template.schema';
 
 export type FormTemplateVersionDocument =
@@ -43,6 +45,13 @@ export class FormTemplateVersion {
 
   @Prop({ type: [Object], default: [] })
   headerGroups!: FormHeaderGroup[];
+
+  /**
+   * Đổi cột mẫu số/tử số là đổi luôn ý nghĩa của dòng điểm, nên công thức phải
+   * đóng băng cùng bộ cột - báo cáo cũ mở lại vẫn ra đúng con số lúc gửi.
+   */
+  @Prop({ type: FormTemplateFooterSchema, default: () => ({}) })
+  footer!: FormTemplateFooter;
 }
 
 export const FormTemplateVersionSchema =

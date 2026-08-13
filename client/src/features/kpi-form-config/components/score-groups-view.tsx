@@ -49,7 +49,7 @@ import {
   formatScoreGroupRange,
 } from "@/features/kpi-form-config/score-group.constants";
 import type { ScoreGroup } from "@/features/kpi-form-config/types";
-import { entityId } from "@/features/kpi-form-config/types";
+import { effectiveMaxScore, entityId } from "@/features/kpi-form-config/types";
 import { useListPagination } from "@/hooks/use-list-pagination";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
@@ -148,6 +148,7 @@ export function ScoreGroupsView() {
                   <TableHead className="w-[120px]">Mã</TableHead>
                   <TableHead>Tên nhóm</TableHead>
                   <TableHead className="w-[120px]">Thang điểm</TableHead>
+                  <TableHead className="w-[130px]">Điểm max tính</TableHead>
                   <TableHead className="w-[100px]">Thứ tự</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
                   <TableHead className="w-[100px] text-right">Thao tác</TableHead>
@@ -156,13 +157,13 @@ export function ScoreGroupsView() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                       <div className="inline-flex flex-col items-center gap-2">
                         <Gauge className="h-8 w-8 opacity-40" />
                         <span>Chưa có nhóm điểm nào.</span>
@@ -194,6 +195,17 @@ export function ScoreGroupsView() {
                           item.maxScore,
                           item.maxInclusive,
                         )}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {effectiveMaxScore(item)}
+                        {/* Nói rõ số này do khai tay hay hệ thống suy ra, vì
+                            hai trường hợp cho cùng con số nhưng khác ý nghĩa. */}
+                        {item.formulaScore === null ||
+                        item.formulaScore === undefined ? (
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            (tự suy)
+                          </span>
+                        ) : null}
                       </TableCell>
                       <TableCell>{item.sortOrder}</TableCell>
                       <TableCell>

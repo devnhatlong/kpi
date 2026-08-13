@@ -58,3 +58,29 @@ export function isScoreInGroupRange(
   if (score < minScore) return false;
   return maxInclusive ? score <= maxScore : score < maxScore;
 }
+
+/**
+ * Điểm chuẩn suy ra từ dải khi nhóm không khai `formulaScore`.
+ *
+ * Dải hở ("0 → dưới 50") thì trần thật là 49, phải lùi một điểm. Phép lùi này
+ * giả định chấm theo điểm nguyên - đó chính là lý do nên khai `formulaScore`
+ * tường minh thay vì để hệ thống đoán.
+ */
+export function derivedFormulaScore(
+  maxScore: number,
+  maxInclusive: boolean,
+): number {
+  return maxInclusive ? maxScore : maxScore - 1;
+}
+
+/** Điểm chuẩn của nhóm dùng cho công thức - khai tường minh thì lấy nguyên. */
+export function scoreGroupFormulaScore(group: {
+  maxScore: number;
+  maxInclusive: boolean;
+  formulaScore?: number | null;
+}): number {
+  return (
+    group.formulaScore ??
+    derivedFormulaScore(group.maxScore, group.maxInclusive)
+  );
+}

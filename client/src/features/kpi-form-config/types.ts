@@ -28,6 +28,8 @@ export type Axis = {
   code: string;
   name: string;
   description?: string;
+  /** Điểm tối đa của trục - nhân với tỉ lệ hoàn thành ra dòng "Điểm quy đổi". */
+  maxScore: number;
   sortOrder: number;
   isActive: boolean;
 };
@@ -36,6 +38,7 @@ export type AxisInput = {
   code?: string;
   name: string;
   description?: string;
+  maxScore?: number;
   sortOrder?: number;
   isActive?: boolean;
 };
@@ -77,6 +80,8 @@ export type ScoreGroup = {
   minScore: number;
   maxScore: number;
   maxInclusive: boolean;
+  /** Điểm chuẩn dùng cho công thức; null = suy từ dải điểm. */
+  formulaScore?: number | null;
   sortOrder: number;
   isActive: boolean;
   isSystem?: boolean;
@@ -89,6 +94,7 @@ export type ScoreGroupInput = {
   minScore: number;
   maxScore: number;
   maxInclusive?: boolean;
+  formulaScore?: number | null;
   sortOrder?: number;
   isActive?: boolean;
 };
@@ -320,6 +326,35 @@ export function formatScoreRange(group: {
   return `${group.minScore} → ${group.maxInclusive ? group.maxScore : `dưới ${group.maxScore}`}`;
 }
 
+/**
+ * Điểm chuẩn suy ra từ dải khi nhóm không khai `formulaScore`.
+ *
+ * Dải hở ("0 → dưới 50") thì trần thật là 49, phải lùi một điểm. Phép lùi này
+ * giả định chấm theo điểm nguyên - khai `formulaScore` tường minh để khỏi phụ
+ * thuộc vào giả định đó.
+ */
+export function derivedFormulaScore(
+  maxScore: number,
+  maxInclusive: boolean,
+): number {
+  return maxInclusive ? maxScore : maxScore - 1;
+}
+
+/**
+ * Điểm chuẩn của một nhóm dùng cho công thức tính điểm trục.
+ * Khai tường minh thì lấy nguyên, bỏ trống thì suy từ dải.
+ */
+export function effectiveMaxScore(group: {
+  maxScore: number;
+  maxInclusive: boolean;
+  formulaScore?: number | null;
+}): number {
+  return (
+    group.formulaScore ??
+    derivedFormulaScore(group.maxScore, group.maxInclusive)
+  );
+}
+
 /** Điểm có nằm trong dải của nhóm không - khớp đúng luật bên server. */
 export function isScoreInGroupRange(
   score: number,
@@ -327,6 +362,65 @@ export function isScoreInGroupRange(
 ): boolean {
   if (score < group.minScore) return false;
   return group.maxInclusive ? score <= group.maxScore : score < group.maxScore;
+}
+
+/**
+ * Ba dòng cuối bảng của mỗi trục: "Tổng từng cột", "Tổng điểm trục" và
+ * "Điểm quy đổi". Khuôn công thức cố định, cấu hình chỉ chọn cột đóng vai nào:
+ *   tổng điểm trục = trung bình cộng của (Σ tử số i / Σ mẫu số)
+ *   điểm quy đổi   = tổng điểm trục × điểm max của trục
+ *
+ * Cột nào được cộng ở dòng "Tổng từng cột" suy ra từ dataType = number, không
+ * khai lại ở đây.
+ */
+export type FormTemplateFooter = {
+  enabled: boolean;
+  /** Khoá cột mẫu số - "Điểm chuẩn" trong bảng mẫu. */
+  baseColumnKey: string | null;
+  /** Khoá các cột tử số, theo thứ tự hiện trên công thức. */
+  ratioColumnKeys: string[];
+};
+
+export const EMPTY_FORM_TEMPLATE_FOOTER: FormTemplateFooter = {
+  enabled: false,
+  baseColumnKey: null,
+  ratioColumnKeys: [],
+};
+
+/**
+ * Cột gán được vào công thức, kèm con số mà cột đó đóng góp.
+ *
+ * Không phải cứ `dataType = number` mới cộng được: cột Điểm chuẩn là dropdown
+ * Nhóm điểm, giá trị dùng để tính là điểm tối đa của nhóm được chọn. Tương tự
+ * cột Chất lượng thực hiện góp phần trăm của mức được chọn.
+ */
+export type FormulaValueSource = "number" | "score_group_max" | "quality_percent";
+
+export const FORMULA_VALUE_SOURCE_HINT: Record<FormulaValueSource, string> = {
+  number: "lấy đúng số đã nhập",
+  score_group_max: "lấy điểm cao nhất đạt được của nhóm (dải hở thì lùi 1 điểm)",
+  quality_percent: "lấy phần trăm của mức chất lượng được chọn",
+};
+
+export function formulaValueSource(
+  column: FormTemplateColumn,
+): FormulaValueSource | null {
+  if (column.semanticKey === "score_group") return "score_group_max";
+  if (column.semanticKey === "quality_level") return "quality_percent";
+  if (column.dataType === "number") return "number";
+  return null;
+}
+
+/** Cột đưa được vào công thức - cột chữ, ngày, tệp thì không cộng chia gì được. */
+export function formulaColumns(
+  columns: FormTemplateColumn[],
+): FormTemplateColumn[] {
+  return columns.filter((column) => formulaValueSource(column) !== null);
+}
+
+/** Nhãn A, B, C… cho các vai trong công thức - chỉ để hiển thị. */
+export function formulaRoleLabel(index: number): string {
+  return String.fromCharCode(66 + index); // 0 -> B, 1 -> C, ...
 }
 
 export type FormTemplate = {
@@ -337,6 +431,7 @@ export type FormTemplate = {
   description?: string;
   columns: FormTemplateColumn[];
   headerGroups: FormHeaderGroup[];
+  footer?: FormTemplateFooter;
   axisIds: Array<AxisRef | string>;
   sortOrder: number;
   isActive: boolean;
@@ -348,6 +443,7 @@ export type FormTemplateInput = {
   description?: string;
   columns: FormTemplateColumn[];
   headerGroups: FormHeaderGroup[];
+  footer?: FormTemplateFooter;
   axisIds: string[];
   sortOrder?: number;
   isActive?: boolean;
@@ -363,6 +459,7 @@ export function localId(prefix: string) {
 export function createDefaultTemplateDraft(): {
   columns: FormTemplateColumn[];
   headerGroups: FormHeaderGroup[];
+  footer: FormTemplateFooter;
 } {
   const progressGroupId = "grp-progress";
   const qualityGroupId = "grp-quality";
@@ -406,6 +503,16 @@ export function createDefaultTemplateDraft(): {
   });
 
   return {
+    /**
+     * Tỉ lệ lấy theo cột điểm tự chấm chứ không phải cột phần trăm: chia điểm
+     * cho điểm chuẩn mới ra tỉ lệ, chia phần trăm cho điểm chuẩn thì vô nghĩa.
+     * Đổi được ở phần cấu hình công thức nếu đơn vị quy định khác.
+     */
+    footer: {
+      enabled: true,
+      baseColumnKey: "standard_score",
+      ratioColumnKeys: ["progress_self_score", "quality_self_score"],
+    },
     headerGroups: [
       { id: progressGroupId, name: "Kết quả KPI tiến độ (B)", children: [] },
       { id: qualityGroupId, name: "Kết quả KPI chất lượng (C)", children: [] },

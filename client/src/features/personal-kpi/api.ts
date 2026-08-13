@@ -3,6 +3,7 @@ import type { ApiResponse } from "@/features/auth/types";
 import type {
   FormHeaderGroup,
   FormTemplateColumn,
+  FormTemplateFooter,
 } from "@/features/kpi-form-config/types";
 import type {
   PersonalKpiItem,
@@ -396,6 +397,8 @@ export type PersonalKpiBoardAxis = {
   axisCode: string;
   axisName: string;
   axisDescription: string;
+  /** Điểm tối đa của trục - nhân với tỉ lệ hoàn thành ra dòng "Điểm quy đổi". */
+  axisMaxScore: number;
   /** Bộ cột đã resolve theo phiên bản mẫu lúc gửi; null = trục chưa gán mẫu. */
   template: {
     code: string;
@@ -403,6 +406,7 @@ export type PersonalKpiBoardAxis = {
     version: number;
     columns: FormTemplateColumn[];
     headerGroups: FormHeaderGroup[];
+    footer?: FormTemplateFooter;
   } | null;
   groups: PersonalKpiBoardGroup[];
 };

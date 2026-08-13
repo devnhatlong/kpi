@@ -62,9 +62,14 @@ import {
   CATALOG_LABEL,
   catalogOfSemantic,
   createDefaultTemplateDraft,
+  EMPTY_FORM_TEMPLATE_FOOTER,
   entityId,
   FORM_COLUMN_DATA_TYPE_LABEL,
   FORM_COLUMN_SEMANTIC_LABEL,
+  FORMULA_VALUE_SOURCE_HINT,
+  formulaColumns,
+  formulaRoleLabel,
+  formulaValueSource,
   kindOfSemantic,
   localId,
   scoreGroupColumns,
@@ -77,12 +82,86 @@ import {
   type FormHeaderGroup,
   type FormTemplate,
   type FormTemplateColumn,
+  type FormTemplateFooter,
 } from "@/features/kpi-form-config/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 const NO_GROUP = "__none__";
 const NO_RANGE = "__norange__";
+const NO_COLUMN = "__nocolumn__";
+
+/** Tên cột kèm chú thích cột đó góp con số nào, cho dropdown công thức. */
+function formulaColumnLabel(column: FormTemplateColumn): string {
+  const source = formulaValueSource(column);
+  const title = column.title || column.key;
+  if (!source || source === "number") return title;
+  return `${title} — ${FORMULA_VALUE_SOURCE_HINT[source]}`;
+}
+
+/**
+ * Công thức viết ra chữ để admin đối chiếu với văn bản quy định trước khi lưu -
+ * đọc "[(B/A)+(C/A)] / 2" nhanh hơn là suy từ hai ô dropdown.
+ */
+function formulaPreview(
+  footer: FormTemplateFooter,
+  columns: FormTemplateColumn[],
+): string {
+  if (!footer.baseColumnKey || !footer.ratioColumnKeys.length) {
+    return "Chọn đủ cột mẫu số và ít nhất một cột tử số để xem công thức.";
+  }
+
+  const columnOf = (key: string) => columns.find((column) => column.key === key);
+  const describe = (key: string) => {
+    const column = columnOf(key);
+    if (!column) return key;
+    const source = formulaValueSource(column);
+    const title = column.title || column.key;
+    return source && source !== "number"
+      ? `${title} (${FORMULA_VALUE_SOURCE_HINT[source]})`
+      : title;
+  };
+
+  const ratios = footer.ratioColumnKeys.map(
+    (_, index) => `${formulaRoleLabel(index)}/A`,
+  );
+  const score =
+    ratios.length === 1 ? ratios[0] : `[${ratios.join("+")}] / ${ratios.length}`;
+
+  const lines = [
+    `Tổng điểm trục = ${score}`,
+    `Điểm quy đổi   = (${score}) × điểm tối đa của trục`,
+    "",
+    `A = ${describe(footer.baseColumnKey)}`,
+    ...footer.ratioColumnKeys.map(
+      (key, index) => `${formulaRoleLabel(index)} = ${describe(key)}`,
+    ),
+    "",
+    "(A, B, C… là TỔNG của cả cột, không phải giá trị từng dòng)",
+  ];
+
+  // Chia phần trăm cho điểm là ra số hàng chục rồi nhân tiếp điểm tối đa -
+  // điểm quy đổi sẽ vượt xa trần của trục. Cảnh báo ngay khi chọn, đừng để
+  // phát hiện lúc bảng đã hiện số sai.
+  const baseSource = columnOf(footer.baseColumnKey)
+    ? formulaValueSource(columnOf(footer.baseColumnKey)!)
+    : null;
+  const mixedUnit =
+    baseSource !== "quality_percent" &&
+    footer.ratioColumnKeys.some((key) => {
+      const column = columnOf(key);
+      return column ? formulaValueSource(column) === "quality_percent" : false;
+    });
+  if (mixedUnit) {
+    lines.push(
+      "",
+      "CẢNH BÁO: mẫu số là điểm còn tử số là phần trăm - tỉ lệ sẽ",
+      "không nằm trong khoảng 0-1 và điểm quy đổi sẽ vượt trần trục.",
+    );
+  }
+
+  return lines.join("\n");
+}
 
 type FormTemplateBuilderSheetProps = {
   open: boolean;
@@ -122,6 +201,9 @@ export function FormTemplateBuilderSheet({
   const [axisIds, setAxisIds] = useState<string[]>([]);
   const [headerGroups, setHeaderGroups] = useState<FormHeaderGroup[]>([]);
   const [columns, setColumns] = useState<FormTemplateColumn[]>([]);
+  const [footer, setFooter] = useState<FormTemplateFooter>(
+    EMPTY_FORM_TEMPLATE_FOOTER,
+  );
   const [saving, setSaving] = useState(false);
 
   const { data: axes = [] } = useSWR(open ? axisKeys.all : null, fetchAxesAll);
@@ -136,10 +218,15 @@ export function FormTemplateBuilderSheet({
       setAxisIds((edit.axisIds ?? []).map((axis) => entityId(axis)));
       setHeaderGroups(edit.headerGroups ?? []);
       setColumns(edit.columns ?? []);
+      setFooter(edit.footer ?? EMPTY_FORM_TEMPLATE_FOOTER);
     } else {
       // Bảng trắng: tự dựng cột từ đầu. Ngược lại điền sẵn bộ cột mặc định.
       const draft = startBlank
-        ? { headerGroups: [], columns: [] }
+        ? {
+            headerGroups: [],
+            columns: [],
+            footer: EMPTY_FORM_TEMPLATE_FOOTER,
+          }
         : createDefaultTemplateDraft();
       setName("");
       setDescription("");
@@ -148,6 +235,7 @@ export function FormTemplateBuilderSheet({
       setAxisIds([]);
       setHeaderGroups(draft.headerGroups);
       setColumns(draft.columns);
+      setFooter(draft.footer);
     }
   }, [open, edit, startBlank]);
 
@@ -162,6 +250,51 @@ export function FormTemplateBuilderSheet({
 
   /** Cột Nhóm điểm trong mẫu - nguồn giới hạn cho các cột điểm. */
   const scoreColumns = useMemo(() => scoreGroupColumns(columns), [columns]);
+
+  /** Cột gán được vào công thức - chỉ cột kiểu số mới cộng và chia được. */
+  const numericColumns = useMemo(() => formulaColumns(columns), [columns]);
+  const numericKeys = useMemo(
+    () => new Set(numericColumns.map((column) => column.key)),
+    [numericColumns],
+  );
+
+  /**
+   * Công thức sau khi bỏ khoá trỏ vào cột đã xoá hoặc đã đổi khỏi kiểu số.
+   * Lọc lúc dựng chứ không sửa thẳng state: sửa state trong effect sẽ đạp lên
+   * đúng công thức vừa nạp từ mẫu đang mở, vì lượt chạy đầu cột còn rỗng.
+   */
+  const liveFooter = useMemo<FormTemplateFooter>(
+    () => ({
+      enabled: footer.enabled,
+      baseColumnKey:
+        footer.baseColumnKey && numericKeys.has(footer.baseColumnKey)
+          ? footer.baseColumnKey
+          : null,
+      ratioColumnKeys: footer.ratioColumnKeys.filter((key) =>
+        numericKeys.has(key),
+      ),
+    }),
+    [footer, numericKeys],
+  );
+
+  const patchFooter = (patch: Partial<FormTemplateFooter>) => {
+    setFooter((prev) => ({ ...prev, ...patch }));
+  };
+
+  const setRatioColumn = (index: number, key: string) => {
+    setFooter((prev) => {
+      const next = [...prev.ratioColumnKeys];
+      next[index] = key;
+      return { ...prev, ratioColumnKeys: next };
+    });
+  };
+
+  const removeRatioColumn = (index: number) => {
+    setFooter((prev) => ({
+      ...prev,
+      ratioColumnKeys: prev.ratioColumnKeys.filter((_, i) => i !== index),
+    }));
+  };
 
   const patchColumn = (id: string, patch: Partial<FormTemplateColumn>) => {
     setColumns((prev) =>
@@ -264,6 +397,30 @@ export function FormTemplateBuilderSheet({
       return;
     }
 
+    if (liveFooter.enabled) {
+      if (!liveFooter.baseColumnKey) {
+        toast.error("Công thức điểm: chưa chọn cột mẫu số (điểm chuẩn).");
+        return;
+      }
+      if (!liveFooter.ratioColumnKeys.length) {
+        toast.error("Công thức điểm: cần ít nhất một cột tử số.");
+        return;
+      }
+      if (liveFooter.ratioColumnKeys.includes(liveFooter.baseColumnKey)) {
+        toast.error(
+          "Công thức điểm: cột mẫu số không được dùng lại làm cột tử số.",
+        );
+        return;
+      }
+      if (
+        new Set(liveFooter.ratioColumnKeys).size !==
+        liveFooter.ratioColumnKeys.length
+      ) {
+        toast.error("Công thức điểm: một cột tử số bị chọn hai lần.");
+        return;
+      }
+    }
+
     const payload = {
       name: name.trim(),
       description: description.trim(),
@@ -273,6 +430,7 @@ export function FormTemplateBuilderSheet({
         width: Number.isFinite(column.width) ? column.width : 160,
       })),
       headerGroups,
+      footer: liveFooter,
       axisIds,
       sortOrder: sortOrderNum,
       isActive,
@@ -745,6 +903,143 @@ export function FormTemplateBuilderSheet({
                 </TableBody>
               </Table>
             </div>
+          </section>
+
+          <section className="space-y-3 rounded-lg border p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold">
+                  Công thức ba dòng cuối bảng
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Bảng của mỗi trục sẽ có thêm dòng &quot;Tổng từng cột&quot;,
+                  &quot;Tổng điểm trục&quot; và &quot;Điểm quy đổi&quot;. Điểm
+                  tối đa để nhân ra điểm quy đổi đặt ở từng trục, mục Trục.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="tpl-footer-on" className="text-sm">
+                  Bật
+                </Label>
+                <Switch
+                  id="tpl-footer-on"
+                  checked={footer.enabled}
+                  onCheckedChange={(enabled) => patchFooter({ enabled })}
+                />
+              </div>
+            </div>
+
+            {!footer.enabled ? null : numericColumns.length === 0 ? (
+              <p className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                Mẫu chưa có cột nào quy ra số được. Công thức nhận cột kiểu Số,
+                cột Nhóm điểm (lấy điểm tối đa của nhóm) và cột Chất lượng thực
+                hiện (lấy phần trăm của mức).
+              </p>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-2 sm:max-w-md">
+                  <Label>
+                    Cột mẫu số (A) <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={liveFooter.baseColumnKey ?? NO_COLUMN}
+                    onValueChange={(value) =>
+                      patchFooter({
+                        baseColumnKey: value === NO_COLUMN ? null : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Chọn cột" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_COLUMN}>Chưa chọn</SelectItem>
+                      {numericColumns.map((column) => (
+                        <SelectItem key={column.id} value={column.key}>
+                          {formulaColumnLabel(column)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Thường là cột Điểm chuẩn - mọi tỉ lệ đều chia cho tổng cột
+                    này. Cột Điểm chuẩn gán Nhóm điểm thì lấy điểm tối đa của
+                    nhóm được chọn ở từng dòng.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>
+                    Các cột tử số <span className="text-destructive">*</span>
+                  </Label>
+                  {footer.ratioColumnKeys.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Chưa có cột tử số nào.
+                    </p>
+                  ) : null}
+                  {footer.ratioColumnKeys.map((key, index) => (
+                    <div
+                      key={`ratio-${index}`}
+                      className="flex items-center gap-2 sm:max-w-md"
+                    >
+                      <Badge variant="outline" className="w-8 justify-center">
+                        {formulaRoleLabel(index)}
+                      </Badge>
+                      <Select
+                        value={numericKeys.has(key) ? key : NO_COLUMN}
+                        onValueChange={(value) =>
+                          setRatioColumn(index, value === NO_COLUMN ? "" : value)
+                        }
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Chọn cột" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_COLUMN}>Chưa chọn</SelectItem>
+                          {numericColumns.map((column) => (
+                            <SelectItem key={column.id} value={column.key}>
+                              {formulaColumnLabel(column)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => removeRatioColumn(index)}
+                        aria-label={`Bỏ cột tử số ${formulaRoleLabel(index)}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      patchFooter({
+                        ratioColumnKeys: [...footer.ratioColumnKeys, ""],
+                      })
+                    }
+                  >
+                    <Plus className="h-4 w-4" />
+                    Thêm cột tử số
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Tử số phải cùng đơn vị với mẫu số thì tỉ lệ mới nằm trong
+                    khoảng 0-1. Mẫu số là điểm mà tử số lấy cột phần trăm thì tỉ
+                    lệ sẽ vọt lên hàng chục - xem khung công thức bên dưới để
+                    kiểm tra bằng số thật.
+                  </p>
+                </div>
+
+                <div className="whitespace-pre-line rounded-md bg-muted p-3 font-mono text-xs">
+                  {formulaPreview(liveFooter, columns)}
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="space-y-3 rounded-lg border p-4">

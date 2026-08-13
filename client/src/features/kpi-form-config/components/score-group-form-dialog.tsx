@@ -23,9 +23,10 @@ import {
   SCORE_GROUP_SCALE_MAX,
   SCORE_GROUP_SCALE_MIN,
   formatScoreGroupRange,
+  isScoreInGroupRange,
 } from "@/features/kpi-form-config/score-group.constants";
 import type { ScoreGroup } from "@/features/kpi-form-config/types";
-import { entityId } from "@/features/kpi-form-config/types";
+import { derivedFormulaScore, entityId } from "@/features/kpi-form-config/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 
 type ScoreGroupFormDialogProps = {
@@ -46,6 +47,7 @@ export function ScoreGroupFormDialog({
   const [minScore, setMinScore] = useState("0");
   const [maxScore, setMaxScore] = useState("100");
   const [maxInclusive, setMaxInclusive] = useState(true);
+  const [formulaScore, setFormulaScore] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -58,6 +60,11 @@ export function ScoreGroupFormDialog({
       setMinScore(String(edit.minScore));
       setMaxScore(String(edit.maxScore));
       setMaxInclusive(edit.maxInclusive);
+      setFormulaScore(
+        edit.formulaScore === null || edit.formulaScore === undefined
+          ? ""
+          : String(edit.formulaScore),
+      );
       setSortOrder(String(edit.sortOrder ?? 0));
       setIsActive(edit.isActive);
     } else {
@@ -66,6 +73,7 @@ export function ScoreGroupFormDialog({
       setMinScore("0");
       setMaxScore("100");
       setMaxInclusive(false);
+      setFormulaScore("");
       setSortOrder("0");
       setIsActive(true);
     }
@@ -101,6 +109,30 @@ export function ScoreGroupFormDialog({
       return;
     }
 
+    // Bỏ trống = để hệ thống suy từ dải, khác hẳn với khai số 0.
+    const trimmedFormulaScore = formulaScore.trim();
+    let formulaScoreNum: number | null = null;
+    if (trimmedFormulaScore) {
+      formulaScoreNum = Number(trimmedFormulaScore);
+      if (!Number.isFinite(formulaScoreNum)) {
+        toast.error("Điểm max dùng để tính không hợp lệ.");
+        return;
+      }
+      if (
+        !isScoreInGroupRange(
+          formulaScoreNum,
+          minScoreNum,
+          maxScoreNum,
+          maxInclusive,
+        )
+      ) {
+        toast.error(
+          `Điểm max dùng để tính phải nằm trong dải ${formatScoreGroupRange(minScoreNum, maxScoreNum, maxInclusive)}.`,
+        );
+        return;
+      }
+    }
+
     const sortOrderNum = Number(sortOrder);
     if (!Number.isFinite(sortOrderNum) || sortOrderNum < 0) {
       toast.error("Thứ tự hiển thị không hợp lệ.");
@@ -113,6 +145,7 @@ export function ScoreGroupFormDialog({
       minScore: minScoreNum,
       maxScore: maxScoreNum,
       maxInclusive,
+      formulaScore: formulaScoreNum,
       sortOrder: sortOrderNum,
       isActive,
     };
@@ -226,6 +259,34 @@ export function ScoreGroupFormDialog({
             Bạn có thể tự cấu hình dải điểm trong thang {SCORE_GROUP_SCALE_MIN} →{" "}
             {SCORE_GROUP_SCALE_MAX}.
           </p>
+
+          <div className="space-y-2">
+            <Label htmlFor="score-group-formula">Điểm max dùng để tính</Label>
+            <Input
+              id="score-group-formula"
+              type="number"
+              min={SCORE_GROUP_SCALE_MIN}
+              max={SCORE_GROUP_SCALE_MAX}
+              step={0.5}
+              value={formulaScore}
+              onChange={(e) => setFormulaScore(e.target.value)}
+              disabled={saving}
+              placeholder={`Để trống = ${derivedFormulaScore(
+                Number(maxScore) || SCORE_GROUP_SCALE_MIN,
+                maxInclusive,
+              )}`}
+            />
+            <p className="text-xs text-muted-foreground">
+              Mỗi nhiệm vụ thuộc nhóm này góp đúng số điểm đó vào mẫu số của
+              công thức tính điểm trục. Để trống thì hệ thống suy từ dải điểm -
+              dải hở thì lùi một điểm, thành{" "}
+              {derivedFormulaScore(
+                Number(maxScore) || SCORE_GROUP_SCALE_MIN,
+                maxInclusive,
+              )}
+              .
+            </p>
+          </div>
 
           <div className="space-y-2">
             <Label htmlFor="score-group-description">Mô tả (tuỳ chọn)</Label>

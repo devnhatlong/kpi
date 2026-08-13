@@ -25,6 +25,12 @@ export class CreateScoreGroupDto {
   @BooleanNotRequired('Bao gồm mức điểm đến (<= max)', { example: false })
   maxInclusive?: boolean;
 
+  @NumberNotRequired(
+    'Điểm max dùng để tính - để trống thì suy từ dải điểm',
+    { example: 49 },
+  )
+  formulaScore?: number | null;
+
   @NumberNotRequired('Thứ tự hiển thị', { example: 0 })
   sortOrder?: number;
 

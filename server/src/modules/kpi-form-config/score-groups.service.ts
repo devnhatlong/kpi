@@ -14,6 +14,8 @@ import {
   ScoreGroupDocument,
 } from './schemas/score-group.schema';
 import {
+  formatScoreGroupRange,
+  isScoreInGroupRange,
   SCORE_GROUP_SCALE_MAX,
   SCORE_GROUP_SCALE_MIN,
 } from './score-group.constants';
@@ -30,7 +32,14 @@ export class ScoreGroupsService {
       ? dto.code.trim().toUpperCase()
       : await this.nextCode();
     await this.ensureUniqueCode(code);
-    this.assertValidScoreRange(dto.minScore, dto.maxScore, dto.maxInclusive ?? false);
+    const maxInclusive = dto.maxInclusive ?? false;
+    this.assertValidScoreRange(dto.minScore, dto.maxScore, maxInclusive);
+    const formulaScore = this.normalizeFormulaScore(
+      dto.formulaScore,
+      dto.minScore,
+      dto.maxScore,
+      maxInclusive,
+    );
 
     const data = await this.scoreGroupModel.create({
       code,
@@ -38,7 +47,8 @@ export class ScoreGroupsService {
       description: dto.description?.trim() ?? '',
       minScore: dto.minScore,
       maxScore: dto.maxScore,
-      maxInclusive: dto.maxInclusive ?? false,
+      maxInclusive,
+      formulaScore,
       sortOrder: dto.sortOrder ?? 0,
       isActive: dto.isActive ?? true,
     });
@@ -96,6 +106,14 @@ export class ScoreGroupsService {
     if (dto.minScore !== undefined) item.minScore = dto.minScore;
     if (dto.maxScore !== undefined) item.maxScore = dto.maxScore;
     if (dto.maxInclusive !== undefined) item.maxInclusive = dto.maxInclusive;
+    // Soi lại kể cả khi client không gửi: kéo dải điểm đi chỗ khác có thể làm
+    // điểm chuẩn đã khai rơi ra ngoài dải của chính nhóm nó.
+    item.formulaScore = this.normalizeFormulaScore(
+      dto.formulaScore !== undefined ? dto.formulaScore : item.formulaScore,
+      nextMinScore,
+      nextMaxScore,
+      nextMaxInclusive,
+    );
     if (dto.sortOrder !== undefined) item.sortOrder = dto.sortOrder;
     if (dto.isActive !== undefined) {
       item.isActive = dto.isActive;
@@ -148,6 +166,30 @@ export class ScoreGroupsService {
         'Khoảng điểm không hợp lệ: điểm đến phải lớn hơn điểm từ.',
       );
     }
+  }
+
+  /**
+   * Điểm chuẩn khai tay phải nằm trong chính dải của nhóm, nếu không thì một
+   * nhóm "0 → dưới 50" lại góp 60 điểm vào mẫu số và không ai hiểu vì sao.
+   * Trả null khi bỏ trống - lúc tính sẽ suy từ dải.
+   */
+  private normalizeFormulaScore(
+    formulaScore: number | null | undefined,
+    minScore: number,
+    maxScore: number,
+    maxInclusive: boolean,
+  ): number | null {
+    if (formulaScore === null || formulaScore === undefined) return null;
+
+    if (!Number.isFinite(formulaScore)) {
+      throw new BadRequestException('Điểm max dùng để tính không hợp lệ.');
+    }
+    if (!isScoreInGroupRange(formulaScore, minScore, maxScore, maxInclusive)) {
+      throw new BadRequestException(
+        `Điểm max dùng để tính phải nằm trong dải ${formatScoreGroupRange(minScore, maxScore, maxInclusive)}.`,
+      );
+    }
+    return formulaScore;
   }
 
   private async nextCode(): Promise<string> {

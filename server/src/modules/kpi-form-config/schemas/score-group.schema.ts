@@ -28,6 +28,17 @@ export class ScoreGroup {
   @Prop({ default: false })
   maxInclusive!: boolean;
 
+  /**
+   * Điểm chuẩn của nhóm dùng cho công thức tính điểm trục - mỗi nhiệm vụ thuộc
+   * nhóm này góp đúng số đó vào mẫu số.
+   *
+   * Tách khỏi minScore/maxScore vì hai trường kia chỉ để kiểm điểm nhập có nằm
+   * trong dải không. null = để hệ thống suy từ dải (dải hở thì lùi một điểm),
+   * khai số cụ thể khi đơn vị quy định khác.
+   */
+  @Prop({ type: Number, default: null })
+  formulaScore!: number | null;
+
   @Prop({ default: 0, min: 0 })
   sortOrder!: number;
 

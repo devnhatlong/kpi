@@ -62,7 +62,14 @@
       "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).scripts,null,2\\)\\)\")",
       "Bash(node -e \"console.log\\(require\\('sharp/package.json'\\).version\\)\")",
       "Bash(./node_modules/.bin/tsc --noEmit)",
-      "Bash(echo \"exit=$?\")"
+      "Bash(echo \"exit=$?\")",
+      "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>{for\\(const f of JSON.parse\\(s\\)\\){if\\(f.errorCount||f.warningCount\\)console.log\\(f.errorCount+'e '+f.warningCount+'w  '+f.filePath.replace\\(/.*\\\\\\\\\\\\\\\\src\\\\\\\\\\\\\\\\/,'src/'\\)\\)}}\\)\")",
+      "Bash(npx eslint *)",
+      "Bash(git -C /d/Project/WebApp/KPI stash list)",
+      "Bash(git -C /d/Project/WebApp/KPI stash push -q -- client/src/features/kpi-form-config/components/form-template-builder-sheet.tsx client/src/features/personal-kpi/components/personal-kpi-board-view.tsx)",
+      "Bash(git -C /d/Project/WebApp/KPI stash pop -q)",
+      "Bash(git -C /d/Project/WebApp/KPI status --short)",
+      "Bash(git -C /d/Project/WebApp/KPI stash push -q -- client/src/features/kpi-form-config/components/axis-form-dialog.tsx)"
     ]
   }
 }

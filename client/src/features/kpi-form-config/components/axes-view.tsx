@@ -105,6 +105,7 @@ export function AxesView() {
                   <TableHead className="w-14">STT</TableHead>
                   <TableHead className="w-[120px]">Mã</TableHead>
                   <TableHead>Tên trục</TableHead>
+                  <TableHead className="w-[110px]">Điểm tối đa</TableHead>
                   <TableHead className="w-[100px]">Thứ tự</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
                   <TableHead className="w-[100px] text-right">Thao tác</TableHead>
@@ -113,13 +114,13 @@ export function AxesView() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                       <div className="inline-flex flex-col items-center gap-2">
                         <Split className="h-8 w-8 opacity-40" />
                         <span>Chưa có trục nào.</span>
@@ -144,6 +145,17 @@ export function AxesView() {
                             {item.description}
                           </div>
                         ) : null}
+                      </TableCell>
+                      <TableCell>
+                        {/* Chưa đặt điểm thì dòng "Điểm quy đổi" luôn ra 0 -
+                            nói thẳng thay vì hiện số 0 như đã cấu hình xong. */}
+                        {item.maxScore ? (
+                          <span className="font-medium">{item.maxScore}</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            Chưa đặt
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>{item.sortOrder}</TableCell>
                       <TableCell>

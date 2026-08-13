@@ -81,6 +81,29 @@ export class FormTemplateColumnDto {
   rangeFromColumnKey?: string | null;
 }
 
+export class FormTemplateFooterDto {
+  @BooleanNotRequired('Bật ba dòng tính điểm cuối bảng', { example: true })
+  enabled?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Khoá cột mẫu số (Điểm chuẩn)',
+    example: 'standard_score',
+  })
+  @IsOptional()
+  @IsString({ message: 'baseColumnKey phải là chuỗi.' })
+  baseColumnKey?: string | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Khoá các cột tử số, theo thứ tự hiện trên công thức',
+    example: ['progress_self_score', 'quality_self_score'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true, message: 'ratioColumnKeys phải là mảng chuỗi.' })
+  ratioColumnKeys?: string[];
+}
+
 export class CreateFormTemplateDto {
   @StringNotRequired('Mã mẫu (để trống sẽ tự sinh)', { example: 'MAU-0001' })
   code?: string;
@@ -104,6 +127,12 @@ export class CreateFormTemplateDto {
   @ValidateNested({ each: true })
   @Type(() => FormHeaderGroupDto)
   headerGroups?: FormHeaderGroupDto[];
+
+  @ApiPropertyOptional({ type: () => FormTemplateFooterDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FormTemplateFooterDto)
+  footer?: FormTemplateFooterDto;
 
   @ApiPropertyOptional({ type: [String], description: 'Các trục dùng mẫu này' })
   @IsOptional()

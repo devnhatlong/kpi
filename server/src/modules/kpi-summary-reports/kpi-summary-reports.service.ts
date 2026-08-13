@@ -73,7 +73,7 @@ export class KpiSummaryReportsService {
       .find(filter)
       .sort({ reportDate: -1, axisId: 1, workContentId: 1, createdAt: 1 })
       .limit(CANDIDATES_MAX_ROWS)
-      .populate('axisId', 'code name description sortOrder')
+      .populate('axisId', 'code name description sortOrder maxScore')
       .populate('workContentId', 'code name description sortOrder')
       .populate('ownerId', 'fullName username')
       .populate('ownerDepartmentId', 'code name')
@@ -156,7 +156,7 @@ export class KpiSummaryReportsService {
     const rows = await this.itemModel
       .find({ _id: { $in: report.itemIds } })
       .sort({ reportDate: -1, axisId: 1, workContentId: 1, createdAt: 1 })
-      .populate('axisId', 'code name description sortOrder')
+      .populate('axisId', 'code name description sortOrder maxScore')
       .populate('workContentId', 'code name description sortOrder')
       .populate('ownerId', 'fullName username')
       .populate('ownerDepartmentId', 'code name')

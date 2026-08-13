@@ -8,3 +8,14 @@ export function formatScoreGroupRange(
 ): string {
   return `${minScore} → ${maxInclusive ? maxScore : `dưới ${maxScore}`}`;
 }
+
+/** Cùng luật với server - dùng khi kiểm điểm max khai tay có nằm trong dải. */
+export function isScoreInGroupRange(
+  score: number,
+  minScore: number,
+  maxScore: number,
+  maxInclusive: boolean,
+): boolean {
+  if (score < minScore) return false;
+  return maxInclusive ? score <= maxScore : score < maxScore;
+}

@@ -11,6 +11,7 @@ import {
   CreateFormTemplateDto,
   FormHeaderGroupDto,
   FormTemplateColumnDto,
+  FormTemplateFooterDto,
 } from './dto/create-form-template.dto';
 import { UpdateFormTemplateDto } from './dto/update-form-template.dto';
 import {
@@ -18,6 +19,8 @@ import {
   FormTemplate,
   FormTemplateColumn,
   FormTemplateDocument,
+  FormTemplateFooter,
+  formulaValueSource,
   type FormColumnSemantic,
 } from './schemas/form-template.schema';
 import {
@@ -53,6 +56,7 @@ export class FormTemplatesService {
         version: template.version,
         columns: template.columns,
         headerGroups: template.headerGroups,
+        footer: template.footer,
       };
     }
 
@@ -67,6 +71,7 @@ export class FormTemplatesService {
       version: snapshot.version,
       columns: snapshot.columns,
       headerGroups: snapshot.headerGroups,
+      footer: snapshot.footer,
     };
   }
 
@@ -78,6 +83,7 @@ export class FormTemplatesService {
 
     const headerGroups = this.normalizeHeaderGroups(dto.headerGroups ?? []);
     const columns = this.normalizeColumns(dto.columns ?? [], headerGroups);
+    const footer = this.normalizeFooter(dto.footer, columns);
     const axisIds = await this.resolveAxisIds(dto.axisIds ?? [], null);
 
     const data = await this.formTemplateModel.create({
@@ -86,6 +92,7 @@ export class FormTemplatesService {
       description: dto.description?.trim() ?? '',
       columns,
       headerGroups,
+      footer,
       axisIds,
       sortOrder: dto.sortOrder ?? 0,
       isActive: dto.isActive ?? true,
@@ -161,7 +168,11 @@ export class FormTemplatesService {
     if (dto.sortOrder !== undefined) item.sortOrder = dto.sortOrder;
     if (dto.isActive !== undefined) item.isActive = dto.isActive;
 
-    if (dto.headerGroups !== undefined || dto.columns !== undefined) {
+    if (
+      dto.headerGroups !== undefined ||
+      dto.columns !== undefined ||
+      dto.footer !== undefined
+    ) {
       const headerGroups =
         dto.headerGroups !== undefined
           ? this.normalizeHeaderGroups(dto.headerGroups)
@@ -173,16 +184,23 @@ export class FormTemplatesService {
               item.columns as unknown as FormTemplateColumnDto[],
               headerGroups,
             );
+      // Soi lại công thức theo bộ cột mới kể cả khi client không gửi footer:
+      // xoá mất cột mẫu số mà công thức vẫn trỏ tới là bảng tính ra số rác.
+      const footer = this.normalizeFooter(
+        dto.footer ?? (item.footer as unknown as FormTemplateFooterDto),
+        columns,
+      );
 
-      // Cột/nhóm đổi thật thì đóng băng bản cũ rồi mới tăng version, để báo cáo
-      // đã gửi vẫn dựng đúng bảng của thời điểm gửi.
-      if (this.layoutChanged(item, columns, headerGroups)) {
+      // Cột/nhóm/công thức đổi thật thì đóng băng bản cũ rồi mới tăng version,
+      // để báo cáo đã gửi vẫn dựng đúng bảng của thời điểm gửi.
+      if (this.layoutChanged(item, columns, headerGroups, footer)) {
         await this.archiveCurrentVersion(item);
         item.version = (item.version ?? 1) + 1;
       }
 
       item.headerGroups = headerGroups;
       item.columns = columns;
+      item.footer = footer;
     }
 
     if (dto.axisIds !== undefined) {
@@ -205,10 +223,12 @@ export class FormTemplatesService {
     item: FormTemplateDocument,
     columns: FormTemplateColumn[],
     headerGroups: FormHeaderGroup[],
+    footer: FormTemplateFooter,
   ): boolean {
     const shape = (
       cols: FormTemplateColumn[],
       groups: FormHeaderGroup[],
+      foot: FormTemplateFooter | undefined,
     ) =>
       JSON.stringify({
         columns: cols.map((column) => [
@@ -224,10 +244,16 @@ export class FormTemplatesService {
           column.rangeFromColumnKey,
         ]),
         headerGroups: groups,
+        footer: [
+          foot?.enabled ?? false,
+          foot?.baseColumnKey ?? null,
+          foot?.ratioColumnKeys ?? [],
+        ],
       });
 
     return (
-      shape(item.columns, item.headerGroups) !== shape(columns, headerGroups)
+      shape(item.columns, item.headerGroups, item.footer) !==
+      shape(columns, headerGroups, footer)
     );
   }
 
@@ -242,6 +268,7 @@ export class FormTemplatesService {
           name: item.name,
           columns: item.columns,
           headerGroups: item.headerGroups,
+          footer: item.footer,
         },
       },
       { upsert: true },
@@ -395,6 +422,75 @@ export class FormTemplatesService {
     }
 
     return normalized;
+  }
+
+  /**
+   * Công thức chỉ trỏ được vào cột quy ra số được (xem formulaValueSource) và
+   * đang có trong mẫu.
+   *
+   * Khi tắt thì lược bớt khoá đã trỏ vào cột không còn tồn tại chứ không báo
+   * lỗi - admin phải xoá được cột thừa mà không bị công thức đang tắt chặn lại.
+   */
+  private normalizeFooter(
+    footer: FormTemplateFooterDto | undefined,
+    columns: FormTemplateColumn[],
+  ): FormTemplateFooter {
+    const numeric = new Map(
+      columns
+        .filter((column) => formulaValueSource(column) !== null)
+        .map((column) => [column.key, column.title]),
+    );
+    const titleOf = (key: string) =>
+      columns.find((column) => column.key === key)?.title ?? key;
+
+    const enabled = footer?.enabled ?? false;
+    const baseColumnKey = footer?.baseColumnKey?.trim() || null;
+    const ratioColumnKeys = [
+      ...new Set(
+        (footer?.ratioColumnKeys ?? [])
+          .map((key) => key.trim())
+          .filter(Boolean),
+      ),
+    ];
+
+    if (!enabled) {
+      return {
+        enabled: false,
+        baseColumnKey:
+          baseColumnKey && numeric.has(baseColumnKey) ? baseColumnKey : null,
+        ratioColumnKeys: ratioColumnKeys.filter((key) => numeric.has(key)),
+      };
+    }
+
+    if (!baseColumnKey) {
+      throw new BadRequestException(
+        'Công thức điểm cần chọn cột mẫu số (điểm chuẩn).',
+      );
+    }
+    if (!numeric.has(baseColumnKey)) {
+      throw new BadRequestException(
+        `Cột mẫu số "${titleOf(baseColumnKey)}" không còn trong mẫu hoặc không quy ra số được.`,
+      );
+    }
+    if (!ratioColumnKeys.length) {
+      throw new BadRequestException(
+        'Công thức điểm cần ít nhất một cột tử số.',
+      );
+    }
+    for (const key of ratioColumnKeys) {
+      if (key === baseColumnKey) {
+        throw new BadRequestException(
+          'Cột mẫu số không được dùng lại làm cột tử số.',
+        );
+      }
+      if (!numeric.has(key)) {
+        throw new BadRequestException(
+          `Cột tử số "${titleOf(key)}" không còn trong mẫu hoặc không quy ra số được.`,
+        );
+      }
+    }
+
+    return { enabled: true, baseColumnKey, ratioColumnKeys };
   }
 
   private ensureHeaderPathExists(

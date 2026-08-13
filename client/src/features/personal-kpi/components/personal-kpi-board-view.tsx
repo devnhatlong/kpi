@@ -51,9 +51,13 @@ import {
 } from "@/features/personal-kpi/api";
 import {
   cellText,
+  computeAxisFooter,
+  formatScoreNumber,
   isTickedCell,
   refLabel,
 } from "@/features/personal-kpi/board-cell";
+import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
+import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import { AttachmentCell } from "@/features/personal-kpi/components/attachment-cell";
 import { SendRecipientDialog } from "@/features/personal-kpi/components/send-recipient-dialog";
 import { TaskTableHeader } from "@/features/personal-kpi/components/task-table-header";
@@ -627,6 +631,27 @@ function AxisBoardBlock({
   onCompleteRow: (id: string) => void;
 }) {
   const template = axis.template;
+  const footerConfig = template?.footer;
+
+  /**
+   * Cột trong công thức có thể là dropdown Nhóm điểm / Chất lượng thực hiện -
+   * phải tra danh mục mới ra số. Chỉ nạp khi công thức thật sự dùng tới, và
+   * SWR gộp khoá nên nhiều trục trên cùng màn chỉ gọi API một lần.
+   */
+  const formulaColumnKeys = footerConfig?.enabled
+    ? [footerConfig.baseColumnKey, ...footerConfig.ratioColumnKeys].filter(
+        (key): key is string => Boolean(key),
+      )
+    : [];
+  const formulaCols = (template?.columns ?? []).filter((column) =>
+    formulaColumnKeys.includes(column.key),
+  );
+  const scoreGroups = useScoreGroupMap(
+    formulaCols.some((column) => column.semanticKey === "score_group"),
+  );
+  const qualityLevels = useQualityLevelMap(
+    formulaCols.some((column) => column.semanticKey === "quality_level"),
+  );
 
   if (!template?.columns?.length) {
     const count = axis.groups.reduce(
@@ -666,6 +691,21 @@ function AxisBoardBlock({
   const totalCols = visible.length + leading.length + 1;
   const minWidth =
     visible.reduce((sum, column) => sum + column.width, 0) + 380;
+
+  // Ba dòng cuối tính trên mọi dòng của trục, không theo ô tích chọn - đây là
+  // điểm của cả trục chứ không phải của phần đang chọn để thao tác.
+  const footerTotals = computeAxisFooter(
+    axis.groups.flatMap((group) => group.rows),
+    template.columns,
+    footerConfig,
+    axis.axisMaxScore,
+    { scoreGroups, qualityLevels },
+  );
+  const baseColumnTitle = footerConfig?.baseColumnKey
+    ? (template.columns.find(
+        (column) => column.key === footerConfig.baseColumnKey,
+      )?.title ?? "")
+    : "";
 
   return (
     <Card>
@@ -892,6 +932,85 @@ function AxisBoardBlock({
                   </Fragment>
                 );
               })}
+
+              {footerConfig?.enabled ? (
+                <>
+                  <TableRow className="border-t-2 bg-muted/60 font-medium hover:bg-muted/60">
+                    <TableCell colSpan={leading.length} className="text-sm">
+                      Tổng từng cột
+                    </TableCell>
+                    {visible.map((column) => {
+                      const total = footerTotals.columnTotals[column.key];
+                      return (
+                        <TableCell
+                          key={column.id}
+                          className="align-middle text-sm"
+                          style={{ minWidth: column.width }}
+                        >
+                          {/* Cột không phải số, hoặc chưa ai nhập, thì để trống
+                              - hiện 0 là nhìn như đã chấm 0 điểm. */}
+                          {total === undefined ? null : formatScoreNumber(total)}
+                        </TableCell>
+                      );
+                    })}
+                    <TableCell className="sticky right-0 z-10 bg-muted" />
+                  </TableRow>
+
+                  <TableRow className="bg-muted/60 font-medium hover:bg-muted/60">
+                    <TableCell colSpan={leading.length} className="text-sm">
+                      Tổng điểm trục
+                    </TableCell>
+                    <TableCell
+                      colSpan={visible.length}
+                      className="text-center text-sm"
+                    >
+                      {footerTotals.axisScore === null ? (
+                        <span className="font-normal text-muted-foreground">
+                          Chưa tính được
+                          {baseColumnTitle
+                            ? ` - cột "${baseColumnTitle}" chưa có số liệu`
+                            : ""}
+                          .
+                        </span>
+                      ) : (
+                        formatScoreNumber(footerTotals.axisScore, 4)
+                      )}
+                    </TableCell>
+                    <TableCell className="sticky right-0 z-10 bg-muted" />
+                  </TableRow>
+
+                  <TableRow className="bg-muted/60 font-semibold hover:bg-muted/60">
+                    <TableCell colSpan={leading.length} className="text-sm">
+                      Điểm quy đổi
+                    </TableCell>
+                    <TableCell
+                      colSpan={visible.length}
+                      className="text-center text-sm"
+                    >
+                      {footerTotals.convertedScore === null ? (
+                        <span className="font-normal text-muted-foreground">
+                          -
+                        </span>
+                      ) : axis.axisMaxScore ? (
+                        <>
+                          {formatScoreNumber(footerTotals.convertedScore)}
+                          <span className="font-normal text-muted-foreground">
+                            {" / "}
+                            {formatScoreNumber(axis.axisMaxScore)}
+                          </span>
+                        </>
+                      ) : (
+                        // Điểm tối đa 0 thì quy đổi luôn ra 0 - nói rõ là thiếu
+                        // cấu hình, đừng để người duyệt tưởng trục bị 0 điểm.
+                        <span className="font-normal text-amber-600 dark:text-amber-500">
+                          Trục chưa đặt điểm tối đa.
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="sticky right-0 z-10 bg-muted" />
+                  </TableRow>
+                </>
+              ) : null}
             </TableBody>
           </Table>
         </div>

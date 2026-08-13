@@ -59,6 +59,29 @@ export function catalogOfSemantic(semanticKey: FormColumnSemantic) {
   return SEMANTIC_CATALOG[semanticKey] ?? null;
 }
 
+/**
+ * Con số mà một cột đóng góp vào công thức điểm, null = cột không tính được.
+ *
+ * Không phải cứ `dataType = number` mới cộng được: cột Điểm chuẩn là dropdown
+ * Nhóm điểm, số dùng để tính là điểm tối đa của nhóm được chọn; cột Chất lượng
+ * thực hiện góp phần trăm của mức được chọn. Khai chung một chỗ để cấu hình và
+ * bảng tổng không bao giờ hiểu khác nhau về "cột này ra số nào".
+ */
+export type FormulaValueSource =
+  | 'number'
+  | 'score_group_max'
+  | 'quality_percent';
+
+export function formulaValueSource(column: {
+  semanticKey: FormColumnSemantic;
+  dataType: FormColumnDataType;
+}): FormulaValueSource | null {
+  if (column.semanticKey === 'score_group') return 'score_group_max';
+  if (column.semanticKey === 'quality_level') return 'quality_percent';
+  if (column.dataType === 'number') return 'number';
+  return null;
+}
+
 /** Nhóm header (gộp ô) - lồng nhau nhiều tầng. */
 export class FormHeaderGroup {
   id!: string;
@@ -117,6 +140,38 @@ export class FormTemplateColumn {
 export const FormTemplateColumnSchema =
   SchemaFactory.createForClass(FormTemplateColumn);
 
+/**
+ * Ba dòng cuối bảng của mỗi trục: "Tổng từng cột", "Tổng điểm trục" và
+ * "Điểm quy đổi".
+ *
+ * Khuôn công thức cố định, cấu hình chỉ chọn cột đóng vai trò nào - không chạy
+ * biểu thức tuỳ ý:
+ *   tổng điểm trục = trung bình cộng của (Σ tử số i / Σ mẫu số)
+ *   điểm quy đổi   = tổng điểm trục × Axis.maxScore
+ *
+ * Cột nào được cộng ở dòng "Tổng từng cột" thì suy ra từ dataType = number,
+ * không khai lại ở đây - khai thêm cũng không đổi được hành vi nào.
+ */
+@Schema({ _id: false })
+export class FormTemplateFooter {
+  @Prop({ default: false })
+  enabled!: boolean;
+
+  /** Khoá cột mẫu số - "Điểm chuẩn" trong bảng mẫu. */
+  @Prop({ type: String, default: null })
+  baseColumnKey!: string | null;
+
+  /**
+   * Khoá các cột tử số, theo thứ tự hiện trên công thức. Một phần tử thì công
+   * thức rút về (Σ B / Σ A), không chia trung bình.
+   */
+  @Prop({ type: [String], default: [] })
+  ratioColumnKeys!: string[];
+}
+
+export const FormTemplateFooterSchema =
+  SchemaFactory.createForClass(FormTemplateFooter);
+
 /** Mẫu bảng KPI - bộ cột + header gộp, gán cho một hoặc nhiều trục. */
 @Schema({ timestamps: true, collection: 'kpi_form_templates' })
 export class FormTemplate {
@@ -134,6 +189,10 @@ export class FormTemplate {
 
   @Prop({ type: [Object], default: [] })
   headerGroups!: FormHeaderGroup[];
+
+  /** Công thức ba dòng cuối bảng. Tắt = bảng không có dòng tính điểm. */
+  @Prop({ type: FormTemplateFooterSchema, default: () => ({}) })
+  footer!: FormTemplateFooter;
 
   /** Các trục dùng mẫu này. Một trục chỉ thuộc đúng một mẫu đang hoạt động. */
   @Prop({ type: [{ type: Types.ObjectId, ref: Axis.name }], default: [], index: true })

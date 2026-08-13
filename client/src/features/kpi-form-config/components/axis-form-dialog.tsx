@@ -35,6 +35,7 @@ export function AxisFormDialog({
 }: AxisFormDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [maxScore, setMaxScore] = useState("0");
   const [sortOrder, setSortOrder] = useState("0");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,11 +45,13 @@ export function AxisFormDialog({
     if (edit) {
       setName(edit.name);
       setDescription(edit.description ?? "");
+      setMaxScore(String(edit.maxScore ?? 0));
       setSortOrder(String(edit.sortOrder ?? 0));
       setIsActive(edit.isActive);
     } else {
       setName("");
       setDescription("");
+      setMaxScore("0");
       setSortOrder("0");
       setIsActive(true);
     }
@@ -66,9 +69,16 @@ export function AxisFormDialog({
       return;
     }
 
+    const maxScoreNum = Number(maxScore);
+    if (!Number.isFinite(maxScoreNum) || maxScoreNum < 0) {
+      toast.error("Điểm tối đa của trục không hợp lệ.");
+      return;
+    }
+
     const payload = {
       name: name.trim(),
       description: description.trim(),
+      maxScore: maxScoreNum,
       sortOrder: sortOrderNum,
       isActive,
     };
@@ -134,6 +144,22 @@ export function AxisFormDialog({
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="axis-max-score">Điểm tối đa của trục</Label>
+            <Input
+              id="axis-max-score"
+              type="number"
+              min={0}
+              step="0.01"
+              value={maxScore}
+              onChange={(e) => setMaxScore(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Dòng &quot;Điểm quy đổi&quot; cuối bảng = tỉ lệ hoàn thành × số
+              này. Tổng điểm tối đa của các trục thường bằng 100.
+            </p>
           </div>
 
           <div className="space-y-2">

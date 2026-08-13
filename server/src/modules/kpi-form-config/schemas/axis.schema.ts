@@ -15,6 +15,14 @@ export class Axis {
   @Prop({ trim: true, default: '' })
   description!: string;
 
+  /**
+   * Điểm tối đa của trục - dòng "Điểm quy đổi" ở cuối bảng lấy tỉ lệ hoàn thành
+   * nhân với số này. Tổng điểm max của các trục đang hoạt động nên bằng 100,
+   * nhưng không ép cứng vì kỳ đánh giá có thể tạm tắt bớt trục.
+   */
+  @Prop({ default: 0, min: 0 })
+  maxScore!: number;
+
   @Prop({ default: 0, min: 0 })
   sortOrder!: number;
 
