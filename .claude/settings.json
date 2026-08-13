@@ -52,7 +52,11 @@
       "Bash(rm -f Caddyfile docker-compose.yml .env .env.example .gitignore .gitattributes DEPLOY-OFFLINE.md)",
       "Bash(rm -rf deploy scripts certs dist-offline)",
       "Bash(rm -f client/Dockerfile client/.dockerignore server/Dockerfile server/.dockerignore)",
-      "Bash(docker volume *)"
+      "Bash(docker volume *)",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('src/features/kpi-summary-report/excel.ts','utf8'\\);const i=s.indexOf\\('normalize'\\);console.log\\(JSON.stringify\\(s.slice\\(i,i+120\\)\\)\\);\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/cf346086-17f1-422e-89df-edff1ab1e0bf/scratchpad/fix-slug.js\")",
+      "Bash(git -C d:/Project/WebApp/KPI status --short)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/cf346086-17f1-422e-89df-edff1ab1e0bf/scratchpad/test-merge.js\")"
     ]
   }
 }

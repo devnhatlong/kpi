@@ -3,7 +3,7 @@ import {
   ArrowDownToLine,
   BookMarked,
   ClipboardList,
-  Filter,
+  FileSpreadsheet,
   FormInput,
   Gauge,
   Inbox,
@@ -72,9 +72,9 @@ export const NAV_ITEMS: NavItem[] = [
     permissions: [PERM.TASK_VIEW],
   },
   {
-    title: "Tổng hợp & nâng cấp",
+    title: "Báo cáo tổng",
     href: "/kpi/promote",
-    icon: Filter,
+    icon: FileSpreadsheet,
     permissions: [PERM.EVALUATION_APPROVE],
   },
   {

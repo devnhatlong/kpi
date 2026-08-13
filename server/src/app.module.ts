@@ -20,6 +20,7 @@ import { PersonalKpiModule } from './modules/personal-kpi/personal-kpi.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { KpiAssignmentsModule } from './modules/kpi-assignments/kpi-assignments.module';
 import { KpiScopeConfigModule } from './modules/kpi-scope-config/kpi-scope-config.module';
+import { KpiSummaryReportsModule } from './modules/kpi-summary-reports/kpi-summary-reports.module';
 import { mongooseConfig } from './config/database.config';
 import { JwtModule } from '@nestjs/jwt';
 import type { SignOptions } from 'jsonwebtoken';
@@ -54,6 +55,7 @@ import type { SignOptions } from 'jsonwebtoken';
     SystemModule,
     KpiFormConfigModule,
     PersonalKpiModule,
+    KpiSummaryReportsModule,
     KpiScopeConfigModule,
     KpiAssignmentsModule,
     UploadsModule,

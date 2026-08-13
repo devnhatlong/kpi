@@ -1,16 +1,11 @@
 import type { Metadata } from "next";
 
-import { PlaceholderPage } from "@/components/common/placeholder-page";
+import { SummaryReportWorkspace } from "@/features/kpi-summary-report/components/summary-report-workspace";
 
 export const metadata: Metadata = {
-  title: "Tổng hợp & nâng cấp",
+  title: "Báo cáo tổng",
 };
 
-export default function KpiPromotePage() {
-  return (
-    <PlaceholderPage
-      title="Tổng hợp & nâng cấp"
-      description="Manager tích chọn công việc cán bộ → KPI đội. Unit admin tích chọn KPI đội → KPI phòng."
-    />
-  );
+export default function KpiSummaryReportsPage() {
+  return <SummaryReportWorkspace />;
 }

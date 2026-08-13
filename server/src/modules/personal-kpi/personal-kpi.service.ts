@@ -618,9 +618,6 @@ export class PersonalKpiService {
   /**
    * Bảng tổng của cấp trên: mọi nhiệm vụ đang nằm ở tay mình, gom
    * Trục → Nội dung công việc → dòng, kèm bộ cột của mẫu đã khoá lúc gửi.
-   *
-   * Tách khối theo (trục, phiên bản mẫu): mẫu đổi giữa chừng thì các dòng cũ
-   * vẫn dựng đúng bảng của thời điểm gửi thay vì bị méo theo mẫu mới.
    */
   async board(userId: string, query: PersonalKpiBoardQueryDto) {
     const actor = await this.requireActor(userId);
@@ -678,88 +675,7 @@ export class PersonalKpiService {
       .populate('lastSenderId', 'fullName username')
       .populate('lastSenderDepartmentId', 'code name');
 
-    const blocks = new Map<
-      string,
-      {
-        axisId: string;
-        axisCode: string;
-        axisName: string;
-        axisDescription: string;
-        formTemplateId: string | null;
-        formTemplateVersion: number | null;
-        groups: Map<
-          string,
-          {
-            workContentId: string;
-            workContentCode: string;
-            workContentName: string;
-            workContentDescription: string;
-            rows: PersonalKpiItemDocument[];
-          }
-        >;
-      }
-    >();
-
-    for (const row of rows) {
-      const axis = row.axisId as unknown as {
-        _id: Types.ObjectId;
-        code?: string;
-        name?: string;
-        description?: string;
-      };
-      const content = row.workContentId as unknown as {
-        _id: Types.ObjectId;
-        code?: string;
-        name?: string;
-        description?: string;
-      };
-      const axisId = String(axis?._id ?? row.axisId);
-      const version = row.formTemplateVersion ?? null;
-      const blockKey = `${axisId}:${version ?? 'live'}`;
-
-      let block = blocks.get(blockKey);
-      if (!block) {
-        block = {
-          axisId,
-          axisCode: axis?.code ?? '',
-          axisName: axis?.name ?? '',
-          axisDescription: axis?.description ?? '',
-          formTemplateId: row.formTemplateId ? String(row.formTemplateId) : null,
-          formTemplateVersion: version,
-          groups: new Map(),
-        };
-        blocks.set(blockKey, block);
-      }
-
-      const contentId = String(content?._id ?? row.workContentId);
-      let group = block.groups.get(contentId);
-      if (!group) {
-        group = {
-          workContentId: contentId,
-          workContentCode: content?.code ?? '',
-          workContentName: content?.name ?? '',
-          workContentDescription: content?.description ?? '',
-          rows: [],
-        };
-        block.groups.set(contentId, group);
-      }
-      group.rows.push(row);
-    }
-
-    const axes = await Promise.all(
-      [...blocks.values()].map(async (block) => ({
-        axisId: block.axisId,
-        axisCode: block.axisCode,
-        axisName: block.axisName,
-        axisDescription: block.axisDescription,
-        template: await this.resolveBoardTemplate(
-          block.axisId,
-          block.formTemplateId,
-          block.formTemplateVersion,
-        ),
-        groups: [...block.groups.values()],
-      })),
-    );
+    const axes = await this.groupRowsByAxis(rows);
 
     // Đếm theo TOÀN BỘ việc đang ở chỗ mình, không theo bộ lọc trạng thái đang
     // xem - để thanh tab luôn nói được còn bao nhiêu việc đã duyệt chờ gửi lên.
@@ -876,7 +792,7 @@ export class PersonalKpiService {
    * Không còn cột "tên nhiệm vụ" cố định để tìm, nên quét hết giá trị các cột
    * trong fieldValues.
    */
-  private contentMatches(value: string) {
+  contentMatches(value: string) {
     const escaped = value.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return {
       $expr: {
@@ -1176,6 +1092,99 @@ export class PersonalKpiService {
         }
         return !String(item.fieldValues?.[column.key] ?? '').trim();
     }
+  }
+
+  /**
+   * Gom một tập nhiệm vụ thành khối Trục → Nội dung công việc, kèm bộ cột của
+   * mẫu đã khoá lúc gửi. Bảng tổng của cấp trên và báo cáo tổng dùng chung hàm
+   * này để hai màn hình không bao giờ dựng bảng khác nhau từ cùng dữ liệu.
+   *
+   * Tách khối theo (trục, phiên bản mẫu): mẫu đổi giữa chừng thì các dòng cũ
+   * vẫn dựng đúng bảng của thời điểm gửi thay vì bị méo theo mẫu mới.
+   */
+  async groupRowsByAxis(rows: PersonalKpiItemDocument[]) {
+    const blocks = new Map<
+      string,
+      {
+        axisId: string;
+        axisCode: string;
+        axisName: string;
+        axisDescription: string;
+        formTemplateId: string | null;
+        formTemplateVersion: number | null;
+        groups: Map<
+          string,
+          {
+            workContentId: string;
+            workContentCode: string;
+            workContentName: string;
+            workContentDescription: string;
+            rows: PersonalKpiItemDocument[];
+          }
+        >;
+      }
+    >();
+
+    for (const row of rows) {
+      const axis = row.axisId as unknown as {
+        _id: Types.ObjectId;
+        code?: string;
+        name?: string;
+        description?: string;
+      };
+      const content = row.workContentId as unknown as {
+        _id: Types.ObjectId;
+        code?: string;
+        name?: string;
+        description?: string;
+      };
+      const axisId = String(axis?._id ?? row.axisId);
+      const version = row.formTemplateVersion ?? null;
+      const blockKey = `${axisId}:${version ?? 'live'}`;
+
+      let block = blocks.get(blockKey);
+      if (!block) {
+        block = {
+          axisId,
+          axisCode: axis?.code ?? '',
+          axisName: axis?.name ?? '',
+          axisDescription: axis?.description ?? '',
+          formTemplateId: row.formTemplateId ? String(row.formTemplateId) : null,
+          formTemplateVersion: version,
+          groups: new Map(),
+        };
+        blocks.set(blockKey, block);
+      }
+
+      const contentId = String(content?._id ?? row.workContentId);
+      let group = block.groups.get(contentId);
+      if (!group) {
+        group = {
+          workContentId: contentId,
+          workContentCode: content?.code ?? '',
+          workContentName: content?.name ?? '',
+          workContentDescription: content?.description ?? '',
+          rows: [],
+        };
+        block.groups.set(contentId, group);
+      }
+      group.rows.push(row);
+    }
+
+    return Promise.all(
+      [...blocks.values()].map(async (block) => ({
+        axisId: block.axisId,
+        axisCode: block.axisCode,
+        axisName: block.axisName,
+        axisDescription: block.axisDescription,
+        template: await this.resolveBoardTemplate(
+          block.axisId,
+          block.formTemplateId,
+          block.formTemplateVersion,
+        ),
+        groups: [...block.groups.values()],
+      })),
+    );
   }
 
   private async resolveBoardTemplate(

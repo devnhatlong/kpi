@@ -39,10 +39,7 @@ import {
   fetchAxesAll,
   fetchWorkContentsAll,
 } from "@/features/kpi-form-config/api";
-import {
-  entityId,
-  type FormTemplateColumn,
-} from "@/features/kpi-form-config/types";
+import { entityId } from "@/features/kpi-form-config/types";
 import { fetchDepartments } from "@/features/organization/api";
 import {
   fetchPersonalKpiBoard,
@@ -52,6 +49,11 @@ import {
   type PersonalKpiBoardRow,
   type PersonalKpiBoardQuery,
 } from "@/features/personal-kpi/api";
+import {
+  cellText,
+  isTickedCell,
+  refLabel,
+} from "@/features/personal-kpi/board-cell";
 import { AttachmentCell } from "@/features/personal-kpi/components/attachment-cell";
 import { SendRecipientDialog } from "@/features/personal-kpi/components/send-recipient-dialog";
 import { TaskTableHeader } from "@/features/personal-kpi/components/task-table-header";
@@ -73,38 +75,6 @@ const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: "COMPLETED", label: "Đã hoàn thành" },
   { value: "ALL", label: "Tất cả đang ở chỗ tôi" },
 ];
-
-function refLabel(value: unknown): string {
-  if (!value) return "";
-  if (typeof value === "string") return "";
-  const ref = value as { name?: string; fullName?: string; username?: string };
-  return ref.fullName ?? ref.name ?? ref.username ?? "";
-}
-
-/** Giá trị hiển thị của một ô theo ánh xạ cột của mẫu. */
-function cellText(row: PersonalKpiBoardRow, column: FormTemplateColumn): string {
-  switch (column.semanticKey) {
-    case "work_content":
-      return refLabel(row.workContentId);
-    // Cột danh mục lấy theo khoá cột, để hai cột cùng danh mục không lẫn nhau.
-    case "score_group":
-    case "quality_level":
-      return row.catalogValues?.[column.key]?.name ?? "";
-    case "stt":
-      return "";
-    default: {
-      const value = row.fieldValues?.[column.key];
-      return value == null ? "" : String(value);
-    }
-  }
-}
-
-function isTickedCell(
-  row: PersonalKpiBoardRow,
-  column: FormTemplateColumn,
-): boolean {
-  return row.fieldValues?.[column.key] === "1";
-}
 
 export function PersonalKpiBoardView() {
   const [reportDate, setReportDate] = useState("");
