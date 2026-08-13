@@ -223,16 +223,18 @@ export function SendRecipientDialog({
                         );
                       return (
                         <div key={group.key}>
-                          <button
-                            type="button"
+                          {/* Hàng là <label> chứ không phải <button>: Checkbox
+                              của Radix vốn đã là <button>, lồng hai button vào
+                              nhau là HTML sai và gây lỗi hydration. Label bọc
+                              checkbox vẫn cho bấm cả hàng để tích. */}
+                          <label
                             className={cn(
                               "grid w-full grid-cols-[1fr_88px] items-center px-3 py-2.5 text-left text-sm font-medium hover:bg-muted/40",
                               deptChecked && "bg-primary/5",
+                              submitting || group.people.length === 0
+                                ? "cursor-default opacity-60"
+                                : "cursor-pointer",
                             )}
-                            onClick={() =>
-                              selectDepartment(group, !deptChecked)
-                            }
-                            disabled={submitting || group.people.length === 0}
                           >
                             <span className="flex min-w-0 items-center gap-2">
                               <Building2 className="h-4 w-4 shrink-0 text-sky-600" />
@@ -249,27 +251,24 @@ export function SendRecipientDialog({
                                 onCheckedChange={(value) =>
                                   selectDepartment(group, value === true)
                                 }
-                                onClick={(event) => event.stopPropagation()}
                                 aria-label={`Chọn đơn vị ${group.departmentName}`}
                               />
                             </span>
-                          </button>
+                          </label>
                           {group.people.map((person) => {
                             const personChecked = selectedPersonIds.includes(
                               person.id,
                             );
                             return (
-                              <button
+                              <label
                                 key={person.id}
-                                type="button"
                                 className={cn(
                                   "grid w-full grid-cols-[1fr_88px] items-center py-2.5 pr-3 pl-8 text-left text-sm hover:bg-muted/40",
                                   personChecked && "bg-primary/5",
+                                  submitting
+                                    ? "cursor-default opacity-60"
+                                    : "cursor-pointer",
                                 )}
-                                onClick={() =>
-                                  selectPerson(person, !personChecked)
-                                }
-                                disabled={submitting}
                               >
                                 <span className="flex min-w-0 items-center gap-2 pl-2">
                                   <UserRound className="h-4 w-4 shrink-0 text-amber-500" />
@@ -284,14 +283,14 @@ export function SendRecipientDialog({
                                 <span className="flex justify-center">
                                   <Checkbox
                                     checked={personChecked}
+                                    disabled={submitting}
                                     onCheckedChange={(value) =>
                                       selectPerson(person, value === true)
                                     }
-                                    onClick={(event) => event.stopPropagation()}
                                     aria-label={`Chọn ${person.fullName}`}
                                   />
                                 </span>
-                              </button>
+                              </label>
                             );
                           })}
                         </div>
