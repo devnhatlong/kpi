@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  ArrowDownToLine,
   BookMarked,
   ClipboardList,
   FileSpreadsheet,
@@ -16,6 +15,7 @@ import {
   Stamp,
   Table2,
   Target,
+  Trophy,
   Users,
 } from "lucide-react";
 
@@ -83,7 +83,7 @@ export const NAV_ITEMS: NavItem[] = [
   {
     title: "Giao KPI xuống",
     href: "/kpi/assign",
-    icon: ArrowDownToLine,
+    icon: Trophy,
     permissions: [PERM.TASK_ASSIGN],
   },
   {
