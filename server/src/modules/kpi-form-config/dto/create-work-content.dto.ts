@@ -26,6 +26,10 @@ export class CreateWorkContentDto {
   @IsMongoId({ message: 'Trục không hợp lệ.' })
   axisId!: string;
 
+  @StringRequired('Nhóm điểm', { example: '66af9f31f0e4d3e4f4305e93' })
+  @IsMongoId({ message: 'Nhóm điểm không hợp lệ.' })
+  scoreGroupId!: string;
+
   @NumberNotRequired('Thứ tự hiển thị', { example: 0 })
   sortOrder?: number;
 

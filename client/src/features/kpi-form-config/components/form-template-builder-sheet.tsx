@@ -72,11 +72,14 @@ import {
   formulaValueSource,
   kindOfSemantic,
   localId,
+  plainNumberColumns,
+  qualityLevelColumns,
   scoreGroupColumns,
   SEMANTIC_DATA_TYPE,
   SEMANTIC_KIND_HINT,
   SEMANTIC_KIND_LABEL,
   semanticsByKind,
+  type FormColumnAutoValue,
   type FormColumnDataType,
   type FormColumnSemantic,
   type FormHeaderGroup,
@@ -90,6 +93,26 @@ import { cn } from "@/lib/utils";
 const NO_GROUP = "__none__";
 const NO_RANGE = "__norange__";
 const NO_COLUMN = "__nocolumn__";
+const MANUAL_VALUE = "__manual__";
+const AUTO_PERCENT = "percent_of";
+
+/**
+ * Cột chất lượng gợi ý sẵn khi bật tự tính: ưu tiên cột nằm cùng nhóm header.
+ *
+ * Nhóm header CHỈ dùng để đoán mặc định lúc cấu hình, người dựng mẫu sửa lại
+ * được. Lúc chạy thì luôn đọc khoá cột đã lưu, không suy lại theo nhóm - đổi
+ * bố cục bảng không được phép đổi phép tính.
+ */
+function suggestPercentColumn(
+  column: FormTemplateColumn,
+  candidates: FormTemplateColumn[],
+): FormTemplateColumn | undefined {
+  const path = column.headerPath.join(">");
+  return (
+    candidates.find((item) => item.headerPath.join(">") === path) ??
+    candidates[0]
+  );
+}
 
 /** Tên cột kèm chú thích cột đó góp con số nào, cho dropdown công thức. */
 function formulaColumnLabel(column: FormTemplateColumn): string {
@@ -184,6 +207,7 @@ function newColumn(): FormTemplateColumn {
     semanticKey: "custom",
     required: false,
     rangeFromColumnKey: null,
+    autoValue: null,
   };
 }
 
@@ -250,6 +274,29 @@ export function FormTemplateBuilderSheet({
 
   /** Cột Nhóm điểm trong mẫu - nguồn giới hạn cho các cột điểm. */
   const scoreColumns = useMemo(() => scoreGroupColumns(columns), [columns]);
+
+  /** Hai nguồn của cột tự tính: phần trăm lấy ở đâu, điểm gốc lấy ở đâu. */
+  const qualityColumns = useMemo(() => qualityLevelColumns(columns), [columns]);
+  const baseColumns = useMemo(() => plainNumberColumns(columns), [columns]);
+
+  /**
+   * Cột sau khi bỏ cấu hình tự tính đã trỏ vào cột bị xoá hoặc đổi khỏi kiểu số.
+   * Lọc lúc dựng payload chứ không sửa thẳng state - cùng lý do với liveFooter.
+   */
+  const liveColumns = useMemo<FormTemplateColumn[]>(() => {
+    const qualityKeys = new Set(qualityColumns.map((column) => column.key));
+    const baseKeys = new Set(baseColumns.map((column) => column.key));
+    return columns.map((column) => {
+      const auto = column.autoValue;
+      if (!auto) return column;
+      const usable =
+        column.dataType === "number" &&
+        qualityKeys.has(auto.percentColumnKey) &&
+        baseKeys.has(auto.baseColumnKey) &&
+        auto.baseColumnKey !== column.key;
+      return usable ? column : { ...column, autoValue: null };
+    });
+  }, [columns, qualityColumns, baseColumns]);
 
   /** Cột gán được vào công thức - chỉ cột kiểu số mới cộng và chia được. */
   const numericColumns = useMemo(() => formulaColumns(columns), [columns]);
@@ -424,7 +471,7 @@ export function FormTemplateBuilderSheet({
     const payload = {
       name: name.trim(),
       description: description.trim(),
-      columns: columns.map((column) => ({
+      columns: liveColumns.map((column) => ({
         ...column,
         title: column.title.trim(),
         width: Number.isFinite(column.width) ? column.width : 160,
@@ -760,10 +807,14 @@ export function FormTemplateBuilderSheet({
                               onValueChange={(value) =>
                                 patchColumn(column.id, {
                                   dataType: value as FormColumnDataType,
-                                  // Chỉ cột số mới giới hạn theo nhóm điểm được.
+                                  // Chỉ cột số mới giới hạn theo nhóm điểm và
+                                  // tự tính được.
                                   ...(value === "number"
                                     ? {}
-                                    : { rangeFromColumnKey: null }),
+                                    : {
+                                        rangeFromColumnKey: null,
+                                        autoValue: null,
+                                      }),
                                 })
                               }
                             >
@@ -818,6 +869,115 @@ export function FormTemplateBuilderSheet({
                                   ))}
                                 </SelectContent>
                               </Select>
+                            ) : null}
+
+                            {/* Ô tự tính: trỏ đích danh cột phần trăm và cột
+                                điểm gốc. Không suy theo nhóm header - nhóm chỉ
+                                dùng để đoán giá trị mặc định bên dưới. */}
+                            {column.dataType === "number" &&
+                            qualityColumns.length > 0 &&
+                            baseColumns.some(
+                              (item) => item.key !== column.key,
+                            ) ? (
+                              <div className="mt-1 space-y-1">
+                                <Select
+                                  value={
+                                    column.autoValue ? AUTO_PERCENT : MANUAL_VALUE
+                                  }
+                                  onValueChange={(value) => {
+                                    if (value === MANUAL_VALUE) {
+                                      patchColumn(column.id, { autoValue: null });
+                                      return;
+                                    }
+                                    const percent = suggestPercentColumn(
+                                      column,
+                                      qualityColumns,
+                                    );
+                                    const base = baseColumns.find(
+                                      (item) => item.key !== column.key,
+                                    );
+                                    if (!percent || !base) return;
+                                    patchColumn(column.id, {
+                                      autoValue: {
+                                        kind: "percent_of",
+                                        percentColumnKey: percent.key,
+                                        baseColumnKey: base.key,
+                                      },
+                                    });
+                                  }}
+                                >
+                                  <SelectTrigger className="h-7 text-[11px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value={MANUAL_VALUE}>
+                                      Người nhập tự gõ
+                                    </SelectItem>
+                                    <SelectItem value={AUTO_PERCENT}>
+                                      Tự tính = % × điểm
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+
+                                {column.autoValue ? (
+                                  <>
+                                    <Select
+                                      value={column.autoValue.percentColumnKey}
+                                      onValueChange={(value) =>
+                                        patchColumn(column.id, {
+                                          autoValue: {
+                                            ...(column.autoValue as FormColumnAutoValue),
+                                            percentColumnKey: value,
+                                          },
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger className="h-7 text-[11px]">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {qualityColumns.map((item) => (
+                                          <SelectItem
+                                            key={item.key}
+                                            value={item.key}
+                                          >
+                                            % từ &quot;{item.title}&quot;
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <Select
+                                      value={column.autoValue.baseColumnKey}
+                                      onValueChange={(value) =>
+                                        patchColumn(column.id, {
+                                          autoValue: {
+                                            ...(column.autoValue as FormColumnAutoValue),
+                                            baseColumnKey: value,
+                                          },
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger className="h-7 text-[11px]">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {baseColumns
+                                          .filter(
+                                            (item) => item.key !== column.key,
+                                          )
+                                          .map((item) => (
+                                            <SelectItem
+                                              key={item.key}
+                                              value={item.key}
+                                            >
+                                              × &quot;{item.title}&quot;
+                                            </SelectItem>
+                                          ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </>
+                                ) : null}
+                              </div>
                             ) : null}
                           </TableCell>
                           <TableCell>

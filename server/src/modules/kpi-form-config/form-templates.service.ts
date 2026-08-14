@@ -242,6 +242,15 @@ export class FormTemplatesService {
           column.semanticKey,
           column.required,
           column.rangeFromColumnKey,
+          // Đổi công thức tự tính là đổi con số trong bảng - phải lên phiên bản
+          // mới, không thì báo cáo đã gửi bị tính lại theo luật khác.
+          column.autoValue
+            ? [
+                column.autoValue.kind,
+                column.autoValue.percentColumnKey,
+                column.autoValue.baseColumnKey,
+              ]
+            : null,
         ]),
         headerGroups: groups,
         footer: [
@@ -397,6 +406,13 @@ export class FormTemplatesService {
         semanticKey,
         required: column.required ?? false,
         rangeFromColumnKey: column.rangeFromColumnKey?.trim() || null,
+        autoValue: column.autoValue
+          ? {
+              kind: column.autoValue.kind,
+              percentColumnKey: column.autoValue.percentColumnKey.trim(),
+              baseColumnKey: column.autoValue.baseColumnKey.trim(),
+            }
+          : null,
       };
     });
 
@@ -417,6 +433,55 @@ export class FormTemplatesService {
       if (!scoreGroupKeys.has(column.rangeFromColumnKey)) {
         throw new BadRequestException(
           `Cột "${column.title}" giới hạn theo một cột Nhóm điểm không tồn tại trong mẫu.`,
+        );
+      }
+    }
+
+    // Cột tự tính trỏ tới cột khác bằng khoá, kiểm cùng kiểu với dải điểm ở trên.
+    const qualityKeys = new Set(
+      normalized
+        .filter((column) => column.semanticKey === 'quality_level')
+        .map((column) => column.key),
+    );
+    const numberKeys = new Set(
+      normalized
+        .filter((column) => column.dataType === 'number')
+        .map((column) => column.key),
+    );
+    const autoKeys = new Set(
+      normalized
+        .filter((column) => column.autoValue)
+        .map((column) => column.key),
+    );
+    for (const column of normalized) {
+      const auto = column.autoValue;
+      if (!auto) continue;
+
+      if (column.dataType !== 'number') {
+        throw new BadRequestException(
+          `Cột "${column.title}" không phải kiểu số nên không tự tính điểm được.`,
+        );
+      }
+      if (!qualityKeys.has(auto.percentColumnKey)) {
+        throw new BadRequestException(
+          `Cột "${column.title}" lấy phần trăm từ một cột Chất lượng thực hiện không tồn tại trong mẫu.`,
+        );
+      }
+      if (!numberKeys.has(auto.baseColumnKey)) {
+        throw new BadRequestException(
+          `Cột "${column.title}" lấy điểm gốc từ một cột số không tồn tại trong mẫu.`,
+        );
+      }
+      if (auto.baseColumnKey === column.key) {
+        throw new BadRequestException(
+          `Cột "${column.title}" không thể lấy điểm gốc từ chính nó.`,
+        );
+      }
+      // Chuỗi tự tính nối tiếp nhau thì thứ tự tính phụ thuộc thứ tự cột - cấm
+      // luôn cho khỏi phải định nghĩa thứ tự đó.
+      if (autoKeys.has(auto.baseColumnKey)) {
+        throw new BadRequestException(
+          `Cột "${column.title}" lấy điểm gốc từ một cột cũng tự tính - không cho phép tính nối tầng.`,
         );
       }
     }

@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 import { ContentGroup } from './content-group.schema';
 import { Axis } from './axis.schema';
+import { ScoreGroup } from './score-group.schema';
 
 export type WorkContentDocument = HydratedDocument<WorkContent>;
 
@@ -22,6 +23,21 @@ export class WorkContent {
 
   @Prop({ type: Types.ObjectId, ref: Axis.name, required: true, index: true })
   axisId!: Types.ObjectId;
+
+  /**
+   * Nhóm điểm gán cho nội dung công việc - mọi nhiệm vụ khai theo nội dung này
+   * lấy chung một mức điểm chuẩn, cán bộ không tự chọn nữa.
+   *
+   * Để null được vì danh mục có sẵn từ trước khi có trường này; bản ghi cũ hiện
+   * "Chưa gán" cho tới khi ai đó mở ra sửa.
+   */
+  @Prop({
+    type: Types.ObjectId,
+    ref: ScoreGroup.name,
+    default: null,
+    index: true,
+  })
+  scoreGroupId!: Types.ObjectId | null;
 
   @Prop({ default: 0, min: 0 })
   sortOrder!: number;

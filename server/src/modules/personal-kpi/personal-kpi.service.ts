@@ -14,6 +14,7 @@ import {
   WorkContentDocument,
 } from '@/modules/kpi-form-config/schemas/work-content.schema';
 import {
+  computeAutoValue,
   FormTemplate,
   FormTemplateDocument,
 } from '@/modules/kpi-form-config/schemas/form-template.schema';
@@ -136,6 +137,7 @@ export class PersonalKpiService {
     const reportDate = this.resolveReportDate(batch.reportDate);
 
     const created: Types.ObjectId[] = [];
+    const docs: PersonalKpiItemDocument[] = [];
     for (const dto of batch.items) {
       const { axis, workContent } = await this.requireAxisAndContent(
         dto.axisId,
@@ -152,7 +154,12 @@ export class PersonalKpiService {
         holderLevel: 0,
       });
       created.push(doc._id as Types.ObjectId);
+      docs.push(doc);
     }
+
+    // Nhóm điểm và cột tự tính chốt ở server, kể cả khi client không gửi lên.
+    await this.applyDerivedColumns(docs);
+    await Promise.all(docs.map((doc) => doc.save()));
 
     const data = await this.itemModel
       .find({ _id: { $in: created } })
@@ -193,6 +200,7 @@ export class PersonalKpiService {
     }
 
     await this.applyContent(item, dto);
+    await this.applyDerivedColumns([item]);
 
     // Sửa xong là hết "bị trả lại", quay về nháp để gửi lại.
     item.reviewStatus = 'DRAFT';
@@ -906,6 +914,11 @@ export class PersonalKpiService {
     }
     // Chốt mẫu bảng ở lần gửi đầu tiên để báo cáo không méo khi mẫu bị sửa.
     await this.stampTemplates(items);
+    await this.assertWorkContentScoreGroups(items);
+    // Tính lại theo đúng mẫu vừa chốt, rồi mới kiểm - nếu không sẽ kiểm trên
+    // con số client gửi chứ không phải con số hệ thống sẽ lưu.
+    await this.applyDerivedColumns(items);
+    await Promise.all(items.map((item) => item.save()));
     await this.assertRequiredColumnsFilled(items);
     await this.assertScoreRangesValid(items);
 
@@ -1090,6 +1103,8 @@ export class PersonalKpiService {
     }
 
     await this.applyContent(item, dto);
+    // Cấp trên sửa cột chất lượng thì điểm tự chấm phải chạy lại theo.
+    await this.applyDerivedColumns([item]);
     item.edits.push({
       byId: actor.id,
       byName: actor.name,
@@ -1431,6 +1446,160 @@ export class PersonalKpiService {
       item.formTemplateVersion = template.version ?? 1;
       await item.save();
     }
+  }
+
+  /**
+   * Áp lại những ô do hệ thống quyết, ghi đè giá trị client gửi lên:
+   *  - cột Nhóm điểm lấy theo nội dung công việc của dòng (cán bộ không chọn nữa);
+   *  - cột cấu hình `autoValue` tính lại từ hai cột nó trỏ tới.
+   *
+   * Khoá ô ở giao diện chỉ để đỡ nhầm; chỗ quyết định con số phải là đây, vì gọi
+   * thẳng API thì vẫn đặt được giá trị khác. Chỉ mutate, người gọi tự lưu.
+   */
+  private async applyDerivedColumns(items: PersonalKpiItemDocument[]) {
+    if (!items.length) return;
+
+    // Nhiệm vụ trong một lượt thường chung vài trục, nên số lần tra mẫu rất nhỏ.
+    const templateByItem = new Map<
+      string,
+      Awaited<ReturnType<typeof this.resolveBoardTemplate>>
+    >();
+    for (const item of items) {
+      templateByItem.set(
+        String(item._id),
+        await this.resolveBoardTemplate(
+          String(item.axisId),
+          item.formTemplateId ? String(item.formTemplateId) : null,
+          item.formTemplateVersion ?? null,
+        ),
+      );
+    }
+
+    const contentIds = [
+      ...new Set(items.map((item) => String(item.workContentId))),
+    ];
+    const contents = await this.workContentModel
+      .find({ _id: { $in: contentIds.map((id) => new Types.ObjectId(id)) } })
+      .select('scoreGroupId');
+    const groupIdByContent = new Map(
+      contents.map((row) => [
+        String(row._id),
+        row.scoreGroupId ? String(row.scoreGroupId) : '',
+      ]),
+    );
+
+    // Tên nhóm điểm chép vào catalogValues; phần trăm tra theo mức đã chọn.
+    const groupIds = [...new Set(groupIdByContent.values())].filter(Boolean);
+    const qualityIds = new Set<string>();
+    for (const item of items) {
+      for (const value of Object.values(item.catalogValues ?? {})) {
+        if (value?.id) qualityIds.add(value.id);
+      }
+    }
+    const groups: ScoreGroupDocument[] = groupIds.length
+      ? await this.scoreGroupModel
+          .find({ _id: { $in: groupIds.map((id) => new Types.ObjectId(id)) } })
+          .select('name')
+      : [];
+    const levels: QualityLevelDocument[] = qualityIds.size
+      ? await this.qualityLevelModel
+          .find({
+            _id: { $in: [...qualityIds].map((id) => new Types.ObjectId(id)) },
+          })
+          .select('percent')
+      : [];
+    const groupNameById = new Map(
+      groups.map((row) => [String(row._id), row.name] as const),
+    );
+    const percentById = new Map(
+      levels.map((row) => [String(row._id), row.percent] as const),
+    );
+
+    for (const item of items) {
+      const template = templateByItem.get(String(item._id));
+      if (!template) continue;
+
+      const catalogValues = { ...(item.catalogValues ?? {}) };
+      const fieldValues = { ...(item.fieldValues ?? {}) };
+
+      const groupId = groupIdByContent.get(String(item.workContentId)) ?? '';
+      const groupName = groupId ? groupNameById.get(groupId) : undefined;
+      for (const column of template.columns) {
+        if (column.semanticKey !== 'score_group') continue;
+        // Nội dung chưa gán nhóm điểm thì bỏ trống chứ không giữ giá trị cũ -
+        // giữ lại là để lọt đúng thứ vừa cấm cán bộ tự chọn.
+        if (groupId && groupName) {
+          catalogValues[column.key] = { id: groupId, name: groupName };
+        } else {
+          delete catalogValues[column.key];
+        }
+      }
+
+      for (const column of template.columns) {
+        const auto = column.autoValue;
+        if (!auto) continue;
+
+        const percentId = catalogValues[auto.percentColumnKey]?.id ?? '';
+        const percent = percentId ? (percentById.get(percentId) ?? null) : null;
+
+        const rawBase = fieldValues[auto.baseColumnKey];
+        const base =
+          rawBase === undefined ||
+          rawBase === null ||
+          String(rawBase).trim() === ''
+            ? null
+            : Number(rawBase);
+        const value = computeAutoValue(
+          auto.kind,
+          percent,
+          base !== null && Number.isFinite(base) ? base : null,
+        );
+        // Thiếu đầu vào thì để trống, KHÔNG ghi 0 - 0 đọc ra là "đã chấm 0 điểm".
+        fieldValues[column.key] = value === null ? '' : value;
+      }
+
+      item.catalogValues = catalogValues;
+      item.markModified('catalogValues');
+      item.fieldValues = fieldValues;
+      item.markModified('fieldValues');
+    }
+  }
+
+  /**
+   * Mẫu có cột Nhóm điểm mà nội dung công việc chưa được gán nhóm thì dòng đó
+   * không tính điểm được. Chặn lúc gửi chứ không lúc lưu nháp - cán bộ vẫn phải
+   * ghi lại được việc đang làm trong khi chờ quản trị bổ sung danh mục.
+   */
+  private async assertWorkContentScoreGroups(items: PersonalKpiItemDocument[]) {
+    const needing = new Set<string>();
+    for (const item of items) {
+      const template = await this.resolveBoardTemplate(
+        String(item.axisId),
+        item.formTemplateId ? String(item.formTemplateId) : null,
+        item.formTemplateVersion ?? null,
+      );
+      if (!template) continue;
+      if (
+        template.columns.some((column) => column.semanticKey === 'score_group')
+      ) {
+        needing.add(String(item.workContentId));
+      }
+    }
+    if (!needing.size) return;
+
+    const missing = await this.workContentModel
+      .find({
+        _id: { $in: [...needing].map((id) => new Types.ObjectId(id)) },
+        $or: [{ scoreGroupId: null }, { scoreGroupId: { $exists: false } }],
+      })
+      .select('name');
+    if (!missing.length) return;
+
+    const names = missing.map((row) => row.name).join(', ');
+    throw new BadRequestException(
+      `Nội dung công việc chưa được gán nhóm điểm nên chưa gửi được: ${names}. ` +
+        'Báo quản trị bổ sung trong Cấu hình form KPI › Nội dung công việc.',
+    );
   }
 
   /**

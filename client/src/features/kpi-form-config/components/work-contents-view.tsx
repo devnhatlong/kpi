@@ -40,6 +40,7 @@ import {
 import { WorkContentFormDialog } from "@/features/kpi-form-config/components/work-content-form-dialog";
 import type { WorkContent } from "@/features/kpi-form-config/types";
 import { entityId } from "@/features/kpi-form-config/types";
+import { formatScoreGroupRange } from "@/features/kpi-form-config/score-group.constants";
 import { useListPagination } from "@/hooks/use-list-pagination";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
@@ -54,6 +55,19 @@ export function WorkContentsView() {
     const axis = item.axisId;
     if (!axis || typeof axis === "string") return "";
     return `${axis.name} (${axis.code})`;
+  };
+  const scoreGroupLabel = (item: WorkContent) => {
+    const group = item.scoreGroupId;
+    if (!group || typeof group === "string") return "";
+    // Dải điểm chỉ có khi server populate đủ trường; thiếu thì hiện tên suông.
+    if (group.minScore === undefined || group.maxScore === undefined) {
+      return group.name;
+    }
+    return `${group.name} (${formatScoreGroupRange(
+      group.minScore,
+      group.maxScore,
+      group.maxInclusive ?? true,
+    )})`;
   };
 
   const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
@@ -132,6 +146,7 @@ export function WorkContentsView() {
                   <TableHead>Tên nội dung</TableHead>
                   <TableHead className="w-[220px]">Nhóm nội dung</TableHead>
                   <TableHead className="w-[220px]">Trục</TableHead>
+                  <TableHead className="w-[200px]">Nhóm điểm</TableHead>
                   <TableHead className="w-[100px]">Thứ tự</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
                   <TableHead className="w-[100px] text-right">Thao tác</TableHead>
@@ -140,13 +155,13 @@ export function WorkContentsView() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : items.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                       <div className="inline-flex flex-col items-center gap-2">
                         <ClipboardList className="h-8 w-8 opacity-40" />
                         <span>Chưa có nội dung công việc nào.</span>
@@ -177,6 +192,18 @@ export function WorkContentsView() {
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {axisLabel(item) || "-"}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {/* Bản ghi cũ chưa gán - tô hổ phách để còn biết đường
+                            vào sửa, không lẫn với ô trống bình thường. */}
+                        {scoreGroupLabel(item) || (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-400"
+                          >
+                            Chưa gán
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>{item.sortOrder}</TableCell>
                       <TableCell>

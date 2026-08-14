@@ -82,6 +82,56 @@ export function formulaValueSource(column: {
   return null;
 }
 
+/**
+ * Cách một cột số tự lấy giá trị thay vì để người nhập gõ.
+ * `percent_of`: phần trăm của cột Chất lượng thực hiện nhân với cột điểm gốc -
+ * đúng ô "Điểm tự chấm" trong bảng KPI.
+ */
+export const FORM_COLUMN_AUTO_KINDS = ['percent_of'] as const;
+
+export type FormColumnAutoKind = (typeof FORM_COLUMN_AUTO_KINDS)[number];
+
+/**
+ * Cột trỏ tới cột khác BẰNG KHOÁ CỘT, không suy theo nhóm header.
+ *
+ * Nhóm header chỉ để gộp ô cho dễ đọc; buộc công thức vào nó thì đổi bố cục
+ * bảng là đổi luôn phép tính. Cùng lý do với `rangeFromColumnKey` bên dưới.
+ */
+@Schema({ _id: false })
+export class FormColumnAutoValue {
+  @Prop({ type: String, enum: FORM_COLUMN_AUTO_KINDS, required: true })
+  kind!: FormColumnAutoKind;
+
+  /** Khoá cột Chất lượng thực hiện cho phần trăm. */
+  @Prop({ required: true, trim: true })
+  percentColumnKey!: string;
+
+  /** Khoá cột điểm gốc đem nhân với phần trăm. */
+  @Prop({ required: true, trim: true })
+  baseColumnKey!: string;
+}
+
+export const FormColumnAutoValueSchema =
+  SchemaFactory.createForClass(FormColumnAutoValue);
+
+/**
+ * Giá trị của một ô tự tính, null khi thiếu đầu vào.
+ *
+ * Thiếu thì trả null chứ KHÔNG trả 0: ô hiện 0 đọc ra thành "đã chấm 0 điểm",
+ * khác hẳn nghĩa "chưa chấm".
+ */
+export function computeAutoValue(
+  kind: FormColumnAutoKind,
+  percent: number | null,
+  base: number | null,
+): number | null {
+  if (kind !== 'percent_of') return null;
+  if (percent === null || base === null) return null;
+  if (!Number.isFinite(percent) || !Number.isFinite(base)) return null;
+  // Làm tròn 4 số để khỏi lưu 24.750000000000004; hiển thị vẫn cắt còn 2 số.
+  return Math.round((percent / 100) * base * 10000) / 10000;
+}
+
 /** Nhóm header (gộp ô) - lồng nhau nhiều tầng. */
 export class FormHeaderGroup {
   id!: string;
@@ -135,6 +185,13 @@ export class FormTemplateColumn {
    */
   @Prop({ type: String, default: null })
   rangeFromColumnKey!: string | null;
+
+  /**
+   * Cột tự tính - null = người nhập tự gõ như mọi cột số khác.
+   * Ô của cột này khoá lại ở form nhập, và server tính lại lúc lưu.
+   */
+  @Prop({ type: FormColumnAutoValueSchema, default: null })
+  autoValue!: FormColumnAutoValue | null;
 }
 
 export const FormTemplateColumnSchema =

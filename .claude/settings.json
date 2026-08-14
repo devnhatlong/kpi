@@ -75,7 +75,13 @@
       "Bash(node scripts/validate_palette.js \"#0ca30c,#2a78d6,#fab219,#d03b3b,#898781\" --mode light --surface \"#ffffff\")",
       "Bash(grep -iE \"^\\(stamp|target|clipboard-check|badge-check|package-open|crosshair\\)\\\\.js$\")",
       "Bash(echo \"tsc exit=$?\")",
-      "Bash(echo \"eslint exit=$?\")"
+      "Bash(echo \"eslint exit=$?\")",
+      "Bash(echo \"server tsc exit=$?\")",
+      "Bash(echo \"client tsc exit=$?\")",
+      "Bash(echo \"client tsc=$?\")",
+      "Bash(grep -v \"set-state-in-effect\\\\|Effects are intended\\\\|Calling setState\\\\|^\\\\*\\\\|^$\\\\|react.dev\\\\|Avoid calling setState\\\\|^\\\\s*[0-9]* |\")",
+      "Bash(echo \"server tsc=$?\")",
+      "Bash(echo \"tsc=$?\")"
     ]
   }
 }

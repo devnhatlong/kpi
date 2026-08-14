@@ -9,13 +9,16 @@ import { Input } from "@/components/ui/input";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { AttachmentCell } from "@/features/personal-kpi/components/attachment-cell";
 import { CatalogSelectCell } from "@/features/personal-kpi/components/catalog-select-cell";
+import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import {
   catalogOfSemantic,
+  computeAutoValue,
   formatScoreRange,
   isScoreInGroupRange,
   type FormTemplateColumn,
 } from "@/features/kpi-form-config/types";
+import { formatScoreNumber } from "@/features/personal-kpi/board-cell";
 import { cn } from "@/lib/utils";
 import {
   cellInputProps,
@@ -43,6 +46,11 @@ type PersonalTaskFormProps = {
   showWorkContentCell?: boolean;
   workContentLabel?: string;
   workContentRowSpan?: number;
+  /**
+   * Nhóm điểm gắn với nội dung công việc của dòng - cán bộ không tự chọn nữa.
+   * Bỏ trống thì rơi về giá trị đã lưu trên nhiệm vụ (dữ liệu cũ, màn chỉ xem).
+   */
+  autoScoreGroupId?: string;
   /** Chỉ xem (drawer chi tiết / gửi báo cáo) */
   readOnly?: boolean;
   /** Ô thao tác bên phải (ví dụ Duyệt / Từ chối) */
@@ -65,14 +73,28 @@ export function PersonalTaskForm({
   showWorkContentCell = false,
   workContentLabel = "",
   workContentRowSpan = 1,
+  autoScoreGroupId,
   readOnly = false,
   actions,
   rowClassName,
 }: PersonalTaskFormProps) {
   // Chỉ gọi danh mục khi mẫu thật sự có cột điểm bị giới hạn.
   const scoreGroupById = useScoreGroupMap(
-    columns.some((column) => column.rangeFromColumnKey),
+    columns.some(
+      (column) => column.rangeFromColumnKey || column.semanticKey === "score_group",
+    ),
   );
+  const qualityLevelById = useQualityLevelMap(
+    columns.some((column) => column.autoValue),
+  );
+
+  /**
+   * Nhóm điểm của dòng: theo nội dung công việc, không theo ô người dùng chọn.
+   * Mọi cột Nhóm điểm trong một mẫu đều lấy chung nhóm này, nên cột "Điểm" trỏ
+   * vào cột nào cũng ra cùng một dải.
+   */
+  const rowScoreGroupId = (columnKey: string) =>
+    autoScoreGroupId || task.catalogValues?.[columnKey] || "";
 
   return (
     <TableRow className={rowClassName}>
@@ -104,6 +126,29 @@ export function PersonalTaskForm({
               style={{ minWidth }}
             >
               {workContentLabel}
+            </TableCell>
+          );
+        }
+
+        // Nhóm điểm nay do nội dung công việc quyết định - hiện ra để đối chiếu
+        // chứ không cho chọn. Ô này không ghi gì vào task; server tự điền lúc lưu.
+        if (column.semanticKey === "score_group") {
+          const group = scoreGroupById.get(rowScoreGroupId(column.key));
+          return (
+            <TableCell
+              key={column.id}
+              className="align-middle text-sm"
+              style={{ minWidth }}
+            >
+              {group ? (
+                <span title={`Theo nội dung công việc · ${formatScoreRange(group)}`}>
+                  {group.name}
+                </span>
+              ) : (
+                <span className="text-xs text-amber-600 dark:text-amber-500">
+                  Nội dung chưa gán nhóm điểm
+                </span>
+              )}
             </TableCell>
           );
         }
@@ -169,12 +214,43 @@ export function PersonalTaskForm({
           );
         }
 
+        // Ô tự tính: hiện số cho người nhập thấy ngay, nhưng con số lưu lại là
+        // do server tính - hai bên dùng chung computeAutoValue nên không lệch.
+        if (column.autoValue) {
+          const auto = column.autoValue;
+          const level = qualityLevelById.get(
+            task.catalogValues?.[auto.percentColumnKey] ?? "",
+          );
+          const rawBase = task.fieldValues?.[auto.baseColumnKey] ?? "";
+          const base = rawBase.trim() === "" ? null : Number(rawBase);
+          const computed = computeAutoValue(
+            auto.kind,
+            level ? level.percent : null,
+            base !== null && Number.isFinite(base) ? base : null,
+          );
+          return (
+            <TableCell
+              key={column.id}
+              className="align-middle text-sm"
+              style={{ minWidth }}
+            >
+              {computed === null ? (
+                <span className="text-xs text-muted-foreground">
+                  Chờ chọn chất lượng và nhập điểm
+                </span>
+              ) : (
+                <span className="font-medium" title="Hệ thống tự tính">
+                  {formatScoreNumber(computed)}
+                </span>
+              )}
+            </TableCell>
+          );
+        }
+
         const inputProps = cellInputProps(column.dataType);
         // Cột điểm bị giới hạn thì ô nhập ăn theo nhóm điểm đang chọn ở dòng này.
         const boundGroup = column.rangeFromColumnKey
-          ? scoreGroupById.get(
-              task.catalogValues?.[column.rangeFromColumnKey] ?? "",
-            )
+          ? scoreGroupById.get(rowScoreGroupId(column.rangeFromColumnKey))
           : undefined;
         const value = readCellValue(task, column.semanticKey, column.key);
         const outOfRange =
@@ -209,7 +285,7 @@ export function PersonalTaskForm({
                 column.rangeFromColumnKey
                   ? boundGroup
                     ? formatScoreRange(boundGroup)
-                    : "Chọn nhóm điểm trước"
+                    : "Nội dung chưa gán nhóm điểm"
                   : column.title
               }
               disabled={readOnly}

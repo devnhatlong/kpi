@@ -62,6 +62,14 @@ function workContentAxisId(item: WorkContent): string {
   return typeof item.axisId === "string" ? item.axisId : item.axisId._id;
 }
 
+/** Nhóm điểm gán cho nội dung công việc - đổ xuống cột Nhóm điểm của mọi dòng. */
+function workContentScoreGroupId(item: WorkContent): string {
+  if (!item.scoreGroupId) return "";
+  return typeof item.scoreGroupId === "string"
+    ? item.scoreGroupId
+    : item.scoreGroupId._id;
+}
+
 function catalogOptionLabel(item: { name: string; description?: string }) {
   const name = item.name.trim();
   const description = item.description?.trim();
@@ -82,6 +90,8 @@ type ContentTaskTableProps = {
   stt: number;
   axisLabel: string;
   contentLabel: string;
+  /** Nhóm điểm của nội dung công việc - cán bộ không tự chọn nữa. */
+  scoreGroupId: string;
   isEdit: boolean;
   saving: boolean;
   onTaskChange: (taskKey: string, patch: Partial<PersonalTaskDraft>) => void;
@@ -100,6 +110,7 @@ function ContentTaskTable({
   stt,
   axisLabel,
   contentLabel,
+  scoreGroupId,
   isEdit,
   saving,
   onTaskChange,
@@ -143,6 +154,7 @@ function ContentTaskTable({
             showSttCell={taskIndex === 0}
             workContentLabel={contentLabel}
             workContentRowSpan={tasks.length}
+            autoScoreGroupId={scoreGroupId}
             onChange={(patch) => onTaskChange(task.key, patch)}
             onRemove={() => onTaskRemove(task.key)}
           />
@@ -943,6 +955,9 @@ export function PersonalTaskDrawer({
                                     axis ? catalogOptionLabel(axis) : "Trục"
                                   }
                                   contentLabel={catalogOptionLabel(
+                                    selectedContent,
+                                  )}
+                                  scoreGroupId={workContentScoreGroupId(
                                     selectedContent,
                                   )}
                                   isEdit={isEdit}

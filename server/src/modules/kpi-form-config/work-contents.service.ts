@@ -15,6 +15,17 @@ import {
 } from './schemas/work-content.schema';
 import { ContentGroup, ContentGroupDocument } from './schemas/content-group.schema';
 import { Axis, AxisDocument } from './schemas/axis.schema';
+import { ScoreGroup, ScoreGroupDocument } from './schemas/score-group.schema';
+
+/** Tham chiếu kèm theo mọi lần đọc - form nhập cần cả tên lẫn dải điểm. */
+const POPULATE_REFS = [
+  { path: 'contentGroupId', select: 'code name' },
+  { path: 'axisId', select: 'code name' },
+  {
+    path: 'scoreGroupId',
+    select: 'code name minScore maxScore maxInclusive formulaScore',
+  },
+] as const;
 
 @Injectable()
 export class WorkContentsService {
@@ -25,6 +36,8 @@ export class WorkContentsService {
     private readonly contentGroupModel: Model<ContentGroupDocument>,
     @InjectModel(Axis.name)
     private readonly axisModel: Model<AxisDocument>,
+    @InjectModel(ScoreGroup.name)
+    private readonly scoreGroupModel: Model<ScoreGroupDocument>,
   ) {}
 
   async create(dto: CreateWorkContentDto) {
@@ -34,6 +47,7 @@ export class WorkContentsService {
     await this.ensureUniqueCode(code);
     const contentGroup = await this.requireContentGroup(dto.contentGroupId);
     const axis = await this.requireAxis(dto.axisId);
+    const scoreGroup = await this.requireScoreGroup(dto.scoreGroupId);
 
     const data = await this.workContentModel.create({
       code,
@@ -41,13 +55,11 @@ export class WorkContentsService {
       description: dto.description?.trim() ?? '',
       contentGroupId: contentGroup._id,
       axisId: axis._id,
+      scoreGroupId: scoreGroup._id,
       sortOrder: dto.sortOrder ?? 0,
       isActive: dto.isActive ?? true,
     });
-    await data.populate([
-      { path: 'contentGroupId', select: 'code name' },
-      { path: 'axisId', select: 'code name' },
-    ]);
+    await data.populate([...POPULATE_REFS]);
 
     return { message: 'Tạo nội dung công việc thành công.', data };
   }
@@ -66,8 +78,7 @@ export class WorkContentsService {
       const data = await this.workContentModel
         .find(filter)
         .sort(sort)
-        .populate('contentGroupId', 'code name')
-        .populate('axisId', 'code name');
+        .populate([...POPULATE_REFS]);
       return buildPaginatedResponse(data, data.length, 1, data.length || 1);
     }
 
@@ -81,8 +92,7 @@ export class WorkContentsService {
         .sort(sort)
         .skip(skip)
         .limit(limit)
-        .populate('contentGroupId', 'code name')
-        .populate('axisId', 'code name'),
+        .populate([...POPULATE_REFS]),
       this.workContentModel.countDocuments(filter),
     ]);
 
@@ -113,14 +123,15 @@ export class WorkContentsService {
       const axis = await this.requireAxis(dto.axisId);
       item.axisId = axis._id;
     }
+    if (dto.scoreGroupId !== undefined) {
+      const scoreGroup = await this.requireScoreGroup(dto.scoreGroupId);
+      item.scoreGroupId = scoreGroup._id;
+    }
     if (dto.sortOrder !== undefined) item.sortOrder = dto.sortOrder;
     if (dto.isActive !== undefined) item.isActive = dto.isActive;
 
     await item.save();
-    await item.populate([
-      { path: 'contentGroupId', select: 'code name' },
-      { path: 'axisId', select: 'code name' },
-    ]);
+    await item.populate([...POPULATE_REFS]);
     return { message: 'Cập nhật nội dung công việc thành công.', data: item };
   }
 
@@ -135,10 +146,7 @@ export class WorkContentsService {
       throw new NotFoundException('Không tìm thấy nội dung công việc.');
     }
     const item = withPopulate
-      ? await this.workContentModel
-          .findById(id)
-          .populate('contentGroupId', 'code name')
-          .populate('axisId', 'code name')
+      ? await this.workContentModel.findById(id).populate([...POPULATE_REFS])
       : await this.workContentModel.findById(id);
     if (!item) {
       throw new NotFoundException('Không tìm thấy nội dung công việc.');
@@ -164,6 +172,17 @@ export class WorkContentsService {
     const item = await this.axisModel.findById(id);
     if (!item) {
       throw new BadRequestException('Trục không tồn tại.');
+    }
+    return item;
+  }
+
+  private async requireScoreGroup(id: string) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Nhóm điểm không hợp lệ.');
+    }
+    const item = await this.scoreGroupModel.findById(id);
+    if (!item) {
+      throw new BadRequestException('Nhóm điểm không tồn tại.');
     }
     return item;
   }

@@ -16,8 +16,10 @@ import {
   StringRequired,
 } from '@/common/decorators';
 import {
+  FORM_COLUMN_AUTO_KINDS,
   FORM_COLUMN_DATA_TYPES,
   FORM_COLUMN_SEMANTICS,
+  type FormColumnAutoKind,
   type FormColumnDataType,
   type FormColumnSemantic,
 } from '../schemas/form-template.schema';
@@ -35,6 +37,18 @@ export class FormHeaderGroupDto {
   @ValidateNested({ each: true })
   @Type(() => FormHeaderGroupDto)
   children?: FormHeaderGroupDto[];
+}
+
+export class FormColumnAutoValueDto {
+  @ApiProperty({ enum: FORM_COLUMN_AUTO_KINDS, default: 'percent_of' })
+  @IsEnum(FORM_COLUMN_AUTO_KINDS, { message: 'Cách tự tính không hợp lệ.' })
+  kind!: FormColumnAutoKind;
+
+  @StringRequired('Khoá cột Chất lượng thực hiện', { example: 'quality_b' })
+  percentColumnKey!: string;
+
+  @StringRequired('Khoá cột điểm gốc', { example: 'standard_score' })
+  baseColumnKey!: string;
 }
 
 export class FormTemplateColumnDto {
@@ -79,6 +93,15 @@ export class FormTemplateColumnDto {
   @IsOptional()
   @IsString({ message: 'rangeFromColumnKey phải là chuỗi.' })
   rangeFromColumnKey?: string | null;
+
+  @ApiPropertyOptional({
+    type: () => FormColumnAutoValueDto,
+    description: 'Cột tự tính; bỏ trống = người nhập tự gõ',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FormColumnAutoValueDto)
+  autoValue?: FormColumnAutoValueDto | null;
 }
 
 export class FormTemplateFooterDto {

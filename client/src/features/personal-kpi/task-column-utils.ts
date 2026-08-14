@@ -68,6 +68,9 @@ export function missingRequiredColumns(
     if (!column.visible || !column.required) continue;
     // STT tự đánh số, không phải ô nhập nên không xét.
     if (column.semanticKey === "stt") continue;
+    // Nhóm điểm đổ theo nội dung công việc, cột tự tính do server tính - báo
+    // "chưa nhập" cho hai loại này là chặn người dùng ở chỗ họ không sửa được.
+    if (column.semanticKey === "score_group" || column.autoValue) continue;
 
     if (isCheckboxColumn(column.dataType)) {
       if (!readCheckboxValue(task, column.key)) missing.push(column.title);

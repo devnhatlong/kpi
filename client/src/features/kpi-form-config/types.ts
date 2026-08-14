@@ -49,6 +49,17 @@ export type AxisRef = {
   name: string;
 };
 
+/** Nhóm điểm đã populate - kèm dải điểm để hiện ngay cạnh tên. */
+export type ScoreGroupRef = {
+  _id: string;
+  code: string;
+  name: string;
+  minScore?: number;
+  maxScore?: number;
+  maxInclusive?: boolean;
+  formulaScore?: number | null;
+};
+
 export type WorkContent = {
   _id: string;
   id?: string;
@@ -57,6 +68,8 @@ export type WorkContent = {
   description?: string;
   contentGroupId: string | ContentGroupRef;
   axisId: string | AxisRef;
+  /** null ở bản ghi tạo trước khi có trường này - hiện "Chưa gán". */
+  scoreGroupId?: string | ScoreGroupRef | null;
   sortOrder: number;
   isActive: boolean;
 };
@@ -67,6 +80,7 @@ export type WorkContentInput = {
   description?: string;
   contentGroupId: string;
   axisId: string;
+  scoreGroupId: string;
   sortOrder?: number;
   isActive?: boolean;
 };
@@ -292,6 +306,25 @@ export type FormHeaderGroup = {
   children: FormHeaderGroup[];
 };
 
+export const FORM_COLUMN_AUTO_KINDS = ["percent_of"] as const;
+
+export type FormColumnAutoKind = (typeof FORM_COLUMN_AUTO_KINDS)[number];
+
+/**
+ * Cột số tự lấy giá trị thay vì để người nhập gõ - trỏ tới cột khác BẰNG KHOÁ
+ * CỘT, không suy theo nhóm header.
+ *
+ * Nhóm header chỉ để gộp ô cho dễ đọc; buộc công thức vào nó thì đổi bố cục
+ * bảng là đổi luôn phép tính. Cùng lý do với `rangeFromColumnKey`.
+ */
+export type FormColumnAutoValue = {
+  kind: FormColumnAutoKind;
+  /** Khoá cột Chất lượng thực hiện cho phần trăm. */
+  percentColumnKey: string;
+  /** Khoá cột điểm gốc đem nhân với phần trăm. */
+  baseColumnKey: string;
+};
+
 export type FormTemplateColumn = {
   id: string;
   key: string;
@@ -308,6 +341,8 @@ export type FormTemplateColumn = {
    * Chỉ đặt được cho cột kiểu số; null = không giới hạn.
    */
   rangeFromColumnKey?: string | null;
+  /** Cột tự tính; null = người nhập tự gõ. */
+  autoValue?: FormColumnAutoValue | null;
 };
 
 /** Các cột Nhóm điểm trong mẫu - nguồn giới hạn cho cột điểm. */
@@ -315,6 +350,42 @@ export function scoreGroupColumns(
   columns: FormTemplateColumn[],
 ): FormTemplateColumn[] {
   return columns.filter((column) => column.semanticKey === "score_group");
+}
+
+/** Các cột Chất lượng thực hiện - nguồn phần trăm cho cột tự tính. */
+export function qualityLevelColumns(
+  columns: FormTemplateColumn[],
+): FormTemplateColumn[] {
+  return columns.filter((column) => column.semanticKey === "quality_level");
+}
+
+/** Cột số nhập tay - ứng viên làm điểm gốc cho cột tự tính. */
+export function plainNumberColumns(
+  columns: FormTemplateColumn[],
+): FormTemplateColumn[] {
+  return columns.filter(
+    (column) => column.dataType === "number" && !column.autoValue,
+  );
+}
+
+/**
+ * Giá trị của một ô tự tính, null khi thiếu đầu vào.
+ *
+ * Phải khớp từng chữ với `computeAutoValue` bên server - client chỉ hiện trước
+ * cho người nhập thấy, con số lưu lại là do server tính.
+ *
+ * Thiếu đầu vào thì trả null chứ KHÔNG trả 0: ô hiện 0 đọc ra thành "đã chấm 0
+ * điểm", khác hẳn nghĩa "chưa chấm".
+ */
+export function computeAutoValue(
+  kind: FormColumnAutoKind,
+  percent: number | null,
+  base: number | null,
+): number | null {
+  if (kind !== "percent_of") return null;
+  if (percent === null || base === null) return null;
+  if (!Number.isFinite(percent) || !Number.isFinite(base)) return null;
+  return Math.round((percent / 100) * base * 10000) / 10000;
 }
 
 /** Dải điểm của một nhóm, dạng chữ để hiện lên ô nhập. */

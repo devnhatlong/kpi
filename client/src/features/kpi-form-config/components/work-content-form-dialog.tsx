@@ -26,10 +26,12 @@ import {
   createWorkContent,
   fetchAxesAll,
   fetchContentGroupsAll,
+  fetchScoreGroupsAll,
   updateWorkContent,
 } from "@/features/kpi-form-config/api";
 import type { WorkContent } from "@/features/kpi-form-config/types";
 import { entityId } from "@/features/kpi-form-config/types";
+import { formatScoreGroupRange } from "@/features/kpi-form-config/score-group.constants";
 import { getApiErrorMessage } from "@/lib/api-client";
 import useSWR from "swr";
 
@@ -50,6 +52,7 @@ export function WorkContentFormDialog({
   const [description, setDescription] = useState("");
   const [contentGroupId, setContentGroupId] = useState("");
   const [axisId, setAxisId] = useState("");
+  const [scoreGroupId, setScoreGroupId] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -60,6 +63,10 @@ export function WorkContentFormDialog({
   const { data: axes = [] } = useSWR(
     open ? ["axes", "all", "for-work-content"] : null,
     fetchAxesAll,
+  );
+  const { data: scoreGroups = [] } = useSWR(
+    open ? ["score-groups", "all", "for-work-content"] : null,
+    fetchScoreGroupsAll,
   );
 
   useEffect(() => {
@@ -77,6 +84,11 @@ export function WorkContentFormDialog({
           ? edit.axisId
           : edit.axisId?._id ?? "",
       );
+      setScoreGroupId(
+        typeof edit.scoreGroupId === "string"
+          ? edit.scoreGroupId
+          : edit.scoreGroupId?._id ?? "",
+      );
       setSortOrder(String(edit.sortOrder ?? 0));
       setIsActive(edit.isActive);
     } else {
@@ -84,6 +96,7 @@ export function WorkContentFormDialog({
       setDescription("");
       setContentGroupId("");
       setAxisId("");
+      setScoreGroupId("");
       setSortOrder("0");
       setIsActive(true);
     }
@@ -102,6 +115,10 @@ export function WorkContentFormDialog({
       toast.error("Vui lòng chọn trục.");
       return;
     }
+    if (!scoreGroupId) {
+      toast.error("Vui lòng chọn nhóm điểm.");
+      return;
+    }
 
     const sortOrderNum = Number(sortOrder);
     if (!Number.isFinite(sortOrderNum) || sortOrderNum < 0) {
@@ -114,6 +131,7 @@ export function WorkContentFormDialog({
       description: description.trim(),
       contentGroupId,
       axisId,
+      scoreGroupId,
       sortOrder: sortOrderNum,
       isActive,
     };
@@ -219,6 +237,37 @@ export function WorkContentFormDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>
+              Nhóm điểm <span className="text-destructive">*</span>
+            </Label>
+            <Select
+              value={scoreGroupId || undefined}
+              onValueChange={setScoreGroupId}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Chọn nhóm điểm" />
+              </SelectTrigger>
+              <SelectContent>
+                {scoreGroups.map((group) => (
+                  <SelectItem key={entityId(group)} value={entityId(group)}>
+                    {group.name} (
+                    {formatScoreGroupRange(
+                      group.minScore,
+                      group.maxScore,
+                      group.maxInclusive,
+                    )}
+                    )
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Mọi nhiệm vụ khai theo nội dung này lấy chung mức điểm chuẩn của
+              nhóm đã chọn.
+            </p>
           </div>
 
           <div className="space-y-2">
