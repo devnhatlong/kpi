@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import {
+  ArrowLeft,
   Check,
   CheckCheck,
   Inbox,
@@ -59,6 +60,11 @@ import {
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import { AttachmentCell } from "@/features/personal-kpi/components/attachment-cell";
+import {
+  BoardDepartmentTable,
+  filterAxesByDepartment,
+  summarizeByDepartment,
+} from "@/features/personal-kpi/components/board-department-table";
 import { SendRecipientDialog } from "@/features/personal-kpi/components/send-recipient-dialog";
 import { TaskTableHeader } from "@/features/personal-kpi/components/task-table-header";
 import { personalKpiStatusBadgeClass } from "@/features/personal-kpi/status-styles";
@@ -87,6 +93,12 @@ export function PersonalKpiBoardView() {
   const [axisId, setAxisId] = useState(ALL);
   const [workContentId, setWorkContentId] = useState(ALL);
   const [departmentId, setDepartmentId] = useState(ALL);
+  /**
+   * Đơn vị đang mở chi tiết; null = đang ở bảng danh sách đơn vị.
+   * Chuỗi rỗng vẫn là một đơn vị hợp lệ (nhóm "chưa rõ đơn vị"), nên phải dùng
+   * null làm mốc "chưa mở", không dùng falsy.
+   */
+  const [openDept, setOpenDept] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   /** Nhiệm vụ đang chờ nhập lý do để trả lại; rỗng = hộp thoại đóng. */
   const [returnIds, setReturnIds] = useState<string[]>([]);
@@ -168,7 +180,9 @@ export function PersonalKpiBoardView() {
     setDepartmentId(ALL);
   };
 
-  const axes = data?.axes ?? [];
+  // Mảng rỗng mặc định phải ổn định, nếu không mọi useMemo bám vào nó chạy lại
+  // sau từng lần render.
+  const axes = useMemo(() => data?.axes ?? [], [data]);
   const counts = data?.counts ?? {
     pending: 0,
     approved: 0,
@@ -177,6 +191,21 @@ export function PersonalKpiBoardView() {
   };
   /** Không còn ai ở trên -> mời Hoàn thành thay vì Gửi lên cấp trên. */
   const canForwardUp = data?.canForwardUp ?? true;
+
+  /** Bảng cấp 1: mỗi đơn vị một dòng, bấm vào mới ra bảng nhiệm vụ của đơn vị. */
+  const departmentRows = useMemo(() => summarizeByDepartment(axes), [axes]);
+  const openDeptRow = departmentRows.find((row) => row.key === openDept);
+  /** Bảng cấp 2 chỉ chứa nhiệm vụ của đơn vị đang mở. */
+  const visibleAxes = useMemo(
+    () => (openDept === null ? [] : filterAxesByDepartment(axes, openDept)),
+    [axes, openDept],
+  );
+
+  /** Đổi đơn vị thì bỏ hết ô đã tích - không thao tác lên dòng không còn thấy. */
+  const openDepartment = (key: string | null) => {
+    setOpenDept(key);
+    setSelected(new Set());
+  };
 
   const allRows = useMemo(
     () => axes.flatMap((axis) => axis.groups.flatMap((group) => group.rows)),
@@ -299,8 +328,8 @@ export function PersonalKpiBoardView() {
           Duyệt KPI cấp dưới
         </h1>
         <p className="text-sm text-muted-foreground">
-          Nhiệm vụ cấp dưới gửi lên, xếp đúng vị trí trong bảng của từng trục.
-          Tích chọn để duyệt, trả lại, hoặc gửi tiếp lên cấp trên.
+          Nhiệm vụ cấp dưới gửi lên, gom theo đơn vị. Mở một đơn vị để xem bảng
+          nhiệm vụ của từng trục rồi duyệt, trả lại, hoặc gửi tiếp lên cấp trên.
         </p>
       </div>
 
@@ -416,7 +445,11 @@ export function PersonalKpiBoardView() {
                   type="button"
                   size="sm"
                   variant={active ? "default" : "ghost"}
-                  onClick={() => setStatus(item.value)}
+                  onClick={() => {
+                    setStatus(item.value);
+                    // Ô đã tích thuộc tab cũ, đổi tab là chúng biến mất khỏi bảng.
+                    setSelected(new Set());
+                  }}
                 >
                   {item.label}
                   <Badge
@@ -433,52 +466,61 @@ export function PersonalKpiBoardView() {
             })}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-t pt-3">
-            <span className="text-sm text-muted-foreground">
-              Đã chọn <b className="text-foreground">{selected.size}</b> nhiệm vụ
-              {selected.size === 0 && counts.pending > 0 ? (
-                <> — tích chọn rồi chọn một trong ba: Trả lại, Chuyển lên, Hoàn thành.</>
-              ) : null}
-            </span>
-            <div className="ml-auto flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-rose-400 text-rose-600 hover:border-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-800 dark:text-rose-400 dark:hover:border-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-300"
-                onClick={() =>
-                  setReturnIds(selectedPending.map((row) => row._id))
-                }
-                disabled={busy || selectedPending.length === 0}
-              >
-                <Undo2 className="size-4" />
-                Trả lại ({selectedPending.length})
-              </Button>
-              {canForwardUp ? (
+          {/* Chỉ trong chi tiết đơn vị mới có dòng để tích, ngoài danh sách thì
+              thanh thao tác chỉ tổ chiếm chỗ. */}
+          {openDept !== null ? (
+            <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+              <span className="text-sm text-muted-foreground">
+                Đã chọn <b className="text-foreground">{selected.size}</b> nhiệm
+                vụ
+                {selected.size === 0 && counts.pending > 0 ? (
+                  <>
+                    {" "}
+                    — tích chọn rồi chọn một trong ba: Trả lại, Chuyển lên, Hoàn
+                    thành.
+                  </>
+                ) : null}
+              </span>
+              <div className="ml-auto flex flex-wrap gap-2">
                 <Button
                   size="sm"
-                  variant="secondary"
-                  onClick={() => setForwardOpen(true)}
-                  disabled={busy || selectedForwardable.length === 0}
-                  title="Duyệt rồi chuyển tiếp lên cấp trên"
+                  variant="outline"
+                  className="border-rose-400 text-rose-600 hover:border-rose-500 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-800 dark:text-rose-400 dark:hover:border-rose-600 dark:hover:bg-rose-950/50 dark:hover:text-rose-300"
+                  onClick={() =>
+                    setReturnIds(selectedPending.map((row) => row._id))
+                  }
+                  disabled={busy || selectedPending.length === 0}
                 >
-                  <Send className="size-4" />
-                  Duyệt &amp; chuyển lên ({selectedForwardable.length})
+                  <Undo2 className="size-4" />
+                  Trả lại ({selectedPending.length})
                 </Button>
-              ) : null}
-              <Button
-                size="sm"
-                className="bg-teal-600 text-white hover:bg-teal-700 disabled:bg-muted disabled:text-muted-foreground"
-                onClick={() =>
-                  void doComplete(selectedOpen.map((row) => row._id))
-                }
-                disabled={busy || selectedOpen.length === 0}
-                title="Duyệt và chốt tại cấp mình, không gửi lên nữa"
-              >
-                <CheckCheck className="size-4" />
-                Hoàn thành ({selectedOpen.length})
-              </Button>
+                {canForwardUp ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setForwardOpen(true)}
+                    disabled={busy || selectedForwardable.length === 0}
+                    title="Duyệt rồi chuyển tiếp lên cấp trên"
+                  >
+                    <Send className="size-4" />
+                    Duyệt &amp; chuyển lên ({selectedForwardable.length})
+                  </Button>
+                ) : null}
+                <Button
+                  size="sm"
+                  className="bg-teal-600 text-white hover:bg-teal-700 disabled:bg-muted disabled:text-muted-foreground"
+                  onClick={() =>
+                    void doComplete(selectedOpen.map((row) => row._id))
+                  }
+                  disabled={busy || selectedOpen.length === 0}
+                  title="Duyệt và chốt tại cấp mình, không gửi lên nữa"
+                >
+                  <CheckCheck className="size-4" />
+                  Hoàn thành ({selectedOpen.length})
+                </Button>
+              </div>
             </div>
-          </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -528,24 +570,78 @@ export function PersonalKpiBoardView() {
             ) : null}
           </CardContent>
         </Card>
+      ) : openDept === null ? (
+        <Card>
+          <CardContent className="space-y-2 pt-6">
+            <p className="text-sm font-semibold">
+              Đơn vị gửi lên
+              <span className="font-normal text-muted-foreground">
+                {" · "}
+                {departmentRows.length} đơn vị
+              </span>
+            </p>
+            <BoardDepartmentTable
+              rows={departmentRows}
+              onOpen={openDepartment}
+            />
+          </CardContent>
+        </Card>
       ) : (
-        axes.map((axis) => (
-          <AxisBoardBlock
-            key={`${axis.axisId}-${axis.template?.version ?? "live"}`}
-            axis={axis}
-            selected={selected}
-            busy={busy}
-            onToggleRow={toggleRow}
-            onToggleGroup={toggleGroup}
-            canForwardUp={canForwardUp}
-            onReturnRow={(id) => setReturnIds([id])}
-            onForwardRow={(id) => {
-              setSelected(new Set([id]));
-              setForwardOpen(true);
-            }}
-            onCompleteRow={(id) => void doComplete([id])}
-          />
-        ))
+        <>
+          {/* Thanh quay lại luôn có mặt, kể cả khi đổi bộ lọc làm đơn vị này
+              rỗng - nếu không người dùng kẹt trong màn trống. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => openDepartment(null)}
+            >
+              <ArrowLeft className="size-4" />
+              Tất cả đơn vị
+            </Button>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">
+                {openDeptRow?.name || "Chưa rõ đơn vị"}
+              </p>
+              {openDeptRow ? (
+                <p className="text-xs text-muted-foreground">
+                  {openDeptRow.total} nhiệm vụ · {openDeptRow.senderCount} người
+                  gửi
+                  {openDeptRow.code ? ` · ${openDeptRow.code}` : ""}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          {visibleAxes.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center gap-2 py-14 text-muted-foreground">
+                <Inbox className="size-10 opacity-40" />
+                <p className="text-sm">
+                  Đơn vị này không có nhiệm vụ nào khớp bộ lọc đang chọn.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            visibleAxes.map((axis) => (
+              <AxisBoardBlock
+                key={`${axis.axisId}-${axis.template?.version ?? "live"}`}
+                axis={axis}
+                selected={selected}
+                busy={busy}
+                onToggleRow={toggleRow}
+                onToggleGroup={toggleGroup}
+                canForwardUp={canForwardUp}
+                onReturnRow={(id) => setReturnIds([id])}
+                onForwardRow={(id) => {
+                  setSelected(new Set([id]));
+                  setForwardOpen(true);
+                }}
+                onCompleteRow={(id) => void doComplete([id])}
+              />
+            ))
+          )}
+        </>
       )}
 
       {data?.truncated ? (

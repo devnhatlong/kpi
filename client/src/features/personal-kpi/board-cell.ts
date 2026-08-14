@@ -158,6 +158,27 @@ export function formatScoreNumber(value: number, maxDigits = 2): string {
   }).format(value);
 }
 
+/** Đơn vị đứng tên một dòng: ưu tiên nơi đã gửi lên, không có thì đơn vị của cán bộ. */
+export function rowDepartmentRef(row: PersonalKpiBoardRow): {
+  id: string;
+  code: string;
+  name: string;
+} {
+  const raw = row.lastSenderDepartmentId || row.ownerDepartmentId;
+  // Chuỗi id trơ (chưa populate) thì không có tên để gom nhóm, coi như chưa rõ.
+  if (!raw || typeof raw === "string") return { id: "", code: "", name: "" };
+  return {
+    id: String(raw._id ?? ""),
+    code: raw.code ?? "",
+    name: raw.name ?? "",
+  };
+}
+
+/** Khoá gom nhóm theo đơn vị; rỗng = nhiệm vụ chưa gắn đơn vị nào. */
+export function rowDepartmentKey(row: PersonalKpiBoardRow): string {
+  return rowDepartmentRef(row).id;
+}
+
 /** Người gửi / cán bộ đứng tên dòng, kèm đơn vị - cột hay dùng ở mọi bảng tổng. */
 export function rowSenderLabel(row: PersonalKpiBoardRow) {
   return {
