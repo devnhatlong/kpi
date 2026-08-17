@@ -424,7 +424,7 @@ export function PersonalTaskDrawer({
     >
       <SheetContent
         side="right"
-        className="flex w-[90vw] max-w-[90vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-[90vw]"
+        className="flex w-[96vw] max-w-[96vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-[96vw]"
       >
         <SheetHeader className="border-b px-5 py-4 pr-12 text-left">
           <SheetTitle>
