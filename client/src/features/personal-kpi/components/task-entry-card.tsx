@@ -113,13 +113,14 @@ export function TaskEntryCard({
           </p>
         </div>
       ) : (
-        <div className="space-y-2.5 p-3">
+        <div className="space-y-2 p-2.5">
           {entry.tasks.map((task, taskIndex) => (
             <div
               key={task.key}
-              className="flex items-start gap-2 rounded-lg border bg-background p-2.5"
+              className="flex items-start gap-2 rounded-lg border bg-background p-2"
             >
-              <span className="mt-6 flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-medium text-muted-foreground tabular-nums">
+              {/* Lệch xuống cho ngang hàng ô nhập, vì ô nào cũng có nhãn ở trên. */}
+              <span className="mt-5 flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-medium text-muted-foreground tabular-nums">
                 {taskIndex + 1}
               </span>
               <div className="min-w-0 flex-1">
@@ -136,7 +137,7 @@ export function TaskEntryCard({
                   type="button"
                   size="icon"
                   variant="ghost"
-                  className="mt-5 size-8 shrink-0"
+                  className="mt-4 size-8 shrink-0"
                   onClick={() => onRemoveTask(task.key)}
                   disabled={disabled || entry.tasks.length <= 1}
                   aria-label={`Xoá việc ${taskIndex + 1}`}

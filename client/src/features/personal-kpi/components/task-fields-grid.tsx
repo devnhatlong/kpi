@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, type ComponentProps } from "react";
+
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
@@ -48,7 +50,50 @@ function fieldBasis(width: number): number {
   return Math.min(Math.max(width, 150), 320);
 }
 
-const controlClass = "h-9 text-sm";
+/** Ô cao 32px, đệm sát - một dòng nhiệm vụ có cả chục ô nên đệm rộng là tràn. */
+const controlClass = "h-8 min-h-8 px-2 text-sm";
+
+/** Ô chỉ đọc (nhóm điểm, ô tự tính) - viền nét đứt cho khác ô nhập được. */
+const readOnlyClass =
+  "flex items-center overflow-hidden rounded-md border border-dashed bg-muted/40";
+
+/**
+ * Ô chữ tự cao dần theo nội dung, quá 4 dòng thì cuộn trong ô.
+ *
+ * Cột "Nhiệm vụ", "Ghi chú"... hay dài mà ô một dòng thì gõ tới đâu chữ trôi
+ * khỏi tầm nhìn tới đó, không đọc lại được thứ vừa viết.
+ */
+function AutoGrowTextarea({
+  className,
+  value,
+  ...props
+}: ComponentProps<"textarea">) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    // Hạ về auto trước rồi mới đo, không thì xoá chữ ô vẫn giữ chiều cao cũ.
+    node.style.height = "auto";
+    const borders = node.offsetHeight - node.clientHeight;
+    node.style.height = `${node.scrollHeight + borders}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      className={cn(
+        // min-h-8 cho bằng chiều cao ô một dòng của các cột khác; max-h-24 là
+        // trần ~4 dòng, quá thì cuộn trong ô chứ không đẩy cả hàng dài ra.
+        "flex min-h-8 max-h-24 w-full resize-none overflow-y-auto rounded-md border border-input bg-transparent px-2 py-1 text-sm leading-5 shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
 
 type TaskFieldsGridProps = {
   /** Bộ cột của mẫu bảng gán cho trục. */
@@ -95,10 +140,7 @@ export function TaskFieldsGrid({
       const group = scoreGroupById.get(scoreGroupId);
       return (
         <div
-          className={cn(
-            "flex items-center rounded-md border border-dashed bg-muted/40 px-2.5",
-            controlClass,
-          )}
+          className={cn(readOnlyClass, controlClass)}
           title={
             group
               ? `Theo nội dung công việc · ${formatScoreRange(group)}`
@@ -126,6 +168,7 @@ export function TaskFieldsGrid({
             onChange(writeCellValue(task, column.semanticKey, column.key, next))
           }
           disabled={disabled}
+          triggerClassName="px-2"
         />
       );
     }
@@ -149,7 +192,7 @@ export function TaskFieldsGrid({
       return (
         <div
           className={cn(
-            "flex items-center rounded-md border bg-background px-2.5",
+            "flex items-center rounded-md border bg-background",
             controlClass,
           )}
         >
@@ -181,10 +224,7 @@ export function TaskFieldsGrid({
       );
       return (
         <div
-          className={cn(
-            "flex items-center rounded-md border border-dashed bg-muted/40 px-2.5",
-            controlClass,
-          )}
+          className={cn(readOnlyClass, controlClass)}
           title="Hệ thống tự tính"
         >
           {computed === null ? (
@@ -209,6 +249,28 @@ export function TaskFieldsGrid({
       value.trim() !== "" &&
       Number.isFinite(Number(value)) &&
       !isScoreInGroupRange(Number(value), boundGroup!);
+
+    // Cột chữ mới cho nở nhiều dòng; số / ngày / giờ luôn ngắn, để một dòng.
+    if (column.dataType === "text") {
+      return (
+        <AutoGrowTextarea
+          value={value}
+          onChange={(e) =>
+            onChange(
+              writeCellValue(
+                task,
+                column.semanticKey,
+                column.key,
+                e.target.value,
+              ),
+            )
+          }
+          placeholder={column.title}
+          disabled={disabled}
+          title={column.title}
+        />
+      );
+    }
 
     return (
       <Input
@@ -250,11 +312,11 @@ export function TaskFieldsGrid({
   };
 
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-2.5">
+    <div className="flex flex-wrap items-start gap-x-2.5 gap-y-2">
       {fields.map((column) => (
         <div
           key={column.id}
-          className="min-w-[150px] flex-1 space-y-1"
+          className="min-w-[150px] flex-1 space-y-0.5"
           style={{ flexBasis: fieldBasis(column.width) }}
         >
           <span className="flex items-center gap-1 truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">

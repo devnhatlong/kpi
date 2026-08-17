@@ -14,12 +14,15 @@ import {
   entityId,
   type ColumnCatalog,
 } from "@/features/kpi-form-config/types";
+import { cn } from "@/lib/utils";
 
 type CatalogSelectCellProps = {
   catalog: ColumnCatalog;
   value: string;
   onValueChange: (value: string) => void;
   disabled?: boolean;
+  /** Ghi đè kích thước ô - màn nhập cần ô gọn hơn ô trong bảng. */
+  triggerClassName?: string;
 };
 
 /**
@@ -31,6 +34,7 @@ export function CatalogSelectCell({
   value,
   onValueChange,
   disabled = false,
+  triggerClassName,
 }: CatalogSelectCellProps) {
   const isScoreGroup = catalog === "score_group";
 
@@ -64,7 +68,7 @@ export function CatalogSelectCell({
       placeholder={CATALOG_LABEL[catalog]}
       searchPlaceholder={`Tìm ${CATALOG_LABEL[catalog].toLowerCase()}...`}
       emptyText="Danh mục chưa có giá trị nào."
-      triggerClassName="h-8 w-full text-xs font-normal"
+      triggerClassName={cn("h-8 w-full text-xs font-normal", triggerClassName)}
     />
   );
 }
