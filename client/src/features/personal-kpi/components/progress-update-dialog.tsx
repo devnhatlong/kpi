@@ -50,6 +50,7 @@ import {
   canSendPersonalKpi,
   canUpdateProgress,
   type PersonalKpiItem,
+  type PersonalKpiProgressChange,
   type PersonalKpiProgressLog,
   type TaskAttachment,
 } from "@/features/personal-kpi/types";
@@ -257,6 +258,46 @@ function SectionTitle({
       </p>
       {right}
     </div>
+  );
+}
+
+/**
+ * Một dòng "đã đổi gì" trong nhật ký.
+ * Giá trị lưu ở dạng thô nên định dạng ngay tại đây theo loại ô.
+ */
+function ChangeLine({
+  change,
+  columns,
+}: {
+  change: PersonalKpiProgressChange;
+  columns: TrackingColumns;
+}) {
+  const label = {
+    progress: "Tiến độ",
+    quality: "Chất lượng",
+    product: columns.productColumn?.title ?? "Sản phẩm",
+    evidence: columns.evidenceColumn?.title ?? "Minh chứng",
+  }[change.field];
+
+  const show = (raw: string) => {
+    if (!raw.trim()) return "—";
+    if (change.field === "progress" || change.field === "quality") {
+      return `${raw}%`;
+    }
+    if (change.field === "evidence") return `${raw} tệp`;
+    return raw;
+  };
+
+  return (
+    <p className="text-xs text-muted-foreground">
+      <span>{label}:</span>{" "}
+      <span className="line-through">{show(change.from)}</span>
+      <span className="mx-1">→</span>
+      <span className="text-foreground">{show(change.to)}</span>
+      {change.detail ? (
+        <span className="text-muted-foreground"> (+{change.detail})</span>
+      ) : null}
+    </p>
   );
 }
 
@@ -690,6 +731,17 @@ function ProgressForm({
                       {log.byName ? ` · ${log.byName}` : ""}
                       {log.note ? ` — ${log.note}` : ""}
                     </p>
+                    {log.changes.length > 0 ? (
+                      <div className="mt-1 space-y-0.5 border-l pl-2">
+                        {log.changes.map((change) => (
+                          <ChangeLine
+                            key={change.field}
+                            change={change}
+                            columns={columns}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
                   </li>
                 ))}
               </ol>

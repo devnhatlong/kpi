@@ -100,6 +100,47 @@ export class PersonalKpiEdit {
 export const PersonalKpiEditSchema =
   SchemaFactory.createForClass(PersonalKpiEdit);
 
+/** Các ô mà một lần cập nhật tiến độ có thể động tới. */
+export const PERSONAL_KPI_PROGRESS_FIELDS = [
+  'progress',
+  'quality',
+  'product',
+  'evidence',
+] as const;
+
+export type PersonalKpiProgressField =
+  (typeof PERSONAL_KPI_PROGRESS_FIELDS)[number];
+
+/**
+ * Một ô đổi giá trị trong lần cập nhật.
+ *
+ * Chỉ lưu giá trị thô (số phần trăm, chữ, số tệp) chứ không lưu câu chữ đã
+ * định dạng - nhãn và cách hiển thị để client lo, vì tên cột còn đổi theo mẫu.
+ */
+@Schema({ _id: false })
+export class PersonalKpiProgressChange {
+  @Prop({
+    type: String,
+    enum: PERSONAL_KPI_PROGRESS_FIELDS,
+    required: true,
+  })
+  field!: PersonalKpiProgressField;
+
+  @Prop({ trim: true, default: '' })
+  from!: string;
+
+  @Prop({ trim: true, default: '' })
+  to!: string;
+
+  /** Chi tiết thêm - ví dụ tên các tệp vừa đính kèm. */
+  @Prop({ trim: true, default: '' })
+  detail!: string;
+}
+
+export const PersonalKpiProgressChangeSchema = SchemaFactory.createForClass(
+  PersonalKpiProgressChange,
+);
+
 /**
  * Một lần cán bộ cập nhật tiến độ.
  *
@@ -125,6 +166,10 @@ export class PersonalKpiProgressLog {
   /** Ngày báo cáo (YYYY-MM-DD theo giờ server) của lần cập nhật. */
   @Prop({ trim: true, default: '' })
   onDate!: string;
+
+  /** Những ô đã đổi giá trị trong lần này. */
+  @Prop({ type: [PersonalKpiProgressChangeSchema], default: [] })
+  changes!: PersonalKpiProgressChange[];
 
   @Prop({ type: Date, default: Date.now })
   at!: Date;

@@ -7,6 +7,7 @@ import type {
 } from "@/features/kpi-form-config/types";
 import type {
   PersonalKpiItem,
+  PersonalKpiProgressChange,
   PersonalKpiStatus,
   PersonalTaskDraft,
   TaskAttachment,
@@ -44,6 +45,7 @@ export type PersonalKpiApiRecord = {
     note?: string;
     onDate?: string;
     at: string;
+    changes?: PersonalKpiProgressChange[];
   }>;
   currentRecipientId?: string | CatalogRef | null;
   lastSenderId?: string | CatalogRef | null;
@@ -195,6 +197,7 @@ export function mapPersonalKpiFromApi(
         percent: log.percent ?? null,
         note: log.note ?? "",
         byName: log.byName ?? "",
+        changes: log.changes ?? [],
       }))
       .sort((a, b) => b.at.localeCompare(a.at)),
     ownerId: row.ownerId ? refId(row.ownerId) : undefined,

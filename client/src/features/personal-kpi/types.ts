@@ -76,6 +76,25 @@ export type PersonalTaskDraft = {
   attachments: Record<string, TaskAttachment[]>;
 };
 
+/** Ô mà một lần cập nhật tiến độ động tới. */
+export type PersonalKpiProgressField =
+  | "progress"
+  | "quality"
+  | "product"
+  | "evidence";
+
+/**
+ * Một ô đổi giá trị. Giá trị là thô: phần trăm và số tệp lưu dạng số trong
+ * chuỗi, rỗng = chưa có. Nhãn và cách hiển thị do màn hình quyết định.
+ */
+export type PersonalKpiProgressChange = {
+  field: PersonalKpiProgressField;
+  from: string;
+  to: string;
+  /** Chi tiết thêm - ví dụ tên các tệp vừa đính kèm. */
+  detail: string;
+};
+
 /** Một lần cán bộ cập nhật tiến độ - dòng trong timeline. */
 export type PersonalKpiProgressLog = {
   at: string;
@@ -84,6 +103,7 @@ export type PersonalKpiProgressLog = {
   percent: number | null;
   note: string;
   byName: string;
+  changes: PersonalKpiProgressChange[];
 };
 
 /** Bản ghi nhiệm vụ KPI cá nhân trên danh sách. */

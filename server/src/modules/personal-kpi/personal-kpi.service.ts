@@ -59,6 +59,8 @@ import {
   PersonalKpiCatalogValue,
   PersonalKpiItem,
   PersonalKpiItemDocument,
+  PersonalKpiProgressChange,
+  PersonalKpiProgressField,
   PersonalKpiReviewStatus,
 } from './schemas/personal-kpi-item.schema';
 import {
@@ -1829,6 +1831,18 @@ export class PersonalKpiService {
       columns.progress,
       percentByLevelId,
     );
+    // Chụp lại giá trị cũ để lát nữa dựng danh sách "đã đổi những gì".
+    const qualityBefore = readItemPercent(
+      item,
+      columns.quality,
+      percentByLevelId,
+    );
+    const productBefore = columns.product
+      ? String(item.fieldValues?.[columns.product.key] ?? '').trim()
+      : '';
+    const evidenceBefore = columns.evidence
+      ? (item.attachments?.[columns.evidence.key] ?? [])
+      : [];
 
     const fieldValues = { ...(item.fieldValues ?? {}) };
     const catalogValues = { ...(item.catalogValues ?? {}) };
@@ -1901,15 +1915,70 @@ export class PersonalKpiService {
 
     // Nhật ký ghi con số SAU khi tính lại, để timeline khớp thứ đang hiển thị.
     const actor = await this.requireActor(ownerId);
+    const percentNow = readItemPercent(
+      item,
+      columns.progress,
+      percentByLevelId,
+    );
+
+    /**
+     * Ghi lại từng ô đã đổi, chỉ giá trị thô.
+     * Nhờ vậy đọc nhật ký là biết hôm đó cán bộ động vào cái gì, không phải
+     * đoán qua mỗi con số phần trăm.
+     */
+    const changes: PersonalKpiProgressChange[] = [];
+    const pushChange = (
+      field: PersonalKpiProgressField,
+      from: string,
+      to: string,
+      detail = '',
+    ) => {
+      if (from !== to) changes.push({ field, from, to, detail });
+    };
+    const percentText = (value: number | null) =>
+      value === null ? '' : String(value);
+
+    pushChange('progress', percentText(percentBefore), percentText(percentNow));
+    if (columns.quality) {
+      pushChange(
+        'quality',
+        percentText(qualityBefore),
+        percentText(
+          readItemPercent(item, columns.quality, percentByLevelId),
+        ),
+      );
+    }
+    if (columns.product) {
+      pushChange(
+        'product',
+        productBefore,
+        String(item.fieldValues?.[columns.product.key] ?? '').trim(),
+      );
+    }
+    if (columns.evidence) {
+      const after = item.attachments?.[columns.evidence.key] ?? [];
+      const had = new Set(evidenceBefore.map((file) => file.id));
+      const added = after
+        .filter((file) => !had.has(file.id))
+        .map((file) => file.name);
+      pushChange(
+        'evidence',
+        String(evidenceBefore.length),
+        String(after.length),
+        added.join(', '),
+      );
+    }
+
     item.progressLogs = [
       ...(item.progressLogs ?? []),
       {
         byId: actor.id,
         byName: actor.name,
-        percent: readItemPercent(item, columns.progress, percentByLevelId),
+        percent: percentNow,
         note: dto.note?.trim() ?? '',
         onDate: serverDateYmd(now),
         at: now,
+        changes,
       },
     ];
     item.markModified('progressLogs');
