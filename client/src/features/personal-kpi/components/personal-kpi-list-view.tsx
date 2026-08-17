@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ClipboardList, Eye, Search } from "lucide-react";
 import useSWR from "swr";
 
@@ -32,7 +34,6 @@ import {
 } from "@/features/personal-kpi/api";
 import { PersonalKpiStatsRow } from "@/features/personal-kpi/components/personal-kpi-stats-row";
 import { PersonalKpiTodayBanner } from "@/features/personal-kpi/components/personal-kpi-today-banner";
-import { PersonalReportDetailDrawer } from "@/features/personal-kpi/components/personal-report-detail-drawer";
 import { PersonalTaskDrawer } from "@/features/personal-kpi/components/personal-task-drawer";
 import {
   PERSONAL_KPI_STATUS_LABEL,
@@ -60,6 +61,11 @@ function formatDateTime(value?: string | null) {
   return date.toLocaleString("vi-VN");
 }
 
+/** Trang nhiệm vụ của một ngày - nơi xem, cập nhật tiến độ và gửi báo cáo. */
+function dayHref(ymd: string) {
+  return `/kpi/personal/${ymd}`;
+}
+
 function formatReportDate(ymd: string) {
   const date = new Date(`${ymd}T00:00:00`);
   if (Number.isNaN(date.getTime())) return ymd;
@@ -78,7 +84,7 @@ export function PersonalKpiListView() {
   const [toDate, setToDate] = useState("");
   const [status, setStatus] = useState("ALL");
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [detailDate, setDetailDate] = useState<string | null>(null);
+  const router = useRouter();
 
   // Sync giờ server để có re-render khi offset sẵn sàng, rồi tính lại mỗi lần
   // render - tự đúng sau khi sync xong và khi sang ngày mới.
@@ -151,13 +157,13 @@ export function PersonalKpiListView() {
         todayReport={todayReport}
         loading={todayLoading}
         onCreateToday={() => setDrawerOpen(true)}
-        onOpenToday={() => setDetailDate(todayYmd)}
+        onOpenToday={() => router.push(dayHref(todayYmd))}
       />
 
       <PersonalKpiStatsRow
         summary={summary}
         loading={summaryLoading}
-        onOpenToday={() => setDetailDate(todayYmd)}
+        onOpenToday={() => router.push(dayHref(todayYmd))}
       />
 
       <Card>
@@ -335,13 +341,15 @@ export function PersonalKpiListView() {
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
+                          asChild
                           size="sm"
                           variant="outline"
                           className="bg-background"
-                          onClick={() => setDetailDate(report.reportDate)}
                         >
-                          <Eye className="h-4 w-4" />
-                          Chi tiết
+                          <Link href={dayHref(report.reportDate)}>
+                            <Eye className="h-4 w-4" />
+                            Chi tiết
+                          </Link>
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -372,16 +380,6 @@ export function PersonalKpiListView() {
         }}
       />
 
-      <PersonalReportDetailDrawer
-        open={!!detailDate}
-        onOpenChange={(open) => {
-          if (!open) setDetailDate(null);
-        }}
-        reportDate={detailDate}
-        onChanged={async () => {
-          await refreshReports();
-        }}
-      />
     </div>
   );
 }
