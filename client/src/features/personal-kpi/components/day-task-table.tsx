@@ -95,6 +95,38 @@ function deadlineHealth(row: DayTaskRow) {
   return null;
 }
 
+/**
+ * Ô phần trăm KPI: thanh chạy + con số, đủ 100% thì xanh và đổi sang dấu tích.
+ * Tiến độ và chất lượng dùng chung một kiểu để đặt cạnh nhau còn so được.
+ */
+function PercentCell({ percent }: { percent: number | null }) {
+  if (percent === null) {
+    return <span className="text-sm text-muted-foreground">-</span>;
+  }
+
+  const full = percent >= 100;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn(
+            "h-full rounded-full transition-all",
+            full ? "bg-emerald-500" : "bg-primary",
+          )}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      {full ? (
+        <Check className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+      ) : (
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+          {percent}%
+        </span>
+      )}
+    </div>
+  );
+}
+
 type DayTaskTableProps = {
   rows: DayTaskRow[];
   /** Nhãn cột hạn - lấy theo tên cột ngày trong mẫu KPI. */
@@ -130,8 +162,9 @@ export function DayTaskTable({
         <TableHeader>
           <TableRow>
             <TableHead className="min-w-[280px]">Nhiệm vụ</TableHead>
-            <TableHead className="w-[170px]">Trục</TableHead>
-            <TableHead className="w-[170px]">Tiến độ</TableHead>
+            <TableHead className="w-[80px]">Trục</TableHead>
+            <TableHead className="w-[160px]">Tiến độ nhiệm vụ</TableHead>
+            <TableHead className="w-[160px]">Chất lượng nhiệm vụ</TableHead>
             <TableHead className="w-[150px]">{deadlineHeader}</TableHead>
             <TableHead className="w-[170px]">Tình trạng thực hiện</TableHead>
             <TableHead className="w-[130px]">Trạng thái duyệt</TableHead>
@@ -144,7 +177,7 @@ export function DayTaskTable({
         {loading ? (
           <TableRow>
             <TableCell
-              colSpan={8}
+              colSpan={9}
               className="h-28 text-center text-muted-foreground"
             >
               Đang tải...
@@ -153,7 +186,7 @@ export function DayTaskTable({
         ) : rows.length === 0 ? (
           <TableRow>
             <TableCell
-              colSpan={8}
+              colSpan={9}
               className="h-28 text-center text-muted-foreground"
             >
               <div className="inline-flex flex-col items-center gap-2">
@@ -165,7 +198,6 @@ export function DayTaskTable({
         ) : (
           rows.map((row) => {
             const { item, summary, deadline, work } = row;
-            const done = work === "DONE";
             const health = deadlineHealth(row);
             return (
               <TableRow key={item.id}>
@@ -197,36 +229,15 @@ export function DayTaskTable({
                   </Badge>
                 </TableCell>
 
+                {/* Tiến độ (nhóm B) - căn cứ cho tình trạng thực hiện. */}
                 <TableCell className="align-middle">
-                  {summary.progressPercent === null ? (
-                    <span className="text-sm text-muted-foreground">-</span>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                        <div
-                          className={cn(
-                            "h-full rounded-full transition-all",
-                            done ? "bg-emerald-500" : "bg-primary",
-                          )}
-                          style={{ width: `${summary.progressPercent}%` }}
-                        />
-                      </div>
-                      {done ? (
-                        <Check className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                      ) : (
-                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                          {summary.progressPercent}%
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {/* Chất lượng chỉ để biết: tiến độ 100% mà chất lượng 75% là
-                      bình thường, hai con số không thay nhau. */}
-                  {summary.qualityPercent === null ? null : (
-                    <div className="mt-1 text-xs text-muted-foreground tabular-nums">
-                      Chất lượng {summary.qualityPercent}%
-                    </div>
-                  )}
+                  <PercentCell percent={summary.progressPercent} />
+                </TableCell>
+
+                {/* Chất lượng (nhóm C) - đứng riêng vì tiến độ 100% mà chất
+                    lượng 75% là chuyện bình thường, hai con số không thay nhau. */}
+                <TableCell className="align-middle">
+                  <PercentCell percent={summary.qualityPercent} />
                 </TableCell>
 
                 <TableCell className="align-middle">
