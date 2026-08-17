@@ -5,6 +5,7 @@ import type {
   QualityLevel,
 } from "@/features/kpi-form-config/types";
 import type { PersonalTaskDraft } from "@/features/personal-kpi/types";
+import { daysBetweenYmd, serverYmd } from "@/lib/server-time";
 
 /**
  * Vài giá trị rút ra từ một nhiệm vụ để hiện lên danh sách: tên việc, hạn,
@@ -236,6 +237,27 @@ export function workState(progressPercent: number | null): WorkState {
   return progressPercent >= 100 ? "DONE" : "IN_PROGRESS";
 }
 
+/**
+ * Bao nhiêu ngày rồi không ai đụng tới tiến độ của việc này.
+ *
+ * Nhận mốc thời gian ISO của server; ngày của mốc đó quy theo MÚI GIỜ SERVER
+ * chứ không theo đồng hồ máy - so theo ngày lịch nên cập nhật lúc 23h hôm qua
+ * thì hôm nay là "im lặng 1 ngày", không phải 0.
+ */
+export function silenceDays(
+  lastTouchedIso: string | undefined,
+  todayYmd: string,
+): number | null {
+  if (!lastTouchedIso) return null;
+  const touchedYmd = serverYmd(lastTouchedIso);
+  const days = daysBetweenYmd(touchedYmd, todayYmd);
+  if (days === null) return null;
+  return days < 0 ? 0 : days;
+}
+
+/** Từ mức này trở lên thì danh sách kêu "im lặng". */
+export const SILENCE_ALERT_DAYS = 3;
+
 export type DeadlineState = {
   /** Số ngày còn lại; âm là đã trễ. */
   days: number;
@@ -243,22 +265,19 @@ export type DeadlineState = {
   tone: "danger" | "warning" | "muted";
 };
 
-/** Nhãn "Còn N ngày / Hạn hôm nay / Trễ N ngày" so với ngày hiện tại. */
+/**
+ * Nhãn "Còn N ngày / Hạn hôm nay / Trễ N ngày" so với ngày hiện tại.
+ * `todayYmd` phải là ngày theo giờ server - đừng truyền ngày của máy người dùng.
+ */
 export function deadlineState(
   deadline: string,
   todayYmd: string,
 ): DeadlineState | null {
   if (!deadline) return null;
 
-  const target = new Date(`${deadline}T00:00:00`);
-  const today = new Date(`${todayYmd}T00:00:00`);
-  if (Number.isNaN(target.getTime()) || Number.isNaN(today.getTime())) {
-    return null;
-  }
+  const days = daysBetweenYmd(todayYmd, deadline);
+  if (days === null) return null;
 
-  const days = Math.round(
-    (target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000),
-  );
   if (days < 0) {
     return { days, label: `Trễ ${-days} ngày`, tone: "danger" };
   }

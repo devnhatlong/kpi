@@ -35,6 +35,8 @@ export type PersonalKpiApiRecord = {
   fieldValues?: Record<string, string | number>;
   attachments?: Record<string, TaskAttachment[]>;
   lastSentAt?: string | null;
+  /** Lần cán bộ cập nhật tiến độ gần nhất - dùng để tính "im lặng N ngày". */
+  lastProgressAt?: string | null;
   currentRecipientId?: string | CatalogRef | null;
   lastSenderId?: string | CatalogRef | null;
   returnReason?: string;
@@ -176,6 +178,7 @@ export function mapPersonalKpiFromApi(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     sentAt: row.lastSentAt || undefined,
+    lastProgressAt: row.lastProgressAt || undefined,
     ownerId: row.ownerId ? refId(row.ownerId) : undefined,
     ownerName: row.ownerId ? refName(row.ownerId) : undefined,
     recipientId: row.currentRecipientId
@@ -328,6 +331,31 @@ export async function createPersonalKpiBatch(
     }),
   );
   return data.map(mapPersonalKpiFromApi);
+}
+
+/**
+ * Cập nhật tiến độ hằng ngày.
+ * Đường riêng, không đi qua PATCH sửa nội dung: chỉ ghi ba ô theo dõi và không
+ * kéo trạng thái duyệt về nháp, nên chạy được cả khi việc đã gửi lên trên.
+ */
+export type PersonalKpiProgressInput = {
+  /** Số 0-100, hoặc id mức chất lượng khi cột tiến độ là ô chọn. */
+  progress?: string;
+  quality?: string;
+  note?: string;
+};
+
+export async function updatePersonalKpiProgress(
+  id: string,
+  input: PersonalKpiProgressInput,
+) {
+  const data = await unwrapData(
+    api.patch<ApiResponse<PersonalKpiApiRecord>>(
+      `/personal-kpi/${id}/progress`,
+      input,
+    ),
+  );
+  return mapPersonalKpiFromApi(data);
 }
 
 export async function updatePersonalKpi(

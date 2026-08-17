@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, ClipboardList, Inbox, Plus, Search } from "lucide-react";
+import { Check, ClipboardList, Inbox, Info, Plus, Search } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 
@@ -97,6 +97,8 @@ type PersonalTaskDrawerProps = {
   edit?: PersonalKpiItem | null;
   /** Ngày báo cáo YYYY-MM-DD (mặc định hôm nay theo server) */
   reportDate?: string;
+  /** Lời nhắc hiện ngay dưới tiêu đề - ví dụ nhiệm vụ này sẽ vào ngày nào. */
+  notice?: string;
   onSaved: () => void | Promise<void>;
 };
 
@@ -112,6 +114,7 @@ export function PersonalTaskDrawer({
   onOpenChange,
   edit,
   reportDate,
+  notice,
   onSaved,
 }: PersonalTaskDrawerProps) {
   const {
@@ -438,6 +441,13 @@ export function PersonalTaskDrawer({
               : "Chọn nội dung công tác ở cột trái, mỗi nội dung hiện một thẻ nhập bên phải. Ô nhập dựng theo mẫu KPI của từng trục."}
           </SheetDescription>
         </SheetHeader>
+
+        {notice ? (
+          <div className="flex items-start gap-2 border-b bg-amber-500/5 px-5 py-2.5 text-sm">
+            <Info className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500" />
+            <p className="text-muted-foreground">{notice}</p>
+          </div>
+        ) : null}
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {!isEdit ? (

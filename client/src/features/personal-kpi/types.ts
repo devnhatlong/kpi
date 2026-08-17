@@ -45,6 +45,14 @@ export function canDeletePersonalKpi(status: PersonalKpiStatus) {
   return status === "DRAFT" || status === "RETURNED";
 }
 
+/**
+ * Cập nhật tiến độ hằng ngày rộng hơn sửa nội dung: việc đã gửi lên trên vẫn
+ * cập nhật được, chỉ dừng khi cấp trên đã chốt hoàn thành.
+ */
+export function canUpdateProgress(status: PersonalKpiStatus) {
+  return status !== "COMPLETED";
+}
+
 /** Một tệp đã tải lên - `id` là bản ghi upload trên server. */
 export type TaskAttachment = {
   id: string;
@@ -84,6 +92,8 @@ export type PersonalKpiItem = {
   updatedAt: string;
   /** Thời điểm gửi gần nhất */
   sentAt?: string;
+  /** Lần cập nhật tiến độ gần nhất - căn cứ tính "im lặng N ngày". */
+  lastProgressAt?: string;
   ownerId?: string;
   ownerName?: string;
   recipientId?: string;

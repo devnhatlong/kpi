@@ -19,20 +19,14 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ResolvedTemplate } from "@/features/kpi-form-config/form-template-utils";
 import type { FormTemplateColumn } from "@/features/kpi-form-config/types";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
-import {
-  taskToWriteInput,
-  updatePersonalKpi,
-} from "@/features/personal-kpi/api";
+import { updatePersonalKpiProgress } from "@/features/personal-kpi/api";
 import { CatalogSelectCell } from "@/features/personal-kpi/components/catalog-select-cell";
 import {
   readColumnPercent,
   trackingColumns,
   type TrackingColumns,
 } from "@/features/personal-kpi/task-summary";
-import type {
-  PersonalKpiItem,
-  PersonalTaskDraft,
-} from "@/features/personal-kpi/types";
+import type { PersonalKpiItem } from "@/features/personal-kpi/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
@@ -133,33 +127,24 @@ function ProgressForm({ item, columns, onDone, onSaved }: ProgressFormProps) {
       ) ?? 0)
     : 0;
 
+  /** Ô chọn mức gửi lên id; ô số gửi lên con số đã kẹp về 0-100. */
+  const outgoing = (column: FormTemplateColumn | undefined, value: string) => {
+    if (!column) return undefined;
+    return column.semanticKey === "quality_level"
+      ? value
+      : clampPercentText(value);
+  };
+
   const save = async () => {
     if (!columns.progressColumn) return;
 
-    const next: PersonalTaskDraft = {
-      ...item.task,
-      fieldValues: { ...fieldValues },
-      catalogValues: { ...catalogValues },
-    };
-    const writeColumn = (column: FormTemplateColumn, value: string) => {
-      if (column.semanticKey === "quality_level") {
-        next.catalogValues[column.key] = value;
-      } else {
-        next.fieldValues[column.key] = clampPercentText(value);
-      }
-    };
-    writeColumn(columns.progressColumn, progress);
-    if (columns.qualityColumn) writeColumn(columns.qualityColumn, quality);
-    if (columns.noteColumn) {
-      next.fieldValues[columns.noteColumn.key] = note;
-    }
-
     setSaving(true);
     try {
-      await updatePersonalKpi(
-        item.id,
-        taskToWriteInput(item.axisId, item.workContentId, next),
-      );
+      await updatePersonalKpiProgress(item.id, {
+        progress: outgoing(columns.progressColumn, progress),
+        quality: outgoing(columns.qualityColumn, quality),
+        note: columns.noteColumn ? note : undefined,
+      });
       await onSaved();
       toast.success("Đã cập nhật tiến độ.");
       onDone();

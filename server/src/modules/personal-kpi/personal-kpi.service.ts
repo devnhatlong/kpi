@@ -41,12 +41,19 @@ import {
   ReviewerEditPersonalKpiDto,
   SubmitPersonalKpiDto,
   UpdatePersonalKpiDto,
+  UpdatePersonalKpiProgressDto,
   type PersonalKpiStatScope,
 } from './dto/personal-kpi.dto';
 import {
   computeAxisScore,
   type ScoreCatalogs,
 } from './personal-kpi-score.util';
+import {
+  isProgressComplete,
+  readItemPercent,
+  resolveTrackingColumns,
+  type TrackingTemplate,
+} from './personal-kpi-progress.util';
 import {
   PersonalKpiAttachment,
   PersonalKpiCatalogValue,
@@ -889,11 +896,22 @@ export class PersonalKpiService {
     const target = await this.requireValidRecipient(userId, dto.recipientId);
     const note = this.requireNote(dto.note);
 
+    /**
+     * Mỗi ngày một lượt báo cáo. Lượt sau chỉ để gửi lại việc bị trả lại -
+     * không thì cấp trên nhận rải rác cả chục lượt cho cùng một ngày và không
+     * còn biết đâu là bản chốt.
+     */
+    const sentBefore = await this.submissionModel.exists({
+      senderId: actor.id,
+      reportDate: date,
+      level: 1,
+    });
+
     const filter: Record<string, unknown> = {
       ownerId: actor.id,
       reportDate: date,
       holderLevel: 0,
-      reviewStatus: { $in: OWNER_EDITABLE },
+      reviewStatus: sentBefore ? 'RETURNED' : { $in: OWNER_EDITABLE },
     };
     if (dto.itemIds?.length) {
       filter._id = {
@@ -904,7 +922,9 @@ export class PersonalKpiService {
     const items = await this.itemModel.find(filter);
     if (!items.length) {
       throw new BadRequestException(
-        'Không có nhiệm vụ nháp hoặc bị trả lại nào để gửi trong ngày này.',
+        sentBefore
+          ? 'Báo cáo ngày này đã gửi rồi. Chỉ gửi lại được nhiệm vụ bị trả lại; việc phát sinh thêm để sang báo cáo ngày sau.'
+          : 'Không có nhiệm vụ nháp hoặc bị trả lại nào để gửi trong ngày này.',
       );
     }
     if (dto.itemIds?.length && items.length !== dto.itemIds.length) {
@@ -1028,6 +1048,7 @@ export class PersonalKpiService {
     const now = new Date();
 
     if (dto.decision === 'COMPLETE') {
+      await this.assertProgressComplete(items);
       await this.itemModel.updateMany(
         { _id: { $in: items.map((item) => item._id) } },
         {
@@ -1651,6 +1672,176 @@ export class PersonalKpiService {
         `Chưa nhập cột bắt buộc - ${problems.join('; ')}.`,
       );
     }
+  }
+
+  /** Phần trăm của từng mức chất lượng, tra theo id. */
+  private async qualityPercentMap(): Promise<Map<string, number>> {
+    const levels = await this.qualityLevelModel.find().select('percent');
+    return new Map(levels.map((row) => [String(row._id), row.percent]));
+  }
+
+  /**
+   * Mẫu bảng của một nhiệm vụ, dùng chung cho cả lô - nhiều dòng cùng trục và
+   * cùng phiên bản mẫu thì chỉ tra một lần.
+   */
+  private async trackingTemplateOf(
+    item: PersonalKpiItemDocument,
+    cache?: Map<string, TrackingTemplate | null>,
+  ): Promise<TrackingTemplate | null> {
+    const templateId = item.formTemplateId ? String(item.formTemplateId) : null;
+    const version = item.formTemplateVersion ?? null;
+    const key = `${String(item.axisId)}:${templateId}:${version}`;
+    if (cache?.has(key)) return cache.get(key)!;
+
+    const resolved = await this.resolveBoardTemplate(
+      String(item.axisId),
+      templateId,
+      version,
+    );
+    cache?.set(key, resolved);
+    return resolved;
+  }
+
+  /**
+   * Chỉ chốt hoàn thành khi KPI tiến độ đã đủ 100%.
+   *
+   * "Hoàn thành" là điểm dừng của chuỗi duyệt và đi thẳng vào số liệu KPI, nên
+   * không cho chốt một việc mới chạy được 45% - muốn chốt thì trả lại để cán bộ
+   * cập nhật tiến độ trước. Mẫu không có cột tiến độ thì không chặn, vì lúc đó
+   * hệ thống chẳng có căn cứ nào để nói việc xong hay chưa.
+   */
+  private async assertProgressComplete(items: PersonalKpiItemDocument[]) {
+    const percentByLevelId = await this.qualityPercentMap();
+    const cache = new Map<string, TrackingTemplate | null>();
+    const problems: string[] = [];
+
+    for (const [index, item] of items.entries()) {
+      const template = await this.trackingTemplateOf(item, cache);
+      const { progress } = resolveTrackingColumns(template);
+      if (!progress) continue;
+
+      const percent = readItemPercent(item, progress, percentByLevelId);
+      if (isProgressComplete(percent)) continue;
+
+      problems.push(
+        `dòng ${index + 1} ${percent === null ? 'chưa nhập tiến độ' : `mới đạt ${percent}%`}`,
+      );
+    }
+
+    if (problems.length) {
+      throw new BadRequestException(
+        `Chỉ chốt hoàn thành khi KPI tiến độ đạt 100% - ${problems.join('; ')}. Trả lại để cán bộ cập nhật tiến độ trước.`,
+      );
+    }
+  }
+
+  /**
+   * Ghi một ô theo dõi. Ô chọn mức lưu vào catalogValues kèm tên chép sẵn, ô số
+   * lưu vào fieldValues sau khi kẹp về 0-100.
+   */
+  private async writeTrackingValue(
+    column: { key: string; semanticKey: string; title: string },
+    raw: string | undefined,
+    fieldValues: Record<string, string | number>,
+    catalogValues: Record<string, PersonalKpiCatalogValue>,
+  ) {
+    if (raw === undefined) return;
+    const value = raw.trim();
+
+    if (column.semanticKey === 'quality_level') {
+      if (!value) {
+        delete catalogValues[column.key];
+        return;
+      }
+      const level = await this.qualityLevelModel
+        .findById(this.requireObjectId(value, 'Mức chất lượng'))
+        .select('name');
+      if (!level) {
+        throw new BadRequestException(
+          `Mức chất lượng không hợp lệ cho cột "${column.title}".`,
+        );
+      }
+      catalogValues[column.key] = {
+        id: String(level._id),
+        name: level.name,
+      };
+      return;
+    }
+
+    if (!value) {
+      fieldValues[column.key] = '';
+      return;
+    }
+    const percent = Number(value);
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+      throw new BadRequestException(
+        `"${column.title}" phải là số từ 0 đến 100.`,
+      );
+    }
+    fieldValues[column.key] = percent;
+  }
+
+  /**
+   * Cán bộ cập nhật tiến độ hằng ngày cho nhiệm vụ của mình.
+   *
+   * Chạy được cả khi nhiệm vụ đã gửi lên trên - đó chính là điểm khác với
+   * `update`: chỉ ghi mấy ô theo dõi, KHÔNG kéo trạng thái duyệt về nháp và
+   * không đụng tới vị trí trong chuỗi gửi. Việc đã chốt hoàn thành thì dừng,
+   * số đã chấm không sửa nữa.
+   */
+  async updateProgress(
+    ownerId: string,
+    id: string,
+    dto: UpdatePersonalKpiProgressDto,
+  ) {
+    const item = await this.requireOwned(ownerId, id);
+    if (item.reviewStatus === 'COMPLETED') {
+      throw new BadRequestException(
+        'Nhiệm vụ đã chốt hoàn thành - không cập nhật tiến độ nữa.',
+      );
+    }
+
+    const template = await this.trackingTemplateOf(item);
+    const columns = resolveTrackingColumns(template);
+    if (!columns.progress) {
+      throw new BadRequestException(
+        'Mẫu KPI của trục này chưa có cột tiến độ nên chưa cập nhật được. Liên hệ quản trị để bổ sung cột.',
+      );
+    }
+
+    const fieldValues = { ...(item.fieldValues ?? {}) };
+    const catalogValues = { ...(item.catalogValues ?? {}) };
+
+    await this.writeTrackingValue(
+      columns.progress,
+      dto.progress,
+      fieldValues,
+      catalogValues,
+    );
+    if (columns.quality) {
+      await this.writeTrackingValue(
+        columns.quality,
+        dto.quality,
+        fieldValues,
+        catalogValues,
+      );
+    }
+    if (columns.note && dto.note !== undefined) {
+      fieldValues[columns.note.key] = dto.note.trim();
+    }
+
+    item.fieldValues = fieldValues;
+    item.catalogValues = catalogValues;
+    item.lastProgressAt = new Date();
+    // Điểm tự chấm ăn theo phần trăm nên phải tính lại ngay tại đây.
+    await this.applyDerivedColumns([item]);
+    await item.save();
+    await item.populate([
+      { path: 'axisId', select: 'code name description' },
+      { path: 'workContentId', select: 'code name description' },
+    ]);
+
+    return { message: 'Đã cập nhật tiến độ.', data: item };
   }
 
   /**

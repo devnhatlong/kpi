@@ -32,6 +32,7 @@ import {
   personalKpiStatusBadgeClass,
 } from "@/features/personal-kpi/status-styles";
 import {
+  SILENCE_ALERT_DAYS,
   WORK_STATE_LABEL,
   type DeadlineState,
   type TaskSummary,
@@ -41,8 +42,10 @@ import {
   PERSONAL_KPI_STATUS_LABEL,
   canDeletePersonalKpi,
   canEditPersonalKpi,
+  canUpdateProgress,
   type PersonalKpiItem,
 } from "@/features/personal-kpi/types";
+import { formatYmd } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
 export type DayTaskRow = {
@@ -51,6 +54,8 @@ export type DayTaskRow = {
   deadline: DeadlineState | null;
   /** Trạng thái công việc theo KPI tiến độ, tách khỏi trạng thái duyệt. */
   work: WorkState;
+  /** Số ngày không ai cập nhật tiến độ; null = chưa có mốc nào. */
+  silence: number | null;
   /** Chuỗi gộp mọi thứ tìm được của dòng - lọc theo ô tìm kiếm. */
   haystack: string;
 };
@@ -67,11 +72,6 @@ const WORK_STATE_PILL: Record<WorkState, string> = {
   DONE: kpiTone.success.soft,
 };
 
-function formatDayLabel(ymd: string) {
-  const date = new Date(`${ymd}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return ymd;
-  return date.toLocaleDateString("vi-VN");
-}
 
 /**
  * Cảnh báo về hạn cho cột "Tình trạng thực hiện".
@@ -93,6 +93,12 @@ function deadlineHealth(row: DayTaskRow) {
     return { label: "Sắp đến hạn", className: kpiTone.warning.soft };
   }
   return null;
+}
+
+/** Việc chưa xong mà lâu rồi không ai đụng vào tiến độ. */
+export function isSilent(row: DayTaskRow): boolean {
+  if (row.work === "DONE" || row.item.status === "COMPLETED") return false;
+  return row.silence !== null && row.silence >= SILENCE_ALERT_DAYS;
 }
 
 /**
@@ -244,7 +250,7 @@ export function DayTaskTable({
                   {summary.deadline ? (
                     <>
                       <div className="text-sm tabular-nums">
-                        {formatDayLabel(summary.deadline)}
+                        {formatYmd(summary.deadline)}
                       </div>
                       {deadline ? (
                         <div
@@ -276,6 +282,15 @@ export function DayTaskTable({
                         {health.label}
                       </Badge>
                     ) : null}
+                    {isSilent(row) ? (
+                      <Badge
+                        variant="secondary"
+                        className={cn("font-normal", kpiTone.warning.soft)}
+                        title="Lâu rồi chưa cập nhật tiến độ"
+                      >
+                        Im lặng {row.silence} ngày
+                      </Badge>
+                    ) : null}
                   </div>
                 </TableCell>
 
@@ -301,12 +316,12 @@ export function DayTaskTable({
                       className="bg-background"
                       onClick={() => onUpdateProgress(item)}
                       disabled={
-                        !canEditPersonalKpi(item.status) || actingId === item.id
+                        !canUpdateProgress(item.status) || actingId === item.id
                       }
                       title={
-                        canEditPersonalKpi(item.status)
-                          ? "Cập nhật tiến độ hôm nay"
-                          : "Đã gửi lên cấp trên - không sửa được"
+                        canUpdateProgress(item.status)
+                          ? "Cập nhật tiến độ hôm nay - gửi rồi vẫn cập nhật được"
+                          : "Đã chốt hoàn thành - không cập nhật nữa"
                       }
                     >
                       <Pencil className="h-4 w-4" />

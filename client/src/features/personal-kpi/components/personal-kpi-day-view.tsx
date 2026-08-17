@@ -4,12 +4,12 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CalendarDays,
+  Check,
   ChevronDown,
+  CircleDot,
   ClipboardList,
-  Clock3,
-  FilePen,
+  MessageSquareWarning,
   Plus,
-  RotateCcw,
   Search,
   Send,
   Table2,
@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Collapsible,
@@ -39,6 +40,11 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useAuth } from "@/features/auth/auth-provider";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
 import {
@@ -50,6 +56,7 @@ import {
 } from "@/features/personal-kpi/api";
 import {
   DayTaskTable,
+  isSilent,
   type DayTaskRow,
 } from "@/features/personal-kpi/components/day-task-table";
 import { PersonalReportDetailDrawer } from "@/features/personal-kpi/components/personal-report-detail-drawer";
@@ -58,20 +65,23 @@ import { ProgressUpdateDialog } from "@/features/personal-kpi/components/progres
 import { SendRecipientDialog } from "@/features/personal-kpi/components/send-recipient-dialog";
 import { kpiTone } from "@/features/personal-kpi/status-styles";
 import {
+  SILENCE_ALERT_DAYS,
   deadlineState,
+  silenceDays,
   summarizeTask,
   workState,
 } from "@/features/personal-kpi/task-summary";
 import {
   canEditPersonalKpi,
   canSendPersonalKpi,
+  canUpdateProgress,
   type PersonalKpiItem,
 } from "@/features/personal-kpi/types";
 import { useAxisTemplates } from "@/features/personal-kpi/use-axis-templates";
 import { useListPagination } from "@/hooks/use-list-pagination";
 import { useServerTime } from "@/hooks/use-server-time";
 import { getApiErrorMessage } from "@/lib/api-client";
-import { serverDayjs } from "@/lib/server-time";
+import { formatYmd, serverYmd, shiftYmd } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
 /** Một ngày của một người hiếm khi quá vài chục việc - lấy hết rồi lọc tại chỗ
@@ -87,6 +97,9 @@ const TABS: Array<{ value: TabValue; label: string }> = [
   { value: "RETURNED", label: "Trả lại" },
   { value: "DONE", label: "Hoàn thành" },
 ];
+
+/** Chip trạng thái cạnh ô ngày - cao bằng nút chọn ngày cho thẳng hàng. */
+const headerChipClass = "h-8 gap-1.5 rounded-md px-3 text-sm font-normal";
 
 /** Cách bày danh sách: phẳng, gom theo trục, hay gom theo đơn vị. */
 type GroupMode = "TASK" | "AXIS" | "UNIT";
@@ -105,10 +118,21 @@ function matchesTab(item: PersonalKpiItem, tab: TabValue): boolean {
   return item.status === tab;
 }
 
-function formatDayLabel(ymd: string) {
-  const date = new Date(`${ymd}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return ymd;
-  return date.toLocaleDateString("vi-VN");
+/**
+ * Ngày cho ô lịch. Lịch làm việc bằng Date của máy nên chỉ dựng đúng ngày /
+ * tháng / năm ở giữa trưa - không quy đổi múi giờ ở đây, mọi phép tính ngày
+ * nghiệp vụ đã nằm ở lib/server-time.
+ */
+function ymdToDate(ymd: string): Date | undefined {
+  const [year, month, day] = ymd.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+  return new Date(year, month - 1, day, 12);
+}
+
+function dateToYmd(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 function normalizeText(value: string): string {
@@ -188,6 +212,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   /** Nhiệm vụ đang mở ô cập nhật tiến độ hằng ngày. */
   const [progressItem, setProgressItem] = useState<PersonalKpiItem | null>(null);
   const [boardOpen, setBoardOpen] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
   const [deleting, setDeleting] = useState<PersonalKpiItem | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [sendingItem, setSendingItem] = useState<PersonalKpiItem | null>(null);
@@ -200,7 +225,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   // Sync giờ server để "trễ hạn / còn N ngày" tính theo giờ hệ thống, không
   // theo đồng hồ máy người dùng.
   useServerTime();
-  const todayYmd = serverDayjs().format("YYYY-MM-DD");
+  const todayYmd = serverYmd();
   const activeDate = reportDate || todayYmd;
 
   const listParams = useMemo(
@@ -238,6 +263,11 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
           summary,
           deadline: deadlineState(summary.deadline, todayYmd),
           work: workState(summary.progressPercent),
+          // Chưa cập nhật lần nào thì tính từ lúc đăng ký nhiệm vụ.
+          silence: silenceDays(
+            item.lastProgressAt ?? item.createdAt,
+            todayYmd,
+          ),
           haystack: normalizeText(
             [
               summary.title,
@@ -271,6 +301,10 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
       DONE: byTab("DONE"),
       overdue: countOverdue(rows),
       sent: rows.filter((row) => Boolean(row.item.sentAt)).length,
+      // "Đang thực hiện" tính cả việc đã gửi đang chờ duyệt: chừng nào cấp
+      // trên chưa chốt hoàn thành thì việc vẫn còn đang chạy.
+      running: rows.filter((row) => row.item.status !== "COMPLETED").length,
+      silent: rows.filter(isSilent).length,
     };
   }, [rows]);
 
@@ -317,12 +351,27 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   const safePage = Math.min(page, totalPages);
   const pageRows = filtered.slice((safePage - 1) * limit, safePage * limit);
 
-  /** Nhiệm vụ gửi được trong ngày - dùng cho nút "Gửi báo cáo". */
+  /**
+   * Mỗi ngày chỉ một lượt báo cáo (server chặn ở `submit`).
+   * Đã gửi rồi thì lượt sau chỉ để gửi lại việc bị trả lại; việc phát sinh
+   * thêm sẽ đi vào báo cáo ngày sau.
+   */
+  const alreadySent = counts.sent > 0;
   const sendableItems = useMemo(
-    () => items.filter((item) => canSendPersonalKpi(item.status)),
-    [items],
+    () =>
+      items.filter((item) =>
+        alreadySent
+          ? item.status === "RETURNED"
+          : canSendPersonalKpi(item.status),
+      ),
+    [items, alreadySent],
   );
-  const everSent = counts.sent > 0;
+  /** Nhiệm vụ nháp còn sót lại ở ngày đã chốt lượt gửi - không gửi được nữa. */
+  const strandedCount = alreadySent
+    ? items.filter((item) => item.status === "DRAFT" && !item.sentAt).length
+    : 0;
+  /** Việc phát sinh sau khi đã gửi thì đăng ký vào báo cáo ngày kế tiếp. */
+  const createDate = alreadySent ? shiftYmd(activeDate, 1) : activeDate;
   const emptyText =
     rows.length === 0
       ? "Ngày này chưa có nhiệm vụ nào."
@@ -347,10 +396,8 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   };
 
   const openProgress = (item: PersonalKpiItem) => {
-    if (!canEditPersonalKpi(item.status)) {
-      toast.error(
-        "Nhiệm vụ đã gửi lên cấp trên - chờ duyệt hoặc trả lại mới cập nhật tiếp được.",
-      );
+    if (!canUpdateProgress(item.status)) {
+      toast.error("Nhiệm vụ đã chốt hoàn thành - không cập nhật tiến độ nữa.");
       return;
     }
     setProgressItem(item);
@@ -434,21 +481,38 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
               Nhiệm vụ của tôi
             </h1>
             <div className="flex flex-wrap items-center gap-2">
-              {/* Đổi ngày ngay tại đây - thay cho bảng danh sách ngày đã bỏ. */}
-              <div className="relative">
-                <CalendarDays className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="date"
-                  aria-label="Ngày báo cáo"
-                  className="h-8 w-[168px] bg-background pl-8 text-sm"
-                  value={activeDate}
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      router.push(`/kpi/personal/${e.target.value}`);
-                    }
-                  }}
-                />
-              </div>
+              {/*
+                Đổi ngày ngay tại đây - thay cho bảng danh sách ngày đã bỏ.
+                Dùng lịch riêng chứ không dùng <input type="date"> vì ô đó hiện
+                ngày theo ngôn ngữ của trình duyệt, máy cài tiếng Anh sẽ ra
+                08/17/2026 thay vì 17/08/2026.
+              */}
+              <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-8 gap-2 bg-background px-3 font-normal"
+                    aria-label="Ngày báo cáo"
+                  >
+                    <CalendarDays className="size-3.5 text-muted-foreground" />
+                    <span className="tabular-nums">
+                      {formatYmd(activeDate)}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    defaultMonth={ymdToDate(activeDate)}
+                    selected={ymdToDate(activeDate)}
+                    onSelect={(picked) => {
+                      if (!picked) return;
+                      setDateOpen(false);
+                      router.push(`/kpi/personal/${dateToYmd(picked)}`);
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
               {activeDate !== todayYmd ? (
                 <Button
                   size="sm"
@@ -459,19 +523,39 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
                   Về hôm nay
                 </Button>
               ) : null}
-              <Badge variant="outline" className="font-normal">
-                {counts.sent} nhiệm vụ đã gửi
+              <Badge
+                variant="outline"
+                className={cn(
+                  headerChipClass,
+                  alreadySent ? kpiTone.success.text : undefined,
+                )}
+              >
+                {alreadySent ? <Check className="size-3.5" /> : null}
+                {alreadySent
+                  ? `Đã gửi báo cáo ngày (${counts.sent})`
+                  : "Chưa gửi báo cáo ngày"}
               </Badge>
               {counts.overdue > 0 ? (
                 <Badge
                   variant="outline"
                   className={cn(
-                    "gap-1 border-rose-200 font-normal dark:border-rose-900",
+                    headerChipClass,
+                    "border-rose-200 dark:border-rose-900",
                     kpiTone.danger.text,
                   )}
                 >
                   <TriangleAlert className="size-3.5" />
                   {counts.overdue} nhiệm vụ trễ hạn
+                </Badge>
+              ) : null}
+              {strandedCount > 0 ? (
+                <Badge
+                  variant="outline"
+                  className={cn(headerChipClass, kpiTone.warning.text)}
+                  title="Ngày này đã chốt lượt gửi nên các nhiệm vụ nháp còn lại không gửi kèm được"
+                >
+                  <TriangleAlert className="size-3.5" />
+                  {strandedCount} nháp không gửi được
                 </Badge>
               ) : null}
             </div>
@@ -488,23 +572,26 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
               <Table2 className="h-4 w-4" />
               Bảng tổng hợp
             </Button>
+            {/* Ngày đã gửi thì nút gửi chỉ còn để gửi lại việc bị trả lại. */}
             <Button
               variant="outline"
               className="bg-background"
               onClick={() => setSendAllOpen(true)}
               disabled={sendableItems.length === 0}
               title={
-                sendableItems.length === 0
-                  ? "Không còn nhiệm vụ Nháp hoặc Trả lại nào để gửi"
-                  : undefined
+                sendableItems.length > 0
+                  ? undefined
+                  : alreadySent
+                    ? "Báo cáo ngày này đã gửi - chỉ gửi lại được nhiệm vụ bị trả lại"
+                    : "Chưa có nhiệm vụ nháp nào để gửi"
               }
             >
               <Send className="h-4 w-4" />
-              {everSent ? "Gửi lại" : "Gửi báo cáo"} ({sendableItems.length})
+              {alreadySent ? "Gửi lại" : "Gửi báo cáo"} ({sendableItems.length})
             </Button>
             <Button onClick={openCreate}>
               <Plus className="h-4 w-4" />
-              Nhập báo cáo ngày
+              {alreadySent ? "Nhập việc phát sinh" : "Nhập báo cáo ngày"}
             </Button>
           </div>
         </CardContent>
@@ -517,22 +604,22 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
           icon={ClipboardList}
         />
         <StatCard
-          label="Chưa gửi"
-          value={counts.DRAFT}
-          icon={FilePen}
+          label="Đang thực hiện"
+          value={counts.running}
+          icon={CircleDot}
           tone={kpiTone.info}
         />
         <StatCard
-          label="Chờ duyệt"
-          value={counts.PENDING}
-          icon={Clock3}
-          tone={kpiTone.warning}
+          label="Trễ hạn"
+          value={counts.overdue}
+          icon={TriangleAlert}
+          tone={kpiTone.danger}
         />
         <StatCard
-          label="Trả lại"
-          value={counts.RETURNED}
-          icon={RotateCcw}
-          tone={kpiTone.danger}
+          label={`Im lặng ≥ ${SILENCE_ALERT_DAYS} ngày`}
+          value={counts.silent}
+          icon={MessageSquareWarning}
+          tone={kpiTone.warning}
         />
       </div>
 
@@ -693,7 +780,12 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         edit={edit}
-        reportDate={activeDate}
+        reportDate={edit ? activeDate : createDate}
+        notice={
+          !edit && alreadySent
+            ? `Báo cáo ngày ${formatYmd(activeDate)} đã gửi và mỗi ngày chỉ gửi một lượt, nên nhiệm vụ nhập ở đây sẽ vào báo cáo ngày ${formatYmd(createDate)}.`
+            : undefined
+        }
         onSaved={async () => {
           await refreshDay();
         }}
@@ -757,7 +849,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
         title={
           sendingItem
             ? "Gửi nhiệm vụ"
-            : `Gửi báo cáo ngày ${formatDayLabel(activeDate)} (${sendableItems.length} nhiệm vụ)`
+            : `Gửi báo cáo ngày ${formatYmd(activeDate)} (${sendableItems.length} nhiệm vụ)`
         }
         submitting={sending}
         onConfirm={confirmSend}

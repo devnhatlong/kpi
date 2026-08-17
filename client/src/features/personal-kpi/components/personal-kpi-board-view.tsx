@@ -45,11 +45,13 @@ import { fetchDepartments } from "@/features/organization/api";
 import {
   fetchPersonalKpiBoard,
   forwardPersonalKpi,
+  mapPersonalKpiFromApi,
   reviewPersonalKpi,
   type PersonalKpiBoardAxis,
   type PersonalKpiBoardRow,
   type PersonalKpiBoardQuery,
 } from "@/features/personal-kpi/api";
+import { summarizeTask } from "@/features/personal-kpi/task-summary";
 import {
   cellText,
   computeAxisFooter,
@@ -207,6 +209,8 @@ export function PersonalKpiBoardView() {
     setSelected(new Set());
   };
 
+  const qualityLevelById = useQualityLevelMap();
+
   const allRows = useMemo(
     () => axes.flatMap((axis) => axis.groups.flatMap((group) => group.rows)),
     [axes],
@@ -215,6 +219,26 @@ export function PersonalKpiBoardView() {
     () => new Map(allRows.map((row) => [row._id, row])),
     [allRows],
   );
+
+  /**
+   * KPI tiến độ của từng dòng, đọc theo đúng mẫu đã chốt của trục chứa nó.
+   * Dùng chung luật với màn cán bộ nên hai bên không bao giờ nói khác nhau.
+   */
+  const progressById = useMemo(() => {
+    const map = new Map<string, number | null>();
+    for (const axis of axes) {
+      for (const group of axis.groups) {
+        for (const row of group.rows) {
+          const { task } = mapPersonalKpiFromApi(row);
+          map.set(
+            row._id,
+            summarizeTask(task, axis.template, qualityLevelById).progressPercent,
+          );
+        }
+      }
+    }
+    return map;
+  }, [axes, qualityLevelById]);
 
   const selectedRows = [...selected]
     .map((id) => byId.get(id))
@@ -262,9 +286,24 @@ export function PersonalKpiBoardView() {
     await mutate();
   };
 
-  /** Chốt hoàn thành: điểm dừng của chuỗi, không gửi lên nữa. */
+  /**
+   * Chốt hoàn thành: điểm dừng của chuỗi, không gửi lên nữa.
+   * Chỉ nhận việc đã đủ 100% KPI tiến độ - server chặn y hệt, đây chỉ là để
+   * người duyệt biết ngay chứ không phải bấm xong mới thấy lỗi.
+   */
   const doComplete = async (itemIds: string[]) => {
     if (!itemIds.length) return;
+
+    const unfinished = itemIds.filter((id) => {
+      const percent = progressById.get(id);
+      return percent === undefined || percent === null || percent < 100;
+    });
+    if (unfinished.length) {
+      toast.error(
+        `${unfinished.length} nhiệm vụ chưa đạt 100% KPI tiến độ - trả lại để cán bộ cập nhật tiến độ trước khi chốt.`,
+      );
+      return;
+    }
     setBusy(true);
     try {
       const result = await reviewPersonalKpi({ itemIds, decision: "COMPLETE" });
@@ -638,6 +677,7 @@ export function PersonalKpiBoardView() {
                   setForwardOpen(true);
                 }}
                 onCompleteRow={(id) => void doComplete([id])}
+                progressById={progressById}
               />
             ))
           )}
@@ -715,6 +755,7 @@ function AxisBoardBlock({
   onReturnRow,
   onForwardRow,
   onCompleteRow,
+  progressById,
 }: {
   axis: PersonalKpiBoardAxis;
   selected: Set<string>;
@@ -725,6 +766,8 @@ function AxisBoardBlock({
   onReturnRow: (id: string) => void;
   onForwardRow: (id: string) => void;
   onCompleteRow: (id: string) => void;
+  /** KPI tiến độ từng dòng - chưa đủ 100% thì không cho chốt hoàn thành. */
+  progressById: Map<string, number | null>;
 }) {
   const template = axis.template;
   const footerConfig = template?.footer;
@@ -1004,12 +1047,20 @@ function AxisBoardBlock({
                                   Chuyển lên
                                 </Button>
                               ) : null}
+                              {/* Chốt hoàn thành đòi KPI tiến độ đủ 100% -
+                                  server chặn, đây chỉ để thấy trước. */}
                               <Button
                                 size="sm"
                                 className="h-7 bg-teal-600 px-2 text-xs text-white hover:bg-teal-700 disabled:bg-muted disabled:text-muted-foreground"
                                 onClick={() => onCompleteRow(row._id)}
-                                disabled={busy}
-                                title="Duyệt và chốt tại cấp mình"
+                                disabled={
+                                  busy || (progressById.get(row._id) ?? 0) < 100
+                                }
+                                title={
+                                  (progressById.get(row._id) ?? 0) < 100
+                                    ? `KPI tiến độ mới ${progressById.get(row._id) ?? 0}% - trả lại để cán bộ cập nhật trước`
+                                    : "Duyệt và chốt tại cấp mình"
+                                }
                               >
                                 <CheckCheck className="size-3.5" />
                                 Hoàn thành

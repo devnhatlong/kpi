@@ -26,6 +26,7 @@ import {
   ReviewerEditPersonalKpiDto,
   SubmitPersonalKpiDto,
   UpdatePersonalKpiDto,
+  UpdatePersonalKpiProgressDto,
 } from './dto/personal-kpi.dto';
 import { PersonalKpiService } from './personal-kpi.service';
 
@@ -186,6 +187,19 @@ export class PersonalKpiController {
     @Body() dto: UpdatePersonalKpiDto,
   ) {
     return this.personalKpiService.update(user.uid, id, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Cập nhật tiến độ hằng ngày - chạy được cả khi đã gửi lên trên',
+  })
+  @Permissions(Permission.EVALUATION_SELF)
+  @Patch(':id/progress')
+  updateProgress(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: UpdatePersonalKpiProgressDto,
+  ) {
+    return this.personalKpiService.updateProgress(user.uid, id, dto);
   }
 
   @ApiOperation({ summary: 'Xoá nhiệm vụ chưa gửi' })

@@ -217,6 +217,16 @@ export class PersonalKpiItem {
   @Prop({ type: Date, default: null })
   lastSentAt!: Date | null;
 
+  /**
+   * Lần cán bộ cập nhật tiến độ gần nhất.
+   *
+   * Tách khỏi `updatedAt` vì `updatedAt` nhúc nhích cả khi cấp trên duyệt hay
+   * hệ thống tính lại cột - dựa vào nó thì việc bỏ bê vẫn trông như vừa được
+   * đụng tới. Đây là mốc để tính "im lặng N ngày".
+   */
+  @Prop({ type: Date, default: null })
+  lastProgressAt!: Date | null;
+
   // ------------------------------------------------------- kết quả duyệt
 
   @Prop({ type: Types.ObjectId, ref: User.name, default: null })

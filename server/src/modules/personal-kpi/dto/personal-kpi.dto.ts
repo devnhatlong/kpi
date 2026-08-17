@@ -85,6 +85,35 @@ export class UpdatePersonalKpiDto extends PersonalKpiContentDto {
   workContentId?: string;
 }
 
+/**
+ * Cán bộ cập nhật tiến độ hằng ngày.
+ *
+ * Cố tình KHÔNG kế thừa PersonalKpiContentDto: đây là đường sửa được phép chạy
+ * cả khi nhiệm vụ đã gửi lên trên, nên chỉ nhận đúng ba thứ theo dõi. Cho gửi
+ * cả fieldValues là mở đường sửa điểm tự chấm sau lưng người duyệt.
+ */
+export class UpdatePersonalKpiProgressDto {
+  @ApiPropertyOptional({
+    description: 'KPI tiến độ: số 0-100, hoặc id mức khi cột là ô chọn',
+  })
+  @IsOptional()
+  @IsString()
+  progress?: string;
+
+  @ApiPropertyOptional({
+    description: 'KPI chất lượng, cùng dạng với progress',
+  })
+  @IsOptional()
+  @IsString()
+  quality?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+}
+
 /** Cấp trên sửa nội dung nhiệm vụ đang nằm ở tay mình - bắt buộc nêu lý do. */
 export class ReviewerEditPersonalKpiDto extends PersonalKpiContentDto {
   @ApiProperty({ description: 'Lý do sửa - hiện trong lịch sử nhiệm vụ' })
