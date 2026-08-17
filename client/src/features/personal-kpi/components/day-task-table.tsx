@@ -208,12 +208,14 @@ export function DayTaskTable({
             const health = deadlineHealth(row);
             return (
               <TableRow key={item.id}>
-                <TableCell className="align-middle">
-                  <div className="font-medium">
+                {/* break-words: tên nhiệm vụ có thể là chuỗi dài không dấu
+                    cách, không bẻ thì nó tràn sang cột bên cạnh. */}
+                <TableCell className="max-w-[420px] whitespace-normal align-middle">
+                  <div className="break-words font-medium">
                     {summary.title || item.workContentName}
                   </div>
                   {summary.title ? (
-                    <div className="text-xs text-muted-foreground">
+                    <div className="break-words text-xs text-muted-foreground">
                       {item.workContentName}
                     </div>
                   ) : null}

@@ -698,7 +698,21 @@ function ProgressForm({
         </div>
       </div>
 
-      <DialogFooter>
+      <DialogFooter className="sm:items-center sm:justify-between">
+        {/*
+          Việc đã gửi thì không có gì để "xin" nữa: đủ 100% là nó tự nhảy vào
+          mục "Chờ xác nhận" trên màn theo dõi của chỉ huy. Nói thẳng ra đây
+          thay vì bày một cái nút chết.
+        */}
+        <p className="text-xs text-muted-foreground sm:mr-auto">
+          {readOnly
+            ? null
+            : sendable
+              ? "Đủ điều kiện thì bấm xin xác nhận để gửi lên chỉ huy."
+              : done
+                ? "Đã báo đủ 100% - đang chờ chỉ huy xác nhận hoàn thành."
+                : "Nhiệm vụ đang ở chỗ chỉ huy; báo đủ 100% là vào mục chờ xác nhận."}
+        </p>
         <Button
           type="button"
           variant="outline"
@@ -726,18 +740,16 @@ function ProgressForm({
             {saving ? "Đang lưu..." : "Lưu cập nhật"}
           </Button>
         )}
-        {onRequestConfirm && !readOnly ? (
+        {onRequestConfirm && !readOnly && sendable ? (
           <Button
             type="button"
             variant="secondary"
             onClick={() => onRequestConfirm(item)}
-            disabled={saving || !readyToFinish || !sendable}
+            disabled={saving || !readyToFinish}
             title={
-              !readyToFinish
-                ? "Chưa đủ điều kiện phía trên để xin xác nhận"
-                : sendable
-                  ? "Gửi lên cấp trên để xác nhận hoàn thành"
-                  : "Nhiệm vụ đang ở chỗ cấp trên - chờ họ chốt"
+              readyToFinish
+                ? "Gửi lên cấp trên để xác nhận hoàn thành"
+                : "Chưa đủ điều kiện phía trên để xin xác nhận"
             }
           >
             <CircleCheck className="h-4 w-4" />

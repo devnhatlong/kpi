@@ -140,6 +140,8 @@ export function PersonalTaskDrawer({
   const [focusKey, setFocusKey] = useState<string | null>(null);
 
   const isEdit = !!edit;
+  /** Sửa vì bị trả lại - phải nhắc gửi lại, không thì nhiệm vụ nằm im ở nháp. */
+  const wasReturned = edit?.status === "RETURNED";
   const loading = loadingAxes || loadingContents || templates.isLoading;
 
   useEffect(() => {
@@ -399,7 +401,12 @@ export function PersonalTaskDrawer({
     try {
       if (edit) {
         await updatePersonalKpi(edit.id, payloads[0]!);
-        toast.success("Đã lưu nháp.");
+        // Sửa xong là nhiệm vụ quay về chỗ mình, phải gửi lại mới lên cấp trên.
+        toast.success(
+          wasReturned
+            ? "Đã lưu chỉnh sửa. Bấm Gửi lại để nhiệm vụ quay lên cấp trên."
+            : "Đã lưu chỉnh sửa.",
+        );
       } else {
         await createPersonalKpiBatch(payloads, reportDate);
         toast.success(
@@ -432,7 +439,9 @@ export function PersonalTaskDrawer({
         <SheetHeader className="border-b px-5 py-4 pr-12 text-left">
           <SheetTitle>
             {isEdit
-              ? "Sửa nhiệm vụ"
+              ? wasReturned
+                ? "Sửa nhiệm vụ bị trả lại"
+                : "Sửa nhiệm vụ"
               : `Nhập nhiệm vụ mới${reportDate ? ` · ${formatDayLabel(reportDate)}` : ""}`}
           </SheetTitle>
           <SheetDescription>
@@ -441,6 +450,21 @@ export function PersonalTaskDrawer({
               : "Chọn nội dung công tác ở cột trái, mỗi nội dung hiện một thẻ nhập bên phải. Ô nhập dựng theo mẫu KPI của từng trục."}
           </SheetDescription>
         </SheetHeader>
+
+        {/* Lý do bị trả lại phải nằm ngay trước mắt lúc sửa. */}
+        {wasReturned ? (
+          <div className="flex items-start gap-2 border-b bg-rose-500/5 px-5 py-2.5 text-sm">
+            <Info className="mt-0.5 size-4 shrink-0 text-rose-600 dark:text-rose-400" />
+            <p className="text-muted-foreground">
+              {edit?.rejectReason
+                ? `Lý do trả lại: ${edit.rejectReason}. `
+                : ""}
+              Sửa xong bấm <b className="text-foreground">Lưu chỉnh sửa</b>, rồi
+              bấm <b className="text-foreground">Gửi lại</b> ở danh sách để
+              nhiệm vụ quay lên cấp trên.
+            </p>
+          </div>
+        ) : null}
 
         {notice ? (
           <div className="flex items-start gap-2 border-b bg-amber-500/5 px-5 py-2.5 text-sm">
@@ -646,7 +670,11 @@ export function PersonalTaskDrawer({
               disabled={saving || loading || entries.length === 0}
             >
               <Check className="h-4 w-4" />
-              {saving ? "Đang lưu..." : "Lưu nháp"}
+              {saving
+                ? "Đang lưu..."
+                : isEdit
+                  ? "Lưu chỉnh sửa"
+                  : "Lưu nháp"}
             </Button>
           </div>
         </SheetFooter>

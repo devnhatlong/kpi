@@ -911,8 +911,22 @@ export class PersonalKpiService {
       ownerId: actor.id,
       reportDate: date,
       holderLevel: 0,
-      reviewStatus: sentBefore ? 'RETURNED' : { $in: OWNER_EDITABLE },
     };
+    if (sentBefore) {
+      /**
+       * Lượt sau chỉ gửi lại việc từng bị trả lại.
+       *
+       * Phải nhận cả DRAFT đã từng gửi: `update` đặt lại trạng thái về DRAFT
+       * sau mỗi lần sửa, nên nhiệm vụ bị trả lại vừa sửa xong không còn mang
+       * cờ RETURNED - lọc đúng RETURNED là chính nó bị kẹt lại vĩnh viễn.
+       */
+      filter.$or = [
+        { reviewStatus: 'RETURNED' },
+        { reviewStatus: 'DRAFT', lastSentAt: { $ne: null } },
+      ];
+    } else {
+      filter.reviewStatus = { $in: OWNER_EDITABLE };
+    }
     if (dto.itemIds?.length) {
       filter._id = {
         $in: dto.itemIds.map((id) => this.requireObjectId(id, 'Nhiệm vụ')),

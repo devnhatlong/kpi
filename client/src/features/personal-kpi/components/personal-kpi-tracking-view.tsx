@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  CalendarDays,
   CheckCheck,
   Crosshair,
   Eye,
@@ -9,6 +10,7 @@ import {
   TrendingUp,
   TriangleAlert,
   Undo2,
+  X,
 } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -16,6 +18,7 @@ import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -27,6 +30,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -73,7 +81,7 @@ import {
 } from "@/features/personal-kpi/types";
 import { useServerTime } from "@/hooks/use-server-time";
 import { getApiErrorMessage } from "@/lib/api-client";
-import { formatYmd, serverYmd } from "@/lib/server-time";
+import { currentWeekRange, formatYmd, serverYmd } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
 const ALL = "ALL";
@@ -130,10 +138,18 @@ function normalizeText(value: string): string {
     .trim();
 }
 
+/**
+ * Chữ cái đầu của HAI từ cuối tên: "Nguyễn Nhật Long" -> "NL".
+ * Tên Việt phân biệt nhau ở tên đệm và tên, không phải ở họ - lấy chữ đầu của
+ * họ thì cả phòng toàn chữ "N".
+ */
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
-  const last = parts[parts.length - 1];
-  return (last?.[0] ?? "?").toUpperCase();
+  if (!parts.length) return "?";
+  return parts
+    .slice(-2)
+    .map((part) => part[0]!.toUpperCase())
+    .join("");
 }
 
 /** Việc đã chốt hoặc đã đủ tiến độ thì không tính là nợ nữa. */
@@ -201,6 +217,77 @@ function averagePercent(rows: TrackingRow[]): number | null {
   return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 
+function dateToYmd(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function ymdToDate(ymd: string): Date | undefined {
+  const [year, month, day] = ymd.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+  return new Date(year, month - 1, day, 12);
+}
+
+/**
+ * Ô chọn ngày cho bộ lọc.
+ * Dùng lịch riêng chứ không dùng input type="date" vì ô đó hiện ngày theo ngôn
+ * ngữ trình duyệt - máy cài tiếng Anh sẽ ra 08/17/2026.
+ */
+function DateFilterButton({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="flex items-center gap-0.5">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className={cn(
+              "gap-2 bg-background font-normal",
+              !value && "text-muted-foreground",
+            )}
+          >
+            <CalendarDays className="size-4 text-muted-foreground" />
+            {value ? formatYmd(value) : label}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            defaultMonth={ymdToDate(value)}
+            selected={ymdToDate(value)}
+            onSelect={(picked) => {
+              if (!picked) return;
+              setOpen(false);
+              onChange(dateToYmd(picked));
+            }}
+          />
+        </PopoverContent>
+      </Popover>
+      {value ? (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-8 shrink-0"
+          onClick={() => onChange("")}
+          aria-label={`Bỏ lọc ${label.toLowerCase()}`}
+        >
+          <X className="size-4" />
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 type StatCardProps = {
   label: string;
   value: string;
@@ -260,19 +347,46 @@ export function PersonalKpiTrackingView() {
   const [groupMode, setGroupMode] = useState<GroupMode>("UNIT");
   const [query, setQuery] = useState("");
   const [departmentId, setDepartmentId] = useState(ALL);
+  /**
+   * Lọc theo ngày báo cáo - chạy ở server để đếm tab đúng theo khoảng đang xem.
+   *
+   * null = chưa đụng tới, dùng mặc định (tuần này). Chuỗi rỗng = người dùng đã
+   * chủ động bỏ lọc. Tách hai thứ đó ra mới suy lại được ngày mặc định khi
+   * đồng bộ xong giờ server, mà không đè lên lựa chọn của người dùng.
+   */
+  const [fromOverride, setFromOverride] = useState<string | null>(null);
+  const [toOverride, setToOverride] = useState<string | null>(null);
   const [detailRow, setDetailRow] = useState<TrackingRow | null>(null);
   const [returnRow, setReturnRow] = useState<TrackingRow | null>(null);
   const [returnReason, setReturnReason] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  useServerTime();
+  const { ready } = useServerTime();
   const todayYmd = serverYmd();
+
+  /*
+    Tính lại khi đồng bộ xong giờ server - lần render đầu còn đang dùng giờ máy.
+    `ready` không xuất hiện trong thân hàm nên eslint coi là thừa, nhưng độ lệch
+    giờ mà `currentWeekRange` đọc lại nằm ở module ngoài React.
+  */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const week = useMemo(() => currentWeekRange(), [ready]);
+  const fromDate = fromOverride ?? week.from;
+  const toDate = toOverride ?? week.to;
+  const usingDefaultWeek = fromOverride === null && toOverride === null;
 
   // Lấy hết việc đang ở chỗ mình, kể cả đã chốt - đếm tab và số thống kê phải
   // theo toàn bộ chứ không theo tab đang xem.
-  const boardQuery = useMemo(() => ({ includeDecided: true }), []);
+  const boardQuery = useMemo(
+    () => ({
+      includeDecided: true,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+    }),
+    [fromDate, toDate],
+  );
   const { data, isLoading, mutate } = useSWR(
-    ["personal-kpi", "tracking-board"],
+    ["personal-kpi", "tracking-board", fromDate, toDate],
     () => fetchPersonalKpiBoard(boardQuery),
   );
 
@@ -489,6 +603,34 @@ export function PersonalKpiTrackingView() {
               </SelectContent>
             </Select>
 
+            {/* Nói rõ lọc theo ngày nào - "từ ngày / đến ngày" trơ trọi dễ bị
+                hiểu thành ngày gửi. */}
+            <span className="text-sm text-muted-foreground">Ngày báo cáo</span>
+            <DateFilterButton
+              label="Từ ngày"
+              value={fromDate}
+              onChange={setFromOverride}
+            />
+            <DateFilterButton
+              label="Đến ngày"
+              value={toDate}
+              onChange={setToOverride}
+            />
+            {usingDefaultWeek ? (
+              <span className="text-xs text-muted-foreground">Tuần này</span>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setFromOverride(null);
+                  setToOverride(null);
+                }}
+              >
+                Về tuần này
+              </Button>
+            )}
+
             <div className="flex flex-wrap gap-1 rounded-lg bg-muted/60 p-1">
               {TABS.map((entry) => (
                 <button
@@ -649,27 +791,27 @@ export function PersonalKpiTrackingView() {
                                   xuống hàng, không thì cột này kéo giãn cả
                                   bảng và mấy cột sau bị bóp lại. */}
                               {/*
-                                Huy hiệu trục thả nổi (float) chứ không nằm
-                                trong flex: tên nhiệm vụ dài sẽ chạy vòng qua
-                                huy hiệu ở dòng đầu rồi trải hết bề ngang ở các
-                                dòng sau. Để trong flex thì tên dài bị đẩy hẳn
-                                xuống dòng dưới, chừa một khoảng trống chỏng
-                                chơ cạnh huy hiệu.
+                                `break-words` là bắt buộc: tên nhiệm vụ có thể
+                                là một chuỗi dài không dấu cách, mà chuỗi liền
+                                thì không tự xuống hàng - nó tràn hẳn sang cột
+                                bên cạnh.
                               */}
                               <TableCell className="max-w-[360px] whitespace-normal align-middle">
-                                <div className="font-medium leading-snug">
+                                <div>
                                   <Badge
                                     variant="secondary"
                                     className={cn(
-                                      "float-left mr-1.5 font-normal",
+                                      "font-normal",
                                       kpiTone.info.soft,
                                     )}
                                   >
                                     {row.item.axisName}
                                   </Badge>
+                                </div>
+                                <div className="mt-1 break-words font-medium leading-snug">
                                   {row.summary.title || row.item.workContentName}
                                 </div>
-                                <div className="clear-both pt-0.5 text-xs leading-snug text-muted-foreground">
+                                <div className="mt-0.5 break-words text-xs leading-snug text-muted-foreground">
                                   {row.item.workContentName}
                                 </div>
                               </TableCell>

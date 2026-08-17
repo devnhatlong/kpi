@@ -358,11 +358,13 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   const alreadySent = counts.sent > 0;
   const sendableItems = useMemo(
     () =>
-      items.filter((item) =>
-        alreadySent
-          ? item.status === "RETURNED"
-          : canSendPersonalKpi(item.status),
-      ),
+      items.filter((item) => {
+        if (!alreadySent) return canSendPersonalKpi(item.status);
+        // Sửa một nhiệm vụ bị trả lại là nó quay về Nháp, nhưng vẫn phải gửi
+        // lại được - nhận diện qua dấu "đã từng gửi".
+        if (item.status === "RETURNED") return true;
+        return item.status === "DRAFT" && !!item.sentAt;
+      }),
     [items, alreadySent],
   );
   /** Nhiệm vụ nháp còn sót lại ở ngày đã chốt lượt gửi - không gửi được nữa. */

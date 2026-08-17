@@ -109,6 +109,20 @@ export function daysBetweenYmd(earlier: string, later: string): number | null {
   return Math.round((to - from) / (24 * 60 * 60 * 1000));
 }
 
+/**
+ * Tuần hiện tại theo giờ server: thứ Hai đến Chủ nhật.
+ * dayjs mặc định coi Chủ nhật là đầu tuần nên phải tự dịch, không thì thứ Hai
+ * bị xếp sang tuần trước.
+ */
+export function currentWeekRange(): { from: string; to: string } {
+  const now = serverDayjs();
+  const monday = now.subtract((now.day() + 6) % 7, "day");
+  return {
+    from: monday.format("YYYY-MM-DD"),
+    to: monday.add(6, "day").format("YYYY-MM-DD"),
+  };
+}
+
 /** Giờ:phút của một mốc thời gian, theo múi giờ server. */
 export function formatServerHm(value: string | number | Date): string {
   return serverDayjs(value).format("HH:mm");
