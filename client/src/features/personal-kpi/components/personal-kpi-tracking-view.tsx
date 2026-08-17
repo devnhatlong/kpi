@@ -569,7 +569,7 @@ export function PersonalKpiTrackingView() {
         />
         <StatCard
           label="Tiến độ trung bình"
-          value={averageAll === null ? "—" : `${averageAll} %`}
+          value={averageAll === null ? "-" : `${averageAll} %`}
           hint={`Đã hoàn thành: ${counts.DONE}`}
           icon={TrendingUp}
           tone={kpiTone.success}
@@ -819,7 +819,7 @@ export function PersonalKpiTrackingView() {
                               <TableCell className="align-middle">
                                 {row.summary.progressPercent === null ? (
                                   <span className="text-sm text-muted-foreground">
-                                    —
+                                    -
                                   </span>
                                 ) : (
                                   <div className="flex items-center gap-2">
@@ -861,7 +861,7 @@ export function PersonalKpiTrackingView() {
                                   </>
                                 ) : (
                                   <span className="text-sm text-muted-foreground">
-                                    —
+                                    -
                                   </span>
                                 )}
                               </TableCell>
@@ -880,7 +880,7 @@ export function PersonalKpiTrackingView() {
                               <TableCell className="align-middle text-sm tabular-nums">
                                 {row.summary.qualityPercent === null ? (
                                   <span className="text-muted-foreground">
-                                    —
+                                    -
                                   </span>
                                 ) : (
                                   `${row.summary.qualityPercent}%`

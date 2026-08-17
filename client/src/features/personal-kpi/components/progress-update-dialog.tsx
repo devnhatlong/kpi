@@ -166,14 +166,10 @@ function MilestoneSlider({
         chính nó - lấy chiều cao khác là chấm rơi lệch xuống dưới.
       */}
       <div className="relative mt-2">
-        {/*
-          Phần đã đạt tô nhạt chứ không đặc: nền đặc làm mấy vòng tròn trắng
-          của mốc trông như lỗ thủng trên thanh.
-        */}
         <Slider
           className={cn(
-            "[&>span:first-child]:h-1.5 [&>span:first-child]:bg-primary/15",
-            "[&>span:first-child>span]:bg-primary/45",
+            "[&>span:first-child]:h-1.5 [&>span:first-child]:bg-primary/20",
+            "[&>span:first-child>span]:bg-primary",
           )}
           value={[percentNow]}
           min={0}
@@ -197,8 +193,8 @@ function MilestoneSlider({
                     "absolute top-1/2 size-2.5 -translate-y-1/2 rounded-full border-2 bg-background",
                     position.className,
                     mark.percent < percentNow
-                      ? "border-primary/60"
-                      : "border-primary/25",
+                      ? "border-primary"
+                      : "border-primary/40",
                   )}
                   style={position.style}
                 />
@@ -261,6 +257,13 @@ function SectionTitle({
   );
 }
 
+/** Lần cập nhật này có kéo tiến độ tụt xuống không. */
+function isRollback(log: PersonalKpiProgressLog): boolean {
+  const change = log.changes.find((entry) => entry.field === "progress");
+  if (!change || !change.from.trim() || !change.to.trim()) return false;
+  return Number(change.to) < Number(change.from);
+}
+
 /**
  * Một dòng "đã đổi gì" trong nhật ký.
  * Giá trị lưu ở dạng thô nên định dạng ngay tại đây theo loại ô.
@@ -280,7 +283,7 @@ function ChangeLine({
   }[change.field];
 
   const show = (raw: string) => {
-    if (!raw.trim()) return "—";
+    if (!raw.trim()) return "-";
     if (change.field === "progress" || change.field === "quality") {
       return `${raw}%`;
     }
@@ -399,7 +402,7 @@ function MilestoneTrack({
                 {mark.percent}%
               </span>
               <span className="text-center text-[10px] leading-tight text-muted-foreground">
-                {date ? formatYmd(date) : "—"}
+                {date ? formatYmd(date) : "-"}
               </span>
             </div>
           );
@@ -729,7 +732,6 @@ function ProgressForm({
                     <p className="text-xs text-muted-foreground">
                       Cập nhật tiến độ
                       {log.byName ? ` · ${log.byName}` : ""}
-                      {log.note ? ` — ${log.note}` : ""}
                     </p>
                     {log.changes.length > 0 ? (
                       <div className="mt-1 space-y-0.5 border-l pl-2">
@@ -741,6 +743,23 @@ function ProgressForm({
                           />
                         ))}
                       </div>
+                    ) : null}
+                    {/* Lần lùi tiến độ thì ghi chú chính là lý do bắt buộc -
+                        gọi đúng tên nó, đừng để lẫn với ghi chú thường. */}
+                    {log.note ? (
+                      <p
+                        className={cn(
+                          "mt-1 text-xs",
+                          isRollback(log)
+                            ? kpiTone.warning.text
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        <span className="font-medium">
+                          {isRollback(log) ? "Lý do lùi tiến độ:" : "Ghi chú:"}
+                        </span>{" "}
+                        {log.note}
+                      </p>
                     ) : null}
                   </li>
                 ))}
