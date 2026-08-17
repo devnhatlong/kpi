@@ -125,8 +125,8 @@ export function PersonalKpiBoardView() {
       axisId === ALL
         ? contents4Filter
         : contents4Filter.filter(
-            (item) => entityId(item.axisId as never) === axisId,
-          );
+          (item) => entityId(item.axisId as never) === axisId,
+        );
     return [
       { value: ALL, label: "Tất cả nội dung" },
       ...list.map((item) => ({
@@ -435,9 +435,9 @@ export function PersonalKpiBoardView() {
                       : item.value === "COMPLETED"
                         ? counts.completed
                         : counts.pending +
-                          counts.approved +
-                          counts.returned +
-                          counts.completed;
+                        counts.approved +
+                        counts.returned +
+                        counts.completed;
               const active = status === item.value;
               return (
                 <Button
@@ -476,7 +476,7 @@ export function PersonalKpiBoardView() {
                 {selected.size === 0 && counts.pending > 0 ? (
                   <>
                     {" "}
-                    — tích chọn rồi chọn một trong ba: Trả lại, Chuyển lên, Hoàn
+                    - tích chọn rồi chọn một trong ba: Trả lại, Chuyển lên, Hoàn
                     thành.
                   </>
                 ) : null}
@@ -736,8 +736,8 @@ function AxisBoardBlock({
    */
   const formulaColumnKeys = footerConfig?.enabled
     ? [footerConfig.baseColumnKey, ...footerConfig.ratioColumnKeys].filter(
-        (key): key is string => Boolean(key),
-      )
+      (key): key is string => Boolean(key),
+    )
     : [];
   const formulaCols = (template?.columns ?? []).filter((column) =>
     formulaColumnKeys.includes(column.key),
@@ -799,8 +799,8 @@ function AxisBoardBlock({
   );
   const baseColumnTitle = footerConfig?.baseColumnKey
     ? (template.columns.find(
-        (column) => column.key === footerConfig.baseColumnKey,
-      )?.title ?? "")
+      (column) => column.key === footerConfig.baseColumnKey,
+    )?.title ?? "")
     : "";
 
   return (
@@ -874,12 +874,12 @@ function AxisBoardBlock({
                         // Dòng bị trả lại nhuộm hồng nhạt để lướt mắt là thấy.
                         className={cn(
                           row.reviewStatus === "RETURNED" &&
-                            "bg-rose-50/70 hover:bg-rose-50 dark:bg-rose-950/25 dark:hover:bg-rose-950/40",
+                          "bg-rose-50/70 hover:bg-rose-50 dark:bg-rose-950/25 dark:hover:bg-rose-950/40",
                           // Đã chốt thì không còn thao tác nào. Ép "!" để chắc
                           // chắn đè được hover:bg-muted/50 của TableRow, không
                           // phụ thuộc thứ tự gộp class.
                           row.reviewStatus === "COMPLETED" &&
-                            "bg-teal-50 hover:!bg-teal-50 dark:bg-teal-950/40 dark:hover:!bg-teal-950/40",
+                          "bg-teal-50 hover:!bg-teal-50 dark:bg-teal-950/40 dark:hover:!bg-teal-950/40",
                         )}
                       >
                         <TableCell className="align-middle">
@@ -915,7 +915,7 @@ function AxisBoardBlock({
                               >
                                 <AttachmentCell
                                   files={row.attachments?.[column.key] ?? []}
-                                  onChange={() => {}}
+                                  onChange={() => { }}
                                   readOnly
                                   label={column.title}
                                 />

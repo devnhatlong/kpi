@@ -1,7 +1,7 @@
 import type { PersonalKpiStatus } from "@/features/personal-kpi/types";
 
 /**
- * Palette KPI cá nhân — nền nhạt + chữ đậm, học theo UI báo cáo:
+ * Palette KPI cá nhân - nền nhạt + chữ đậm, học theo UI báo cáo:
  * xanh duyệt, xanh dương thông tin, cam chờ, đỏ coral trả lại, xám nháp.
  */
 

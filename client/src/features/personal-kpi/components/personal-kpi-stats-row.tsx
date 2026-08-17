@@ -38,7 +38,7 @@ function StatCard({
       className={cn(
         "border-border/80 bg-card shadow-sm",
         interactive &&
-          "cursor-pointer transition-colors hover:bg-accent/30 focus-within:ring-2 focus-within:ring-ring",
+        "cursor-pointer transition-colors hover:bg-accent/30 focus-within:ring-2 focus-within:ring-ring",
         className,
       )}
     >
@@ -94,7 +94,7 @@ export function PersonalKpiStatsRow({
               streakDays > 0 ? kpiTone.success.text : "text-foreground",
             )}
           >
-            {loading ? "—" : `${streakDays} ngày`}
+            {loading ? "-" : `${streakDays} ngày`}
           </p>
         </div>
       </StatCard>
@@ -102,7 +102,7 @@ export function PersonalKpiStatsRow({
       <StatCard title="Đã gửi trong 7 ngày gần nhất">
         <p className="text-2xl font-semibold tracking-tight tabular-nums">
           {loading ? (
-            "—"
+            "-"
           ) : (
             <>
               <span className={kpiTone.info.text}>{weekReportedDays}</span>
@@ -127,7 +127,7 @@ export function PersonalKpiStatsRow({
               <ClipboardList className="size-4" />
             </span>
             <p className="text-2xl font-semibold tracking-tight tabular-nums text-foreground">
-              {loading ? "—" : todayTaskCount}
+              {loading ? "-" : todayTaskCount}
             </p>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -138,7 +138,7 @@ export function PersonalKpiStatsRow({
                 todayDraftCount > 0 ? kpiTone.warning.text : undefined,
               )}
             >
-              {loading ? "—" : todayDraftCount}
+              {loading ? "-" : todayDraftCount}
             </span>
           </p>
         </div>
@@ -164,7 +164,7 @@ export function PersonalKpiStatsRow({
           </span>
           <p className="text-2xl font-semibold tracking-tight tabular-nums">
             {loading ? (
-              "—"
+              "-"
             ) : (
               <>
                 <span className={kpiTone.warning.text}>{pendingSentCount}</span>

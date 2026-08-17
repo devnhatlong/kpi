@@ -119,7 +119,7 @@ function formulaColumnLabel(column: FormTemplateColumn): string {
   const source = formulaValueSource(column);
   const title = column.title || column.key;
   if (!source || source === "number") return title;
-  return `${title} — ${FORMULA_VALUE_SOURCE_HINT[source]}`;
+  return `${title} - ${FORMULA_VALUE_SOURCE_HINT[source]}`;
 }
 
 /**
@@ -247,10 +247,10 @@ export function FormTemplateBuilderSheet({
       // Bảng trắng: tự dựng cột từ đầu. Ngược lại điền sẵn bộ cột mặc định.
       const draft = startBlank
         ? {
-            headerGroups: [],
-            columns: [],
-            footer: EMPTY_FORM_TEMPLATE_FOOTER,
-          }
+          headerGroups: [],
+          columns: [],
+          footer: EMPTY_FORM_TEMPLATE_FOOTER,
+        }
         : createDefaultTemplateDraft();
       setName("");
       setDescription("");
@@ -812,9 +812,9 @@ export function FormTemplateBuilderSheet({
                                   ...(value === "number"
                                     ? {}
                                     : {
-                                        rangeFromColumnKey: null,
-                                        autoValue: null,
-                                      }),
+                                      rangeFromColumnKey: null,
+                                      autoValue: null,
+                                    }),
                                 })
                               }
                             >
@@ -836,7 +836,7 @@ export function FormTemplateBuilderSheet({
                                 Nguồn:{" "}
                                 {
                                   CATALOG_LABEL[
-                                    catalogOfSemantic(column.semanticKey)!
+                                  catalogOfSemantic(column.semanticKey)!
                                   ]
                                 }
                               </p>
@@ -845,7 +845,7 @@ export function FormTemplateBuilderSheet({
                             {/* Cột điểm ăn theo dải của nhóm điểm nào - phải
                                 chỉ đích danh vì mẫu có thể có nhiều cột nhóm điểm. */}
                             {column.dataType === "number" &&
-                            scoreColumns.length > 0 ? (
+                              scoreColumns.length > 0 ? (
                               <Select
                                 value={column.rangeFromColumnKey || NO_RANGE}
                                 onValueChange={(value) =>
@@ -875,10 +875,10 @@ export function FormTemplateBuilderSheet({
                                 điểm gốc. Không suy theo nhóm header - nhóm chỉ
                                 dùng để đoán giá trị mặc định bên dưới. */}
                             {column.dataType === "number" &&
-                            qualityColumns.length > 0 &&
-                            baseColumns.some(
-                              (item) => item.key !== column.key,
-                            ) ? (
+                              qualityColumns.length > 0 &&
+                              baseColumns.some(
+                                (item) => item.key !== column.key,
+                              ) ? (
                               <div className="mt-1 space-y-1">
                                 <Select
                                   value={
@@ -1001,7 +1001,7 @@ export function FormTemplateBuilderSheet({
                                 </SelectItem>
                                 {flatGroups.map((group) => (
                                   <SelectItem key={group.id} value={group.id}>
-                                    {"— ".repeat(group.depth)}
+                                    {"- ".repeat(group.depth)}
                                     {group.name}
                                   </SelectItem>
                                 ))}
