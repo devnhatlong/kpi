@@ -60,10 +60,10 @@ export const NAV_ITEMS: NavItem[] = [
     permissions: [PERM.EVALUATION_SELF],
   },
   {
-    title: "Duyệt KPI cấp dưới",
+    // Một mục thôi: màn này vừa theo dõi tiến độ vừa duyệt, tách hai dòng menu
+    // cho cùng một việc chỉ làm người dùng phải đoán nên bấm dòng nào.
+    title: "Theo dõi & duyệt KPI",
     href: "/kpi/received",
-    // Con dấu: việc ở đây là duyệt. Trước dùng phong bì, trùng dáng với mục
-    // ngay dưới nên hai dòng nhìn như một.
     icon: Stamp,
     permissions: [PERM.EVALUATION_APPROVE],
   },

@@ -523,8 +523,8 @@ function ProgressForm({
           />
           {readOnly ? (
             <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-              Nhiệm vụ đã được cấp trên chốt hoàn thành nên số liệu khoá lại.
-              Bên phải là toàn bộ mốc và nhật ký tiến độ để tra lại.
+              Chế độ chỉ xem - số liệu do cán bộ tự khai. Bên phải là toàn bộ
+              mốc và nhật ký tiến độ để tra lại.
             </p>
           ) : null}
 
@@ -758,6 +758,11 @@ type ProgressUpdateDialogProps = {
   onSaved: () => void | Promise<void>;
   /** Bấm "Xin xác nhận hoàn thành" - mở luồng gửi lên cấp trên. */
   onRequestConfirm?: (item: PersonalKpiItem) => void;
+  /**
+   * Ép chế độ chỉ xem. Cấp trên mở nhiệm vụ của cán bộ thì chỉ để theo dõi -
+   * số liệu là do cán bộ tự khai, người duyệt không gõ hộ.
+   */
+  readOnly?: boolean;
 };
 
 /**
@@ -772,6 +777,7 @@ export function ProgressUpdateDialog({
   onOpenChange,
   onSaved,
   onRequestConfirm,
+  readOnly: forceReadOnly = false,
 }: ProgressUpdateDialogProps) {
   const columns = trackingColumns(template, item?.task);
   const progressColumn = columns.progressColumn;
@@ -821,8 +827,9 @@ export function ProgressUpdateDialog({
   const deadline = summary
     ? deadlineState(summary.deadline, serverYmd())
     : null;
-  /** Đã chốt hoàn thành thì mở ra chỉ để tra lại. */
-  const readOnly = !!item && !canUpdateProgress(item.status);
+  /** Đã chốt hoàn thành, hoặc người xem không phải chủ nhiệm vụ. */
+  const readOnly =
+    forceReadOnly || (!!item && !canUpdateProgress(item.status));
 
   return (
     <Dialog open={!!item} onOpenChange={onOpenChange}>

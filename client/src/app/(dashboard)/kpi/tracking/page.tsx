@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** Chức năng KPI cũ đã gỡ - chờ đặc tả mới. */
-export default function RemovedKpiPage() {
-  redirect("/dashboard");
+/** Theo dõi và duyệt gộp về một màn - giữ đường cũ khỏi gãy link. */
+export default function KpiTrackingPage() {
+  redirect("/kpi/received");
 }
