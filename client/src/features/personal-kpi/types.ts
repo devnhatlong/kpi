@@ -126,32 +126,45 @@ export function createEmptyTask(_index = 1): PersonalTaskDraft {
   };
 }
 
-/** Khối nội dung trong form nháp (nhiều nhiệm vụ). */
-export type DraftContentBlock = {
+/**
+ * Một nội dung công việc đã chọn ở drawer nhập nhiệm vụ, kèm các việc nhập cho
+ * nội dung đó.
+ *
+ * Danh sách phẳng theo nội dung chứ không lồng theo trục: trục suy được từ
+ * nội dung, giữ thêm một tầng chỉ để nhóm lúc hiển thị là thừa - và tầng đó
+ * từng cho phép có khối trục rỗng, thứ chẳng lưu được gì.
+ */
+export type DraftContentEntry = {
   key: string;
+  axisId: string;
   workContentId: string;
   tasks: PersonalTaskDraft[];
 };
 
-/** Khối trục trong form nháp (nhiều nội dung). */
-export type DraftAxisBlock = {
-  key: string;
-  axisId: string;
-  contents: DraftContentBlock[];
-};
-
-export function createEmptyContentBlock(): DraftContentBlock {
+export function createContentEntry(
+  axisId: string,
+  workContentId: string,
+): DraftContentEntry {
   return {
-    key: localKey("content"),
-    workContentId: "",
-    tasks: [createEmptyTask(1)],
+    key: localKey("entry"),
+    axisId,
+    workContentId,
+    tasks: [createEmptyTask()],
   };
 }
 
-export function createEmptyAxisBlock(): DraftAxisBlock {
-  return {
-    key: localKey("axis"),
-    axisId: "",
-    contents: [],
-  };
+/**
+ * Nhiệm vụ chưa gõ gì - dòng người dùng thêm ra rồi để đó.
+ * Lúc lưu thì bỏ đi thay vì bắt lỗi "thiếu cột bắt buộc" ở dòng họ không định
+ * dùng.
+ */
+export function isEmptyTask(task: PersonalTaskDraft): boolean {
+  const hasField = Object.values(task.fieldValues ?? {}).some((value) =>
+    value.trim(),
+  );
+  const hasCatalog = Object.values(task.catalogValues ?? {}).some(Boolean);
+  const hasFile = Object.values(task.attachments ?? {}).some(
+    (files) => files.length > 0,
+  );
+  return !hasField && !hasCatalog && !hasFile;
 }

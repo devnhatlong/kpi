@@ -77,6 +77,13 @@ export function missingRequiredColumns(
       continue;
     }
 
+    // Cột tệp nằm ở attachments chứ không phải fieldValues - đọc nhầm chỗ thì
+    // cột tệp bắt buộc nào cũng bị báo thiếu dù đã đính kèm.
+    if (column.dataType === "file") {
+      if (!task.attachments?.[column.key]?.length) missing.push(column.title);
+      continue;
+    }
+
     if (!readCellValue(task, column.semanticKey, column.key).trim()) {
       missing.push(column.title);
     }
@@ -88,18 +95,24 @@ export function missingRequiredColumns(
 /**
  * Cột điểm có giá trị nằm ngoài dải của nhóm điểm đã chọn.
  * Trả về mô tả sẵn để hiện toast, khỏi phải chờ server trả lỗi.
+ *
+ * `autoScoreGroupId` là nhóm điểm của nội dung công việc - màn nhập đổ nhóm
+ * theo nội dung nên nhiệm vụ không còn giữ id nhóm trong catalogValues; bỏ
+ * trống thì rơi về giá trị đã lưu trên nhiệm vụ (dữ liệu cũ, màn chỉ xem).
  */
 export function outOfRangeColumns(
   task: PersonalTaskDraft,
   columns: FormTemplateColumn[],
   scoreGroupById: Map<string, ScoreGroup>,
+  autoScoreGroupId?: string,
 ): string[] {
   const problems: string[] = [];
 
   for (const column of columns) {
     if (!column.visible || !column.rangeFromColumnKey) continue;
 
-    const groupId = task.catalogValues?.[column.rangeFromColumnKey] ?? "";
+    const groupId =
+      autoScoreGroupId || task.catalogValues?.[column.rangeFromColumnKey] || "";
     const group = scoreGroupById.get(groupId);
     if (!group) continue;
 
