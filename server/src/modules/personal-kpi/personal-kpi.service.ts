@@ -1809,6 +1809,13 @@ export class PersonalKpiService {
       );
     }
 
+    const percentByLevelId = await this.qualityPercentMap();
+    const percentBefore = readItemPercent(
+      item,
+      columns.progress,
+      percentByLevelId,
+    );
+
     const fieldValues = { ...(item.fieldValues ?? {}) };
     const catalogValues = { ...(item.catalogValues ?? {}) };
 
@@ -1818,6 +1825,31 @@ export class PersonalKpiService {
       fieldValues,
       catalogValues,
     );
+
+    /**
+     * Lùi tiến độ thì bắt nêu lý do, KHÔNG cấm.
+     *
+     * Cấm hẳn là tự bắn vào chân: gõ nhầm 100% một lần rồi kẹt vĩnh viễn, mà
+     * cấp trên lại nhìn thấy 100% và chốt hoàn thành một việc chưa xong. Việc
+     * bị trả lại hay sản phẩm bị bác cũng là lùi tiến độ thật. Cho lùi nhưng
+     * phải để lại dấu vết trong nhật ký.
+     */
+    const percentAfter = readItemPercent(
+      { fieldValues, catalogValues },
+      columns.progress,
+      percentByLevelId,
+    );
+    if (
+      percentBefore !== null &&
+      percentAfter !== null &&
+      percentAfter < percentBefore &&
+      !dto.note?.trim()
+    ) {
+      throw new BadRequestException(
+        `Tiến độ lùi từ ${percentBefore}% xuống ${percentAfter}% - phải ghi rõ lý do ở ô kết quả trong ngày.`,
+      );
+    }
+
     if (columns.quality) {
       await this.writeTrackingValue(
         columns.quality,
@@ -1854,7 +1886,6 @@ export class PersonalKpiService {
     await this.applyDerivedColumns([item]);
 
     // Nhật ký ghi con số SAU khi tính lại, để timeline khớp thứ đang hiển thị.
-    const percentByLevelId = await this.qualityPercentMap();
     const actor = await this.requireActor(ownerId);
     item.progressLogs = [
       ...(item.progressLogs ?? []),

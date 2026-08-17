@@ -6,6 +6,7 @@ import {
   CircleCheck,
   CircleDashed,
   Clock3,
+  Eye,
   Flag,
   SquarePen,
   TriangleAlert,
@@ -47,6 +48,7 @@ import {
 } from "@/features/personal-kpi/task-summary";
 import {
   canSendPersonalKpi,
+  canUpdateProgress,
   type PersonalKpiItem,
   type PersonalKpiProgressLog,
   type TaskAttachment,
@@ -376,6 +378,8 @@ type ProgressFormProps = {
   /** Mốc của cột chất lượng (nhóm C) - có thể khác nguồn với tiến độ. */
   qualityMilestones: Milestone[];
   snapQuality: boolean;
+  /** Việc đã chốt hoàn thành - chỉ xem lại, không sửa. */
+  readOnly: boolean;
   onDone: () => void;
   onSaved: () => void | Promise<void>;
   onRequestConfirm?: (item: PersonalKpiItem) => void;
@@ -388,6 +392,7 @@ function ProgressForm({
   snapToMilestones,
   qualityMilestones,
   snapQuality,
+  readOnly,
   onDone,
   onSaved,
   onRequestConfirm,
@@ -427,6 +432,18 @@ function ProgressForm({
   const logDays = new Set(logs.map((log) => log.onDate || serverYmd(log.at)));
 
   const percentNow = percentOfValue(progress, milestones, snapToMilestones);
+  const percentBefore = percentOfValue(
+    initialProgress,
+    milestones,
+    snapToMilestones,
+  );
+  /**
+   * Lùi tiến độ không bị cấm nhưng phải nêu lý do - server chặn y hệt.
+   * Cấm hẳn thì gõ nhầm 100% một lần là kẹt luôn, mà cấp trên lại thấy 100%
+   * và chốt hoàn thành một việc chưa xong.
+   */
+  const decreased = percentNow < percentBefore;
+  const needReason = decreased && !note.trim();
 
   const evidenceChanged =
     evidence.length !== initialEvidence.length ||
@@ -445,8 +462,11 @@ function ProgressForm({
 
   const done = percentNow >= 100;
   const hasProduct = !columns.productColumn || product.trim().length > 0;
-  const hasEvidence = !columns.evidenceColumn || evidence.length > 0;
-  const readyToFinish = done && hasProduct && hasEvidence;
+  /**
+   * Tệp minh chứng KHÔNG phải điều kiện chốt - nhiều việc chẳng đẻ ra tệp nào,
+   * bắt buộc thì người ta đính bừa một file cho qua.
+   */
+  const readyToFinish = done && hasProduct;
   const sendable = canSendPersonalKpi(item.status);
 
   const save = async () => {
@@ -497,7 +517,16 @@ function ProgressForm({
       <div className="grid max-h-[66vh] gap-6 overflow-y-auto px-1 py-1 md:grid-cols-2">
         {/* ------------------------------------------------ cột trái: nhập */}
         <div className="space-y-4">
-          <SectionTitle icon={SquarePen} text="Cập nhật tiến độ" />
+          <SectionTitle
+            icon={readOnly ? Eye : SquarePen}
+            text={readOnly ? "Kết quả đã chốt" : "Cập nhật tiến độ"}
+          />
+          {readOnly ? (
+            <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+              Nhiệm vụ đã được cấp trên chốt hoàn thành nên số liệu khoá lại.
+              Bên phải là toàn bộ mốc và nhật ký tiến độ để tra lại.
+            </p>
+          ) : null}
 
           <MilestoneSlider
             label="Tiến độ nhiệm vụ (KPI)"
@@ -506,7 +535,7 @@ function ProgressForm({
             snap={snapToMilestones}
             value={progress}
             initialValue={initialProgress}
-            disabled={saving}
+            disabled={saving || readOnly}
             onChange={setProgress}
           />
 
@@ -520,7 +549,7 @@ function ProgressForm({
               snap={snapQuality}
               value={quality}
               initialValue={initialQuality}
-              disabled={saving}
+              disabled={saving || readOnly}
               onChange={setQuality}
             />
           ) : null}
@@ -534,9 +563,26 @@ function ProgressForm({
                 id="progress-product"
                 value={product}
                 onChange={(e) => setProduct(e.target.value)}
-                disabled={saving}
+                disabled={saving || readOnly}
                 placeholder="Sản phẩm đã làm ra"
               />
+            </div>
+          ) : null}
+
+          {decreased ? (
+            <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500" />
+              <p className="text-muted-foreground">
+                Tiến độ lùi từ{" "}
+                <span className="font-medium text-foreground">
+                  {percentBefore}%
+                </span>{" "}
+                xuống{" "}
+                <span className="font-medium text-foreground">
+                  {percentNow}%
+                </span>
+                . Ghi rõ lý do ở ô dưới - nhật ký giữ lại để cấp trên đọc được.
+              </p>
             </div>
           ) : null}
 
@@ -544,14 +590,22 @@ function ProgressForm({
             <div className="space-y-2">
               <Label htmlFor="progress-note">
                 Kết quả trong ngày / vướng mắc
+                {decreased ? <span className="text-destructive"> *</span> : null}
               </Label>
               <Textarea
                 id="progress-note"
-                className="min-h-[72px]"
-                placeholder="Hôm nay làm được gì, vướng ở đâu..."
+                className={cn(
+                  "min-h-[72px]",
+                  needReason && "border-amber-500 focus-visible:ring-amber-500",
+                )}
+                placeholder={
+                  decreased
+                    ? "Vì sao tiến độ lùi lại..."
+                    : "Hôm nay làm được gì, vướng ở đâu..."
+                }
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                disabled={saving}
+                disabled={saving || readOnly}
               />
             </div>
           ) : null}
@@ -560,13 +614,13 @@ function ProgressForm({
             <AttachmentCell
               files={evidence}
               onChange={setEvidence}
-              readOnly={saving}
+              readOnly={saving || readOnly}
               label={columns.evidenceColumn.title}
               dropzone
             />
           ) : null}
 
-          {/* Ba điều kiện để cấp trên chốt - server kiểm điều đầu tiên. */}
+          {/* Điều kiện để cấp trên chốt - server kiểm điều đầu tiên. */}
           <div className="space-y-1.5 border-t pt-3">
             <CheckLine ok={done} label="Tiến độ đạt 100%" />
             {columns.productColumn ? (
@@ -574,9 +628,6 @@ function ProgressForm({
                 ok={hasProduct}
                 label={`Đã khai ${columns.productColumn.title.toLowerCase()}`}
               />
-            ) : null}
-            {columns.evidenceColumn ? (
-              <CheckLine ok={hasEvidence} label="Có ít nhất 1 file minh chứng" />
             ) : null}
           </div>
         </div>
@@ -657,16 +708,25 @@ function ProgressForm({
         >
           Đóng
         </Button>
-        <Button
-          type="button"
-          onClick={() => void save()}
-          disabled={saving || !dirty}
-          title={dirty ? undefined : "Chưa đổi gì để lưu"}
-        >
-          <SquarePen className="h-4 w-4" />
-          {saving ? "Đang lưu..." : "Lưu cập nhật"}
-        </Button>
-        {onRequestConfirm ? (
+        {/* Việc đã chốt chỉ còn để tra lại - không bày nút sửa làm gì. */}
+        {readOnly ? null : (
+          <Button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving || !dirty || needReason}
+            title={
+              needReason
+                ? "Tiến độ lùi lại - phải ghi lý do trước khi lưu"
+                : dirty
+                  ? undefined
+                  : "Chưa đổi gì để lưu"
+            }
+          >
+            <SquarePen className="h-4 w-4" />
+            {saving ? "Đang lưu..." : "Lưu cập nhật"}
+          </Button>
+        )}
+        {onRequestConfirm && !readOnly ? (
           <Button
             type="button"
             variant="secondary"
@@ -674,7 +734,7 @@ function ProgressForm({
             disabled={saving || !readyToFinish || !sendable}
             title={
               !readyToFinish
-                ? "Đủ ba điều kiện phía trên mới xin xác nhận được"
+                ? "Chưa đủ điều kiện phía trên để xin xác nhận"
                 : sendable
                   ? "Gửi lên cấp trên để xác nhận hoàn thành"
                   : "Nhiệm vụ đang ở chỗ cấp trên - chờ họ chốt"
@@ -761,13 +821,15 @@ export function ProgressUpdateDialog({
   const deadline = summary
     ? deadlineState(summary.deadline, serverYmd())
     : null;
+  /** Đã chốt hoàn thành thì mở ra chỉ để tra lại. */
+  const readOnly = !!item && !canUpdateProgress(item.status);
 
   return (
     <Dialog open={!!item} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="pr-6">
-            Cập nhật: {item?.workContentName}
+            {readOnly ? "Tiến độ" : "Cập nhật"}: {item?.workContentName}
           </DialogTitle>
           <DialogDescription asChild>
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
@@ -814,6 +876,7 @@ export function ProgressUpdateDialog({
             snapToMilestones={isCatalogProgress}
             qualityMilestones={qualityMilestones}
             snapQuality={isCatalogQuality}
+            readOnly={readOnly}
             onDone={() => onOpenChange(false)}
             onSaved={onSaved}
             onRequestConfirm={onRequestConfirm}

@@ -74,7 +74,6 @@ import {
 import {
   canEditPersonalKpi,
   canSendPersonalKpi,
-  canUpdateProgress,
   type PersonalKpiItem,
 } from "@/features/personal-kpi/types";
 import { useAxisTemplates } from "@/features/personal-kpi/use-axis-templates";
@@ -395,11 +394,8 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     setDrawerOpen(true);
   };
 
+  /** Việc đã chốt vẫn mở được - hộp thoại tự chuyển sang chế độ chỉ xem. */
   const openProgress = (item: PersonalKpiItem) => {
-    if (!canUpdateProgress(item.status)) {
-      toast.error("Nhiệm vụ đã chốt hoàn thành - không cập nhật tiến độ nữa.");
-      return;
-    }
     setProgressItem(item);
   };
 

@@ -3,6 +3,7 @@
 import {
   Check,
   ClipboardList,
+  Eye,
   MoreHorizontal,
   Pencil,
   Send,
@@ -310,22 +311,31 @@ export function DayTaskTable({
 
                 <TableCell className="text-right align-middle">
                   <div className="inline-flex items-center gap-1">
+                    {/* Việc đã chốt thì nút đổi thành xem lại - vẫn phải tra
+                        được nhật ký tiến độ chứ không khoá cứng. */}
                     <Button
                       size="sm"
                       variant="outline"
                       className="bg-background"
                       onClick={() => onUpdateProgress(item)}
-                      disabled={
-                        !canUpdateProgress(item.status) || actingId === item.id
-                      }
+                      disabled={actingId === item.id}
                       title={
                         canUpdateProgress(item.status)
                           ? "Cập nhật tiến độ hôm nay - gửi rồi vẫn cập nhật được"
-                          : "Đã chốt hoàn thành - không cập nhật nữa"
+                          : "Đã chốt hoàn thành - xem lại nhật ký tiến độ"
                       }
                     >
-                      <Pencil className="h-4 w-4" />
-                      Cập nhật
+                      {canUpdateProgress(item.status) ? (
+                        <>
+                          <Pencil className="h-4 w-4" />
+                          Cập nhật
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="h-4 w-4" />
+                          Xem tiến độ
+                        </>
+                      )}
                     </Button>
 
                     <DropdownMenu>
