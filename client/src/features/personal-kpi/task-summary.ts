@@ -49,6 +49,7 @@ const PROGRESS_COLUMN_KEY = "progress_percent";
 const QUALITY_COLUMN_KEY = "quality_percent";
 const DEADLINE_COLUMN_KEY = "deadline";
 const NOTE_COLUMN_KEY = "note";
+const PRODUCT_COLUMN_KEY = "product";
 
 function normalize(value: string): string {
   return value
@@ -167,6 +168,10 @@ export type TrackingColumns = {
   /** Cột phần trăm của nhóm "KPI chất lượng (C)". */
   qualityColumn?: FormTemplateColumn;
   noteColumn?: FormTemplateColumn;
+  /** Sản phẩm dự kiến - khai khi báo cáo kết quả trong ngày. */
+  productColumn?: FormTemplateColumn;
+  /** Tài liệu kiểm chứng - cột kiểu tệp đầu tiên của mẫu. */
+  evidenceColumn?: FormTemplateColumn;
 };
 
 export function trackingColumns(
@@ -201,6 +206,11 @@ export function trackingColumns(
     progressColumn: percent.progress,
     qualityColumn: percent.quality,
     noteColumn: visible.find((column) => column.key === NOTE_COLUMN_KEY),
+    productColumn: visible.find(
+      (column) =>
+        column.key === PRODUCT_COLUMN_KEY && column.dataType !== "file",
+    ),
+    evidenceColumn: visible.find((column) => column.dataType === "file"),
   };
 }
 

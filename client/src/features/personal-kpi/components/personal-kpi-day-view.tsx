@@ -788,6 +788,11 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
         }
         onSaved={async () => {
           await refreshDay();
+          // Việc phát sinh được ghi sang ngày sau - mở luôn danh sách ngày đó,
+          // đứng lại ngày cũ thì không thấy thứ vừa lưu đâu cả.
+          if (!edit && createDate !== activeDate) {
+            router.push(`/kpi/personal/${createDate}`);
+          }
         }}
       />
 
@@ -812,6 +817,10 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
         }}
         onSaved={async () => {
           await refreshDay();
+        }}
+        onRequestConfirm={(target) => {
+          setProgressItem(null);
+          openSend(target);
         }}
       />
 

@@ -15,6 +15,7 @@ import {
 const PROGRESS_COLUMN_KEY = 'progress_percent';
 const QUALITY_COLUMN_KEY = 'quality_percent';
 const NOTE_COLUMN_KEY = 'note';
+const PRODUCT_COLUMN_KEY = 'product';
 
 export type TrackingTemplate = {
   columns: FormTemplateColumn[];
@@ -25,6 +26,10 @@ export type TrackingColumns = {
   progress?: FormTemplateColumn;
   quality?: FormTemplateColumn;
   note?: FormTemplateColumn;
+  /** Sản phẩm dự kiến - khai khi báo cáo kết quả trong ngày. */
+  product?: FormTemplateColumn;
+  /** Tài liệu kiểm chứng - cột kiểu tệp đầu tiên của mẫu. */
+  evidence?: FormTemplateColumn;
 };
 
 function normalize(value: string): string {
@@ -101,6 +106,11 @@ export function resolveTrackingColumns(
     progress,
     quality,
     note: visible.find((column) => column.key === NOTE_COLUMN_KEY),
+    product: visible.find(
+      (column) =>
+        column.key === PRODUCT_COLUMN_KEY && column.dataType !== 'file',
+    ),
+    evidence: visible.find((column) => column.dataType === 'file'),
   };
 }
 

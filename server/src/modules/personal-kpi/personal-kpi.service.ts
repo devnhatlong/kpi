@@ -1829,12 +1829,46 @@ export class PersonalKpiService {
     if (columns.note && dto.note !== undefined) {
       fieldValues[columns.note.key] = dto.note.trim();
     }
+    if (columns.product && dto.product !== undefined) {
+      fieldValues[columns.product.key] = dto.product.trim();
+    }
 
     item.fieldValues = fieldValues;
     item.catalogValues = catalogValues;
-    item.lastProgressAt = new Date();
+
+    // Tệp minh chứng chỉ ghi vào đúng cột tệp của mẫu, không đụng cột khác.
+    if (columns.evidence && dto.evidence !== undefined) {
+      const sanitized = await this.sanitizeAttachments({
+        [columns.evidence.key]: dto.evidence,
+      });
+      item.attachments = {
+        ...(item.attachments ?? {}),
+        [columns.evidence.key]: sanitized[columns.evidence.key] ?? [],
+      };
+      item.markModified('attachments');
+    }
+
+    const now = new Date();
+    item.lastProgressAt = now;
     // Điểm tự chấm ăn theo phần trăm nên phải tính lại ngay tại đây.
     await this.applyDerivedColumns([item]);
+
+    // Nhật ký ghi con số SAU khi tính lại, để timeline khớp thứ đang hiển thị.
+    const percentByLevelId = await this.qualityPercentMap();
+    const actor = await this.requireActor(ownerId);
+    item.progressLogs = [
+      ...(item.progressLogs ?? []),
+      {
+        byId: actor.id,
+        byName: actor.name,
+        percent: readItemPercent(item, columns.progress, percentByLevelId),
+        note: dto.note?.trim() ?? '',
+        onDate: serverDateYmd(now),
+        at: now,
+      },
+    ];
+    item.markModified('progressLogs');
+
     await item.save();
     await item.populate([
       { path: 'axisId', select: 'code name description' },

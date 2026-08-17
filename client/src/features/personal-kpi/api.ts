@@ -37,6 +37,14 @@ export type PersonalKpiApiRecord = {
   lastSentAt?: string | null;
   /** Lần cán bộ cập nhật tiến độ gần nhất - dùng để tính "im lặng N ngày". */
   lastProgressAt?: string | null;
+  progressLogs?: Array<{
+    byId?: string | CatalogRef;
+    byName?: string;
+    percent?: number | null;
+    note?: string;
+    onDate?: string;
+    at: string;
+  }>;
   currentRecipientId?: string | CatalogRef | null;
   lastSenderId?: string | CatalogRef | null;
   returnReason?: string;
@@ -179,6 +187,16 @@ export function mapPersonalKpiFromApi(
     updatedAt: row.updatedAt,
     sentAt: row.lastSentAt || undefined,
     lastProgressAt: row.lastProgressAt || undefined,
+    // Mới nhất lên đầu - timeline đọc từ trên xuống.
+    progressLogs: [...(row.progressLogs ?? [])]
+      .map((log) => ({
+        at: log.at,
+        onDate: log.onDate ?? "",
+        percent: log.percent ?? null,
+        note: log.note ?? "",
+        byName: log.byName ?? "",
+      }))
+      .sort((a, b) => b.at.localeCompare(a.at)),
     ownerId: row.ownerId ? refId(row.ownerId) : undefined,
     ownerName: row.ownerId ? refName(row.ownerId) : undefined,
     recipientId: row.currentRecipientId
@@ -343,6 +361,9 @@ export type PersonalKpiProgressInput = {
   progress?: string;
   quality?: string;
   note?: string;
+  product?: string;
+  /** Tệp minh chứng - gửi cả danh sách sau mỗi lần thêm / bớt. */
+  evidence?: TaskAttachment[];
 };
 
 export async function updatePersonalKpiProgress(

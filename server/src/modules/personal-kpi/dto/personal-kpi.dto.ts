@@ -112,6 +112,21 @@ export class UpdatePersonalKpiProgressDto {
   @IsString()
   @MaxLength(2000)
   note?: string;
+
+  @ApiPropertyOptional({ description: 'Sản phẩm đã làm ra' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  product?: string;
+
+  /**
+   * Tệp minh chứng của cột "Tài liệu kiểm chứng". Gửi cả danh sách sau mỗi lần
+   * thêm / bớt; service lọc lại theo id tệp có thật nên không nhét tệp giả được.
+   */
+  @ApiPropertyOptional({ description: 'Tệp minh chứng, id lấy từ POST /uploads' })
+  @IsOptional()
+  @IsArray()
+  evidence?: unknown[];
 }
 
 /** Cấp trên sửa nội dung nhiệm vụ đang nằm ở tay mình - bắt buộc nêu lý do. */

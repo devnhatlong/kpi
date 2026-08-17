@@ -100,6 +100,40 @@ export class PersonalKpiEdit {
 export const PersonalKpiEditSchema =
   SchemaFactory.createForClass(PersonalKpiEdit);
 
+/**
+ * Một lần cán bộ cập nhật tiến độ.
+ *
+ * Ghi lại thành nhật ký thay vì chỉ đè lên con số hiện tại: cấp trên cần thấy
+ * việc chạy nhanh chậm ra sao qua từng ngày, và "im lặng mấy ngày" phải tra
+ * được chứ không chỉ tin vào một cái mốc cuối cùng.
+ */
+@Schema({ _id: false })
+export class PersonalKpiProgressLog {
+  @Prop({ type: Types.ObjectId, ref: User.name, required: true })
+  byId!: Types.ObjectId;
+
+  @Prop({ trim: true, default: '' })
+  byName!: string;
+
+  /** Phần trăm tiến độ ngay sau lần cập nhật này; null = chưa nhập. */
+  @Prop({ type: Number, default: null })
+  percent!: number | null;
+
+  @Prop({ trim: true, default: '' })
+  note!: string;
+
+  /** Ngày báo cáo (YYYY-MM-DD theo giờ server) của lần cập nhật. */
+  @Prop({ trim: true, default: '' })
+  onDate!: string;
+
+  @Prop({ type: Date, default: Date.now })
+  at!: Date;
+}
+
+export const PersonalKpiProgressLogSchema = SchemaFactory.createForClass(
+  PersonalKpiProgressLog,
+);
+
 /** Nhiệm vụ KPI cá nhân - một dòng trong báo cáo ngày. */
 @Schema({ timestamps: true, collection: 'personal_kpi_items' })
 export class PersonalKpiItem {
@@ -226,6 +260,10 @@ export class PersonalKpiItem {
    */
   @Prop({ type: Date, default: null })
   lastProgressAt!: Date | null;
+
+  /** Nhật ký cập nhật tiến độ, cũ trước mới sau. */
+  @Prop({ type: [PersonalKpiProgressLogSchema], default: [] })
+  progressLogs!: PersonalKpiProgressLog[];
 
   // ------------------------------------------------------- kết quả duyệt
 

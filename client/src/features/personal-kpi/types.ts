@@ -76,6 +76,16 @@ export type PersonalTaskDraft = {
   attachments: Record<string, TaskAttachment[]>;
 };
 
+/** Một lần cán bộ cập nhật tiến độ - dòng trong timeline. */
+export type PersonalKpiProgressLog = {
+  at: string;
+  /** Ngày báo cáo của lần cập nhật (YYYY-MM-DD theo giờ server). */
+  onDate: string;
+  percent: number | null;
+  note: string;
+  byName: string;
+};
+
 /** Bản ghi nhiệm vụ KPI cá nhân trên danh sách. */
 export type PersonalKpiItem = {
   id: string;
@@ -94,6 +104,8 @@ export type PersonalKpiItem = {
   sentAt?: string;
   /** Lần cập nhật tiến độ gần nhất - căn cứ tính "im lặng N ngày". */
   lastProgressAt?: string;
+  /** Nhật ký cập nhật tiến độ, mới nhất đứng đầu. */
+  progressLogs: PersonalKpiProgressLog[];
   ownerId?: string;
   ownerName?: string;
   recipientId?: string;

@@ -1,9 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { TriangleAlert } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Check,
+  CircleCheck,
+  CircleDashed,
+  Clock3,
+  Flag,
+  SquarePen,
+  TriangleAlert,
+} from "lucide-react";
+import useSWR from "swr";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,138 +25,444 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  fetchQualityLevelsAll,
+  qualityLevelKeys,
+} from "@/features/kpi-form-config/api";
 import type { ResolvedTemplate } from "@/features/kpi-form-config/form-template-utils";
-import type { FormTemplateColumn } from "@/features/kpi-form-config/types";
+import { entityId } from "@/features/kpi-form-config/types";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
 import { updatePersonalKpiProgress } from "@/features/personal-kpi/api";
-import { CatalogSelectCell } from "@/features/personal-kpi/components/catalog-select-cell";
+import { AttachmentCell } from "@/features/personal-kpi/components/attachment-cell";
+import { kpiTone } from "@/features/personal-kpi/status-styles";
 import {
-  readColumnPercent,
+  WORK_STATE_LABEL,
+  deadlineState,
+  summarizeTask,
   trackingColumns,
+  workState,
   type TrackingColumns,
 } from "@/features/personal-kpi/task-summary";
-import type { PersonalKpiItem } from "@/features/personal-kpi/types";
+import {
+  canSendPersonalKpi,
+  type PersonalKpiItem,
+  type PersonalKpiProgressLog,
+  type TaskAttachment,
+} from "@/features/personal-kpi/types";
 import { getApiErrorMessage } from "@/lib/api-client";
+import { formatServerHm, formatYmd, serverYmd } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
-const QUICK_PERCENTS = [0, 25, 50, 75, 100];
+/** Mốc trên thanh tiến độ - lấy từ danh mục mức chất lượng đã cấu hình. */
+type Milestone = {
+  /** Giá trị gửi lên server: id mức, hoặc chính con số phần trăm. */
+  value: string;
+  percent: number;
+  label: string;
+};
 
-function clampPercentText(raw: string): string {
-  if (!raw.trim()) return "";
-  const value = Number(raw);
-  if (!Number.isFinite(value)) return "";
-  return String(Math.min(100, Math.max(0, value)));
+/** Mẫu dùng ô số thì bày sẵn các mốc quen thuộc để bấm cho nhanh. */
+const NUMBER_MILESTONES = [0, 25, 50, 75, 100];
+
+/**
+ * Vị trí một mốc trên thanh.
+ *
+ * Mốc 0% và 100% ghim sát hai đầu thanh thay vì canh theo tâm nút kéo - canh
+ * theo nút thì hai mốc đầu cuối thụt vào trong, nhìn như thanh còn thừa hai
+ * đoạn cụt. Các mốc giữa chia đều theo phần trăm.
+ */
+function markPosition(percent: number): {
+  style: React.CSSProperties;
+  className: string;
+} {
+  if (percent <= 0) return { style: { left: 0 }, className: "translate-x-0" };
+  if (percent >= 100) return { style: { right: 0 }, className: "translate-x-0" };
+  return { style: { left: `${percent}%` }, className: "-translate-x-1/2" };
 }
 
-type PercentFieldProps = {
-  column: FormTemplateColumn;
-  /** Giá trị hiện tại: id mức chất lượng, hoặc con số đã gõ. */
+type MilestoneSliderProps = {
+  label: string;
+  /** Tên cột trong mẫu KPI - để đối chiếu ngược lại bảng nhập. */
+  columnTitle: string;
+  milestones: Milestone[];
+  /** Cột là ô chọn mức thì chỉ đi đúng các mốc đã cấu hình. */
+  snap: boolean;
   value: string;
+  /** Giá trị lúc mở hộp thoại - hiện "cũ → mới". */
+  initialValue: string;
   disabled: boolean;
   onChange: (value: string) => void;
 };
 
+/** Phần trăm của một giá trị: id mức thì tra danh mục, ô số thì đọc con số. */
+function percentOfValue(
+  value: string,
+  milestones: Milestone[],
+  snap: boolean,
+): number {
+  if (!snap) return Math.min(100, Math.max(0, Number(value) || 0));
+  return milestones.find((mark) => mark.value === value)?.percent ?? 0;
+}
+
 /**
- * Một ô phần trăm, dựng theo đúng loại cột trong mẫu: cột "Chất lượng thực
- * hiện" là dropdown chọn mức, cột số là ô gõ 0-100.
+ * Thanh trượt theo mốc đã cấu hình. Tiến độ và chất lượng dùng chung một kiểu
+ * để hai con số đọc như nhau, dù chúng chẳng liên quan gì nhau.
  */
-function PercentField({ column, value, disabled, onChange }: PercentFieldProps) {
-  if (column.semanticKey === "quality_level") {
-    return (
-      <CatalogSelectCell
-        catalog="quality_level"
-        value={value}
-        onValueChange={onChange}
-        disabled={disabled}
-        triggerClassName="h-9 text-sm"
-      />
+function MilestoneSlider({
+  label,
+  columnTitle,
+  milestones,
+  snap,
+  value,
+  initialValue,
+  disabled,
+  onChange,
+}: MilestoneSliderProps) {
+  const percentNow = percentOfValue(value, milestones, snap);
+  const percentBefore = percentOfValue(initialValue, milestones, snap);
+
+  const setByPercent = (percent: number) => {
+    if (!snap) {
+      onChange(String(percent));
+      return;
+    }
+    // Kéo thanh thì bám mốc gần nhất, không nhận giá trị lưng chừng.
+    const nearest = milestones.reduce((best, mark) =>
+      Math.abs(mark.percent - percent) < Math.abs(best.percent - percent)
+        ? mark
+        : best,
     );
-  }
+    onChange(nearest.value);
+  };
 
   return (
-    <Input
-      type="number"
-      min={0}
-      max={100}
-      className="w-24"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={disabled}
-    />
+    <div className="space-y-2">
+      <div className="flex items-end justify-between gap-2">
+        <div className="min-w-0">
+          <Label>{label}</Label>
+          {columnTitle && columnTitle !== label ? (
+            <p className="truncate text-xs text-muted-foreground">
+              Cột &quot;{columnTitle}&quot; trong mẫu KPI
+            </p>
+          ) : null}
+        </div>
+        <span className="shrink-0 text-sm tabular-nums">
+          <span className="text-muted-foreground">{percentBefore}%</span>
+          <span className="mx-1 text-muted-foreground">→</span>
+          <span className={cn("font-semibold", kpiTone.info.text)}>
+            {percentNow}%
+          </span>
+        </span>
+      </div>
+
+      {/*
+        Khung này ôm sát thanh (không đệm trong) để lớp chấm mốc phủ đúng chiều
+        cao thanh. Radix đặt nút kéo ở lớp tuyệt đối nên thanh chỉ cao bằng
+        chính nó - lấy chiều cao khác là chấm rơi lệch xuống dưới.
+      */}
+      <div className="relative mt-2">
+        {/*
+          Phần đã đạt tô nhạt chứ không đặc: nền đặc làm mấy vòng tròn trắng
+          của mốc trông như lỗ thủng trên thanh.
+        */}
+        <Slider
+          className={cn(
+            "[&>span:first-child]:h-1.5 [&>span:first-child]:bg-primary/15",
+            "[&>span:first-child>span]:bg-primary/45",
+          )}
+          value={[percentNow]}
+          min={0}
+          max={100}
+          step={snap ? 1 : 5}
+          disabled={disabled}
+          onValueChange={([next]) => setByPercent(next ?? 0)}
+          aria-label={label}
+        />
+        {/* Mốc là vòng tròn rỗng nằm trên thanh. Bỏ vòng ở đúng vị trí đang
+            chọn - nút kéo đã nằm sẵn ở đó, vẽ thêm thành hai vòng lồng nhau. */}
+        <div className="pointer-events-none absolute inset-0">
+          {milestones
+            .filter((mark) => mark.percent !== percentNow)
+            .map((mark) => {
+              const position = markPosition(mark.percent);
+              return (
+                <span
+                  key={mark.value}
+                  className={cn(
+                    "absolute top-1/2 size-2.5 -translate-y-1/2 rounded-full border-2 bg-background",
+                    position.className,
+                    mark.percent < percentNow
+                      ? "border-primary/60"
+                      : "border-primary/25",
+                  )}
+                  style={position.style}
+                />
+              );
+            })}
+        </div>
+      </div>
+
+      {/* Nhãn mốc bấm được - kéo thanh hay bấm nhãn đều ra một kết quả. */}
+      <div className="relative mt-3 h-5">
+        {milestones.map((mark) => {
+          const position = markPosition(mark.percent);
+          return (
+            <button
+              key={mark.value}
+              type="button"
+              onClick={() => onChange(mark.value)}
+              disabled={disabled}
+              title={mark.label}
+              className={cn(
+                "absolute top-0 rounded text-xs tabular-nums transition-colors",
+                position.className,
+                mark.percent === percentNow
+                  ? cn("font-semibold", kpiTone.info.text)
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              style={position.style}
+            >
+              {mark.percent}%
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({
+  icon: Icon,
+  text,
+  right,
+}: {
+  icon: typeof Flag;
+  text: string;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <p
+        className={cn(
+          "flex items-center gap-1.5 text-sm font-semibold",
+          kpiTone.info.text,
+        )}
+      >
+        <Icon className="size-4" />
+        {text}
+      </p>
+      {right}
+    </div>
+  );
+}
+
+function CheckLine({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <p
+      className={cn(
+        "flex items-center gap-2 text-sm",
+        ok ? kpiTone.success.text : "text-muted-foreground",
+      )}
+    >
+      {ok ? (
+        <Check className="size-4 shrink-0" />
+      ) : (
+        <CircleDashed className="size-4 shrink-0" />
+      )}
+      {label}
+    </p>
+  );
+}
+
+/**
+ * Thẻ "Mốc tiến độ": mỗi mốc đã cấu hình là một chặng, kèm ngày lần đầu đạt tới.
+ * Ngày suy từ nhật ký - mốc nào chưa ai chạm tới thì để gạch ngang.
+ */
+function MilestoneTrack({
+  milestones,
+  percentNow,
+  logs,
+}: {
+  milestones: Milestone[];
+  percentNow: number;
+  logs: PersonalKpiProgressLog[];
+}) {
+  /** Lần cập nhật đầu tiên đạt tới từng mốc - đọc nhật ký từ cũ tới mới. */
+  const reachedAt = useMemo(() => {
+    const oldestFirst = [...logs].sort((a, b) => a.at.localeCompare(b.at));
+    const map = new Map<number, string>();
+    for (const mark of milestones) {
+      const hit = oldestFirst.find(
+        (log) => log.percent !== null && log.percent >= mark.percent,
+      );
+      if (hit) map.set(mark.percent, hit.onDate || serverYmd(hit.at));
+    }
+    return map;
+  }, [logs, milestones]);
+
+  return (
+    <div className="rounded-xl border bg-primary/5 p-3">
+      <SectionTitle icon={Flag} text="Mốc tiến độ" />
+      <div className="mt-3 flex items-start">
+        {milestones.map((mark, index) => {
+          const reached = mark.percent <= percentNow;
+          const current = mark.percent === percentNow;
+          const date = reachedAt.get(mark.percent);
+          return (
+            <div key={mark.value} className="flex min-w-0 flex-1 flex-col">
+              <div className="flex items-center">
+                {/* Đoạn nối bên trái - chặng đầu không có. */}
+                <span
+                  className={cn(
+                    "h-px flex-1",
+                    index === 0
+                      ? "bg-transparent"
+                      : reached
+                        ? "bg-primary"
+                        : "bg-border",
+                  )}
+                />
+                <span
+                  className={cn(
+                    "flex size-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium",
+                    current
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : reached
+                        ? "border-primary/40 bg-background text-primary"
+                        : "border-border bg-background text-muted-foreground",
+                  )}
+                >
+                  {reached ? <Check className="size-3" /> : index + 1}
+                </span>
+                <span
+                  className={cn(
+                    "h-px flex-1",
+                    index === milestones.length - 1
+                      ? "bg-transparent"
+                      : mark.percent < percentNow
+                        ? "bg-primary"
+                        : "bg-border",
+                  )}
+                />
+              </div>
+              <span
+                className={cn(
+                  "mt-1 text-center text-xs tabular-nums",
+                  reached ? "font-medium" : "text-muted-foreground",
+                )}
+              >
+                {mark.percent}%
+              </span>
+              <span className="text-center text-[10px] leading-tight text-muted-foreground">
+                {date ? formatYmd(date) : "—"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
 type ProgressFormProps = {
   item: PersonalKpiItem;
   columns: TrackingColumns;
+  /** Mốc của cột tiến độ (nhóm B). */
+  milestones: Milestone[];
+  /** Cột tiến độ là ô chọn mức - lúc đó chỉ đi đúng các mốc đã cấu hình. */
+  snapToMilestones: boolean;
+  /** Mốc của cột chất lượng (nhóm C) - có thể khác nguồn với tiến độ. */
+  qualityMilestones: Milestone[];
+  snapQuality: boolean;
   onDone: () => void;
   onSaved: () => void | Promise<void>;
+  onRequestConfirm?: (item: PersonalKpiItem) => void;
 };
 
-/**
- * Phần thân hộp thoại. Tách riêng để mỗi nhiệm vụ mở lên là một lần mount mới
- * (`key` = id), state khởi tạo thẳng từ nhiệm vụ đó - khỏi phải đồng bộ lại
- * bằng effect và khỏi rủi ro còn dính số của nhiệm vụ mở trước.
- */
-function ProgressForm({ item, columns, onDone, onSaved }: ProgressFormProps) {
+function ProgressForm({
+  item,
+  columns,
+  milestones,
+  snapToMilestones,
+  qualityMilestones,
+  snapQuality,
+  onDone,
+  onSaved,
+  onRequestConfirm,
+}: ProgressFormProps) {
   const fieldValues = item.task.fieldValues ?? {};
   const catalogValues = item.task.catalogValues ?? {};
-  const qualityLevelById = useQualityLevelMap();
 
   /** Ô chọn mức giữ id trong catalogValues, ô số giữ chuỗi trong fieldValues. */
-  const readColumn = (column?: FormTemplateColumn) => {
+  const readColumn = (column: TrackingColumns["progressColumn"]) => {
     if (!column) return "";
     return column.semanticKey === "quality_level"
       ? (catalogValues[column.key] ?? "")
       : (fieldValues[column.key] ?? "");
   };
 
-  const [progress, setProgress] = useState(readColumn(columns.progressColumn));
-  const [quality, setQuality] = useState(readColumn(columns.qualityColumn));
-  const [note, setNote] = useState(
-    columns.noteColumn ? (fieldValues[columns.noteColumn.key] ?? "") : "",
-  );
+  /**
+   * Giá trị lúc mở hộp thoại. Component được mount lại theo từng nhiệm vụ
+   * (`key` = id) nên mấy hằng này chính là mốc "chưa sửa gì".
+   */
+  const initialProgress = readColumn(columns.progressColumn);
+  const initialQuality = readColumn(columns.qualityColumn);
+  const initialProduct = columns.productColumn
+    ? (fieldValues[columns.productColumn.key] ?? "")
+    : "";
+  const initialEvidence = columns.evidenceColumn
+    ? (item.task.attachments?.[columns.evidenceColumn.key] ?? [])
+    : [];
+
+  const [progress, setProgress] = useState(initialProgress);
+  const [quality, setQuality] = useState(initialQuality);
+  const [product, setProduct] = useState(initialProduct);
+  const [note, setNote] = useState("");
+  const [evidence, setEvidence] = useState<TaskAttachment[]>(initialEvidence);
   const [saving, setSaving] = useState(false);
 
-  const percentPreview = columns.progressColumn
-    ? (readColumnPercent(
-        {
-          ...item.task,
-          fieldValues: {
-            ...fieldValues,
-            [columns.progressColumn.key]: progress,
-          },
-          catalogValues: {
-            ...catalogValues,
-            [columns.progressColumn.key]: progress,
-          },
-        },
-        columns.progressColumn,
-        qualityLevelById,
-      ) ?? 0)
-    : 0;
+  const logs = item.progressLogs ?? [];
+  const logDays = new Set(logs.map((log) => log.onDate || serverYmd(log.at)));
 
-  /** Ô chọn mức gửi lên id; ô số gửi lên con số đã kẹp về 0-100. */
-  const outgoing = (column: FormTemplateColumn | undefined, value: string) => {
-    if (!column) return undefined;
-    return column.semanticKey === "quality_level"
-      ? value
-      : clampPercentText(value);
-  };
+  const percentNow = percentOfValue(progress, milestones, snapToMilestones);
+
+  const evidenceChanged =
+    evidence.length !== initialEvidence.length ||
+    evidence.some((file, index) => file.id !== initialEvidence[index]?.id);
+  /**
+   * Không có thay đổi mà vẫn lưu được thì mỗi lần bấm lại đẻ ra một mốc rỗng
+   * trong nhật ký, và tệ hơn: nó làm mới mốc "cập nhật gần nhất" nên việc bỏ bê
+   * vẫn trông như đang chạy, cảnh báo im lặng không bao giờ kêu.
+   */
+  const dirty =
+    progress !== initialProgress ||
+    quality !== initialQuality ||
+    product !== initialProduct ||
+    note.trim() !== "" ||
+    evidenceChanged;
+
+  const done = percentNow >= 100;
+  const hasProduct = !columns.productColumn || product.trim().length > 0;
+  const hasEvidence = !columns.evidenceColumn || evidence.length > 0;
+  const readyToFinish = done && hasProduct && hasEvidence;
+  const sendable = canSendPersonalKpi(item.status);
 
   const save = async () => {
     if (!columns.progressColumn) return;
-
     setSaving(true);
     try {
       await updatePersonalKpiProgress(item.id, {
-        progress: outgoing(columns.progressColumn, progress),
-        quality: outgoing(columns.qualityColumn, quality),
-        note: columns.noteColumn ? note : undefined,
+        progress,
+        quality: columns.qualityColumn ? quality : undefined,
+        note: columns.noteColumn ? note.trim() : undefined,
+        product: columns.productColumn ? product : undefined,
+        evidence: columns.evidenceColumn ? evidence : undefined,
       });
       await onSaved();
       toast.success("Đã cập nhật tiến độ.");
+      // Lưu xong thì trả người dùng về danh sách nhiệm vụ.
       onDone();
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không cập nhật được tiến độ."));
@@ -155,9 +471,9 @@ function ProgressForm({ item, columns, onDone, onSaved }: ProgressFormProps) {
     }
   };
 
-  return (
-    <>
-      {!columns.progressColumn ? (
+  if (!columns.progressColumn) {
+    return (
+      <>
         <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500" />
           <p className="text-muted-foreground">
@@ -167,70 +483,68 @@ function ProgressForm({ item, columns, onDone, onSaved }: ProgressFormProps) {
             để nhập tay.
           </p>
         </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="progress-percent">
-              {columns.progressColumn.title}
-            </Label>
-            <div className="flex items-center gap-2">
-              <div className="w-40 shrink-0">
-                <PercentField
-                  column={columns.progressColumn}
-                  value={progress}
-                  disabled={saving}
-                  onChange={setProgress}
-                />
-              </div>
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                <div
-                  className={cn(
-                    "h-full rounded-full transition-all",
-                    percentPreview >= 100 ? "bg-emerald-500" : "bg-primary",
-                  )}
-                  style={{ width: `${percentPreview}%` }}
-                />
-              </div>
-            </div>
-            {/* Ô số mới cần nút bấm nhanh; ô chọn mức đã có sẵn danh sách. */}
-            {columns.progressColumn.semanticKey === "quality_level" ? null : (
-              <div className="flex flex-wrap gap-1.5">
-                {QUICK_PERCENTS.map((value) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="bg-background"
-                    onClick={() => setProgress(String(value))}
-                    disabled={saving}
-                  >
-                    {value}%
-                  </Button>
-                ))}
-              </div>
-            )}
-          </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onDone}>
+            Đóng
+          </Button>
+        </DialogFooter>
+      </>
+    );
+  }
 
-          {/* Chất lượng không nói lên tiến độ - để cạnh cho tiện nhập chứ không
-              dính dáng tới trạng thái công việc. */}
+  return (
+    <>
+      <div className="grid max-h-[66vh] gap-6 overflow-y-auto px-1 py-1 md:grid-cols-2">
+        {/* ------------------------------------------------ cột trái: nhập */}
+        <div className="space-y-4">
+          <SectionTitle icon={SquarePen} text="Cập nhật tiến độ" />
+
+          <MilestoneSlider
+            label="Tiến độ nhiệm vụ (KPI)"
+            columnTitle={columns.progressColumn.title}
+            milestones={milestones}
+            snap={snapToMilestones}
+            value={progress}
+            initialValue={initialProgress}
+            disabled={saving}
+            onChange={setProgress}
+          />
+
+          {/* Chất lượng không nói lên tiến độ, nhưng cũng là mốc cấu hình sẵn
+              nên bày cùng một kiểu thanh cho dễ nhập. */}
           {columns.qualityColumn ? (
+            <MilestoneSlider
+              label="Chất lượng nhiệm vụ (KPI)"
+              columnTitle={columns.qualityColumn.title}
+              milestones={qualityMilestones}
+              snap={snapQuality}
+              value={quality}
+              initialValue={initialQuality}
+              disabled={saving}
+              onChange={setQuality}
+            />
+          ) : null}
+
+          {columns.productColumn ? (
             <div className="space-y-2">
-              <Label>{columns.qualityColumn.title}</Label>
-              <div className="w-40">
-                <PercentField
-                  column={columns.qualityColumn}
-                  value={quality}
-                  disabled={saving}
-                  onChange={setQuality}
-                />
-              </div>
+              <Label htmlFor="progress-product">
+                {columns.productColumn.title}
+              </Label>
+              <Input
+                id="progress-product"
+                value={product}
+                onChange={(e) => setProduct(e.target.value)}
+                disabled={saving}
+                placeholder="Sản phẩm đã làm ra"
+              />
             </div>
           ) : null}
 
           {columns.noteColumn ? (
             <div className="space-y-2">
-              <Label htmlFor="progress-note">{columns.noteColumn.title}</Label>
+              <Label htmlFor="progress-note">
+                Kết quả trong ngày / vướng mắc
+              </Label>
               <Textarea
                 id="progress-note"
                 className="min-h-[72px]"
@@ -241,8 +555,97 @@ function ProgressForm({ item, columns, onDone, onSaved }: ProgressFormProps) {
               />
             </div>
           ) : null}
+
+          {columns.evidenceColumn ? (
+            <AttachmentCell
+              files={evidence}
+              onChange={setEvidence}
+              readOnly={saving}
+              label={columns.evidenceColumn.title}
+              dropzone
+            />
+          ) : null}
+
+          {/* Ba điều kiện để cấp trên chốt - server kiểm điều đầu tiên. */}
+          <div className="space-y-1.5 border-t pt-3">
+            <CheckLine ok={done} label="Tiến độ đạt 100%" />
+            {columns.productColumn ? (
+              <CheckLine
+                ok={hasProduct}
+                label={`Đã khai ${columns.productColumn.title.toLowerCase()}`}
+              />
+            ) : null}
+            {columns.evidenceColumn ? (
+              <CheckLine ok={hasEvidence} label="Có ít nhất 1 file minh chứng" />
+            ) : null}
+          </div>
         </div>
-      )}
+
+        {/* ----------------------------------------- cột phải: mốc + nhật ký */}
+        <div className="space-y-4 md:border-l md:pl-6">
+          <MilestoneTrack
+            milestones={milestones}
+            percentNow={percentNow}
+            logs={logs}
+          />
+
+          <div className="space-y-3">
+            <SectionTitle
+              icon={Clock3}
+              text="Nhật ký theo ngày"
+              right={
+                logDays.size > 0 ? (
+                  <Badge variant="secondary" className="font-normal">
+                    {logDays.size} ngày
+                  </Badge>
+                ) : null
+              }
+            />
+
+            {logs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Chưa có lần cập nhật nào. Lần lưu đầu tiên sẽ mở đầu nhật ký.
+              </p>
+            ) : (
+              <ol className="space-y-3">
+                {logs.map((log, index) => (
+                  /*
+                    Chấm và đường nối nằm TRONG ô của mục (pl-5), không thò ra
+                    ngoài bằng lề âm - thò ra là bị vùng cuộn cắt mất một nửa.
+                  */
+                  <li key={log.at} className="relative pl-5">
+                    <span className="absolute left-0 top-1 size-2.5 rounded-full border-2 border-primary bg-background" />
+                    {index < logs.length - 1 ? (
+                      <span className="absolute bottom-[-14px] left-[4.5px] top-4 w-px bg-border" />
+                    ) : null}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium tabular-nums">
+                        {log.onDate ? formatYmd(log.onDate) : serverYmd(log.at)}
+                      </span>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {formatServerHm(log.at)}
+                      </span>
+                      {log.percent === null ? null : (
+                        <Badge
+                          variant="secondary"
+                          className={cn("font-normal", kpiTone.info.soft)}
+                        >
+                          {log.percent}%
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Cập nhật tiến độ
+                      {log.byName ? ` · ${log.byName}` : ""}
+                      {log.note ? ` — ${log.note}` : ""}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        </div>
+      </div>
 
       <DialogFooter>
         <Button
@@ -252,15 +655,35 @@ function ProgressForm({ item, columns, onDone, onSaved }: ProgressFormProps) {
           onClick={onDone}
           disabled={saving}
         >
-          Hủy
+          Đóng
         </Button>
         <Button
           type="button"
           onClick={() => void save()}
-          disabled={saving || !columns.progressColumn}
+          disabled={saving || !dirty}
+          title={dirty ? undefined : "Chưa đổi gì để lưu"}
         >
-          {saving ? "Đang lưu..." : "Lưu tiến độ"}
+          <SquarePen className="h-4 w-4" />
+          {saving ? "Đang lưu..." : "Lưu cập nhật"}
         </Button>
+        {onRequestConfirm ? (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => onRequestConfirm(item)}
+            disabled={saving || !readyToFinish || !sendable}
+            title={
+              !readyToFinish
+                ? "Đủ ba điều kiện phía trên mới xin xác nhận được"
+                : sendable
+                  ? "Gửi lên cấp trên để xác nhận hoàn thành"
+                  : "Nhiệm vụ đang ở chỗ cấp trên - chờ họ chốt"
+            }
+          >
+            <CircleCheck className="h-4 w-4" />
+            Xin xác nhận hoàn thành
+          </Button>
+        ) : null}
       </DialogFooter>
     </>
   );
@@ -273,37 +696,127 @@ type ProgressUpdateDialogProps = {
   template: ResolvedTemplate | null;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void | Promise<void>;
+  /** Bấm "Xin xác nhận hoàn thành" - mở luồng gửi lên cấp trên. */
+  onRequestConfirm?: (item: PersonalKpiItem) => void;
 };
 
 /**
  * Cập nhật tiến độ hằng ngày cho một nhiệm vụ.
  *
- * Chỉ động vào các ô theo dõi (tiến độ, chất lượng, ghi chú), mọi ô còn lại giữ
- * nguyên - mở ra là gõ ngay được con số hôm nay, khỏi lội lại cả bảng nhập.
+ * Bên trái là mấy ô cần gõ, bên phải là bối cảnh: mốc tiến độ đã đi tới đâu và
+ * nhật ký từng ngày. Chỉ động vào các ô theo dõi, mọi ô còn lại giữ nguyên.
  */
 export function ProgressUpdateDialog({
   item,
   template,
   onOpenChange,
   onSaved,
+  onRequestConfirm,
 }: ProgressUpdateDialogProps) {
+  const columns = trackingColumns(template, item?.task);
+  const progressColumn = columns.progressColumn;
+  const isCatalogProgress = progressColumn?.semanticKey === "quality_level";
+  const isCatalogQuality =
+    columns.qualityColumn?.semanticKey === "quality_level";
+  const qualityLevelById = useQualityLevelMap();
+
+  // Mốc lấy đúng danh mục "Chất lượng thực hiện" đã cấu hình.
+  const { data: levels = [] } = useSWR(
+    item && (isCatalogProgress || isCatalogQuality)
+      ? qualityLevelKeys.all
+      : null,
+    fetchQualityLevelsAll,
+  );
+
+  const numberMilestones = useMemo<Milestone[]>(
+    () =>
+      NUMBER_MILESTONES.map((percent) => ({
+        value: String(percent),
+        percent,
+        label: `${percent}%`,
+      })),
+    [],
+  );
+  const catalogMilestones = useMemo<Milestone[]>(
+    () =>
+      [...levels]
+        .map((level) => ({
+          value: entityId(level),
+          percent: Math.min(100, Math.max(0, level.percent)),
+          label: level.name,
+        }))
+        .sort((a, b) => a.percent - b.percent),
+    [levels],
+  );
+
+  const milestones = isCatalogProgress ? catalogMilestones : numberMilestones;
+  const qualityMilestones = isCatalogQuality
+    ? catalogMilestones
+    : numberMilestones;
+
+  const summary = item
+    ? summarizeTask(item.task, template, qualityLevelById)
+    : null;
+  const work = summary ? workState(summary.progressPercent) : null;
+  const deadline = summary
+    ? deadlineState(summary.deadline, serverYmd())
+    : null;
+
   return (
     <Dialog open={!!item} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Cập nhật tiến độ</DialogTitle>
-          <DialogDescription className="line-clamp-2">
-            {item?.workContentName}
+          <DialogTitle className="pr-6">
+            Cập nhật: {item?.workContentName}
+          </DialogTitle>
+          <DialogDescription asChild>
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              {item ? (
+                <>
+                  <Badge
+                    variant="secondary"
+                    className={cn("font-normal", kpiTone.info.soft)}
+                  >
+                    {item.axisName}
+                  </Badge>
+                  {work ? (
+                    <Badge variant="secondary" className="font-normal">
+                      {WORK_STATE_LABEL[work]}
+                    </Badge>
+                  ) : null}
+                  {deadline ? (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "font-normal",
+                        deadline.tone === "danger"
+                          ? kpiTone.danger.text
+                          : deadline.tone === "warning"
+                            ? kpiTone.warning.text
+                            : undefined,
+                      )}
+                    >
+                      {deadline.label}
+                    </Badge>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
           </DialogDescription>
         </DialogHeader>
 
-        {item ? (
+        {item && milestones.length > 0 ? (
           <ProgressForm
             key={item.id}
             item={item}
-            columns={trackingColumns(template, item.task)}
+            columns={columns}
+            milestones={milestones}
+            snapToMilestones={isCatalogProgress}
+            qualityMilestones={qualityMilestones}
+            snapQuality={isCatalogQuality}
             onDone={() => onOpenChange(false)}
             onSaved={onSaved}
+            onRequestConfirm={onRequestConfirm}
           />
         ) : null}
       </DialogContent>

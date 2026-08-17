@@ -109,6 +109,11 @@ export function daysBetweenYmd(earlier: string, later: string): number | null {
   return Math.round((to - from) / (24 * 60 * 60 * 1000));
 }
 
+/** Giờ:phút của một mốc thời gian, theo múi giờ server. */
+export function formatServerHm(value: string | number | Date): string {
+  return serverDayjs(value).format("HH:mm");
+}
+
 /** dd/MM/yyyy để hiện lên màn - đọc thẳng con số trong chuỗi, không qua Date. */
 export function formatYmd(ymd: string): string {
   const [year, month, day] = ymd.split("-");

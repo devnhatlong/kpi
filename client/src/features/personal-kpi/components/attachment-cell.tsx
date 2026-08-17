@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Download, Loader2, Paperclip, X } from "lucide-react";
+import { Download, Inbox, Loader2, Paperclip, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   ACCEPT_UPLOAD,
   MAX_UPLOAD_BYTES,
@@ -25,6 +26,10 @@ type AttachmentCellProps = {
   onChange: (next: TaskAttachment[]) => void;
   readOnly?: boolean;
   label: string;
+  /** Vùng kéo thả thay cho nút chọn tệp - dùng ở màn cập nhật tiến độ. */
+  dropzone?: boolean;
+  /** Chữ trong vùng kéo thả. */
+  dropzoneHint?: string;
 };
 
 /**
@@ -37,9 +42,12 @@ export function AttachmentCell({
   onChange,
   readOnly = false,
   label,
+  dropzone = false,
+  dropzoneHint = "Kéo thả hoặc bấm để đính kèm minh chứng",
 }: AttachmentCellProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   /** Phần trăm thật của tệp đang tải; null = không có tệp nào đang tải. */
   const [percent, setPercent] = useState<number | null>(null);
 
@@ -101,24 +109,59 @@ export function AttachmentCell({
             accept={ACCEPT_UPLOAD}
             onChange={(e) => void pickFiles(e.target.files)}
           />
-          <Button
-            type="button"
-            variant="outline"
-            className="h-8 w-full justify-start px-2 py-0 text-xs"
-            disabled={uploading}
-            onClick={() => inputRef.current?.click()}
-          >
-            {uploading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Paperclip className="h-3.5 w-3.5" />
-            )}
-            {uploading
-              ? percent === null
-                ? "Đang tải..."
-                : `Đang tải ${percent}%`
-              : "Chọn tệp"}
-          </Button>
+          {dropzone ? (
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                void pickFiles(e.dataTransfer.files);
+              }}
+              disabled={uploading}
+              className={cn(
+                "flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed bg-muted/20 px-3 py-6 text-center text-xs text-muted-foreground transition-colors",
+                "hover:border-primary/50 hover:bg-primary/5",
+                dragOver && "border-primary bg-primary/5",
+                uploading && "cursor-not-allowed opacity-70",
+              )}
+            >
+              {uploading ? (
+                <Loader2 className="size-5 animate-spin" />
+              ) : (
+                <Inbox className="size-5" strokeWidth={1.5} />
+              )}
+              {uploading
+                ? percent === null
+                  ? "Đang tải..."
+                  : `Đang tải ${percent}%`
+                : dropzoneHint}
+            </button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 w-full justify-start px-2 py-0 text-xs"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+            >
+              {uploading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Paperclip className="h-3.5 w-3.5" />
+              )}
+              {uploading
+                ? percent === null
+                  ? "Đang tải..."
+                  : `Đang tải ${percent}%`
+                : "Chọn tệp"}
+            </Button>
+          )}
           {uploading && percent !== null ? (
             <div className="h-1 w-full overflow-hidden rounded bg-muted">
               <div
