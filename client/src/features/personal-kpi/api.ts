@@ -7,6 +7,7 @@ import type {
 } from "@/features/kpi-form-config/types";
 import type {
   PersonalKpiItem,
+  PersonalKpiLogType,
   PersonalKpiProgressChange,
   PersonalKpiStatus,
   PersonalTaskDraft,
@@ -39,6 +40,9 @@ export type PersonalKpiApiRecord = {
   /** Lần cán bộ cập nhật tiến độ gần nhất - dùng để tính "im lặng N ngày". */
   lastProgressAt?: string | null;
   progressLogs?: Array<{
+    type?: PersonalKpiLogType;
+    toName?: string;
+    level?: number;
     byId?: string | CatalogRef;
     byName?: string;
     percent?: number | null;
@@ -192,6 +196,10 @@ export function mapPersonalKpiFromApi(
     // Mới nhất lên đầu - timeline đọc từ trên xuống.
     progressLogs: [...(row.progressLogs ?? [])]
       .map((log) => ({
+        // Bản ghi cũ chưa có `type` - coi như mốc cập nhật tiến độ.
+        type: log.type ?? "PROGRESS",
+        toName: log.toName ?? "",
+        level: log.level ?? 0,
         at: log.at,
         onDate: log.onDate ?? "",
         percent: log.percent ?? null,

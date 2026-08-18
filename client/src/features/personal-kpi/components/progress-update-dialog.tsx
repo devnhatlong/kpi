@@ -8,8 +8,10 @@ import {
   Clock3,
   Eye,
   Flag,
+  Send,
   SquarePen,
   TriangleAlert,
+  Undo2,
 } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -257,6 +259,111 @@ function SectionTitle({
   );
 }
 
+/** Nhãn của một mốc trong nhật ký. */
+function logTitle(log: PersonalKpiProgressLog): string {
+  switch (log.type) {
+    case "SUBMIT":
+      // Gửi lúc đã đủ 100% chính là xin chốt hoàn thành.
+      return log.percent !== null && log.percent >= 100
+        ? "Xin xác nhận hoàn thành"
+        : "Gửi cấp trên";
+    case "RETURN":
+      return "Cấp trên trả lại";
+    case "COMPLETE":
+      return "Cấp trên chốt hoàn thành";
+    default:
+      return "Cập nhật tiến độ";
+  }
+}
+
+/**
+ * Lịch sử gửi duyệt: chỉ những mốc đi qua tay cấp trên.
+ * Đọc từ cùng một nhật ký với phần cập nhật hằng ngày nên thứ tự luôn khớp.
+ */
+function ReviewHistory({ logs }: { logs: PersonalKpiProgressLog[] }) {
+  const events = logs.filter((log) => log.type !== "PROGRESS");
+  const sentCount = events.filter((log) => log.type === "SUBMIT").length;
+  const returnCount = events.filter((log) => log.type === "RETURN").length;
+
+  return (
+    <div className="space-y-2">
+      <SectionTitle
+        icon={Send}
+        text="Lịch sử gửi duyệt"
+        right={
+          events.length > 0 ? (
+            <span className="flex gap-1">
+              <Badge variant="secondary" className="font-normal">
+                {sentCount} lần gửi
+              </Badge>
+              {returnCount > 0 ? (
+                <Badge
+                  variant="secondary"
+                  className={cn("font-normal", kpiTone.danger.soft)}
+                >
+                  {returnCount} lần trả lại
+                </Badge>
+              ) : null}
+            </span>
+          ) : null
+        }
+      />
+
+      {events.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          Nhiệm vụ chưa gửi lên cấp trên lần nào.
+        </p>
+      ) : (
+        <ol className="max-h-44 space-y-2 overflow-y-auto pr-1">
+          {events.map((log) => (
+            <li
+              key={log.at}
+              className={cn(
+                "rounded-md border p-2.5",
+                log.type === "RETURN"
+                  ? "border-rose-200 bg-rose-500/5 dark:border-rose-900"
+                  : log.type === "COMPLETE"
+                    ? "border-emerald-200 bg-emerald-500/5 dark:border-emerald-900"
+                    : "bg-muted/30",
+              )}
+            >
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "font-normal",
+                    log.type === "RETURN"
+                      ? kpiTone.danger.soft
+                      : log.type === "COMPLETE"
+                        ? kpiTone.success.soft
+                        : kpiTone.info.soft,
+                  )}
+                >
+                  {logTitle(log)}
+                </Badge>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {log.onDate ? formatYmd(log.onDate) : serverYmd(log.at)}{" "}
+                  {formatServerHm(log.at)}
+                </span>
+              </div>
+              <p className="mt-1 text-xs">
+                {log.byName}
+                {log.toName ? ` → ${log.toName}` : ""}
+              </p>
+              {log.note ? (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {log.type === "RETURN" ? "Lý do: " : "Ghi chú: "}
+                  {log.note}
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 /** Lần cập nhật này có kéo tiến độ tụt xuống không. */
 function isRollback(log: PersonalKpiProgressLog): boolean {
   const change = log.changes.find((entry) => entry.field === "progress");
@@ -473,7 +580,15 @@ function ProgressForm({
   const [saving, setSaving] = useState(false);
 
   const logs = item.progressLogs ?? [];
-  const logDays = new Set(logs.map((log) => log.onDate || serverYmd(log.at)));
+  const logDays = new Set(
+    logs
+      .filter((log) => log.type === "PROGRESS")
+      .map((log) => log.onDate || serverYmd(log.at)),
+  );
+  const returns = logs.filter((log) => log.type === "RETURN");
+  const returnCount = returns.length;
+  /** Mốc trả lại gần nhất - nhật ký xếp mới trước. */
+  const lastReturn = returns[0];
 
   const percentNow = percentOfValue(progress, milestones, snapToMilestones);
   const percentBefore = percentOfValue(
@@ -512,6 +627,7 @@ function ProgressForm({
    */
   const readyToFinish = done && hasProduct;
   const sendable = canSendPersonalKpi(item.status);
+  const isReturned = item.status === "RETURNED";
 
   const save = async () => {
     if (!columns.progressColumn) return;
@@ -565,6 +681,44 @@ function ProgressForm({
             icon={readOnly ? Eye : SquarePen}
             text={readOnly ? "Kết quả đã chốt" : "Cập nhật tiến độ"}
           />
+
+          {/* Bị trả lại là việc cần xử lý ngay - đặt lý do lên đầu cột nhập,
+              kèm số lần bị trả để biết đây là lần thứ mấy. */}
+          {item.status === "RETURNED" ? (
+            <div className="space-y-1 rounded-lg border border-rose-200 bg-rose-500/5 p-3 dark:border-rose-900">
+              <p
+                className={cn(
+                  "flex items-center gap-1.5 text-sm font-semibold",
+                  kpiTone.danger.text,
+                )}
+              >
+                <Undo2 className="size-4" />
+                Nhiệm vụ bị trả lại
+                {returnCount > 1 ? (
+                  <Badge
+                    variant="secondary"
+                    className={cn("font-normal", kpiTone.danger.soft)}
+                  >
+                    Lần {returnCount}
+                  </Badge>
+                ) : null}
+              </p>
+              {item.rejectReason ? (
+                <p className="text-sm">
+                  <span className="font-medium">Lý do trả lại: </span>
+                  {item.rejectReason}
+                </p>
+              ) : null}
+              {lastReturn ? (
+                <p className="text-xs text-muted-foreground">
+                  {lastReturn.byName} ·{" "}
+                  {lastReturn.onDate
+                    ? formatYmd(lastReturn.onDate)
+                    : serverYmd(lastReturn.at)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           {readOnly ? (
             <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
               Chế độ chỉ xem - số liệu do cán bộ tự khai. Bên phải là toàn bộ
@@ -684,6 +838,8 @@ function ProgressForm({
             logs={logs}
           />
 
+          <ReviewHistory logs={logs} />
+
           <div className="space-y-3">
             <SectionTitle
               icon={Clock3}
@@ -730,8 +886,16 @@ function ProgressForm({
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Cập nhật tiến độ
+                      <span
+                        className={cn(
+                          log.type === "RETURN" && kpiTone.danger.text,
+                          log.type === "COMPLETE" && kpiTone.success.text,
+                        )}
+                      >
+                        {logTitle(log)}
+                      </span>
                       {log.byName ? ` · ${log.byName}` : ""}
+                      {log.toName ? ` → ${log.toName}` : ""}
                     </p>
                     {log.changes.length > 0 ? (
                       <div className="mt-1 space-y-0.5 border-l pl-2">
@@ -750,13 +914,19 @@ function ProgressForm({
                       <p
                         className={cn(
                           "mt-1 text-xs",
-                          isRollback(log)
-                            ? kpiTone.warning.text
-                            : "text-muted-foreground",
+                          log.type === "RETURN"
+                            ? kpiTone.danger.text
+                            : isRollback(log)
+                              ? kpiTone.warning.text
+                              : "text-muted-foreground",
                         )}
                       >
                         <span className="font-medium">
-                          {isRollback(log) ? "Lý do lùi tiến độ:" : "Ghi chú:"}
+                          {log.type === "RETURN"
+                            ? "Lý do trả lại:"
+                            : isRollback(log)
+                              ? "Lý do lùi tiến độ:"
+                              : "Ghi chú:"}
                         </span>{" "}
                         {log.note}
                       </p>
@@ -811,20 +981,28 @@ function ProgressForm({
             {saving ? "Đang lưu..." : "Lưu cập nhật"}
           </Button>
         )}
+        {/* Việc bị trả lại thì gửi lại được ngay, không đòi đủ 100% - cấp trên
+            trả về để sửa chứ không phải để chốt. */}
         {onRequestConfirm && !readOnly && sendable ? (
           <Button
             type="button"
             variant="secondary"
             onClick={() => onRequestConfirm(item)}
-            disabled={saving || !readyToFinish}
+            disabled={saving || (!isReturned && !readyToFinish)}
             title={
-              readyToFinish
-                ? "Gửi lên cấp trên để xác nhận hoàn thành"
-                : "Chưa đủ điều kiện phía trên để xin xác nhận"
+              isReturned
+                ? "Gửi lại lên cấp trên sau khi đã sửa"
+                : readyToFinish
+                  ? "Gửi lên cấp trên để xác nhận hoàn thành"
+                  : "Chưa đủ điều kiện phía trên để xin xác nhận"
             }
           >
-            <CircleCheck className="h-4 w-4" />
-            Xin xác nhận hoàn thành
+            {isReturned ? (
+              <Undo2 className="h-4 w-4" />
+            ) : (
+              <CircleCheck className="h-4 w-4" />
+            )}
+            {isReturned ? "Gửi lại cấp trên" : "Xin xác nhận hoàn thành"}
           </Button>
         ) : null}
       </DialogFooter>

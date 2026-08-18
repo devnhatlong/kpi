@@ -95,8 +95,23 @@ export type PersonalKpiProgressChange = {
   detail: string;
 };
 
-/** Một lần cán bộ cập nhật tiến độ - dòng trong timeline. */
+/**
+ * Loại mốc trong đời nhiệm vụ.
+ * PROGRESS = cán bộ cập nhật; SUBMIT = gửi lên; RETURN = cấp trên trả lại;
+ * COMPLETE = cấp trên chốt hoàn thành.
+ */
+export type PersonalKpiLogType =
+  | "PROGRESS"
+  | "SUBMIT"
+  | "RETURN"
+  | "COMPLETE";
+
+/** Một mốc trong đời nhiệm vụ - dòng trong timeline. */
 export type PersonalKpiProgressLog = {
+  type: PersonalKpiLogType;
+  /** Người nhận của lượt gửi; rỗng ở loại mốc khác. */
+  toName: string;
+  level: number;
   at: string;
   /** Ngày báo cáo của lần cập nhật (YYYY-MM-DD theo giờ server). */
   onDate: string;

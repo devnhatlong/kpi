@@ -142,14 +142,44 @@ export const PersonalKpiProgressChangeSchema = SchemaFactory.createForClass(
 );
 
 /**
- * Một lần cán bộ cập nhật tiến độ.
+ * Loại việc đã xảy ra với nhiệm vụ.
+ * PROGRESS = cán bộ cập nhật tiến độ; SUBMIT = gửi lên trên; RETURN = cấp trên
+ * trả lại; COMPLETE = cấp trên chốt hoàn thành.
+ */
+export const PERSONAL_KPI_LOG_TYPES = [
+  'PROGRESS',
+  'SUBMIT',
+  'RETURN',
+  'COMPLETE',
+] as const;
+
+export type PersonalKpiLogType = (typeof PERSONAL_KPI_LOG_TYPES)[number];
+
+/**
+ * Một mốc trong đời của nhiệm vụ: cập nhật tiến độ, gửi lên, bị trả lại, chốt.
  *
- * Ghi lại thành nhật ký thay vì chỉ đè lên con số hiện tại: cấp trên cần thấy
- * việc chạy nhanh chậm ra sao qua từng ngày, và "im lặng mấy ngày" phải tra
- * được chứ không chỉ tin vào một cái mốc cuối cùng.
+ * Chỉ ghi ĐÚNG THỨ ĐÃ ĐỔI chứ không chụp lại toàn bộ nhiệm vụ mỗi lần lưu:
+ * ảnh chụp thì phình theo số lần sửa mà đọc lại vẫn phải tự so hai bản mới biết
+ * khác chỗ nào. Hình dạng bảng (mẫu KPI) đã có bản chụp riêng theo phiên bản,
+ * nên không mất gì khi chỉ lưu delta ở đây.
  */
 @Schema({ _id: false })
 export class PersonalKpiProgressLog {
+  @Prop({
+    type: String,
+    enum: PERSONAL_KPI_LOG_TYPES,
+    default: 'PROGRESS',
+    index: true,
+  })
+  type!: PersonalKpiLogType;
+
+  /** Nhiệm vụ đang ở cấp mấy lúc xảy ra - dùng cho mốc gửi / trả lại. */
+  @Prop({ default: 0, min: 0 })
+  level!: number;
+
+  /** Người nhận của lượt gửi. Rỗng ở các loại mốc khác. */
+  @Prop({ trim: true, default: '' })
+  toName!: string;
   @Prop({ type: Types.ObjectId, ref: User.name, required: true })
   byId!: Types.ObjectId;
 
@@ -306,7 +336,7 @@ export class PersonalKpiItem {
   @Prop({ type: Date, default: null })
   lastProgressAt!: Date | null;
 
-  /** Nhật ký cập nhật tiến độ, cũ trước mới sau. */
+  /** Nhật ký đời nhiệm vụ (cập nhật, gửi, trả lại, chốt) - cũ trước mới sau. */
   @Prop({ type: [PersonalKpiProgressLogSchema], default: [] })
   progressLogs!: PersonalKpiProgressLog[];
 

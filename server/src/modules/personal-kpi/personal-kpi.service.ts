@@ -59,6 +59,7 @@ import {
   PersonalKpiCatalogValue,
   PersonalKpiItem,
   PersonalKpiItemDocument,
+  PersonalKpiLogType,
   PersonalKpiProgressChange,
   PersonalKpiProgressField,
   PersonalKpiReviewStatus,
@@ -1065,17 +1066,20 @@ export class PersonalKpiService {
 
     if (dto.decision === 'COMPLETE') {
       await this.assertProgressComplete(items);
-      await this.itemModel.updateMany(
-        { _id: { $in: items.map((item) => item._id) } },
-        {
-          $set: {
-            reviewStatus: 'COMPLETED',
-            returnReason: '',
-            lastDecidedById: actor.id,
-            lastDecidedAt: now,
-          },
-        },
-      );
+      const percentById = await this.progressPercentOf(items);
+      for (const item of items) {
+        item.reviewStatus = 'COMPLETED';
+        item.returnReason = '';
+        item.lastDecidedById = actor.id;
+        item.lastDecidedAt = now;
+        this.appendLog(item, {
+          type: 'COMPLETE',
+          actor,
+          percent: percentById.get(String(item._id)) ?? null,
+          at: now,
+        });
+        await item.save();
+      }
       await this.closeSubmissionsIfSettled(items);
       return {
         message: `Đã chốt hoàn thành ${items.length} nhiệm vụ.`,
@@ -1099,6 +1103,9 @@ export class PersonalKpiService {
       item.holderLevel = Math.max(0, item.holderLevel - 1);
       item.currentRecipientId = backTo;
       item.currentRecipientDepartmentId = backDept;
+      // Lý do trả lại lần này ghi vào nhật ký; trường returnReason chỉ giữ lần
+      // gần nhất nên không đủ để đọc lại lịch sử.
+      this.appendLog(item, { type: 'RETURN', actor, note: reason, at: now });
       await item.save();
     }
     await this.closeSubmissionsIfSettled(items);
@@ -1413,6 +1420,22 @@ export class PersonalKpiService {
       },
     );
 
+    // Ghi mốc "đã gửi" lên từng nhiệm vụ để dựng được lịch sử gửi duyệt của
+    // riêng nó, khỏi phải dò ngược trong toàn bộ các lượt gửi.
+    const percentById = await this.progressPercentOf(items);
+    for (const item of items) {
+      this.appendLog(item, {
+        type: 'SUBMIT',
+        actor: sender,
+        toName: target.name,
+        note,
+        level,
+        percent: percentById.get(String(item._id)) ?? null,
+        at: now,
+      });
+      await item.save();
+    }
+
     return {
       message: input.message(items.length),
       data: {
@@ -1688,6 +1711,62 @@ export class PersonalKpiService {
         `Chưa nhập cột bắt buộc - ${problems.join('; ')}.`,
       );
     }
+  }
+
+  /**
+   * Thêm một mốc vào nhật ký nhiệm vụ.
+   *
+   * Mọi loại mốc (cập nhật, gửi, trả lại, chốt) nằm chung một mảng để màn hình
+   * dựng được một dòng thời gian duy nhất - tách bảng riêng cho từng loại thì
+   * ghép lại lúc hiển thị vừa tốn truy vấn vừa dễ lệch thứ tự.
+   */
+  private appendLog(
+    item: PersonalKpiItemDocument,
+    entry: {
+      type: PersonalKpiLogType;
+      actor: { id: Types.ObjectId; name: string };
+      percent?: number | null;
+      note?: string;
+      toName?: string;
+      level?: number;
+      changes?: PersonalKpiProgressChange[];
+      at?: Date;
+    },
+  ) {
+    const at = entry.at ?? new Date();
+    item.progressLogs = [
+      ...(item.progressLogs ?? []),
+      {
+        type: entry.type,
+        byId: entry.actor.id,
+        byName: entry.actor.name,
+        percent: entry.percent ?? null,
+        note: entry.note?.trim() ?? '',
+        toName: entry.toName ?? '',
+        level: entry.level ?? item.holderLevel,
+        onDate: serverDateYmd(at),
+        at,
+        changes: entry.changes ?? [],
+      },
+    ];
+    item.markModified('progressLogs');
+  }
+
+  /** Phần trăm KPI tiến độ hiện tại của từng nhiệm vụ, tra theo id. */
+  private async progressPercentOf(items: PersonalKpiItemDocument[]) {
+    const percentByLevelId = await this.qualityPercentMap();
+    const cache = new Map<string, TrackingTemplate | null>();
+    const result = new Map<string, number | null>();
+
+    for (const item of items) {
+      const template = await this.trackingTemplateOf(item, cache);
+      const { progress } = resolveTrackingColumns(template);
+      result.set(
+        String(item._id),
+        readItemPercent(item, progress, percentByLevelId),
+      );
+    }
+    return result;
   }
 
   /** Phần trăm của từng mức chất lượng, tra theo id. */
@@ -1969,19 +2048,14 @@ export class PersonalKpiService {
       );
     }
 
-    item.progressLogs = [
-      ...(item.progressLogs ?? []),
-      {
-        byId: actor.id,
-        byName: actor.name,
-        percent: percentNow,
-        note: dto.note?.trim() ?? '',
-        onDate: serverDateYmd(now),
-        at: now,
-        changes,
-      },
-    ];
-    item.markModified('progressLogs');
+    this.appendLog(item, {
+      type: 'PROGRESS',
+      actor,
+      percent: percentNow,
+      note: dto.note,
+      changes,
+      at: now,
+    });
 
     await item.save();
     await item.populate([
