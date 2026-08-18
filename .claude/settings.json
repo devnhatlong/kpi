@@ -84,7 +84,9 @@
       "Bash(echo \"tsc=$?\")",
       "Bash(grep -n \"replace\\(/\\\\[\" client/src/features/personal-kpi/components/personal-task-drawer.tsx)",
       "PowerShell(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 3000,3001,4000,5000,8000,27017 } | Select-Object LocalAddress,LocalPort | Sort-Object LocalPort -Unique)",
-      "PowerShell(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq 8080 } | Select-Object LocalPort -Unique)"
+      "PowerShell(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq 8080 } | Select-Object LocalPort -Unique)",
+      "Bash(grep -n \"const \\\\[query, setQuery\\\\]\\\\|const groups = useMemo\\\\|value={query}\\\\|onChange={\\(e\\) => setQuery\" client/src/features/personal-kpi/components/personal-kpi-tracking-view.tsx)",
+      "Bash(grep -n \"}\\)}\\\\s*$\" client/src/features/personal-kpi/components/personal-kpi-tracking-view.tsx)"
     ]
   }
 }

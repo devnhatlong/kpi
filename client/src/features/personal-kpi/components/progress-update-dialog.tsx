@@ -674,7 +674,7 @@ function ProgressForm({
 
   return (
     <>
-      <div className="grid max-h-[66vh] gap-6 overflow-y-auto px-1 py-1 md:grid-cols-2">
+      <div className="grid max-h-[76vh] gap-6 overflow-y-auto px-1 py-1 md:grid-cols-2">
         {/* ------------------------------------------------ cột trái: nhập */}
         <div className="space-y-4">
           <SectionTitle
@@ -1094,7 +1094,7 @@ export function ProgressUpdateDialog({
 
   return (
     <Dialog open={!!item} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl">
+      <DialogContent className="sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle className="pr-6">
             {readOnly ? "Tiến độ" : "Cập nhật"}: {item?.workContentName}

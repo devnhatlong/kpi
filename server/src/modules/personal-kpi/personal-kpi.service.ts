@@ -900,36 +900,17 @@ export class PersonalKpiService {
     const note = this.requireNote(dto.note);
 
     /**
-     * Mỗi ngày một lượt báo cáo. Lượt sau chỉ để gửi lại việc bị trả lại -
-     * không thì cấp trên nhận rải rác cả chục lượt cho cùng một ngày và không
-     * còn biết đâu là bản chốt.
+     * Gửi bao nhiêu lượt trong ngày cũng được: việc phát sinh buổi chiều vẫn
+     * phải lên tới cấp trên trong ngày, và nhiệm vụ bị trả lại phải sửa rồi
+     * gửi lại ngay. Mỗi lượt là một bản ghi riêng nên vẫn tra được ai gửi gì
+     * lúc nào.
      */
-    const sentBefore = await this.submissionModel.exists({
-      senderId: actor.id,
-      reportDate: date,
-      level: 1,
-    });
-
     const filter: Record<string, unknown> = {
       ownerId: actor.id,
       reportDate: date,
       holderLevel: 0,
+      reviewStatus: { $in: OWNER_EDITABLE },
     };
-    if (sentBefore) {
-      /**
-       * Lượt sau chỉ gửi lại việc từng bị trả lại.
-       *
-       * Phải nhận cả DRAFT đã từng gửi: `update` đặt lại trạng thái về DRAFT
-       * sau mỗi lần sửa, nên nhiệm vụ bị trả lại vừa sửa xong không còn mang
-       * cờ RETURNED - lọc đúng RETURNED là chính nó bị kẹt lại vĩnh viễn.
-       */
-      filter.$or = [
-        { reviewStatus: 'RETURNED' },
-        { reviewStatus: 'DRAFT', lastSentAt: { $ne: null } },
-      ];
-    } else {
-      filter.reviewStatus = { $in: OWNER_EDITABLE };
-    }
     if (dto.itemIds?.length) {
       filter._id = {
         $in: dto.itemIds.map((id) => this.requireObjectId(id, 'Nhiệm vụ')),
@@ -939,9 +920,7 @@ export class PersonalKpiService {
     const items = await this.itemModel.find(filter);
     if (!items.length) {
       throw new BadRequestException(
-        sentBefore
-          ? 'Báo cáo ngày này đã gửi rồi. Chỉ gửi lại được nhiệm vụ bị trả lại; việc phát sinh thêm để sang báo cáo ngày sau.'
-          : 'Không có nhiệm vụ nháp hoặc bị trả lại nào để gửi trong ngày này.',
+        'Không có nhiệm vụ nháp hoặc bị trả lại nào để gửi trong ngày này.',
       );
     }
     if (dto.itemIds?.length && items.length !== dto.itemIds.length) {

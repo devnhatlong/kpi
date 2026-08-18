@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   CalendarDays,
   CheckCheck,
+  ChevronDown,
   Crosshair,
   Eye,
   Search,
@@ -15,11 +16,17 @@ import {
 import useSWR from "swr";
 import { toast } from "sonner";
 
+import { TablePagination } from "@/components/common/table-pagination";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -79,6 +86,7 @@ import {
   PERSONAL_KPI_STATUS_LABEL,
   type PersonalKpiItem,
 } from "@/features/personal-kpi/types";
+import { useListPagination } from "@/hooks/use-list-pagination";
 import { useServerTime } from "@/hooks/use-server-time";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { currentWeekRange, formatYmd, serverYmd } from "@/lib/server-time";
@@ -342,10 +350,276 @@ function ProgressBar({
   );
 }
 
+type TrackingTableProps = {
+  rows: TrackingRow[];
+  /** Dòng đang chờ thao tác chạy xong - khoá nút của riêng dòng đó. */
+  busyId: string | null;
+  onDetail: (row: TrackingRow) => void;
+  onComplete: (row: TrackingRow) => void;
+  onReturn: (row: TrackingRow) => void;
+};
+
+/** Bảng nhiệm vụ - dùng lại cho cả xem phẳng lẫn từng nhóm thu gọn được. */
+function TrackingTable({
+  rows,
+  busyId,
+  onDetail,
+  onComplete,
+  onReturn,
+}: TrackingTableProps) {
+  return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[180px]">Cán bộ</TableHead>
+            <TableHead className="w-[360px]">
+              Trục · Nhiệm vụ
+            </TableHead>
+            <TableHead className="w-[190px] whitespace-nowrap">
+              Tiến độ
+            </TableHead>
+            <TableHead className="w-[140px]">Hạn</TableHead>
+            <TableHead className="w-[130px]">
+              Trạng thái duyệt
+            </TableHead>
+            <TableHead className="w-[110px]">Chất lượng</TableHead>
+            <TableHead className="w-[160px]">
+              Tình trạng thực hiện
+            </TableHead>
+            <TableHead className="w-[210px] text-right">
+              Thao tác
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => {
+            const awaiting = isAwaitingConfirm(row);
+            const busy = busyId === row.item.id;
+            return (
+              <TableRow key={row.item.id}>
+                <TableCell className="align-middle">
+                  <div className="flex items-center gap-2">
+                    <Avatar className="size-8">
+                      <AvatarFallback className="text-xs">
+                        {initialsOf(row.ownerName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">
+                        {row.ownerName}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {row.ownerDepartmentName}
+                      </div>
+                    </div>
+                  </div>
+                </TableCell>
+
+                {/* Tên nội dung công việc dài cả dòng - phải cho
+                    xuống hàng, không thì cột này kéo giãn cả
+                    bảng và mấy cột sau bị bóp lại. */}
+                {/*
+                  `break-words` là bắt buộc: tên nhiệm vụ có thể
+                  là một chuỗi dài không dấu cách, mà chuỗi liền
+                  thì không tự xuống hàng - nó tràn hẳn sang cột
+                  bên cạnh.
+                */}
+                <TableCell className="max-w-[360px] whitespace-normal align-middle">
+                  <div>
+                    <Badge
+                      variant="secondary"
+                      className={cn(
+                        "font-normal",
+                        kpiTone.info.soft,
+                      )}
+                    >
+                      {row.item.axisName}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 break-words font-medium leading-snug">
+                    {row.summary.title || row.item.workContentName}
+                  </div>
+                  <div className="mt-0.5 break-words text-xs leading-snug text-muted-foreground">
+                    {row.item.workContentName}
+                  </div>
+                </TableCell>
+
+                <TableCell className="align-middle">
+                  {row.summary.progressPercent === null ? (
+                    <span className="text-sm text-muted-foreground">
+                      -
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <ProgressBar
+                        percent={row.summary.progressPercent}
+                        className="flex-1"
+                      />
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        {row.summary.progressPercent}%
+                      </span>
+                    </div>
+                  )}
+                  <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
+                    {lastTouchedLabel(row)}
+                  </div>
+                </TableCell>
+
+                <TableCell className="align-middle">
+                  {row.summary.deadline ? (
+                    <>
+                      <div className="whitespace-nowrap text-sm tabular-nums">
+                        {formatYmd(row.summary.deadline)}
+                      </div>
+                      {row.deadline ? (
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            "font-normal",
+                            row.deadline.tone === "danger"
+                              ? kpiTone.danger.soft
+                              : row.deadline.tone === "warning"
+                                ? kpiTone.warning.soft
+                                : kpiTone.neutral.soft,
+                          )}
+                        >
+                          {row.deadline.label}
+                        </Badge>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">
+                      -
+                    </span>
+                  )}
+                </TableCell>
+
+                <TableCell className="align-middle">
+                  <Badge
+                    variant="secondary"
+                    className={personalKpiStatusBadgeClass(
+                      row.item.status,
+                    )}
+                  >
+                    {PERSONAL_KPI_STATUS_LABEL[row.item.status]}
+                  </Badge>
+                </TableCell>
+
+                <TableCell className="align-middle text-sm tabular-nums">
+                  {row.summary.qualityPercent === null ? (
+                    <span className="text-muted-foreground">
+                      -
+                    </span>
+                  ) : (
+                    `${row.summary.qualityPercent}%`
+                  )}
+                </TableCell>
+
+                <TableCell className="align-middle">
+                  <div className="flex flex-wrap gap-1">
+                    <Badge
+                      variant="secondary"
+                      className={cn(
+                        "font-normal",
+                        row.work === "DONE"
+                          ? kpiTone.success.soft
+                          : row.work === "IN_PROGRESS"
+                            ? kpiTone.info.soft
+                            : kpiTone.neutral.soft,
+                      )}
+                    >
+                      {WORK_STATE_LABEL[row.work]}
+                    </Badge>
+                    {isOverdue(row) ? (
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          "font-normal",
+                          kpiTone.danger.soft,
+                        )}
+                      >
+                        Trễ hạn
+                      </Badge>
+                    ) : isDueSoon(row) ? (
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          "font-normal",
+                          kpiTone.warning.soft,
+                        )}
+                      >
+                        Sắp đến hạn
+                      </Badge>
+                    ) : null}
+                    {isSilent(row) ? (
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          "font-normal",
+                          kpiTone.warning.soft,
+                        )}
+                      >
+                        Im lặng {row.silence} ngày
+                      </Badge>
+                    ) : null}
+                  </div>
+                </TableCell>
+
+                <TableCell className="text-right align-middle">
+                  <div className="inline-flex flex-wrap justify-end gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="bg-background"
+                      onClick={() => onDetail(row)}
+                    >
+                      <Eye className="h-4 w-4" />
+                      Chi tiết
+                    </Button>
+                    {/* Chốt / trả lại chỉ áp cho việc đang chờ
+                        quyết ở chỗ mình. */}
+                    {row.item.status === "PENDING" ? (
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={() => onComplete(row)}
+                          disabled={busy || !awaiting}
+                          title={
+                            awaiting
+                              ? "Chốt hoàn thành nhiệm vụ này"
+                              : "KPI tiến độ chưa đạt 100%"
+                          }
+                        >
+                          <CheckCheck className="h-4 w-4" />
+                          Hoàn thành
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-rose-300 bg-background text-rose-600 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900 dark:text-rose-400"
+                          onClick={() => onReturn(row)}
+                          disabled={busy}
+                        >
+                          <Undo2 className="h-4 w-4" />
+                          Trả lại
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+  );
+}
+
 export function PersonalKpiTrackingView() {
   const [tab, setTab] = useState<TabValue>("ALL");
   const [groupMode, setGroupMode] = useState<GroupMode>("UNIT");
-  const [query, setQuery] = useState("");
+  const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
+    useListPagination();
   const [departmentId, setDepartmentId] = useState(ALL);
   /**
    * Lọc theo ngày báo cáo - chạy ở server để đếm tab đúng theo khoảng đang xem.
@@ -443,13 +717,13 @@ export function PersonalKpiTrackingView() {
 
   /** Bộ lọc đơn vị + tìm kiếm áp trước, tab đếm trên phần còn lại. */
   const scoped = useMemo(() => {
-    const term = normalizeText(query);
+    const term = normalizeText(debouncedQuery);
     return rows.filter(
       (row) =>
         (departmentId === ALL || row.ownerDepartmentName === departmentId) &&
         (!term || row.haystack.includes(term)),
     );
-  }, [rows, departmentId, query]);
+  }, [rows, departmentId, debouncedQuery]);
 
   const counts = useMemo(() => {
     const byTab = (value: TabValue) =>
@@ -471,9 +745,21 @@ export function PersonalKpiTrackingView() {
     [scoped, tab, todayYmd],
   );
 
+  /**
+   * Phân trang chỉ áp cho kiểu xem phẳng. Xem theo nhóm mà cắt trang thì một
+   * đơn vị bị xẻ đôi qua hai trang, con số ở tiêu đề nhóm đọc ra thành sai.
+   */
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = useMemo(
+    () => filtered.slice((safePage - 1) * limit, safePage * limit),
+    [filtered, safePage, limit],
+  );
+
   const groups = useMemo(() => {
     if (groupMode === "TASK") {
-      return [{ label: "", rows: filtered }];
+      return [{ label: "", rows: pageRows }];
     }
     const byKey = new Map<string, TrackingRow[]>();
     for (const row of filtered) {
@@ -486,7 +772,7 @@ export function PersonalKpiTrackingView() {
     return [...byKey.entries()]
       .sort(([left], [right]) => left.localeCompare(right, "vi"))
       .map(([label, groupRows]) => ({ label, rows: groupRows }));
-  }, [filtered, groupMode]);
+  }, [filtered, pageRows, groupMode]);
 
   const averageAll = averagePercent(scoped);
 
@@ -589,7 +875,13 @@ export function PersonalKpiTrackingView() {
               />
             </div>
 
-            <Select value={departmentId} onValueChange={setDepartmentId}>
+            <Select
+              value={departmentId}
+              onValueChange={(value) => {
+                setDepartmentId(value);
+                setPage(1);
+              }}
+            >
               <SelectTrigger className="w-[180px] bg-background">
                 <SelectValue placeholder="Đơn vị" />
               </SelectTrigger>
@@ -636,7 +928,10 @@ export function PersonalKpiTrackingView() {
                 <button
                   key={entry.value}
                   type="button"
-                  onClick={() => setTab(entry.value)}
+                  onClick={() => {
+                    setTab(entry.value);
+                    setPage(1);
+                  }}
                   className={cn(
                     "rounded-md px-2.5 py-1.5 text-sm transition-colors",
                     tab === entry.value
@@ -687,311 +982,108 @@ export function PersonalKpiTrackingView() {
                   (row) => row.item.status === "COMPLETED",
                 ).length;
                 const groupPercent = averagePercent(group.rows);
+                const table = (
+                  <TrackingTable
+                    rows={group.rows}
+                    busyId={busyId}
+                    onDetail={setDetailRow}
+                    onComplete={(row) => void doComplete(row)}
+                    onReturn={(row) => {
+                      setReturnRow(row);
+                      setReturnReason("");
+                    }}
+                  />
+                );
+
+                // Xem phẳng thì không có tiêu đề nhóm nên chẳng có gì để thu.
+                if (!group.label) {
+                  return (
+                    <div key="all" className="overflow-hidden rounded-lg border">
+                      {table}
+                    </div>
+                  );
+                }
 
                 return (
-                  <div
-                    key={group.label || "all"}
+                  <Collapsible
+                    key={group.label}
+                    defaultOpen
                     className="overflow-hidden rounded-lg border"
                   >
-                    {group.label ? (
-                      <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-3 py-2.5">
-                        <span className="font-semibold">{group.label}</span>
+                    <div className="flex flex-wrap items-center gap-2 bg-muted/30 px-3 py-2.5">
+                      {/* data-state nằm trên nút nên xoay mũi tên qua nút, icon
+                          không mang thuộc tính đó. */}
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="size-7 shrink-0 [&>svg]:transition-transform data-[state=closed]:[&>svg]:-rotate-90"
+                          aria-label={`Thu gọn ${group.label}`}
+                        >
+                          <ChevronDown className="size-4" />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <span className="font-semibold">{group.label}</span>
+                      <Badge
+                        variant="secondary"
+                        className={cn("font-normal", kpiTone.info.soft)}
+                      >
+                        {group.rows.length} nhiệm vụ
+                      </Badge>
+                      {groupOverdue > 0 ? (
                         <Badge
                           variant="secondary"
-                          className={cn("font-normal", kpiTone.info.soft)}
+                          className={cn("font-normal", kpiTone.danger.soft)}
                         >
-                          {group.rows.length} nhiệm vụ
+                          Trễ {groupOverdue}
                         </Badge>
-                        {groupOverdue > 0 ? (
-                          <Badge
-                            variant="secondary"
-                            className={cn("font-normal", kpiTone.danger.soft)}
-                          >
-                            Trễ {groupOverdue}
-                          </Badge>
-                        ) : null}
-                        {groupSilent > 0 ? (
-                          <Badge
-                            variant="secondary"
-                            className={cn("font-normal", kpiTone.warning.soft)}
-                          >
-                            Im lặng {groupSilent}
-                          </Badge>
-                        ) : null}
-                        {groupDone > 0 ? (
-                          <Badge
-                            variant="secondary"
-                            className={cn("font-normal", kpiTone.success.soft)}
-                          >
-                            Hoàn thành {groupDone}
-                          </Badge>
-                        ) : null}
-                        {groupPercent === null ? null : (
-                          <div className="ml-auto flex min-w-[140px] items-center gap-2">
-                            <ProgressBar
-                              percent={groupPercent}
-                              className="flex-1"
-                            />
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              {groupPercent}%
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[180px]">Cán bộ</TableHead>
-                          <TableHead className="w-[360px]">
-                            Trục · Nhiệm vụ
-                          </TableHead>
-                          <TableHead className="w-[190px] whitespace-nowrap">
-                            Tiến độ
-                          </TableHead>
-                          <TableHead className="w-[140px]">Hạn</TableHead>
-                          <TableHead className="w-[130px]">
-                            Trạng thái duyệt
-                          </TableHead>
-                          <TableHead className="w-[110px]">Chất lượng</TableHead>
-                          <TableHead className="w-[160px]">
-                            Tình trạng thực hiện
-                          </TableHead>
-                          <TableHead className="w-[210px] text-right">
-                            Thao tác
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {group.rows.map((row) => {
-                          const awaiting = isAwaitingConfirm(row);
-                          const busy = busyId === row.item.id;
-                          return (
-                            <TableRow key={row.item.id}>
-                              <TableCell className="align-middle">
-                                <div className="flex items-center gap-2">
-                                  <Avatar className="size-8">
-                                    <AvatarFallback className="text-xs">
-                                      {initialsOf(row.ownerName)}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <div className="min-w-0">
-                                    <div className="truncate text-sm font-medium">
-                                      {row.ownerName}
-                                    </div>
-                                    <div className="truncate text-xs text-muted-foreground">
-                                      {row.ownerDepartmentName}
-                                    </div>
-                                  </div>
-                                </div>
-                              </TableCell>
-
-                              {/* Tên nội dung công việc dài cả dòng - phải cho
-                                  xuống hàng, không thì cột này kéo giãn cả
-                                  bảng và mấy cột sau bị bóp lại. */}
-                              {/*
-                                `break-words` là bắt buộc: tên nhiệm vụ có thể
-                                là một chuỗi dài không dấu cách, mà chuỗi liền
-                                thì không tự xuống hàng - nó tràn hẳn sang cột
-                                bên cạnh.
-                              */}
-                              <TableCell className="max-w-[360px] whitespace-normal align-middle">
-                                <div>
-                                  <Badge
-                                    variant="secondary"
-                                    className={cn(
-                                      "font-normal",
-                                      kpiTone.info.soft,
-                                    )}
-                                  >
-                                    {row.item.axisName}
-                                  </Badge>
-                                </div>
-                                <div className="mt-1 break-words font-medium leading-snug">
-                                  {row.summary.title || row.item.workContentName}
-                                </div>
-                                <div className="mt-0.5 break-words text-xs leading-snug text-muted-foreground">
-                                  {row.item.workContentName}
-                                </div>
-                              </TableCell>
-
-                              <TableCell className="align-middle">
-                                {row.summary.progressPercent === null ? (
-                                  <span className="text-sm text-muted-foreground">
-                                    -
-                                  </span>
-                                ) : (
-                                  <div className="flex items-center gap-2">
-                                    <ProgressBar
-                                      percent={row.summary.progressPercent}
-                                      className="flex-1"
-                                    />
-                                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                                      {row.summary.progressPercent}%
-                                    </span>
-                                  </div>
-                                )}
-                                <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
-                                  {lastTouchedLabel(row)}
-                                </div>
-                              </TableCell>
-
-                              <TableCell className="align-middle">
-                                {row.summary.deadline ? (
-                                  <>
-                                    <div className="whitespace-nowrap text-sm tabular-nums">
-                                      {formatYmd(row.summary.deadline)}
-                                    </div>
-                                    {row.deadline ? (
-                                      <Badge
-                                        variant="secondary"
-                                        className={cn(
-                                          "font-normal",
-                                          row.deadline.tone === "danger"
-                                            ? kpiTone.danger.soft
-                                            : row.deadline.tone === "warning"
-                                              ? kpiTone.warning.soft
-                                              : kpiTone.neutral.soft,
-                                        )}
-                                      >
-                                        {row.deadline.label}
-                                      </Badge>
-                                    ) : null}
-                                  </>
-                                ) : (
-                                  <span className="text-sm text-muted-foreground">
-                                    -
-                                  </span>
-                                )}
-                              </TableCell>
-
-                              <TableCell className="align-middle">
-                                <Badge
-                                  variant="secondary"
-                                  className={personalKpiStatusBadgeClass(
-                                    row.item.status,
-                                  )}
-                                >
-                                  {PERSONAL_KPI_STATUS_LABEL[row.item.status]}
-                                </Badge>
-                              </TableCell>
-
-                              <TableCell className="align-middle text-sm tabular-nums">
-                                {row.summary.qualityPercent === null ? (
-                                  <span className="text-muted-foreground">
-                                    -
-                                  </span>
-                                ) : (
-                                  `${row.summary.qualityPercent}%`
-                                )}
-                              </TableCell>
-
-                              <TableCell className="align-middle">
-                                <div className="flex flex-wrap gap-1">
-                                  <Badge
-                                    variant="secondary"
-                                    className={cn(
-                                      "font-normal",
-                                      row.work === "DONE"
-                                        ? kpiTone.success.soft
-                                        : row.work === "IN_PROGRESS"
-                                          ? kpiTone.info.soft
-                                          : kpiTone.neutral.soft,
-                                    )}
-                                  >
-                                    {WORK_STATE_LABEL[row.work]}
-                                  </Badge>
-                                  {isOverdue(row) ? (
-                                    <Badge
-                                      variant="secondary"
-                                      className={cn(
-                                        "font-normal",
-                                        kpiTone.danger.soft,
-                                      )}
-                                    >
-                                      Trễ hạn
-                                    </Badge>
-                                  ) : isDueSoon(row) ? (
-                                    <Badge
-                                      variant="secondary"
-                                      className={cn(
-                                        "font-normal",
-                                        kpiTone.warning.soft,
-                                      )}
-                                    >
-                                      Sắp đến hạn
-                                    </Badge>
-                                  ) : null}
-                                  {isSilent(row) ? (
-                                    <Badge
-                                      variant="secondary"
-                                      className={cn(
-                                        "font-normal",
-                                        kpiTone.warning.soft,
-                                      )}
-                                    >
-                                      Im lặng {row.silence} ngày
-                                    </Badge>
-                                  ) : null}
-                                </div>
-                              </TableCell>
-
-                              <TableCell className="text-right align-middle">
-                                <div className="inline-flex flex-wrap justify-end gap-1">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="bg-background"
-                                    onClick={() => setDetailRow(row)}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                    Chi tiết
-                                  </Button>
-                                  {/* Chốt / trả lại chỉ áp cho việc đang chờ
-                                      quyết ở chỗ mình. */}
-                                  {row.item.status === "PENDING" ? (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        onClick={() => void doComplete(row)}
-                                        disabled={busy || !awaiting}
-                                        title={
-                                          awaiting
-                                            ? "Chốt hoàn thành nhiệm vụ này"
-                                            : "KPI tiến độ chưa đạt 100%"
-                                        }
-                                      >
-                                        <CheckCheck className="h-4 w-4" />
-                                        Hoàn thành
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="border-rose-300 bg-background text-rose-600 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900 dark:text-rose-400"
-                                        onClick={() => {
-                                          setReturnRow(row);
-                                          setReturnReason("");
-                                        }}
-                                        disabled={busy}
-                                      >
-                                        <Undo2 className="h-4 w-4" />
-                                        Trả lại
-                                      </Button>
-                                    </>
-                                  ) : null}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
+                      ) : null}
+                      {groupSilent > 0 ? (
+                        <Badge
+                          variant="secondary"
+                          className={cn("font-normal", kpiTone.warning.soft)}
+                        >
+                          Im lặng {groupSilent}
+                        </Badge>
+                      ) : null}
+                      {groupDone > 0 ? (
+                        <Badge
+                          variant="secondary"
+                          className={cn("font-normal", kpiTone.success.soft)}
+                        >
+                          Hoàn thành {groupDone}
+                        </Badge>
+                      ) : null}
+                      {groupPercent === null ? null : (
+                        <div className="ml-auto flex min-w-[140px] items-center gap-2">
+                          <ProgressBar percent={groupPercent} className="flex-1" />
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {groupPercent}%
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <CollapsibleContent className="border-t">
+                      {table}
+                    </CollapsibleContent>
+                  </Collapsible>
                 );
               })}
             </div>
           )}
+
+          {groupMode === "TASK" ? (
+            <TablePagination
+              page={safePage}
+              limit={limit}
+              total={total}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              onLimitChange={setLimit}
+              disabled={isLoading}
+            />
+          ) : null}
         </CardContent>
       </Card>
 
