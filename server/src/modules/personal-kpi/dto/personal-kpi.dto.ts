@@ -129,6 +129,27 @@ export class UpdatePersonalKpiProgressDto {
   evidence?: unknown[];
 }
 
+/**
+ * Chỉ huy chấm điểm rồi chốt hoàn thành.
+ *
+ * `values` theo khoá cột, chỉ nhận đúng các cột trong công thức của mẫu (tử số
+ * và ô phần trăm đi kèm); service tự lọc nên gửi thừa cũng không ghi được.
+ */
+export class ScorePersonalKpiDto {
+  @ApiPropertyOptional({
+    description: 'Điểm chỉ huy chấm: { "<khoá cột>": "<giá trị>" }',
+  })
+  @IsOptional()
+  @IsObject()
+  values?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: 'Nhận xét của chỉ huy' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+}
+
 /** Cấp trên sửa nội dung nhiệm vụ đang nằm ở tay mình - bắt buộc nêu lý do. */
 export class ReviewerEditPersonalKpiDto extends PersonalKpiContentDto {
   @ApiProperty({ description: 'Lý do sửa - hiện trong lịch sử nhiệm vụ' })

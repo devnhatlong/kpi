@@ -68,6 +68,7 @@ import {
   type PersonalKpiBoardRow,
 } from "@/features/personal-kpi/api";
 import { ProgressUpdateDialog } from "@/features/personal-kpi/components/progress-update-dialog";
+import { ReviewScoreDialog } from "@/features/personal-kpi/components/review-score-dialog";
 import {
   kpiTone,
   personalKpiStatusBadgeClass,
@@ -632,6 +633,8 @@ export function PersonalKpiTrackingView() {
   const [fromOverride, setFromOverride] = useState<string | null>(null);
   const [toOverride, setToOverride] = useState<string | null>(null);
   const [detailRow, setDetailRow] = useState<TrackingRow | null>(null);
+  /** Nhiệm vụ đang mở form chấm điểm để chốt hoàn thành. */
+  const [scoreRow, setScoreRow] = useState<TrackingRow | null>(null);
   const [returnRow, setReturnRow] = useState<TrackingRow | null>(null);
   const [returnReason, setReturnReason] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -781,21 +784,11 @@ export function PersonalKpiTrackingView() {
     await mutate();
   };
 
-  const doComplete = async (row: TrackingRow) => {
-    setBusyId(row.item.id);
-    try {
-      const result = await reviewPersonalKpi({
-        itemIds: [row.item.id],
-        decision: "COMPLETE",
-      });
-      toast.success(`Đã chốt hoàn thành ${result.count} nhiệm vụ.`);
-      await refresh();
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "Không chốt được."));
-    } finally {
-      setBusyId(null);
-    }
-  };
+  /**
+   * Chốt hoàn thành đi kèm chấm điểm - mở form thẩm định chứ không chốt thẳng.
+   * Điểm chỉ huy chấm mới là số vào công thức, nên không thể bỏ qua bước này.
+   */
+  const openScore = (row: TrackingRow) => setScoreRow(row);
 
   const doReturn = async () => {
     if (!returnRow) return;
@@ -971,7 +964,7 @@ export function PersonalKpiTrackingView() {
                     rows={group.rows}
                     busyId={busyId}
                     onDetail={setDetailRow}
-                    onComplete={(row) => void doComplete(row)}
+                    onComplete={openScore}
                     onReturn={(row) => {
                       setReturnRow(row);
                       setReturnReason("");
@@ -1070,6 +1063,16 @@ export function PersonalKpiTrackingView() {
           ) : null}
         </CardContent>
       </Card>
+
+      <ReviewScoreDialog
+        item={scoreRow?.item ?? null}
+        template={scoreRow?.template ?? null}
+        progressPercent={scoreRow?.summary.progressPercent ?? null}
+        onOpenChange={(open) => {
+          if (!open) setScoreRow(null);
+        }}
+        onScored={refresh}
+      />
 
       <ProgressUpdateDialog
         item={detailRow?.item ?? null}

@@ -30,7 +30,30 @@ export type ScoreCatalogs = {
 export type ScorableRow = {
   fieldValues?: Record<string, string | number>;
   catalogValues?: Record<string, { id: string; name: string }>;
+  /** Điểm chỉ huy chấm lại - có thì lấy, đây mới là số chốt. */
+  reviewValues?: Record<string, string | number>;
+  reviewCatalogValues?: Record<string, { id: string; name: string }>;
 };
+
+/**
+ * Ô nào chỉ huy đã chấm thì lấy số của chỉ huy, còn lại giữ số cán bộ tự chấm.
+ *
+ * Đọc theo TỪNG Ô chứ không phải "có chấm thì bỏ hết số cũ": chỉ huy có thể chỉ
+ * sửa cột chất lượng, cột tiến độ giữ nguyên - lúc đó cột tiến độ vẫn phải có
+ * số để chia, không thì cả trục mất mẫu số.
+ */
+function pickRaw(
+  row: ScorableRow,
+  key: string,
+): string | number | undefined {
+  const reviewed = row.reviewValues?.[key];
+  if (reviewed !== undefined && String(reviewed).trim() !== '') return reviewed;
+  return row.fieldValues?.[key];
+}
+
+function pickCatalogId(row: ScorableRow, key: string): string | undefined {
+  return row.reviewCatalogValues?.[key]?.id ?? row.catalogValues?.[key]?.id;
+}
 
 export type AxisScore = {
   /** Tổng mỗi cột tính được, khoá theo column.key. */
@@ -51,18 +74,18 @@ export function cellNumber(
   if (!source) return null;
 
   if (source === 'score_group_max') {
-    const id = row.catalogValues?.[column.key]?.id;
+    const id = pickCatalogId(row, column.key);
     const group = id ? catalogs.scoreGroups.get(id) : undefined;
     return group ? scoreGroupFormulaScore(group) : null;
   }
 
   if (source === 'quality_percent') {
-    const id = row.catalogValues?.[column.key]?.id;
+    const id = pickCatalogId(row, column.key);
     const level = id ? catalogs.qualityLevels.get(id) : undefined;
     return level ? level.percent : null;
   }
 
-  const raw = row.fieldValues?.[column.key];
+  const raw = pickRaw(row, column.key);
   if (raw === undefined || raw === null) return null;
   const text = String(raw).trim();
   if (!text) return null;

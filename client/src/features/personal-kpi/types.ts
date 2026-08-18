@@ -148,6 +148,16 @@ export type PersonalKpiItem = {
   sendNote?: string;
   /** Lý do cấp trên trả lại - do người duyệt gõ, không phải cảnh báo hệ thống. */
   rejectReason?: string;
+  /**
+   * Điểm chỉ huy chấm lại, theo khoá cột - đây mới là số chốt khi tính điểm.
+   * Số cán bộ tự chấm vẫn nằm nguyên ở `task` để đối chiếu.
+   */
+  reviewValues: Record<string, string>;
+  /** Ô danh mục chỉ huy chọn lại (mức chất lượng), theo khoá cột. */
+  reviewCatalogValues: Record<string, string>;
+  reviewNote?: string;
+  reviewScoredByName?: string;
+  reviewScoredAt?: string;
   decidedByName?: string;
   decidedAt?: string;
 };

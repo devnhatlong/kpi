@@ -270,6 +270,34 @@ export class PersonalKpiItem {
   @Prop({ type: Object, default: {} })
   attachments!: Record<string, PersonalKpiAttachment[]>;
 
+  // ----------------------------------------------------- chỉ huy chấm điểm
+
+  /**
+   * Điểm chỉ huy chấm lại, theo khoá cột - ĐÂY MỚI LÀ SỐ CHỐT.
+   *
+   * Để riêng chứ không đè lên fieldValues: đè thì mất số cán bộ tự chấm, không
+   * đối chiếu được và cũng không biết ai sửa. Công thức tính điểm trục ưu tiên
+   * đọc map này, ô nào chưa chấm mới lấy số tự chấm.
+   */
+  @Prop({ type: Object, default: {} })
+  reviewValues!: Record<string, string | number>;
+
+  /** Ô danh mục do chỉ huy chọn lại (mức chất lượng), theo khoá cột. */
+  @Prop({ type: Object, default: {} })
+  reviewCatalogValues!: Record<string, PersonalKpiCatalogValue>;
+
+  @Prop({ trim: true, default: '' })
+  reviewNote!: string;
+
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null })
+  reviewScoredById!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  reviewScoredByName!: string;
+
+  @Prop({ type: Date, default: null })
+  reviewScoredAt!: Date | null;
+
   // --------------------------------------------------------- mẫu bảng khoá
 
   /**

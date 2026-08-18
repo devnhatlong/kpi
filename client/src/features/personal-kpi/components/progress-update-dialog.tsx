@@ -292,7 +292,7 @@ function ReviewHistory({ logs }: { logs: PersonalKpiProgressLog[] }) {
         text="Lịch sử gửi duyệt"
         right={
           events.length > 0 ? (
-            <span className="flex gap-1">
+            <div className="flex gap-1">
               <Badge variant="secondary" className="font-normal">
                 {sentCount} lần gửi
               </Badge>
@@ -304,7 +304,7 @@ function ReviewHistory({ logs }: { logs: PersonalKpiProgressLog[] }) {
                   {returnCount} lần trả lại
                 </Badge>
               ) : null}
-            </span>
+            </div>
           ) : null
         }
       />
@@ -686,7 +686,8 @@ function ProgressForm({
               kèm số lần bị trả để biết đây là lần thứ mấy. */}
           {item.status === "RETURNED" ? (
             <div className="space-y-1 rounded-lg border border-rose-200 bg-rose-500/5 p-3 dark:border-rose-900">
-              <p
+              {/* div chứ không phải p: Badge render ra div. */}
+              <div
                 className={cn(
                   "flex items-center gap-1.5 text-sm font-semibold",
                   kpiTone.danger.text,
@@ -702,7 +703,7 @@ function ProgressForm({
                     Lần {returnCount}
                   </Badge>
                 ) : null}
-              </p>
+              </div>
               {item.rejectReason ? (
                 <p className="text-sm">
                   <span className="font-medium">Lý do trả lại: </span>

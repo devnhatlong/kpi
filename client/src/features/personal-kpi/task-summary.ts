@@ -2,6 +2,7 @@ import { flattenHeaderGroups } from "@/features/kpi-form-config/form-template-ut
 import type {
   FormHeaderGroup,
   FormTemplateColumn,
+  FormTemplateFooter,
   QualityLevel,
 } from "@/features/kpi-form-config/types";
 import type { PersonalTaskDraft } from "@/features/personal-kpi/types";
@@ -34,10 +35,11 @@ export type TaskSummary = {
   qualityPercent: number | null;
 };
 
-/** Bộ cột + cây nhóm header của mẫu gán cho trục. */
+/** Bộ cột + cây nhóm header + cấu hình công thức của mẫu gán cho trục. */
 type TemplateShape = {
   columns: FormTemplateColumn[];
   headerGroups: FormHeaderGroup[];
+  footer?: FormTemplateFooter;
 };
 
 /**
@@ -230,6 +232,64 @@ export function summarizeTask(
     deadlineTitle: deadlineColumn?.title ?? "Hạn",
     progressPercent: readColumnPercent(task, progressColumn, qualityLevelById),
     qualityPercent: readColumnPercent(task, qualityColumn, qualityLevelById),
+  };
+}
+
+/**
+ * Các ô chỉ huy chấm lại khi chốt hoàn thành.
+ *
+ * Lấy đúng theo CẤU HÌNH CÔNG THỨC của mẫu: `baseColumnKey` là mẫu số (A),
+ * `ratioColumnKeys` là các tử số (B, C...). Mỗi tử số kèm ô phần trăm nằm cùng
+ * nhóm header - đó là cặp "Thực tế hoàn thành % / Điểm tự chấm".
+ * Phải khớp `resolveScoreColumns` bên server, nếu không form chấm một đằng còn
+ * server nhận một nẻo.
+ */
+export type ScoreEntry = {
+  /** Vai trò trong công thức: B, C, D... */
+  role: string;
+  score: FormTemplateColumn;
+  percent?: FormTemplateColumn;
+};
+
+export type ScoreColumns = {
+  /** Cột mẫu số (A) - chỉ đọc, đó là chuẩn đã giao. */
+  base?: FormTemplateColumn;
+  entries: ScoreEntry[];
+};
+
+export function scoreColumns(template: TemplateShape | null): ScoreColumns {
+  const footer = template?.footer;
+  if (!template || !footer?.enabled || !footer.ratioColumnKeys?.length) {
+    return { entries: [] };
+  }
+
+  const visible = template.columns.filter((column) => column.visible);
+  const byKey = new Map(visible.map((column) => [column.key, column]));
+  const percents = visible.filter(isPercentColumn);
+
+  const entries: ScoreEntry[] = [];
+  footer.ratioColumnKeys.forEach((key, index) => {
+    const score = byKey.get(key);
+    if (!score) return;
+    const path = (score.headerPath ?? []).join("/");
+    // Loại chính nó: mẫu có thể lấy thẳng cột "Thực tế hoàn thành %" làm tử số,
+    // lúc đó cột điểm cũng là cột phần trăm - ghép cặp với chính mình thì bảng
+    // vẽ ra hai ô y hệt nhau.
+    const percent = percents.find(
+      (column) =>
+        column.key !== score.key &&
+        (column.headerPath ?? []).join("/") === path,
+    );
+    entries.push({
+      role: String.fromCharCode(66 + index),
+      score,
+      percent,
+    });
+  });
+
+  return {
+    base: footer.baseColumnKey ? byKey.get(footer.baseColumnKey) : undefined,
+    entries,
   };
 }
 

@@ -36,6 +36,12 @@ export type PersonalKpiApiRecord = {
   catalogValues?: Record<string, { id: string; name: string }>;
   fieldValues?: Record<string, string | number>;
   attachments?: Record<string, TaskAttachment[]>;
+  /** Điểm chỉ huy chấm lại - số chốt khi tính điểm trục. */
+  reviewValues?: Record<string, string | number>;
+  reviewCatalogValues?: Record<string, { id: string; name: string }>;
+  reviewNote?: string;
+  reviewScoredByName?: string;
+  reviewScoredAt?: string | null;
   lastSentAt?: string | null;
   /** Lần cán bộ cập nhật tiến độ gần nhất - dùng để tính "im lặng N ngày". */
   lastProgressAt?: string | null;
@@ -217,6 +223,21 @@ export function mapPersonalKpiFromApi(
       ? refName(row.currentRecipientId) || undefined
       : undefined,
     rejectReason: row.returnReason?.trim() || undefined,
+    reviewValues: Object.fromEntries(
+      Object.entries(row.reviewValues ?? {}).map(([key, value]) => [
+        key,
+        value == null ? "" : String(value),
+      ]),
+    ),
+    reviewCatalogValues: Object.fromEntries(
+      Object.entries(row.reviewCatalogValues ?? {}).map(([key, value]) => [
+        key,
+        value?.id ?? "",
+      ]),
+    ),
+    reviewNote: row.reviewNote?.trim() || undefined,
+    reviewScoredByName: row.reviewScoredByName || undefined,
+    reviewScoredAt: row.reviewScoredAt || undefined,
     decidedByName: row.lastDecidedById
       ? refName(row.lastDecidedById) || undefined
       : undefined,
@@ -384,6 +405,28 @@ export async function updatePersonalKpiProgress(
   const data = await unwrapData(
     api.patch<ApiResponse<PersonalKpiApiRecord>>(
       `/personal-kpi/${id}/progress`,
+      input,
+    ),
+  );
+  return mapPersonalKpiFromApi(data);
+}
+
+/**
+ * Chỉ huy chấm điểm rồi chốt hoàn thành.
+ * `values` theo khoá cột; server chỉ nhận đúng các cột trong công thức của mẫu.
+ */
+export type PersonalKpiScoreInput = {
+  values: Record<string, string>;
+  note?: string;
+};
+
+export async function scorePersonalKpi(
+  id: string,
+  input: PersonalKpiScoreInput,
+) {
+  const data = await unwrapData(
+    api.post<ApiResponse<PersonalKpiApiRecord>>(
+      `/personal-kpi/${id}/score`,
       input,
     ),
   );

@@ -74,21 +74,33 @@ export function cellNumber(
   const source = formulaValueSource(column);
   if (!source) return null;
 
-  if (source === "score_group_max") {
-    const id = row.catalogValues?.[column.key]?.id;
-    const group = id ? catalogs.scoreGroups.get(id) : undefined;
-    return group ? effectiveMaxScore(group) : null;
-  }
-
-  if (source === "quality_percent") {
-    const id = row.catalogValues?.[column.key]?.id;
-    const level = id ? catalogs.qualityLevels.get(id) : undefined;
+  /*
+    Ô nào chỉ huy đã chấm lại thì lấy số của chỉ huy - đó mới là số chốt.
+    Đọc theo TỪNG Ô chứ không phải "đã chấm thì bỏ hết số cũ": chỉ huy có thể
+    chỉ sửa cột chất lượng, cột còn lại vẫn phải có số để chia.
+    Luật này phải khớp `cellNumber` bên server, lệch là bảng và báo cáo ra hai
+    con số khác nhau.
+  */
+  if (source === "score_group_max" || source === "quality_percent") {
+    const id =
+      row.reviewCatalogValues?.[column.key]?.id ??
+      row.catalogValues?.[column.key]?.id;
+    if (!id) return null;
+    if (source === "score_group_max") {
+      const group = catalogs.scoreGroups.get(id);
+      return group ? effectiveMaxScore(group) : null;
+    }
+    const level = catalogs.qualityLevels.get(id);
     return level ? level.percent : null;
   }
 
-  // Dữ liệu nhập lưu dạng chuỗi nên phải nhận cả dấu phẩy thập phân.
-  const raw = cellText(row, column).trim();
+  const reviewed = row.reviewValues?.[column.key];
+  const raw =
+    reviewed !== undefined && String(reviewed).trim() !== ""
+      ? String(reviewed).trim()
+      : cellText(row, column).trim();
   if (!raw) return null;
+  // Dữ liệu nhập lưu dạng chuỗi nên phải nhận cả dấu phẩy thập phân.
   const parsed = Number(raw.replace(",", "."));
   return Number.isFinite(parsed) ? parsed : null;
 }

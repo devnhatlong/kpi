@@ -1,6 +1,7 @@
 import {
   FormHeaderGroup,
   FormTemplateColumn,
+  FormTemplateFooter,
 } from '@/modules/kpi-form-config/schemas/form-template.schema';
 
 /**
@@ -20,7 +21,67 @@ const PRODUCT_COLUMN_KEY = 'product';
 export type TrackingTemplate = {
   columns: FormTemplateColumn[];
   headerGroups: FormHeaderGroup[];
+  footer?: FormTemplateFooter;
 };
+
+/**
+ * Các ô mà chỉ huy chấm lại khi chốt hoàn thành.
+ *
+ * Lấy đúng theo CẤU HÌNH CÔNG THỨC của mẫu, không tự đoán: `baseColumnKey` là
+ * mẫu số (A), `ratioColumnKeys` là các tử số (B, C...). Mỗi tử số kèm ô phần
+ * trăm nằm cùng nhóm header với nó - đó là cặp "Thực tế hoàn thành % / Điểm tự
+ * chấm" trong bảng KPI.
+ */
+export type ScoreEntry = {
+  /** Nhãn vai trò trong công thức: B, C, D... */
+  role: string;
+  score: FormTemplateColumn;
+  percent?: FormTemplateColumn;
+};
+
+export type ScoreColumns = {
+  /** Cột mẫu số (A) - chỉ đọc, đây là chuẩn đã giao. */
+  base?: FormTemplateColumn;
+  entries: ScoreEntry[];
+};
+
+/** B, C, D... theo thứ tự tử số trong công thức. */
+function roleLabel(index: number): string {
+  return String.fromCharCode(66 + index);
+}
+
+export function resolveScoreColumns(
+  template: TrackingTemplate | null,
+): ScoreColumns {
+  const footer = template?.footer;
+  if (!template || !footer?.enabled || !footer.ratioColumnKeys?.length) {
+    return { entries: [] };
+  }
+
+  const visible = template.columns.filter((column) => column.visible);
+  const byKey = new Map(visible.map((column) => [column.key, column]));
+  const percentColumns = visible.filter(isPercentColumn);
+
+  const entries: ScoreEntry[] = [];
+  footer.ratioColumnKeys.forEach((key, index) => {
+    const score = byKey.get(key);
+    if (!score) return;
+    // Ô phần trăm đi kèm là ô nằm cùng nhóm header với cột điểm - trừ chính nó,
+    // vì mẫu có thể lấy thẳng cột phần trăm làm tử số.
+    const path = (score.headerPath ?? []).join('/');
+    const percent = percentColumns.find(
+      (column) =>
+        column.key !== score.key &&
+        (column.headerPath ?? []).join('/') === path,
+    );
+    entries.push({ role: roleLabel(index), score, percent });
+  });
+
+  return {
+    base: footer.baseColumnKey ? byKey.get(footer.baseColumnKey) : undefined,
+    entries,
+  };
+}
 
 export type TrackingColumns = {
   progress?: FormTemplateColumn;

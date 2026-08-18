@@ -16,6 +16,7 @@ import {
 import {
   computeAutoValue,
   FormTemplate,
+  FormTemplateColumn,
   FormTemplateDocument,
 } from '@/modules/kpi-form-config/schemas/form-template.schema';
 import { FormTemplatesService } from '@/modules/kpi-form-config/form-templates.service';
@@ -39,6 +40,7 @@ import {
   PersonalKpiStatisticsQueryDto,
   ReviewPersonalKpiDto,
   ReviewerEditPersonalKpiDto,
+  ScorePersonalKpiDto,
   SubmitPersonalKpiDto,
   UpdatePersonalKpiDto,
   UpdatePersonalKpiProgressDto,
@@ -51,6 +53,7 @@ import {
 import {
   isProgressComplete,
   readItemPercent,
+  resolveScoreColumns,
   resolveTrackingColumns,
   type TrackingTemplate,
 } from './personal-kpi-progress.util';
@@ -1748,6 +1751,15 @@ export class PersonalKpiService {
     return result;
   }
 
+  /** Số từ giá trị ô đã lưu; trống hoặc không phải số thì null (khác 0). */
+  private toNumberOrNull(raw: unknown): number | null {
+    if (raw === undefined || raw === null) return null;
+    const text = String(raw).trim();
+    if (!text) return null;
+    const value = Number(text.replace(',', '.'));
+    return Number.isFinite(value) ? value : null;
+  }
+
   /** Phần trăm của từng mức chất lượng, tra theo id. */
   private async qualityPercentMap(): Promise<Map<string, number>> {
     const levels = await this.qualityLevelModel.find().select('percent');
@@ -2043,6 +2055,139 @@ export class PersonalKpiService {
     ]);
 
     return { message: 'Đã cập nhật tiến độ.', data: item };
+  }
+
+  /**
+   * Chỉ huy chấm điểm rồi chốt hoàn thành trong một thao tác.
+   *
+   * Điểm chấm ghi vào `reviewValues` chứ không đè lên ô của cán bộ: số tự chấm
+   * phải còn để đối chiếu. Công thức tính điểm trục vẫn y nguyên như cấu hình,
+   * chỉ khác nguồn đọc - ô nào chỉ huy đã chấm thì lấy số đó.
+   */
+  async scoreAndComplete(
+    userId: string,
+    id: string,
+    dto: ScorePersonalKpiDto,
+  ) {
+    const actor = await this.requireActor(userId);
+    const item = await this.itemModel.findOne({
+      _id: this.requireObjectId(id, 'Nhiệm vụ'),
+      currentRecipientId: actor.id,
+      reviewStatus: { $in: ['PENDING', 'APPROVED'] },
+    });
+    if (!item) {
+      throw new NotFoundException(
+        'Không tìm thấy nhiệm vụ đang chờ bạn chốt.',
+      );
+    }
+
+    await this.assertProgressComplete([item]);
+
+    const template = await this.trackingTemplateOf(item);
+    const scoreColumns = resolveScoreColumns(template);
+    if (!scoreColumns.entries.length) {
+      throw new BadRequestException(
+        'Mẫu KPI của trục này chưa cấu hình công thức điểm nên chưa chấm được. Cấu hình tại Cấu hình form KPI › Mẫu bảng KPI.',
+      );
+    }
+
+    // Chỉ nhận đúng các cột trong công thức - gửi thừa khoá khác thì bỏ qua.
+    const allowed = new Map<string, FormTemplateColumn>();
+    for (const entry of scoreColumns.entries) {
+      allowed.set(entry.score.key, entry.score);
+      if (entry.percent) allowed.set(entry.percent.key, entry.percent);
+    }
+
+    const reviewValues = { ...(item.reviewValues ?? {}) };
+    const reviewCatalogValues = { ...(item.reviewCatalogValues ?? {}) };
+
+    for (const [key, raw] of Object.entries(dto.values ?? {})) {
+      const column = allowed.get(key);
+      if (!column) continue;
+      const value = String(raw ?? '').trim();
+
+      if (column.semanticKey === 'quality_level') {
+        if (!value) {
+          delete reviewCatalogValues[key];
+          continue;
+        }
+        const level = await this.qualityLevelModel
+          .findById(this.requireObjectId(value, 'Mức chất lượng'))
+          .select('name');
+        if (!level) {
+          throw new BadRequestException(
+            `Mức chất lượng không hợp lệ cho cột "${column.title}".`,
+          );
+        }
+        reviewCatalogValues[key] = { id: String(level._id), name: level.name };
+        continue;
+      }
+
+      if (!value) {
+        delete reviewValues[key];
+        continue;
+      }
+      const parsed = Number(value.replace(',', '.'));
+      if (!Number.isFinite(parsed)) {
+        throw new BadRequestException(`"${column.title}" phải là số.`);
+      }
+      reviewValues[key] = parsed;
+    }
+
+    /*
+      Cột tự tính (điểm tự chấm = % × điểm chuẩn) phải tính lại theo số chỉ huy
+      vừa chấm, không thì bảng hiện phần trăm mới mà điểm vẫn là điểm cũ.
+    */
+    const percentById = await this.qualityPercentMap();
+    for (const column of template?.columns ?? []) {
+      const auto = column.autoValue;
+      if (!auto) continue;
+
+      const pickedLevel =
+        reviewCatalogValues[auto.percentColumnKey]?.id ??
+        item.catalogValues?.[auto.percentColumnKey]?.id;
+      const rawPercent =
+        reviewValues[auto.percentColumnKey] ??
+        item.fieldValues?.[auto.percentColumnKey];
+      const percent = pickedLevel
+        ? (percentById.get(String(pickedLevel)) ?? null)
+        : this.toNumberOrNull(rawPercent);
+
+      const base = this.toNumberOrNull(
+        reviewValues[auto.baseColumnKey] ?? item.fieldValues?.[auto.baseColumnKey],
+      );
+      const value = computeAutoValue(auto.kind, percent, base);
+      if (value === null) delete reviewValues[column.key];
+      else reviewValues[column.key] = value;
+    }
+
+    const now = new Date();
+    item.reviewValues = reviewValues;
+    item.reviewCatalogValues = reviewCatalogValues;
+    item.markModified('reviewValues');
+    item.markModified('reviewCatalogValues');
+    item.reviewNote = dto.note?.trim() ?? '';
+    item.reviewScoredById = actor.id;
+    item.reviewScoredByName = actor.name;
+    item.reviewScoredAt = now;
+    item.reviewStatus = 'COMPLETED';
+    item.returnReason = '';
+    item.lastDecidedById = actor.id;
+    item.lastDecidedAt = now;
+
+    const percentByLevelId = await this.qualityPercentMap();
+    const { progress } = resolveTrackingColumns(template);
+    this.appendLog(item, {
+      type: 'COMPLETE',
+      actor,
+      percent: readItemPercent(item, progress, percentByLevelId),
+      note: item.reviewNote,
+      at: now,
+    });
+    await item.save();
+    await this.closeSubmissionsIfSettled([item]);
+
+    return { message: 'Đã chấm điểm và chốt hoàn thành.', data: item };
   }
 
   /**

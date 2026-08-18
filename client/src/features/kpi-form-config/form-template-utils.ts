@@ -3,6 +3,7 @@ import type {
   FormHeaderGroup,
   FormTemplate,
   FormTemplateColumn,
+  FormTemplateFooter,
 } from "./types";
 
 export type HeaderCell = {
@@ -18,6 +19,8 @@ export type HeaderCell = {
 export type ResolvedTemplate = {
   columns: FormTemplateColumn[];
   headerGroups: FormHeaderGroup[];
+  /** Cấu hình công thức điểm - nơi khai cột nào là mẫu số, cột nào là tử số. */
+  footer?: FormTemplateFooter;
   code: string;
   name: string;
 };
@@ -34,6 +37,7 @@ export function resolveTemplate(
   return {
     columns: template.columns,
     headerGroups: template.headerGroups ?? [],
+    footer: template.footer,
     code: template.code,
     name: template.name,
   };
