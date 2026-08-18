@@ -16,6 +16,7 @@ import {
 import useSWR from "swr";
 import { toast } from "sonner";
 
+import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import { TablePagination } from "@/components/common/table-pagination";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -923,44 +924,27 @@ export function PersonalKpiTrackingView() {
               </Button>
             )}
 
-            <div className="flex flex-wrap gap-1 rounded-lg bg-muted/60 p-1">
-              {TABS.map((entry) => (
-                <button
-                  key={entry.value}
-                  type="button"
-                  onClick={() => {
-                    setTab(entry.value);
-                    setPage(1);
-                  }}
-                  className={cn(
-                    "rounded-md px-2.5 py-1.5 text-sm transition-colors",
-                    tab === entry.value
-                      ? "bg-background font-medium text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {entry.label} ({counts[entry.value]})
-                </button>
-              ))}
-            </div>
+            <SegmentedTabs
+              ariaLabel="Lọc theo tình trạng"
+              value={tab}
+              onChange={(next) => {
+                setTab(next);
+                setPage(1);
+              }}
+              items={TABS.map((entry) => ({
+                value: entry.value,
+                label: `${entry.label} (${counts[entry.value]})`,
+              }))}
+            />
 
-            <div className="ml-auto flex gap-1 rounded-lg border p-1">
-              {GROUP_MODES.map((mode) => (
-                <button
-                  key={mode.value}
-                  type="button"
-                  onClick={() => setGroupMode(mode.value)}
-                  className={cn(
-                    "rounded-md px-3 py-1.5 text-sm transition-colors",
-                    groupMode === mode.value
-                      ? "bg-muted font-medium text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
+            <SegmentedTabs
+              ariaLabel="Cách nhóm danh sách"
+              value={groupMode}
+              onChange={setGroupMode}
+              items={GROUP_MODES}
+              className="ml-auto flex-nowrap border bg-transparent"
+              indicatorClassName="bg-muted shadow-none"
+            />
           </div>
 
           {isLoading ? (

@@ -19,6 +19,7 @@ import {
 import useSWR from "swr";
 import { toast } from "sonner";
 
+import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import { TablePagination } from "@/components/common/table-pagination";
 import {
   AlertDialog,
@@ -677,45 +678,28 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
       <Card className="shadow-sm">
         <CardContent className="space-y-4 py-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-1 rounded-lg bg-muted/60 p-1">
-              {TABS.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => {
-                    setTab(item.value);
-                    setPage(1);
-                  }}
-                  className={cn(
-                    "rounded-md px-3 py-1.5 text-sm transition-colors",
-                    tab === item.value
-                      ? "bg-background font-medium text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {item.label} ({counts[item.value]})
-                </button>
-              ))}
-            </div>
+            <SegmentedTabs
+              ariaLabel="Lọc theo trạng thái"
+              value={tab}
+              onChange={(next) => {
+                setTab(next);
+                setPage(1);
+              }}
+              items={TABS.map((item) => ({
+                value: item.value,
+                label: `${item.label} (${counts[item.value]})`,
+              }))}
+            />
 
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex gap-1 rounded-lg border p-1">
-                {GROUP_MODES.map((mode) => (
-                  <button
-                    key={mode.value}
-                    type="button"
-                    onClick={() => setGroupMode(mode.value)}
-                    className={cn(
-                      "rounded-md px-3 py-1.5 text-sm transition-colors",
-                      groupMode === mode.value
-                        ? "bg-muted font-medium text-foreground"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
+              <SegmentedTabs
+                ariaLabel="Cách nhóm danh sách"
+                value={groupMode}
+                onChange={setGroupMode}
+                items={GROUP_MODES}
+                className="border bg-transparent"
+                indicatorClassName="bg-muted shadow-none"
+              />
 
               <div className="relative w-full sm:w-56">
                 <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
