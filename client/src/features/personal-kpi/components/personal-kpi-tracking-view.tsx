@@ -662,8 +662,10 @@ export function PersonalKpiTrackingView() {
   const [fromOverride, setFromOverride] = useState<string | null>(null);
   const [toOverride, setToOverride] = useState<string | null>(null);
   const [detailRow, setDetailRow] = useState<TrackingRow | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   /** Nhiệm vụ đang mở form chấm điểm để chốt hoàn thành. */
   const [scoreRow, setScoreRow] = useState<TrackingRow | null>(null);
+  const [scoreOpen, setScoreOpen] = useState(false);
   const [returnRow, setReturnRow] = useState<TrackingRow | null>(null);
   const [returnReason, setReturnReason] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -821,7 +823,10 @@ export function PersonalKpiTrackingView() {
    * Chốt hoàn thành đi kèm chấm điểm - mở form thẩm định chứ không chốt thẳng.
    * Điểm chỉ huy chấm mới là số vào công thức, nên không thể bỏ qua bước này.
    */
-  const openScore = (row: TrackingRow) => setScoreRow(row);
+  const openScore = (row: TrackingRow) => {
+    setScoreRow(row);
+    setScoreOpen(true);
+  };
 
   const doReturn = async () => {
     if (!returnRow) return;
@@ -996,7 +1001,10 @@ export function PersonalKpiTrackingView() {
                   <TrackingTable
                     rows={group.rows}
                     busyId={busyId}
-                    onDetail={setDetailRow}
+                    onDetail={(row) => {
+                      setDetailRow(row);
+                      setDetailOpen(true);
+                    }}
                     onComplete={openScore}
                     onReturn={(row) => {
                       setReturnRow(row);
@@ -1098,22 +1106,20 @@ export function PersonalKpiTrackingView() {
       </Card>
 
       <ReviewScoreDialog
+        open={scoreOpen}
         item={scoreRow?.item ?? null}
         template={scoreRow?.template ?? null}
         progressPercent={scoreRow?.summary.progressPercent ?? null}
-        onOpenChange={(open) => {
-          if (!open) setScoreRow(null);
-        }}
+        onOpenChange={setScoreOpen}
         onScored={refresh}
       />
 
       <ProgressUpdateDialog
+        open={detailOpen}
         item={detailRow?.item ?? null}
         template={detailRow?.template ?? null}
         readOnly
-        onOpenChange={(open) => {
-          if (!open) setDetailRow(null);
-        }}
+        onOpenChange={setDetailOpen}
         onSaved={refresh}
       />
 

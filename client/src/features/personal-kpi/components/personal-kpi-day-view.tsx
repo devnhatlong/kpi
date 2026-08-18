@@ -211,6 +211,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   const [edit, setEdit] = useState<PersonalKpiItem | null>(null);
   /** Nhiệm vụ đang mở ô cập nhật tiến độ hằng ngày. */
   const [progressItem, setProgressItem] = useState<PersonalKpiItem | null>(null);
+  const [progressOpen, setProgressOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
   const [deleting, setDeleting] = useState<PersonalKpiItem | null>(null);
@@ -427,6 +428,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   /** Việc đã chốt vẫn mở được - hộp thoại tự chuyển sang chế độ chỉ xem. */
   const openProgress = (item: PersonalKpiItem) => {
     setProgressItem(item);
+    setProgressOpen(true);
   };
 
   const openSend = (item: PersonalKpiItem) => {
@@ -839,20 +841,19 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
       />
 
       <ProgressUpdateDialog
+        open={progressOpen}
         item={progressItem}
         template={
           progressItem
             ? (templates.byAxis.get(progressItem.axisId) ?? null)
             : null
         }
-        onOpenChange={(open) => {
-          if (!open) setProgressItem(null);
-        }}
+        onOpenChange={setProgressOpen}
         onSaved={async () => {
           await refreshDay();
         }}
         onRequestConfirm={(target) => {
-          setProgressItem(null);
+          setProgressOpen(false);
           openSend(target);
         }}
       />

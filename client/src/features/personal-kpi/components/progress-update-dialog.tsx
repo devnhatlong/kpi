@@ -1012,7 +1012,12 @@ function ProgressForm({
 }
 
 type ProgressUpdateDialogProps = {
-  /** Nhiệm vụ đang cập nhật; null = hộp thoại đóng. */
+  /**
+   * Đang mở hay không. Tách khỏi  để lúc đóng vẫn còn nội dung mà vẽ:
+   * xoá item ngay là hộp thoại rỗng loé lên trong lúc chạy hiệu ứng đóng.
+   */
+  open: boolean;
+  /** Nhiệm vụ đang cập nhật. */
   item: PersonalKpiItem | null;
   /** Mẫu bảng của trục chứa nhiệm vụ - quyết định ô nào sửa được ở đây. */
   template: ResolvedTemplate | null;
@@ -1034,6 +1039,7 @@ type ProgressUpdateDialogProps = {
  * nhật ký từng ngày. Chỉ động vào các ô theo dõi, mọi ô còn lại giữ nguyên.
  */
 export function ProgressUpdateDialog({
+  open,
   item,
   template,
   onOpenChange,
@@ -1041,7 +1047,9 @@ export function ProgressUpdateDialog({
   onRequestConfirm,
   readOnly: forceReadOnly = false,
 }: ProgressUpdateDialogProps) {
-  const columns = trackingColumns(template, item?.task);
+  const shown = item;
+
+  const columns = trackingColumns(template, shown?.task);
   const progressColumn = columns.progressColumn;
   const isCatalogProgress = progressColumn?.semanticKey === "quality_level";
   const isCatalogQuality =
@@ -1050,7 +1058,7 @@ export function ProgressUpdateDialog({
 
   // Mốc lấy đúng danh mục "Chất lượng thực hiện" đã cấu hình.
   const { data: levels = [] } = useSWR(
-    item && (isCatalogProgress || isCatalogQuality)
+    shown && (isCatalogProgress || isCatalogQuality)
       ? qualityLevelKeys.all
       : null,
     fetchQualityLevelsAll,
@@ -1082,10 +1090,10 @@ export function ProgressUpdateDialog({
     ? catalogMilestones
     : numberMilestones;
 
-  const summary = item
-    ? summarizeTask(item.task, template, qualityLevelById, {
-        values: item.reviewValues,
-        catalogValues: item.reviewCatalogValues,
+  const summary = shown
+    ? summarizeTask(shown.task, template, qualityLevelById, {
+        values: shown.reviewValues,
+        catalogValues: shown.reviewCatalogValues,
       })
     : null;
   const work = summary ? workState(summary.progressPercent) : null;
@@ -1094,24 +1102,24 @@ export function ProgressUpdateDialog({
     : null;
   /** Đã chốt hoàn thành, hoặc người xem không phải chủ nhiệm vụ. */
   const readOnly =
-    forceReadOnly || (!!item && !canUpdateProgress(item.status));
+    forceReadOnly || (!!shown && !canUpdateProgress(shown.status));
 
   return (
-    <Dialog open={!!item} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle className="pr-6">
-            {readOnly ? "Tiến độ" : "Cập nhật"}: {item?.workContentName}
+            {readOnly ? "Tiến độ" : "Cập nhật"}: {shown?.workContentName}
           </DialogTitle>
           <DialogDescription asChild>
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              {item ? (
+              {shown ? (
                 <>
                   <Badge
                     variant="secondary"
                     className={cn("font-normal", kpiTone.info.soft)}
                   >
-                    {item.axisName}
+                    {shown.axisName}
                   </Badge>
                   {work ? (
                     <Badge variant="secondary" className="font-normal">
@@ -1139,10 +1147,10 @@ export function ProgressUpdateDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {item && milestones.length > 0 ? (
+        {shown && milestones.length > 0 ? (
           <ProgressForm
-            key={item.id}
-            item={item}
+            key={shown.id}
+            item={shown}
             columns={columns}
             milestones={milestones}
             snapToMilestones={isCatalogProgress}

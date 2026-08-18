@@ -502,7 +502,9 @@ function ScoreForm({
 }
 
 type ReviewScoreDialogProps = {
-  /** Nhiệm vụ đang chấm; null = hộp thoại đóng. */
+  /** Đang mở hay không - tách khỏi  để lúc đóng vẫn còn nội dung mà vẽ. */
+  open: boolean;
+  /** Nhiệm vụ đang chấm. */
   item: PersonalKpiItem | null;
   template: ResolvedTemplate | null;
   /** KPI tiến độ hiện tại, hiện ở dòng tóm tắt. */
@@ -519,12 +521,15 @@ type ReviewScoreDialogProps = {
  * bảng đổi theo, không có cột nào viết cứng.
  */
 export function ReviewScoreDialog({
+  open,
   item,
   template,
   progressPercent,
   onOpenChange,
   onScored,
 }: ReviewScoreDialogProps) {
+  const shown = item;
+
   const columns = scoreColumns(template);
 
   const groupNameById = useMemo(() => {
@@ -543,7 +548,7 @@ export function ReviewScoreDialog({
   };
 
   return (
-    <Dialog open={!!item} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Chỉ huy chấm điểm KPI</DialogTitle>
@@ -552,7 +557,7 @@ export function ReviewScoreDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {!item ? null : columns.entries.length === 0 ? (
+        {!shown ? null : columns.entries.length === 0 ? (
           <>
             <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
               <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500" />
@@ -574,8 +579,8 @@ export function ReviewScoreDialog({
           </>
         ) : (
           <ScoreForm
-            key={item.id}
-            item={item}
+            key={shown.id}
+            item={shown}
             columns={columns}
             groupLabel={groupLabel}
             templateColumns={template?.columns ?? []}
