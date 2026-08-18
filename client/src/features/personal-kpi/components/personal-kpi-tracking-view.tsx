@@ -462,6 +462,21 @@ function TrackingTable({
                       </span>
                     </div>
                   )}
+                  {/* Chỉ huy đã chấm khác cán bộ thì nói rõ số cũ ngay tại ô. */}
+                  {row.summary.reviewChanges.map((change) => (
+                    <p
+                      key={change.field}
+                      className={cn(
+                        "mt-0.5 whitespace-nowrap text-xs tabular-nums",
+                        change.to < change.from
+                          ? kpiTone.danger.text
+                          : kpiTone.success.text,
+                      )}
+                    >
+                      {change.to < change.from ? "▼" : "▲"} {change.title}: tự
+                      chấm {change.from}%
+                    </p>
+                  ))}
                   <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
                     {lastTouchedLabel(row)}
                   </div>
@@ -505,6 +520,20 @@ function TrackingTable({
                   >
                     {PERSONAL_KPI_STATUS_LABEL[row.item.status]}
                   </Badge>
+                  {row.summary.reviewLowered ? (
+                    <Badge
+                      variant="secondary"
+                      className={cn("mt-1 font-normal", kpiTone.danger.soft)}
+                      title={row.summary.reviewChanges
+                        .map(
+                          (change) =>
+                            `${change.title}: ${change.from}% → ${change.to}%`,
+                        )
+                        .join("; ")}
+                    >
+                      Bị hạ điểm
+                    </Badge>
+                  ) : null}
                 </TableCell>
 
                 <TableCell className="align-middle text-sm tabular-nums">
@@ -680,6 +709,10 @@ export function PersonalKpiTrackingView() {
             item.task,
             axis.template,
             qualityLevelById,
+            {
+              values: item.reviewValues,
+              catalogValues: item.reviewCatalogValues,
+            },
           );
           const department =
             raw.ownerDepartmentId && typeof raw.ownerDepartmentId === "object"

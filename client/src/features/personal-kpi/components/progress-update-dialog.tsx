@@ -1083,7 +1083,10 @@ export function ProgressUpdateDialog({
     : numberMilestones;
 
   const summary = item
-    ? summarizeTask(item.task, template, qualityLevelById)
+    ? summarizeTask(item.task, template, qualityLevelById, {
+        values: item.reviewValues,
+        catalogValues: item.reviewCatalogValues,
+      })
     : null;
   const work = summary ? workState(summary.progressPercent) : null;
   const deadline = summary

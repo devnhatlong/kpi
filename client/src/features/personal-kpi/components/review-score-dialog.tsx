@@ -59,6 +59,23 @@ const NOTE_PRESETS = [
   "Chất lượng sản phẩm chưa cao, cần bổ sung hoàn thiện ở nhiệm vụ tiếp theo.",
 ];
 
+/** Chênh lệch so với số cán bộ tự chấm: đỏ là hạ, xanh là nâng. */
+function DeltaTag({ gap, suffix }: { gap: number | null; suffix: string }) {
+  if (gap === null) return null;
+  return (
+    <span
+      className={cn(
+        "ml-1 font-medium",
+        gap < 0 ? kpiTone.danger.text : kpiTone.success.text,
+      )}
+    >
+      ({gap > 0 ? "+" : ""}
+      {formatScoreNumber(gap)}
+      {suffix})
+    </span>
+  );
+}
+
 function headerPathOf(column: FormTemplateColumn): string {
   return (column.headerPath ?? []).join("/");
 }
@@ -146,37 +163,77 @@ function ScoreForm({
     return raw;
   };
 
+  /**
+   * Chênh lệch giữa số chỉ huy đang gõ và số cán bộ tự chấm.
+   * null = không so được (một trong hai ô trống, hoặc không ra số).
+   */
+  /**
+   * Con số của một ô, dùng chung cho mọi phép so sánh và tính trước.
+   *
+   * Ô danh mục lưu id nên phải tra danh mục; nhưng dữ liệu cũ có thể lưu thẳng
+   * chữ ("100%") nên vẫn thử bóc số từ chữ trước khi chịu thua - thiếu nhánh này
+   * là chỗ nào cũng im lặng trả null và giao diện không nói được gì.
+   */
+  const numberOf = (column: FormTemplateColumn, raw: string): number | null => {
+    const text = raw.trim();
+    if (!text) return null;
+
+    const catalog = catalogOfSemantic(column.semanticKey);
+    if (catalog === "quality_level") {
+      const level =
+        qualityLevelById.get(text) ??
+        [...qualityLevelById.values()].find((entry) => entry.name === text);
+      if (level) return level.percent;
+    }
+    if (catalog === "score_group") {
+      const group = scoreGroupById.get(text);
+      if (group) return group.maxScore;
+    }
+
+    const parsed = Number(text.replace("%", "").replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  /** Chênh lệch giữa số chỉ huy đang gõ và số cán bộ tự chấm. */
+  const deltaOf = (column: FormTemplateColumn): number | null => {
+    const self = numberOf(column, selfValue(item, column));
+    const scored = numberOf(column, values[column.key] ?? "");
+    if (self === null || scored === null || self === scored) return null;
+    return scored - self;
+  };
+
   /** Phần trăm của một ô, để tính trước giá trị cột tự tính. */
   const percentOf = (key: string): number | null => {
     const column = templateColumns.find((entry) => entry.key === key);
     if (!column) return null;
-    const raw = values[key] ?? selfValue(item, column);
-    if (!raw.trim()) return null;
-    if (catalogOfSemantic(column.semanticKey) === "quality_level") {
-      return qualityLevelById.get(raw)?.percent ?? null;
-    }
-    const parsed = Number(raw.replace(",", "."));
-    return Number.isFinite(parsed) ? parsed : null;
+    return numberOf(column, values[key] ?? selfValue(item, column));
   };
 
   /**
    * Giá trị cột tự tính theo số chỉ huy đang gõ - hiện trước cho thấy điểm nhảy
    * theo phần trăm. Con số lưu lại vẫn do server tính.
    */
-  const autoPreview = (column: FormTemplateColumn): string => {
+  const autoValueOf = (column: FormTemplateColumn): number | null => {
     const auto = column.autoValue;
-    if (!auto) return "";
+    if (!auto) return null;
     const base = Number(
       (values[auto.baseColumnKey] ??
         item.task.fieldValues?.[auto.baseColumnKey] ??
         "").replace(",", "."),
     );
-    const computed = computeAutoValue(
+    return computeAutoValue(
       auto.kind,
       percentOf(auto.percentColumnKey),
       Number.isFinite(base) ? base : null,
     );
-    return computed === null ? "-" : formatScoreNumber(computed);
+  };
+
+  /** Cột tự tính cũng phải nói được nó tụt bao nhiêu so với số cán bộ khai. */
+  const autoDeltaOf = (column: FormTemplateColumn): number | null => {
+    const computed = autoValueOf(column);
+    const self = numberOf(column, selfValue(item, column));
+    if (computed === null || self === null || computed === self) return null;
+    return computed - self;
   };
 
   const submit = async () => {
@@ -314,7 +371,12 @@ function ScoreForm({
                             // do hệ thống tính lại theo phần trăm vừa chấm.
                             <p className="py-2 text-center text-base font-semibold">
                               {column.autoValue
-                                ? autoPreview(column)
+                                ? (() => {
+                                    const computed = autoValueOf(column);
+                                    return computed === null
+                                      ? "-"
+                                      : formatScoreNumber(computed);
+                                  })()
                                 : show(column, selfValue(item, column))}
                             </p>
                           ) : catalog ? (
@@ -345,9 +407,30 @@ function ScoreForm({
                             />
                           )}
                           <p className="mt-1 text-center text-xs text-muted-foreground">
-                            {column.autoValue
-                              ? "Hệ thống tự tính"
-                              : `Tự chấm: ${show(column, selfValue(item, column))}`}
+                            {column.autoValue ? (
+                              <>
+                                Tự chấm: {show(column, selfValue(item, column))}
+                                <DeltaTag
+                                  gap={autoDeltaOf(column)}
+                                  suffix=""
+                                />
+                              </>
+                            ) : (
+                              <>
+                                Tự chấm: {show(column, selfValue(item, column))}
+                                {/* Chênh lệch so với số cán bộ khai - đỏ là
+                                    đang hạ điểm, xanh là nâng. */}
+                                <DeltaTag
+                                  gap={deltaOf(column)}
+                                  suffix={
+                                    catalogOfSemantic(column.semanticKey) ===
+                                    "quality_level"
+                                      ? "%"
+                                      : ""
+                                  }
+                                />
+                              </>
+                            )}
                           </p>
                         </TableCell>
                       );

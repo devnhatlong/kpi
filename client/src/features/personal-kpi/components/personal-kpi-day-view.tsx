@@ -257,7 +257,10 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     () =>
       items.map((item) => {
         const template = templates.byAxis.get(item.axisId) ?? null;
-        const summary = summarizeTask(item.task, template, qualityLevelById);
+        const summary = summarizeTask(item.task, template, qualityLevelById, {
+          values: item.reviewValues,
+          catalogValues: item.reviewCatalogValues,
+        });
         return {
           item,
           summary,

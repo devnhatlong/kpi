@@ -106,13 +106,21 @@ export function isSilent(row: DayTaskRow): boolean {
  * Ô phần trăm KPI: thanh chạy + con số, đủ 100% thì xanh và đổi sang dấu tích.
  * Tiến độ và chất lượng dùng chung một kiểu để đặt cạnh nhau còn so được.
  */
-function PercentCell({ percent }: { percent: number | null }) {
+function PercentCell({
+  percent,
+  change,
+}: {
+  percent: number | null;
+  /** Số cán bộ tự chấm, chỉ truyền khi chỉ huy đã chấm khác đi. */
+  change?: { from: number; to: number };
+}) {
   if (percent === null) {
     return <span className="text-sm text-muted-foreground">-</span>;
   }
 
   const full = percent >= 100;
   return (
+    <div>
     <div className="flex items-center gap-2">
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
         <div
@@ -130,6 +138,19 @@ function PercentCell({ percent }: { percent: number | null }) {
           {percent}%
         </span>
       )}
+      </div>
+      {/* Chỉ huy chấm khác thì nói rõ số cũ, không thì người khai tưởng mình
+          nhập sai. */}
+      {change ? (
+        <p
+          className={cn(
+            "mt-0.5 text-xs tabular-nums",
+            change.to < change.from ? kpiTone.danger.text : kpiTone.success.text,
+          )}
+        >
+          {change.to < change.from ? "▼" : "▲"} Tự chấm {change.from}%
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -240,13 +261,23 @@ export function DayTaskTable({
 
                 {/* Tiến độ (nhóm B) - căn cứ cho tình trạng thực hiện. */}
                 <TableCell className="align-middle">
-                  <PercentCell percent={summary.progressPercent} />
+                  <PercentCell
+                    percent={summary.progressPercent}
+                    change={summary.reviewChanges.find(
+                      (entry) => entry.field === "progress",
+                    )}
+                  />
                 </TableCell>
 
                 {/* Chất lượng (nhóm C) - đứng riêng vì tiến độ 100% mà chất
                     lượng 75% là chuyện bình thường, hai con số không thay nhau. */}
                 <TableCell className="align-middle">
-                  <PercentCell percent={summary.qualityPercent} />
+                  <PercentCell
+                    percent={summary.qualityPercent}
+                    change={summary.reviewChanges.find(
+                      (entry) => entry.field === "quality",
+                    )}
+                  />
                 </TableCell>
 
                 <TableCell className="align-middle">
@@ -305,6 +336,21 @@ export function DayTaskTable({
                   >
                     {PERSONAL_KPI_STATUS_LABEL[item.status]}
                   </Badge>
+                  {/* Cán bộ phải thấy ngay mình bị hạ điểm, và hạ ở ô nào. */}
+                  {summary.reviewLowered ? (
+                    <Badge
+                      variant="secondary"
+                      className={cn("mt-1 font-normal", kpiTone.danger.soft)}
+                      title={summary.reviewChanges
+                        .map(
+                          (change) =>
+                            `${change.title}: ${change.from}% → ${change.to}%`,
+                        )
+                        .join("; ")}
+                    >
+                      Bị hạ điểm
+                    </Badge>
+                  ) : null}
                 </TableCell>
 
                 <TableCell className="align-middle text-sm text-muted-foreground">

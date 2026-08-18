@@ -33,6 +33,15 @@ export type TaskSummary = {
    * con số này thay cho tiến độ.
    */
   qualityPercent: number | null;
+  /** Ô chỉ huy chấm khác số cán bộ tự chấm - để danh sách nói rõ đã bị sửa. */
+  reviewChanges: Array<{
+    field: "progress" | "quality";
+    title: string;
+    from: number;
+    to: number;
+  }>;
+  /** Có ô nào bị chỉ huy hạ xuống không. */
+  reviewLowered: boolean;
 };
 
 /** Bộ cột + cây nhóm header + cấu hình công thức của mẫu gán cho trục. */
@@ -216,13 +225,64 @@ export function trackingColumns(
   };
 }
 
+/** Điểm chỉ huy chấm lại, đọc từ chính nhiệm vụ. */
+export type ReviewInput = {
+  values: Record<string, string>;
+  catalogValues: Record<string, string>;
+};
+
+/** Ghép số chỉ huy chấm lên trên số tự chấm để đọc ra giá trị chốt. */
+function withReview(
+  task: PersonalTaskDraft,
+  review: ReviewInput | undefined,
+): PersonalTaskDraft {
+  if (!review) return task;
+  return {
+    ...task,
+    fieldValues: { ...(task.fieldValues ?? {}), ...review.values },
+    catalogValues: { ...(task.catalogValues ?? {}), ...review.catalogValues },
+  };
+}
+
 export function summarizeTask(
   task: PersonalTaskDraft,
   template: TemplateShape | null,
   qualityLevelById: Map<string, QualityLevel>,
+  review?: ReviewInput,
 ): TaskSummary {
   const { titleColumn, deadlineColumn, progressColumn, qualityColumn } =
     trackingColumns(template, task);
+
+  /*
+    Số hiện lên danh sách là SỐ CHỐT: chỉ huy chấm lại thì lấy số của chỉ huy.
+    Số tự chấm vẫn đọc được từ `task` để so, nhưng không phải thứ đem đi tính.
+  */
+  const final = withReview(task, review);
+  const progressPercent = readColumnPercent(
+    final,
+    progressColumn,
+    qualityLevelById,
+  );
+  const qualityPercent = readColumnPercent(
+    final,
+    qualityColumn,
+    qualityLevelById,
+  );
+
+  const changes: TaskSummary["reviewChanges"] = [];
+  if (review) {
+    const pairs = [
+      { field: "progress" as const, column: progressColumn },
+      { field: "quality" as const, column: qualityColumn },
+    ];
+    for (const { field, column } of pairs) {
+      if (!column) continue;
+      const self = readColumnPercent(task, column, qualityLevelById);
+      const scored = readColumnPercent(final, column, qualityLevelById);
+      if (self === null || scored === null || self === scored) continue;
+      changes.push({ field, title: column.title, from: self, to: scored });
+    }
+  }
 
   return {
     title: titleColumn ? (task.fieldValues?.[titleColumn.key] ?? "").trim() : "",
@@ -230,8 +290,10 @@ export function summarizeTask(
       ? (task.fieldValues?.[deadlineColumn.key] ?? "").trim()
       : "",
     deadlineTitle: deadlineColumn?.title ?? "Hạn",
-    progressPercent: readColumnPercent(task, progressColumn, qualityLevelById),
-    qualityPercent: readColumnPercent(task, qualityColumn, qualityLevelById),
+    progressPercent,
+    qualityPercent,
+    reviewChanges: changes,
+    reviewLowered: changes.some((change) => change.to < change.from),
   };
 }
 
