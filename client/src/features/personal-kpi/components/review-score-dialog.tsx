@@ -39,6 +39,15 @@ import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import { scorePersonalKpi } from "@/features/personal-kpi/api";
 import { formatScoreNumber } from "@/features/personal-kpi/board-cell";
 import { CatalogSelectCell } from "@/features/personal-kpi/components/catalog-select-cell";
+import { DeltaTag } from "@/features/personal-kpi/components/score-delta-tag";
+import {
+  gapSuffix,
+  groupColumnsOf,
+  numberOfValue,
+  selfValue,
+  showValue,
+  type CatalogMaps,
+} from "@/features/personal-kpi/review-scores";
 import { kpiTone } from "@/features/personal-kpi/status-styles";
 import {
   scoreColumns,
@@ -58,39 +67,6 @@ const NOTE_PRESETS = [
   "Hoàn thành nhưng còn chậm tiến độ, rút kinh nghiệm cho nhiệm vụ sau.",
   "Chất lượng sản phẩm chưa cao, cần bổ sung hoàn thiện ở nhiệm vụ tiếp theo.",
 ];
-
-/** Chênh lệch so với số cán bộ tự chấm: đỏ là hạ, xanh là nâng. */
-function DeltaTag({ gap, suffix }: { gap: number | null; suffix: string }) {
-  if (gap === null) return null;
-  return (
-    <span
-      className={cn(
-        "ml-1 font-medium",
-        gap < 0 ? kpiTone.danger.text : kpiTone.success.text,
-      )}
-    >
-      ({gap > 0 ? "+" : ""}
-      {formatScoreNumber(gap)}
-      {suffix})
-    </span>
-  );
-}
-
-function headerPathOf(column: FormTemplateColumn): string {
-  return (column.headerPath ?? []).join("/");
-}
-
-/**
- * Giá trị cán bộ tự chấm ở một ô.
- * Cột danh mục (nhóm điểm, mức chất lượng) giữ id ở catalogValues chứ không
- * nằm trong fieldValues - đọc nhầm chỗ là ô nào cũng ra rỗng.
- */
-function selfValue(item: PersonalKpiItem, column: FormTemplateColumn): string {
-  if (catalogOfSemantic(column.semanticKey)) {
-    return item.task.catalogValues?.[column.key] ?? "";
-  }
-  return item.task.fieldValues?.[column.key] ?? "";
-}
 
 type ScoreFormProps = {
   item: PersonalKpiItem;
@@ -115,19 +91,10 @@ function ScoreForm({
 }: ScoreFormProps) {
   const scoreGroupById = useScoreGroupMap();
   const qualityLevelById = useQualityLevelMap();
+  const maps: CatalogMaps = { qualityLevelById, scoreGroupById };
 
-  /**
-   * Cả nhóm hiện lên bảng, không chỉ cột nằm trong công thức: nhóm "KPI tiến
-   * độ (B)" có cả ô phần trăm lẫn ô điểm tự chấm, thiếu một ô là chỉ huy không
-   * đối chiếu được.
-   */
-  const entryColumns = (entry: ScoreEntry): FormTemplateColumn[] => {
-    const path = headerPathOf(entry.score);
-    const group = templateColumns.filter(
-      (column) => column.visible && headerPathOf(column) === path,
-    );
-    return group.length ? group : [entry.score];
-  };
+  const entryColumns = (entry: ScoreEntry): FormTemplateColumn[] =>
+    groupColumnsOf(entry, templateColumns);
 
   /** Ô chỉ huy gõ được: cột trong công thức, trừ cột hệ thống tự tính. */
   const isEditable = (entry: ScoreEntry, column: FormTemplateColumn) =>
@@ -152,49 +119,15 @@ function ScoreForm({
   const [note, setNote] = useState(item.reviewNote || NOTE_PRESETS[0]!);
   const [saving, setSaving] = useState(false);
 
-  /** Đổi giá trị thô thành chữ đọc được: cột danh mục thì tra tên trong danh mục. */
-  const show = (column: FormTemplateColumn, raw: string) => {
-    if (!raw.trim()) return "-";
-    const catalog = catalogOfSemantic(column.semanticKey);
-    if (catalog === "score_group") return scoreGroupById.get(raw)?.name ?? raw;
-    if (catalog === "quality_level") {
-      return qualityLevelById.get(raw)?.name ?? raw;
-    }
-    return raw;
-  };
+  const show = (column: FormTemplateColumn, raw: string) =>
+    showValue(column, raw, maps);
+  const numberOf = (column: FormTemplateColumn, raw: string) =>
+    numberOfValue(column, raw, maps);
 
   /**
    * Chênh lệch giữa số chỉ huy đang gõ và số cán bộ tự chấm.
    * null = không so được (một trong hai ô trống, hoặc không ra số).
    */
-  /**
-   * Con số của một ô, dùng chung cho mọi phép so sánh và tính trước.
-   *
-   * Ô danh mục lưu id nên phải tra danh mục; nhưng dữ liệu cũ có thể lưu thẳng
-   * chữ ("100%") nên vẫn thử bóc số từ chữ trước khi chịu thua - thiếu nhánh này
-   * là chỗ nào cũng im lặng trả null và giao diện không nói được gì.
-   */
-  const numberOf = (column: FormTemplateColumn, raw: string): number | null => {
-    const text = raw.trim();
-    if (!text) return null;
-
-    const catalog = catalogOfSemantic(column.semanticKey);
-    if (catalog === "quality_level") {
-      const level =
-        qualityLevelById.get(text) ??
-        [...qualityLevelById.values()].find((entry) => entry.name === text);
-      if (level) return level.percent;
-    }
-    if (catalog === "score_group") {
-      const group = scoreGroupById.get(text);
-      if (group) return group.maxScore;
-    }
-
-    const parsed = Number(text.replace("%", "").replace(",", "."));
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-
-  /** Chênh lệch giữa số chỉ huy đang gõ và số cán bộ tự chấm. */
   const deltaOf = (column: FormTemplateColumn): number | null => {
     const self = numberOf(column, selfValue(item, column));
     const scored = numberOf(column, values[column.key] ?? "");
@@ -422,12 +355,7 @@ function ScoreForm({
                                     đang hạ điểm, xanh là nâng. */}
                                 <DeltaTag
                                   gap={deltaOf(column)}
-                                  suffix={
-                                    catalogOfSemantic(column.semanticKey) ===
-                                    "quality_level"
-                                      ? "%"
-                                      : ""
-                                  }
+                                  suffix={gapSuffix(column)}
                                 />
                               </>
                             )}
@@ -502,7 +430,7 @@ function ScoreForm({
 }
 
 type ReviewScoreDialogProps = {
-  /** Đang mở hay không - tách khỏi  để lúc đóng vẫn còn nội dung mà vẽ. */
+  /** Đang mở hay không - tách khỏi `item` để lúc đóng vẫn còn nội dung mà vẽ. */
   open: boolean;
   /** Nhiệm vụ đang chấm. */
   item: PersonalKpiItem | null;

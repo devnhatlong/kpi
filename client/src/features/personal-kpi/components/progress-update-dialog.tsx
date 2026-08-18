@@ -39,6 +39,11 @@ import { entityId } from "@/features/kpi-form-config/types";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
 import { updatePersonalKpiProgress } from "@/features/personal-kpi/api";
 import { AttachmentCell } from "@/features/personal-kpi/components/attachment-cell";
+import { ReviewScoreSummary } from "@/features/personal-kpi/components/review-score-summary";
+import {
+  useReviewScores,
+  type ReviewScoreReport,
+} from "@/features/personal-kpi/review-scores";
 import { kpiTone } from "@/features/personal-kpi/status-styles";
 import {
   WORK_STATE_LABEL,
@@ -97,6 +102,11 @@ type MilestoneSliderProps = {
   value: string;
   /** Giá trị lúc mở hộp thoại - hiện "cũ → mới". */
   initialValue: string;
+  /**
+   * Phần trăm chỉ huy chốt lại. Có số này thì thanh đứng ở SỐ CHỐT còn số cán
+   * bộ tự chấm bị gạch ngang - đây là con số đi vào công thức tính điểm.
+   */
+  scoredPercent?: number | null;
   disabled: boolean;
   onChange: (value: string) => void;
 };
@@ -122,11 +132,16 @@ function MilestoneSlider({
   snap,
   value,
   initialValue,
+  scoredPercent,
   disabled,
   onChange,
 }: MilestoneSliderProps) {
-  const percentNow = percentOfValue(value, milestones, snap);
+  const percentSelf = percentOfValue(value, milestones, snap);
   const percentBefore = percentOfValue(initialValue, milestones, snap);
+  const scored = scoredPercent ?? null;
+  /** Số đang hiện: đã chấm lại thì lấy số chỉ huy, chưa thì số cán bộ khai. */
+  const percentNow = scored ?? percentSelf;
+  const lowered = scored !== null && scored < percentSelf;
 
   const setByPercent = (percent: number) => {
     if (!snap) {
@@ -154,11 +169,39 @@ function MilestoneSlider({
           ) : null}
         </div>
         <span className="shrink-0 text-sm tabular-nums">
-          <span className="text-muted-foreground">{percentBefore}%</span>
-          <span className="mx-1 text-muted-foreground">→</span>
-          <span className={cn("font-semibold", kpiTone.info.text)}>
-            {percentNow}%
-          </span>
+          {scored === null ? (
+            <>
+              <span className="text-muted-foreground">{percentBefore}%</span>
+              <span className="mx-1 text-muted-foreground">→</span>
+              <span className={cn("font-semibold", kpiTone.info.text)}>
+                {percentNow}%
+              </span>
+            </>
+          ) : scored !== percentSelf ? (
+            <>
+              <span className="text-muted-foreground line-through">
+                Tự chấm {percentSelf}%
+              </span>
+              <span className="mx-1 text-muted-foreground">→</span>
+              <span
+                className={cn(
+                  "font-semibold",
+                  lowered ? kpiTone.danger.text : kpiTone.success.text,
+                )}
+              >
+                Chỉ huy {scored}%
+              </span>
+            </>
+          ) : (
+            <>
+              <span className={cn("font-semibold", kpiTone.info.text)}>
+                {scored}%
+              </span>
+              <span className="ml-1 text-xs font-normal text-muted-foreground">
+                chỉ huy giữ nguyên
+              </span>
+            </>
+          )}
         </span>
       </div>
 
@@ -202,6 +245,19 @@ function MilestoneSlider({
                 />
               );
             })}
+          {/* Số cán bộ tự chấm vẫn để lại một dấu trên thanh - nhìn là thấy
+              ngay chỉ huy kéo từ đâu về đâu. */}
+          {scored !== null && scored !== percentSelf ? (
+            <span
+              className={cn(
+                "absolute top-1/2 size-2.5 -translate-y-1/2 rounded-full border-2 bg-background",
+                markPosition(percentSelf).className,
+                lowered ? "border-rose-400" : "border-emerald-400",
+              )}
+              style={markPosition(percentSelf).style}
+              title={`Cán bộ tự chấm ${percentSelf}%`}
+            />
+          ) : null}
         </div>
       </div>
 
@@ -531,6 +587,13 @@ type ProgressFormProps = {
   snapQuality: boolean;
   /** Việc đã chốt hoàn thành - chỉ xem lại, không sửa. */
   readOnly: boolean;
+  /**
+   * Phần trăm chỉ huy chốt cho hai ô tiến độ / chất lượng.
+   * Chỉ có sau khi chấm điểm; lúc đó đây mới là số thật của nhiệm vụ.
+   */
+  scored?: { progress: number | null; quality: number | null };
+  /** Bảng đối chiếu điểm tự chấm ↔ điểm chỉ huy chốt. */
+  review: ReviewScoreReport;
   onDone: () => void;
   onSaved: () => void | Promise<void>;
   onRequestConfirm?: (item: PersonalKpiItem) => void;
@@ -544,6 +607,8 @@ function ProgressForm({
   qualityMilestones,
   snapQuality,
   readOnly,
+  scored,
+  review,
   onDone,
   onSaved,
   onRequestConfirm,
@@ -619,7 +684,13 @@ function ProgressForm({
     note.trim() !== "" ||
     evidenceChanged;
 
-  const done = percentNow >= 100;
+  /**
+   * Số chốt của nhiệm vụ: chỉ huy chấm lại thì lấy số của chỉ huy.
+   * Mọi chỗ nói "tiến độ bao nhiêu" đều đọc số này, đừng đọc số tự chấm.
+   */
+  const percentFinal = scored?.progress ?? percentNow;
+
+  const done = percentFinal >= 100;
   const hasProduct = !columns.productColumn || product.trim().length > 0;
   /**
    * Tệp minh chứng KHÔNG phải điều kiện chốt - nhiều việc chẳng đẻ ra tệp nào,
@@ -722,10 +793,13 @@ function ProgressForm({
           ) : null}
           {readOnly ? (
             <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-              Chế độ chỉ xem - số liệu do cán bộ tự khai. Bên phải là toàn bộ
-              mốc và nhật ký tiến độ để tra lại.
+              {review.hasReview
+                ? "Chế độ chỉ xem - nhiệm vụ đã chấm điểm. Số đậm là số chỉ huy chốt, số gạch ngang là số cán bộ tự chấm."
+                : "Chế độ chỉ xem - số liệu do cán bộ tự khai. Bên phải là toàn bộ mốc và nhật ký tiến độ để tra lại."}
             </p>
           ) : null}
+
+          <ReviewScoreSummary report={review} />
 
           <MilestoneSlider
             label="Tiến độ nhiệm vụ (KPI)"
@@ -734,6 +808,7 @@ function ProgressForm({
             snap={snapToMilestones}
             value={progress}
             initialValue={initialProgress}
+            scoredPercent={scored?.progress ?? null}
             disabled={saving || readOnly}
             onChange={setProgress}
           />
@@ -748,6 +823,7 @@ function ProgressForm({
               snap={snapQuality}
               value={quality}
               initialValue={initialQuality}
+              scoredPercent={scored?.quality ?? null}
               disabled={saving || readOnly}
               onChange={setQuality}
             />
@@ -835,7 +911,7 @@ function ProgressForm({
         <div className="space-y-4 md:border-l md:pl-6">
           <MilestoneTrack
             milestones={milestones}
-            percentNow={percentNow}
+            percentNow={percentFinal}
             logs={logs}
           />
 
@@ -1013,7 +1089,7 @@ function ProgressForm({
 
 type ProgressUpdateDialogProps = {
   /**
-   * Đang mở hay không. Tách khỏi  để lúc đóng vẫn còn nội dung mà vẽ:
+   * Đang mở hay không. Tách khỏi `item` để lúc đóng vẫn còn nội dung mà vẽ:
    * xoá item ngay là hộp thoại rỗng loé lên trong lúc chạy hiệu ứng đóng.
    */
   open: boolean;
@@ -1090,12 +1166,19 @@ export function ProgressUpdateDialog({
     ? catalogMilestones
     : numberMilestones;
 
+  const review = useReviewScores(shown, template);
+
   const summary = shown
     ? summarizeTask(shown.task, template, qualityLevelById, {
         values: shown.reviewValues,
         catalogValues: shown.reviewCatalogValues,
       })
     : null;
+  /**
+   * Số chốt của hai ô phần trăm - `summarizeTask` đã ghép số chỉ huy đè lên số
+   * tự chấm nên đọc thẳng ở đây. Chưa chấm thì không truyền, thanh trượt giữ
+   * nguyên kiểu "cũ → mới" lúc đang nhập.
+   */
   const work = summary ? workState(summary.progressPercent) : null;
   const deadline = summary
     ? deadlineState(summary.deadline, serverYmd())
@@ -1103,10 +1186,24 @@ export function ProgressUpdateDialog({
   /** Đã chốt hoàn thành, hoặc người xem không phải chủ nhiệm vụ. */
   const readOnly =
     forceReadOnly || (!!shown && !canUpdateProgress(shown.status));
+  /*
+    Chỉ hiện số chốt ở chế độ chỉ xem: ô nhập vẫn giữ số cán bộ tự chấm, để
+    thanh trượt đứng ở số khác số trong ô là kéo một cái mất luôn số của chỉ
+    huy mà người kéo không hề biết.
+  */
+  const scored =
+    review.hasReview && readOnly && summary
+      ? {
+          progress: summary.progressPercent,
+          quality: summary.qualityPercent,
+        }
+      : undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl">
+      {/* Rộng hơn mặc định nhiều: hai cột ở đây đều là nội dung dài (bảng đối
+          chiếu điểm, nhật ký từng ngày) - hẹp là số nào cũng xuống dòng. */}
+      <DialogContent className="sm:max-w-[min(94vw,84rem)]">
         <DialogHeader>
           <DialogTitle className="pr-6">
             {readOnly ? "Tiến độ" : "Cập nhật"}: {shown?.workContentName}
@@ -1141,6 +1238,16 @@ export function ProgressUpdateDialog({
                       {deadline.label}
                     </Badge>
                   ) : null}
+                  {/* Chỉ huy chấm thấp hơn số cán bộ khai - nói ngay ở tiêu đề,
+                      đừng bắt người xem dò từng ô mới thấy. */}
+                  {review.lowered ? (
+                    <Badge
+                      variant="secondary"
+                      className={cn("font-normal", kpiTone.danger.soft)}
+                    >
+                      Bị hạ điểm
+                    </Badge>
+                  ) : null}
                 </>
               ) : null}
             </div>
@@ -1157,6 +1264,8 @@ export function ProgressUpdateDialog({
             qualityMilestones={qualityMilestones}
             snapQuality={isCatalogQuality}
             readOnly={readOnly}
+            scored={scored}
+            review={review}
             onDone={() => onOpenChange(false)}
             onSaved={onSaved}
             onRequestConfirm={onRequestConfirm}
