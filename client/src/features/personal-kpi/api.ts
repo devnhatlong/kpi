@@ -195,6 +195,7 @@ export function mapPersonalKpiFromApi(
     workContentName: refName(row.workContentId),
     workContentCode: refCode(row.workContentId),
     task,
+    reportDate: row.reportDate || undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     sentAt: row.lastSentAt || undefined,
@@ -274,7 +275,10 @@ export type PersonalKpiMineQuery = {
   page?: number;
   limit?: number;
   status?: PersonalKpiStatus | "ALL" | "";
+  /** Đúng một ngày; server bỏ qua fromDate/toDate khi có trường này. */
   reportDate?: string;
+  fromDate?: string;
+  toDate?: string;
   q?: string;
   axisId?: string;
 };
@@ -298,6 +302,8 @@ export const personalKpiKeys = {
       "personal-kpi",
       "day",
       params.reportDate ?? "",
+      params.fromDate ?? "",
+      params.toDate ?? "",
       params.page ?? 1,
       params.limit ?? 10,
       params.status ?? "",
@@ -357,6 +363,8 @@ export async function fetchMyPersonalKpi(params: PersonalKpiMineQuery = {}) {
         limit: params.limit,
         q: params.q,
         reportDate: params.reportDate || undefined,
+        fromDate: params.fromDate || undefined,
+        toDate: params.toDate || undefined,
         status:
           params.status && params.status !== "ALL"
             ? params.status

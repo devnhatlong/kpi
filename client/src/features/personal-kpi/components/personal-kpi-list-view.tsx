@@ -61,9 +61,13 @@ function formatDateTime(value?: string | null) {
   return date.toLocaleString("vi-VN");
 }
 
-/** Trang nhiệm vụ của một ngày - nơi xem, cập nhật tiến độ và gửi báo cáo. */
+/**
+ * Trang nhiệm vụ của một ngày - nơi xem, cập nhật tiến độ và gửi báo cáo.
+ * Đường dẫn viết theo thứ tự ngày-tháng-năm như người dùng đọc.
+ */
 function dayHref(ymd: string) {
-  return `/kpi/personal/${ymd}`;
+  const [year, month, day] = ymd.split("-");
+  return `/kpi/personal/${day}-${month}-${year}`;
 }
 
 function formatReportDate(ymd: string) {

@@ -128,6 +128,11 @@ export function formatServerHm(value: string | number | Date): string {
   return serverDayjs(value).format("HH:mm");
 }
 
+/** Giờ:phút:giây - nhật ký cần phân biệt hai lần bấm cách nhau vài chục giây. */
+export function formatServerHms(value: string | number | Date): string {
+  return serverDayjs(value).format("HH:mm:ss");
+}
+
 /** dd/MM/yyyy để hiện lên màn - đọc thẳng con số trong chuỗi, không qua Date. */
 export function formatYmd(ymd: string): string {
   const [year, month, day] = ymd.split("-");

@@ -247,8 +247,22 @@ export class PersonalKpiService {
     const limit = query.limit ?? 10;
     const filter: Record<string, unknown> = { ownerId: owner };
 
+    /*
+      Một ngày hoặc một khoảng ngày, không nhận cả hai: `reportDate` là màn
+      nhập báo cáo của đúng ngày đó, còn from/to là màn xem lại nhiều ngày.
+    */
     if (query.reportDate) {
       filter.reportDate = this.requireYmd(query.reportDate, 'reportDate');
+    } else {
+      const range: Record<string, string> = {};
+      if (query.fromDate) {
+        range.$gte = this.requireYmd(query.fromDate, 'fromDate');
+      }
+      if (query.toDate) range.$lte = this.requireYmd(query.toDate, 'toDate');
+      if (range.$gte && range.$lte && range.$gte > range.$lte) {
+        throw new BadRequestException('Từ ngày phải trước hoặc bằng đến ngày.');
+      }
+      if (Object.keys(range).length) filter.reportDate = range;
     }
     if (query.status) filter.reviewStatus = query.status;
     if (query.axisId) {
@@ -259,7 +273,8 @@ export class PersonalKpiService {
     const [data, total] = await Promise.all([
       this.itemModel
         .find(filter)
-        .sort({ createdAt: 1 })
+        // Nhiều ngày thì ngày mới lên trước; trong một ngày giữ thứ tự nhập.
+        .sort({ reportDate: -1, createdAt: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .populate('axisId', 'code name description')

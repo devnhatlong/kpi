@@ -234,10 +234,20 @@ export class PersonalKpiListQueryDto {
   @Min(1)
   limit?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Đúng một ngày; ưu tiên hơn fromDate/toDate' })
   @IsOptional()
   @IsString()
   reportDate?: string;
+
+  @ApiPropertyOptional({ description: 'Khoảng ngày báo cáo, từ ngày' })
+  @IsOptional()
+  @IsString()
+  fromDate?: string;
+
+  @ApiPropertyOptional({ description: 'Khoảng ngày báo cáo, đến ngày' })
+  @IsOptional()
+  @IsString()
+  toDate?: string;
 
   @ApiPropertyOptional({ enum: PERSONAL_KPI_REVIEW_STATUSES })
   @IsOptional()

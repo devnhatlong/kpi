@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import {
-  CalendarDays,
   CheckCheck,
   ChevronDown,
   Crosshair,
@@ -11,17 +10,16 @@ import {
   TrendingUp,
   TriangleAlert,
   Undo2,
-  X,
 } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 
+import { DateRangeFilter } from "@/components/common/date-range-filter";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import { TablePagination } from "@/components/common/table-pagination";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Collapsible,
@@ -38,11 +36,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -225,77 +218,6 @@ function averagePercent(rows: TrackingRow[]): number | null {
     .filter((value): value is number => value !== null);
   if (!values.length) return null;
   return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
-}
-
-function dateToYmd(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
-}
-
-function ymdToDate(ymd: string): Date | undefined {
-  const [year, month, day] = ymd.split("-").map(Number);
-  if (!year || !month || !day) return undefined;
-  return new Date(year, month - 1, day, 12);
-}
-
-/**
- * Ô chọn ngày cho bộ lọc.
- * Dùng lịch riêng chứ không dùng input type="date" vì ô đó hiện ngày theo ngôn
- * ngữ trình duyệt - máy cài tiếng Anh sẽ ra 08/17/2026.
- */
-function DateFilterButton({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="flex items-center gap-0.5">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            className={cn(
-              "gap-2 bg-background font-normal",
-              !value && "text-muted-foreground",
-            )}
-          >
-            <CalendarDays className="size-4 text-muted-foreground" />
-            {value ? formatYmd(value) : label}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            defaultMonth={ymdToDate(value)}
-            selected={ymdToDate(value)}
-            onSelect={(picked) => {
-              if (!picked) return;
-              setOpen(false);
-              onChange(dateToYmd(picked));
-            }}
-          />
-        </PopoverContent>
-      </Popover>
-      {value ? (
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-8 shrink-0"
-          onClick={() => onChange("")}
-          aria-label={`Bỏ lọc ${label.toLowerCase()}`}
-        >
-          <X className="size-4" />
-        </Button>
-      ) : null}
-    </div>
-  );
 }
 
 type StatCardProps = {
@@ -929,31 +851,17 @@ export function PersonalKpiTrackingView() {
 
             {/* Nói rõ lọc theo ngày nào - "từ ngày / đến ngày" trơ trọi dễ bị
                 hiểu thành ngày gửi. */}
-            <span className="text-sm text-muted-foreground">Ngày báo cáo</span>
-            <DateFilterButton
-              label="Từ ngày"
-              value={fromDate}
-              onChange={setFromOverride}
+            <DateRangeFilter
+              from={fromDate}
+              to={toDate}
+              isDefault={usingDefaultWeek}
+              onFromChange={setFromOverride}
+              onToChange={setToOverride}
+              onReset={() => {
+                setFromOverride(null);
+                setToOverride(null);
+              }}
             />
-            <DateFilterButton
-              label="Đến ngày"
-              value={toDate}
-              onChange={setToOverride}
-            />
-            {usingDefaultWeek ? (
-              <span className="text-xs text-muted-foreground">Tuần này</span>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setFromOverride(null);
-                  setToOverride(null);
-                }}
-              >
-                Về tuần này
-              </Button>
-            )}
 
             <SegmentedTabs
               ariaLabel="Lọc theo tình trạng"

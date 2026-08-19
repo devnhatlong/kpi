@@ -7,8 +7,9 @@ export const metadata: Metadata = {
 };
 
 /**
- * Vào thẳng nhiệm vụ của hôm nay - không còn bảng liệt kê từng ngày.
- * Xem ngày khác thì đổi ô ngày trên đầu trang (nhảy sang /kpi/personal/<ngày>).
+ * Vào thẳng nhiệm vụ của tuần này - không còn bảng liệt kê từng ngày.
+ * Xem ngày khác thì chỉnh khoảng ngày trên đầu trang; đường dẫn cố định cho
+ * đúng một ngày là /kpi/personal/20-08-2026 (ngày-tháng-năm).
  */
 export default function KpiPersonalPage() {
   return <PersonalKpiDayView />;

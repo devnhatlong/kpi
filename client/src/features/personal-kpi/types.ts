@@ -133,6 +133,8 @@ export type PersonalKpiItem = {
   workContentName: string;
   workContentCode: string;
   task: PersonalTaskDraft;
+  /** Ngày báo cáo YYYY-MM-DD - danh sách xem nhiều ngày cần biết việc của ngày nào. */
+  reportDate?: string;
   createdAt: string;
   updatedAt: string;
   /** Thời điểm gửi gần nhất */

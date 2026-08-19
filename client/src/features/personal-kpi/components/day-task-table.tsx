@@ -165,6 +165,11 @@ type DayTaskTableProps = {
   actingId: string | null;
   /** Ẩn dòng tiêu đề - dùng khi bảng nằm trong một nhóm đã có tiêu đề riêng. */
   hideHeader?: boolean;
+  /**
+   * Hiện ngày báo cáo của từng dòng. Bật khi danh sách trải nhiều ngày - không
+   * có nó thì việc hôm nay và việc tuần trước nằm lẫn nhau, không phân biệt nổi.
+   */
+  showReportDate?: boolean;
   onUpdateProgress: (item: PersonalKpiItem) => void;
   onEditDetail: (item: PersonalKpiItem) => void;
   onSend: (item: PersonalKpiItem) => void;
@@ -179,6 +184,7 @@ export function DayTaskTable({
   emptyText,
   actingId,
   hideHeader = false,
+  showReportDate = false,
   onUpdateProgress,
   onEditDetail,
   onSend,
@@ -232,6 +238,11 @@ export function DayTaskTable({
                 {/* break-words: tên nhiệm vụ có thể là chuỗi dài không dấu
                     cách, không bẻ thì nó tràn sang cột bên cạnh. */}
                 <TableCell className="max-w-[420px] whitespace-normal align-middle">
+                  {showReportDate && item.reportDate ? (
+                    <div className="text-xs text-muted-foreground tabular-nums">
+                      Ngày {formatYmd(item.reportDate)}
+                    </div>
+                  ) : null}
                   <div className="break-words font-medium">
                     {summary.title || item.workContentName}
                   </div>

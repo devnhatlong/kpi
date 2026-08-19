@@ -8,7 +8,6 @@ import {
   Clock3,
   Eye,
   Flag,
-  Send,
   SquarePen,
   TriangleAlert,
   Undo2,
@@ -62,7 +61,7 @@ import {
   type TaskAttachment,
 } from "@/features/personal-kpi/types";
 import { getApiErrorMessage } from "@/lib/api-client";
-import { formatServerHm, formatYmd, serverYmd } from "@/lib/server-time";
+import { formatServerHms, formatYmd, serverYmd } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
 /** Mốc trên thanh tiến độ - lấy từ danh mục mức chất lượng đã cấu hình. */
@@ -88,7 +87,8 @@ function markPosition(percent: number): {
   className: string;
 } {
   if (percent <= 0) return { style: { left: 0 }, className: "translate-x-0" };
-  if (percent >= 100) return { style: { right: 0 }, className: "translate-x-0" };
+  if (percent >= 100)
+    return { style: { right: 0 }, className: "translate-x-0" };
   return { style: { left: `${percent}%` }, className: "-translate-x-1/2" };
 }
 
@@ -332,85 +332,158 @@ function logTitle(log: PersonalKpiProgressLog): string {
   }
 }
 
+/** Gom mốc theo ngày (giờ server), ngày mới đứng trước. */
+/** Ngày của một mốc, theo giờ server. */
+function logYmd(log: PersonalKpiProgressLog): string {
+  return log.onDate || serverYmd(log.at);
+}
+
+/** Màu chấm của một mốc: đỏ là bị trả lại, xanh lá là chốt, còn lại là tiến độ. */
+function logDotClass(type: PersonalKpiProgressLog["type"]): string {
+  if (type === "RETURN") return "border-rose-400";
+  if (type === "COMPLETE") return "border-emerald-400";
+  if (type === "SUBMIT") return "border-primary";
+  return "border-primary/50";
+}
+
+/** Màu chữ của tên mốc, cùng hệ màu với chấm bên lề. */
+function logTitleClass(type: PersonalKpiProgressLog["type"]): string {
+  if (type === "RETURN") return kpiTone.danger.text;
+  if (type === "COMPLETE") return kpiTone.success.text;
+  if (type === "SUBMIT") return kpiTone.info.text;
+  return "";
+}
+
 /**
- * Lịch sử gửi duyệt: chỉ những mốc đi qua tay cấp trên.
- * Đọc từ cùng một nhật ký với phần cập nhật hằng ngày nên thứ tự luôn khớp.
+ * Ghi chú của mỗi loại mốc là một thứ khác nhau - phải gọi đúng tên.
+ * Để trống nhãn thì "Kính gửi" hay "tlkc" nằm trơ ra, người đọc không biết đó
+ * là lời nhắn khi gửi hay lý do bị trả lại.
  */
-function ReviewHistory({ logs }: { logs: PersonalKpiProgressLog[] }) {
-  const events = logs.filter((log) => log.type !== "PROGRESS");
-  const sentCount = events.filter((log) => log.type === "SUBMIT").length;
-  const returnCount = events.filter((log) => log.type === "RETURN").length;
+function noteLabel(log: PersonalKpiProgressLog): string {
+  switch (log.type) {
+    case "SUBMIT":
+      return "Lời nhắn gửi kèm";
+    case "RETURN":
+      return "Lý do trả lại";
+    case "COMPLETE":
+      return "Nhận xét của chỉ huy";
+    default:
+      return isRollback(log) ? "Lý do lùi tiến độ" : "Kết quả trong ngày";
+  }
+}
+
+/**
+ * Nhật ký nhiệm vụ - MỘT dòng thời gian duy nhất, mỗi lần động vào là một mốc.
+ *
+ * Cập nhật hằng ngày và mốc trình / trả lại / chốt hoàn thành vốn nằm chung một
+ * nhật ký; tách ra hai bảng thì mốc duyệt bị in hai lần và người đọc phải tự
+ * ghép hai cột mới biết hôm bị trả lại thì tiến độ đang ở đâu.
+ *
+ * Mỗi mốc gói trong hai dòng: "ngày · người · %" rồi tới ghi chú. Màu chấm nói
+ * loại mốc, chữ chỉ nhắc lại khi là việc của cấp trên - kể lể đủ nhãn cho từng
+ * mốc thì nhật ký dài gấp đôi mà không thêm thông tin nào.
+ */
+function TaskTimeline({
+  logs,
+  columns,
+}: {
+  logs: PersonalKpiProgressLog[];
+  columns: TrackingColumns;
+}) {
+  const dayCount = new Set(logs.map(logYmd)).size;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <SectionTitle
-        icon={Send}
-        text="Lịch sử gửi duyệt"
+        icon={Clock3}
+        text="Nhật ký theo ngày"
         right={
-          events.length > 0 ? (
-            <div className="flex gap-1">
-              <Badge variant="secondary" className="font-normal">
-                {sentCount} lần gửi
-              </Badge>
-              {returnCount > 0 ? (
-                <Badge
-                  variant="secondary"
-                  className={cn("font-normal", kpiTone.danger.soft)}
-                >
-                  {returnCount} lần trả lại
-                </Badge>
-              ) : null}
-            </div>
+          dayCount > 0 ? (
+            <Badge variant="secondary" className="font-normal">
+              {dayCount} ngày
+            </Badge>
           ) : null
         }
       />
 
-      {events.length === 0 ? (
+      {logs.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Nhiệm vụ chưa gửi lên cấp trên lần nào.
+          Chưa có lần cập nhật nào. Lần lưu đầu tiên sẽ mở đầu nhật ký.
         </p>
       ) : (
-        <ol className="max-h-44 space-y-2 overflow-y-auto pr-1">
-          {events.map((log) => (
-            <li
-              key={log.at}
-              className={cn(
-                "rounded-md border p-2.5",
-                log.type === "RETURN"
-                  ? "border-rose-200 bg-rose-500/5 dark:border-rose-900"
-                  : log.type === "COMPLETE"
-                    ? "border-emerald-200 bg-emerald-500/5 dark:border-emerald-900"
-                    : "bg-muted/30",
-              )}
-            >
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    "font-normal",
-                    log.type === "RETURN"
-                      ? kpiTone.danger.soft
-                      : log.type === "COMPLETE"
-                        ? kpiTone.success.soft
-                        : kpiTone.info.soft,
-                  )}
+        <ol className="space-y-3">
+          {logs.map((log, index) => (
+            /*
+              Chấm và đường nối nằm TRONG ô của mục (pl-5), không thò ra ngoài
+              bằng lề âm - thò ra là bị vùng cuộn cắt mất một nửa.
+            */
+            <li key={log.at} className="relative pl-5">
+              <span
+                className={cn(
+                  "absolute left-0 top-1.5 size-2.5 rounded-full border-2 bg-background",
+                  logDotClass(log.type),
+                )}
+              />
+              {index < logs.length - 1 ? (
+                <span className="absolute bottom-[-14px] left-[4.5px] top-4 w-px bg-border" />
+              ) : null}
+
+              {/* Dòng 1: xảy ra lúc nào và là mốc gì. Giờ ghi tới giây vì bấm
+                  gửi rồi sửa lại ngay trong cùng một phút là chuyện thường. */}
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-sm font-medium tabular-nums">
+                  {formatYmd(logYmd(log))}
+                </span>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {formatServerHms(log.at)}
+                </span>
+                <span
+                  className={cn("text-sm font-medium", logTitleClass(log.type))}
                 >
                   {logTitle(log)}
-                </Badge>
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {log.onDate ? formatYmd(log.onDate) : serverYmd(log.at)}{" "}
-                  {formatServerHm(log.at)}
                 </span>
+                {log.percent === null ? null : (
+                  <span className="text-sm font-medium tabular-nums">
+                    {log.percent}%
+                  </span>
+                )}
               </div>
-              <p className="mt-1 text-xs">
-                {log.byName}
-                {log.toName ? ` → ${log.toName}` : ""}
-              </p>
-              {log.note ? (
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {log.type === "RETURN" ? "Lý do: " : "Ghi chú: "}
-                  {log.note}
+
+              {/* Dòng 2: ai làm, gửi cho ai. */}
+              {log.byName ? (
+                <p className="text-xs text-muted-foreground">
+                  {log.byName}
+                  {log.toName ? ` → ${log.toName}` : ""}
                 </p>
+              ) : null}
+
+              {log.note ? (
+                <p className="mt-0.5 text-sm">
+                  <span className="font-medium">{noteLabel(log)}: </span>
+                  <span
+                    className={cn(
+                      log.type === "RETURN"
+                        ? kpiTone.danger.text
+                        : isRollback(log)
+                          ? kpiTone.warning.text
+                          : "text-muted-foreground",
+                    )}
+                  >
+                    {log.note}
+                  </span>
+                </p>
+              ) : null}
+
+              {log.changes.length > 0 ? (
+                <div className="mt-1 space-y-0.5 rounded-md bg-muted/50 px-2 py-1">
+                  {log.changes.map((change) => (
+                    <ChangeLine
+                      key={change.field}
+                      change={change}
+                      columns={columns}
+                    />
+                  ))}
+                </div>
               ) : null}
             </li>
           ))}
@@ -645,11 +718,6 @@ function ProgressForm({
   const [saving, setSaving] = useState(false);
 
   const logs = item.progressLogs ?? [];
-  const logDays = new Set(
-    logs
-      .filter((log) => log.type === "PROGRESS")
-      .map((log) => log.onDate || serverYmd(log.at)),
-  );
   const returns = logs.filter((log) => log.type === "RETURN");
   const returnCount = returns.length;
   /** Mốc trả lại gần nhất - nhật ký xếp mới trước. */
@@ -865,7 +933,9 @@ function ProgressForm({
             <div className="space-y-2">
               <Label htmlFor="progress-note">
                 Kết quả trong ngày / vướng mắc
-                {decreased ? <span className="text-destructive"> *</span> : null}
+                {decreased ? (
+                  <span className="text-destructive"> *</span>
+                ) : null}
               </Label>
               <Textarea
                 id="progress-note"
@@ -915,104 +985,7 @@ function ProgressForm({
             logs={logs}
           />
 
-          <ReviewHistory logs={logs} />
-
-          <div className="space-y-3">
-            <SectionTitle
-              icon={Clock3}
-              text="Nhật ký theo ngày"
-              right={
-                logDays.size > 0 ? (
-                  <Badge variant="secondary" className="font-normal">
-                    {logDays.size} ngày
-                  </Badge>
-                ) : null
-              }
-            />
-
-            {logs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Chưa có lần cập nhật nào. Lần lưu đầu tiên sẽ mở đầu nhật ký.
-              </p>
-            ) : (
-              <ol className="space-y-3">
-                {logs.map((log, index) => (
-                  /*
-                    Chấm và đường nối nằm TRONG ô của mục (pl-5), không thò ra
-                    ngoài bằng lề âm - thò ra là bị vùng cuộn cắt mất một nửa.
-                  */
-                  <li key={log.at} className="relative pl-5">
-                    <span className="absolute left-0 top-1 size-2.5 rounded-full border-2 border-primary bg-background" />
-                    {index < logs.length - 1 ? (
-                      <span className="absolute bottom-[-14px] left-[4.5px] top-4 w-px bg-border" />
-                    ) : null}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium tabular-nums">
-                        {log.onDate ? formatYmd(log.onDate) : serverYmd(log.at)}
-                      </span>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {formatServerHm(log.at)}
-                      </span>
-                      {log.percent === null ? null : (
-                        <Badge
-                          variant="secondary"
-                          className={cn("font-normal", kpiTone.info.soft)}
-                        >
-                          {log.percent}%
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      <span
-                        className={cn(
-                          log.type === "RETURN" && kpiTone.danger.text,
-                          log.type === "COMPLETE" && kpiTone.success.text,
-                        )}
-                      >
-                        {logTitle(log)}
-                      </span>
-                      {log.byName ? ` · ${log.byName}` : ""}
-                      {log.toName ? ` → ${log.toName}` : ""}
-                    </p>
-                    {log.changes.length > 0 ? (
-                      <div className="mt-1 space-y-0.5 border-l pl-2">
-                        {log.changes.map((change) => (
-                          <ChangeLine
-                            key={change.field}
-                            change={change}
-                            columns={columns}
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-                    {/* Lần lùi tiến độ thì ghi chú chính là lý do bắt buộc -
-                        gọi đúng tên nó, đừng để lẫn với ghi chú thường. */}
-                    {log.note ? (
-                      <p
-                        className={cn(
-                          "mt-1 text-xs",
-                          log.type === "RETURN"
-                            ? kpiTone.danger.text
-                            : isRollback(log)
-                              ? kpiTone.warning.text
-                              : "text-muted-foreground",
-                        )}
-                      >
-                        <span className="font-medium">
-                          {log.type === "RETURN"
-                            ? "Lý do trả lại:"
-                            : isRollback(log)
-                              ? "Lý do lùi tiến độ:"
-                              : "Ghi chú:"}
-                        </span>{" "}
-                        {log.note}
-                      </p>
-                    ) : null}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
+          <TaskTimeline logs={logs} columns={columns} />
         </div>
       </div>
 

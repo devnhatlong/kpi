@@ -90,7 +90,13 @@
       "Bash(grep -n \"Chỉ huy chấm$\" -B 2 src/features/personal-kpi/components/review-score-dialog.tsx)",
       "Bash(grep -n \"ProgressBar\\\\s*$\\\\|<ProgressBar\" -B 6 -A 10 client/src/features/personal-kpi/components/personal-kpi-tracking-view.tsx)",
       "Bash(grep -n \"personalKpiStatusBadgeClass\\(\\\\s*$\\\\|personalKpiStatusBadgeClass\\(\" -A 8 client/src/features/personal-kpi/components/personal-kpi-tracking-view.tsx)",
-      "Bash(item)"
+      "Bash(item)",
+      "Bash(echo \"lint=$?\")",
+      "Bash(cd \"d:/Project/WebApp/KPI/server\" && ls src/modules/personal-kpi/dto/ && sed -n '225,320p' src/modules/personal-kpi/dto/*.ts)",
+      "Bash(npx prettier *)"
+    ],
+    "additionalDirectories": [
+      "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto"
     ]
   }
 }
