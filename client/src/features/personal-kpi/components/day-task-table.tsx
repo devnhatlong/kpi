@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Check,
   ClipboardList,
   Eye,
   MoreHorizontal,
@@ -29,12 +28,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  DeadlineCell,
+  PercentCell,
+  WorkStateBadge,
+} from "@/features/personal-kpi/components/kpi-cells";
+import {
   kpiTone,
   personalKpiStatusBadgeClass,
 } from "@/features/personal-kpi/status-styles";
 import {
   SILENCE_ALERT_DAYS,
-  WORK_STATE_LABEL,
   type DeadlineState,
   type TaskSummary,
   type WorkState,
@@ -60,19 +63,6 @@ export type DayTaskRow = {
   /** Chuỗi gộp mọi thứ tìm được của dòng - lọc theo ô tìm kiếm. */
   haystack: string;
 };
-
-const DEADLINE_TONE: Record<DeadlineState["tone"], string> = {
-  danger: kpiTone.danger.text,
-  warning: kpiTone.warning.text,
-  muted: "text-muted-foreground",
-};
-
-const WORK_STATE_PILL: Record<WorkState, string> = {
-  NOT_STARTED: kpiTone.neutral.soft,
-  IN_PROGRESS: kpiTone.info.soft,
-  DONE: kpiTone.success.soft,
-};
-
 
 /**
  * Cảnh báo về hạn cho cột "Tình trạng thực hiện".
@@ -100,59 +90,6 @@ function deadlineHealth(row: DayTaskRow) {
 export function isSilent(row: DayTaskRow): boolean {
   if (row.work === "DONE" || row.item.status === "COMPLETED") return false;
   return row.silence !== null && row.silence >= SILENCE_ALERT_DAYS;
-}
-
-/**
- * Ô phần trăm KPI: thanh chạy + con số, đủ 100% thì xanh và đổi sang dấu tích.
- * Tiến độ và chất lượng dùng chung một kiểu để đặt cạnh nhau còn so được.
- */
-function PercentCell({
-  percent,
-  change,
-}: {
-  percent: number | null;
-  /** Số cán bộ tự chấm, chỉ truyền khi chỉ huy đã chấm khác đi. */
-  change?: { from: number; to: number };
-}) {
-  if (percent === null) {
-    return <span className="text-sm text-muted-foreground">-</span>;
-  }
-
-  const full = percent >= 100;
-  return (
-    <div>
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn(
-            "h-full rounded-full transition-all",
-            full ? "bg-emerald-500" : "bg-primary",
-          )}
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-      {full ? (
-        <Check className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-      ) : (
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-          {percent}%
-        </span>
-      )}
-      </div>
-      {/* Chỉ huy chấm khác thì nói rõ số cũ, không thì người khai tưởng mình
-          nhập sai. */}
-      {change ? (
-        <p
-          className={cn(
-            "mt-0.5 text-xs tabular-nums",
-            change.to < change.from ? kpiTone.danger.text : kpiTone.success.text,
-          )}
-        >
-          {change.to < change.from ? "▼" : "▲"} Tự chấm {change.from}%
-        </p>
-      ) : null}
-    </div>
-  );
 }
 
 type DayTaskTableProps = {
@@ -251,11 +188,6 @@ export function DayTaskTable({
                       {item.workContentName}
                     </div>
                   ) : null}
-                  {item.rejectReason ? (
-                    <div className="text-xs text-amber-600 dark:text-amber-400">
-                      Lý do trả lại: {item.rejectReason}
-                    </div>
-                  ) : null}
                 </TableCell>
 
                 <TableCell className="align-middle">
@@ -292,33 +224,13 @@ export function DayTaskTable({
                 </TableCell>
 
                 <TableCell className="align-middle">
-                  {summary.deadline ? (
-                    <>
-                      <div className="text-sm tabular-nums">
-                        {formatYmd(summary.deadline)}
-                      </div>
-                      {deadline ? (
-                        <div
-                          className={cn("text-xs", DEADLINE_TONE[deadline.tone])}
-                        >
-                          {deadline.label}
-                        </div>
-                      ) : null}
-                    </>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">-</span>
-                  )}
+                  <DeadlineCell deadline={summary.deadline} state={deadline} />
                 </TableCell>
 
                 {/* Việc chạy tới đâu - theo KPI tiến độ và hạn. */}
                 <TableCell className="align-middle">
                   <div className="flex flex-wrap gap-1">
-                    <Badge
-                      variant="secondary"
-                      className={cn("font-normal", WORK_STATE_PILL[work])}
-                    >
-                      {WORK_STATE_LABEL[work]}
-                    </Badge>
+                    <WorkStateBadge work={work} />
                     {health ? (
                       <Badge
                         variant="secondary"
@@ -341,9 +253,17 @@ export function DayTaskTable({
 
                 {/* Việc đang ở chặng nào của luồng duyệt. */}
                 <TableCell className="align-middle">
+                  {/* Lý do trả lại không bày ra bảng - dòng nào cũng vài chục
+                      chữ thì bảng chỉ còn là bức tường chữ. Để ở tooltip, đọc
+                      đầy đủ trong ô "Cập nhật". */}
                   <Badge
                     variant="secondary"
                     className={personalKpiStatusBadgeClass(item.status)}
+                    title={
+                      item.rejectReason
+                        ? `Lý do trả lại: ${item.rejectReason}`
+                        : undefined
+                    }
                   >
                     {PERSONAL_KPI_STATUS_LABEL[item.status]}
                   </Badge>
@@ -355,7 +275,7 @@ export function DayTaskTable({
                       title={summary.reviewChanges
                         .map(
                           (change) =>
-                            `${change.title}: ${change.from}% → ${change.to}%`,
+                            `${change.groupTitle ? `${change.groupTitle} · ` : ""}${change.title}: ${change.from}% → ${change.to}%`,
                         )
                         .join("; ")}
                     >

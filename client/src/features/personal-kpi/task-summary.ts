@@ -36,7 +36,15 @@ export type TaskSummary = {
   /** Ô chỉ huy chấm khác số cán bộ tự chấm - để danh sách nói rõ đã bị sửa. */
   reviewChanges: Array<{
     field: "progress" | "quality";
+    /** Tiêu đề cột trong mẫu, ví dụ "Thực tế hoàn thành %". */
     title: string;
+    /**
+     * Tên nhóm header bọc ngoài cột, ví dụ "KPI tiến độ (B)".
+     * Bắt buộc phải có: mẫu thật đặt hai cột trùng tên "Thực tế hoàn thành %"
+     * cho cả nhóm tiến độ lẫn nhóm chất lượng, nói mỗi tên cột thì không ai
+     * biết con số vừa bị sửa là của nhóm nào.
+     */
+    groupTitle: string;
     from: number;
     to: number;
   }>;
@@ -271,6 +279,12 @@ export function summarizeTask(
 
   const changes: TaskSummary["reviewChanges"] = [];
   if (review) {
+    const groupNameById = new Map(
+      flattenHeaderGroups(template?.headerGroups ?? []).map((group) => [
+        group.id,
+        group.name,
+      ]),
+    );
     const pairs = [
       { field: "progress" as const, column: progressColumn },
       { field: "quality" as const, column: qualityColumn },
@@ -280,12 +294,23 @@ export function summarizeTask(
       const self = readColumnPercent(task, column, qualityLevelById);
       const scored = readColumnPercent(final, column, qualityLevelById);
       if (self === null || scored === null || self === scored) continue;
-      changes.push({ field, title: column.title, from: self, to: scored });
+      changes.push({
+        field,
+        title: column.title,
+        groupTitle: (column.headerPath ?? [])
+          .map((id) => groupNameById.get(id) ?? "")
+          .filter(Boolean)
+          .join(" · "),
+        from: self,
+        to: scored,
+      });
     }
   }
 
   return {
-    title: titleColumn ? (task.fieldValues?.[titleColumn.key] ?? "").trim() : "",
+    title: titleColumn
+      ? (task.fieldValues?.[titleColumn.key] ?? "").trim()
+      : "",
     deadline: deadlineColumn
       ? (task.fieldValues?.[deadlineColumn.key] ?? "").trim()
       : "",
