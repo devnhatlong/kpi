@@ -66,7 +66,10 @@ import {
   entityId,
   FORM_COLUMN_DATA_TYPE_LABEL,
   FORM_COLUMN_SEMANTIC_LABEL,
+  FORM_FOOTER_MODE_LABEL,
+  FORM_FOOTER_MODES,
   FORMULA_VALUE_SOURCE_HINT,
+  footerMode,
   formulaColumns,
   formulaRoleLabel,
   formulaValueSource,
@@ -82,6 +85,7 @@ import {
   type FormColumnAutoValue,
   type FormColumnDataType,
   type FormColumnSemantic,
+  type FormFooterMode,
   type FormHeaderGroup,
   type FormTemplate,
   type FormTemplateColumn,
@@ -130,10 +134,6 @@ function formulaPreview(
   footer: FormTemplateFooter,
   columns: FormTemplateColumn[],
 ): string {
-  if (!footer.baseColumnKey || !footer.ratioColumnKeys.length) {
-    return "Chọn đủ cột mẫu số và ít nhất một cột tử số để xem công thức.";
-  }
-
   const columnOf = (key: string) => columns.find((column) => column.key === key);
   const describe = (key: string) => {
     const column = columnOf(key);
@@ -144,6 +144,22 @@ function formulaPreview(
       ? `${title} (${FORMULA_VALUE_SOURCE_HINT[source]})`
       : title;
   };
+
+  if (footerMode(footer) === "sum") {
+    if (!footer.ratioColumnKeys.length) {
+      return "Chọn ít nhất một cột điểm để cộng.";
+    }
+    return [
+      `Điểm quy đổi = ${footer.ratioColumnKeys.map(describe).join(" + ")}`,
+      "",
+      "(cộng TỔNG của cả cột qua mọi nhiệm vụ của trục,",
+      "rồi chặn ở điểm tối đa của trục)",
+    ].join("\n");
+  }
+
+  if (!footer.baseColumnKey || !footer.ratioColumnKeys.length) {
+    return "Chọn đủ cột mẫu số và ít nhất một cột tử số để xem công thức.";
+  }
 
   const ratios = footer.ratioColumnKeys.map(
     (_, index) => `${formulaRoleLabel(index)}/A`,
@@ -313,6 +329,7 @@ export function FormTemplateBuilderSheet({
   const liveFooter = useMemo<FormTemplateFooter>(
     () => ({
       enabled: footer.enabled,
+      mode: footerMode(footer),
       baseColumnKey:
         footer.baseColumnKey && numericKeys.has(footer.baseColumnKey)
           ? footer.baseColumnKey
@@ -323,6 +340,9 @@ export function FormTemplateBuilderSheet({
     }),
     [footer, numericKeys],
   );
+
+  /** Mẫu cũ chưa khai kiểu tính thì vẫn là công thức tỉ lệ. */
+  const mode = footerMode(footer);
 
   const patchFooter = (patch: Partial<FormTemplateFooter>) => {
     setFooter((prev) => ({ ...prev, ...patch }));
@@ -445,15 +465,24 @@ export function FormTemplateBuilderSheet({
     }
 
     if (liveFooter.enabled) {
-      if (!liveFooter.baseColumnKey) {
+      const liveMode = footerMode(liveFooter);
+      if (liveMode === "ratio" && !liveFooter.baseColumnKey) {
         toast.error("Công thức điểm: chưa chọn cột mẫu số (điểm chuẩn).");
         return;
       }
       if (!liveFooter.ratioColumnKeys.length) {
-        toast.error("Công thức điểm: cần ít nhất một cột tử số.");
+        toast.error(
+          liveMode === "sum"
+            ? "Công thức điểm: cần ít nhất một cột điểm để cộng."
+            : "Công thức điểm: cần ít nhất một cột tử số.",
+        );
         return;
       }
-      if (liveFooter.ratioColumnKeys.includes(liveFooter.baseColumnKey)) {
+      if (
+        liveMode === "ratio" &&
+        liveFooter.baseColumnKey &&
+        liveFooter.ratioColumnKeys.includes(liveFooter.baseColumnKey)
+      ) {
         toast.error(
           "Công thức điểm: cột mẫu số không được dùng lại làm cột tử số.",
         );
@@ -1097,6 +1126,37 @@ export function FormTemplateBuilderSheet({
               </p>
             ) : (
               <div className="space-y-4">
+                {/*
+                  Kiểu tính phải chọn TRƯỚC: chọn cộng dồn thì chẳng còn mẫu số
+                  nào để khai, hỏi tiếp cột mẫu số chỉ tổ gây hiểu nhầm.
+                */}
+                <div className="grid gap-2 sm:max-w-md">
+                  <Label>Cách tính điểm trục</Label>
+                  <Select
+                    value={mode}
+                    onValueChange={(value) =>
+                      patchFooter({ mode: value as FormFooterMode })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FORM_FOOTER_MODES.map((value) => (
+                        <SelectItem key={value} value={value}>
+                          {FORM_FOOTER_MODE_LABEL[value]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {mode === "sum"
+                      ? "Cộng thẳng điểm các cột đã khai rồi chặn ở điểm tối đa của trục. Dùng cho trục chấm theo mục Đạt / Không đạt, mỗi mục một điểm chuẩn riêng."
+                      : "Chia tổng tử số cho tổng mẫu số rồi nhân điểm tối đa của trục. Dùng cho trục chấm theo tỉ lệ hoàn thành."}
+                  </p>
+                </div>
+
+                {mode === "sum" ? null : (
                 <div className="grid gap-2 sm:max-w-md">
                   <Label>
                     Cột mẫu số (A) <span className="text-destructive">*</span>
@@ -1127,10 +1187,12 @@ export function FormTemplateBuilderSheet({
                     nhóm được chọn ở từng dòng.
                   </p>
                 </div>
+                )}
 
                 <div className="space-y-2">
                   <Label>
-                    Các cột tử số <span className="text-destructive">*</span>
+                    {mode === "sum" ? "Các cột điểm đem cộng" : "Các cột tử số"}{" "}
+                    <span className="text-destructive">*</span>
                   </Label>
                   {footer.ratioColumnKeys.length === 0 ? (
                     <p className="text-xs text-muted-foreground">

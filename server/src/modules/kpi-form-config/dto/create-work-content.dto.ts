@@ -15,12 +15,11 @@ export class CreateWorkContentDto {
   })
   name!: string;
 
-  @StringNotRequired('Mô tả')
+  @StringNotRequired('Mô tả - dùng làm cột "Nhiệm vụ" của bảng KPI')
   description?: string;
 
-  @StringRequired('Nhóm nội dung', { example: '66af9f31f0e4d3e4f4305e91' })
-  @IsMongoId({ message: 'Nhóm nội dung không hợp lệ.' })
-  contentGroupId!: string;
+  @StringNotRequired('Ghi chú - cột "Ghi chú" của bảng KPI (trần điểm của mục…)')
+  note?: string;
 
   @StringRequired('Trục', { example: '66af9f31f0e4d3e4f4305e92' })
   @IsMongoId({ message: 'Trục không hợp lệ.' })

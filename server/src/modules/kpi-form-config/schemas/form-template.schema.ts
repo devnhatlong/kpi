@@ -34,6 +34,10 @@ export const FORM_COLUMN_SEMANTICS = [
   'stt',
   /** Chọn từ danh mục Nội dung công việc; cấp trên gom bảng theo cột này. */
   'work_content',
+  /** Nhiệm vụ - đọc mô tả của nội dung công việc, admin khai sẵn. */
+  'work_content_task',
+  /** Ghi chú - đọc ghi chú của nội dung công việc, admin khai sẵn. */
+  'work_content_note',
   /** Chọn từ danh mục Nhóm điểm. */
   'score_group',
   /** Chọn từ danh mục Chất lượng thực hiện (100/75/50/25/0%). */
@@ -209,12 +213,25 @@ export const FormTemplateColumnSchema =
  * Cột nào được cộng ở dòng "Tổng từng cột" thì suy ra từ dataType = number,
  * không khai lại ở đây - khai thêm cũng không đổi được hành vi nào.
  */
+/**
+ * Cách quy ra điểm trục.
+ * - ratio: trung bình cộng của (Σ tử số / Σ mẫu số) rồi × điểm tối đa trục.
+ * - sum  : cộng thẳng điểm các cột đã khai, chặn ở điểm tối đa trục - dành cho
+ *          trục chấm theo mục Đạt / Không đạt, mỗi mục một điểm chuẩn riêng.
+ */
+export const FORM_FOOTER_MODES = ['ratio', 'sum'] as const;
+export type FormFooterMode = (typeof FORM_FOOTER_MODES)[number];
+
 @Schema({ _id: false })
 export class FormTemplateFooter {
   @Prop({ default: false })
   enabled!: boolean;
 
-  /** Khoá cột mẫu số - "Điểm chuẩn" trong bảng mẫu. */
+  /** Bỏ trống = 'ratio', để mẫu cũ giữ nguyên cách tính. */
+  @Prop({ type: String, enum: FORM_FOOTER_MODES, default: 'ratio' })
+  mode!: FormFooterMode;
+
+  /** Khoá cột mẫu số - "Điểm chuẩn" trong bảng mẫu. Cộng dồn thì không cần. */
   @Prop({ type: String, default: null })
   baseColumnKey!: string | null;
 

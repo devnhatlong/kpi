@@ -19,6 +19,8 @@ type CatalogRef = {
   code?: string;
   name?: string;
   description?: string;
+  /** Ghi chú của nội dung công việc - cột "Ghi chú" do admin khai sẵn. */
+  note?: string;
   fullName?: string;
   username?: string;
 };

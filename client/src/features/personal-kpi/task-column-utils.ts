@@ -1,6 +1,7 @@
 import {
   catalogOfSemantic,
   formatScoreRange,
+  isContentTextSemantic,
   isScoreInGroupRange,
   type FormColumnDataType,
   type FormColumnSemantic,
@@ -71,6 +72,8 @@ export function missingRequiredColumns(
     // Nhóm điểm đổ theo nội dung công việc, cột tự tính do server tính - báo
     // "chưa nhập" cho hai loại này là chặn người dùng ở chỗ họ không sửa được.
     if (column.semanticKey === "score_group" || column.autoValue) continue;
+    // Nhiệm vụ / Ghi chú là chữ admin khai ở danh mục, cán bộ không có ô để gõ.
+    if (isContentTextSemantic(column.semanticKey)) continue;
 
     if (isCheckboxColumn(column.dataType)) {
       if (!readCheckboxValue(task, column.key)) missing.push(column.title);

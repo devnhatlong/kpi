@@ -206,6 +206,7 @@ export function DayTaskTable({
                 <TableCell className="align-middle">
                   <PercentCell
                     percent={summary.progressPercent}
+                    notTracked={!summary.tracksProgress}
                     change={summary.reviewChanges.find(
                       (entry) => entry.field === "progress",
                     )}
@@ -217,6 +218,7 @@ export function DayTaskTable({
                 <TableCell className="align-middle">
                   <PercentCell
                     percent={summary.qualityPercent}
+                    notTracked={!summary.tracksQuality}
                     change={summary.reviewChanges.find(
                       (entry) => entry.field === "quality",
                     )}

@@ -13,13 +13,11 @@ import {
   WorkContent,
   WorkContentDocument,
 } from './schemas/work-content.schema';
-import { ContentGroup, ContentGroupDocument } from './schemas/content-group.schema';
 import { Axis, AxisDocument } from './schemas/axis.schema';
 import { ScoreGroup, ScoreGroupDocument } from './schemas/score-group.schema';
 
 /** Tham chiếu kèm theo mọi lần đọc - form nhập cần cả tên lẫn dải điểm. */
 const POPULATE_REFS = [
-  { path: 'contentGroupId', select: 'code name' },
   { path: 'axisId', select: 'code name' },
   {
     path: 'scoreGroupId',
@@ -32,8 +30,6 @@ export class WorkContentsService {
   constructor(
     @InjectModel(WorkContent.name)
     private readonly workContentModel: Model<WorkContentDocument>,
-    @InjectModel(ContentGroup.name)
-    private readonly contentGroupModel: Model<ContentGroupDocument>,
     @InjectModel(Axis.name)
     private readonly axisModel: Model<AxisDocument>,
     @InjectModel(ScoreGroup.name)
@@ -45,7 +41,6 @@ export class WorkContentsService {
       ? dto.code.trim().toUpperCase()
       : await this.nextCode();
     await this.ensureUniqueCode(code);
-    const contentGroup = await this.requireContentGroup(dto.contentGroupId);
     const axis = await this.requireAxis(dto.axisId);
     const scoreGroup = await this.requireScoreGroup(dto.scoreGroupId);
 
@@ -53,7 +48,6 @@ export class WorkContentsService {
       code,
       name: dto.name.trim(),
       description: dto.description?.trim() ?? '',
-      contentGroupId: contentGroup._id,
       axisId: axis._id,
       scoreGroupId: scoreGroup._id,
       sortOrder: dto.sortOrder ?? 0,
@@ -115,10 +109,6 @@ export class WorkContentsService {
     if (dto.description !== undefined) {
       item.description = dto.description.trim();
     }
-    if (dto.contentGroupId !== undefined) {
-      const contentGroup = await this.requireContentGroup(dto.contentGroupId);
-      item.contentGroupId = contentGroup._id;
-    }
     if (dto.axisId !== undefined) {
       const axis = await this.requireAxis(dto.axisId);
       item.axisId = axis._id;
@@ -150,17 +140,6 @@ export class WorkContentsService {
       : await this.workContentModel.findById(id);
     if (!item) {
       throw new NotFoundException('Không tìm thấy nội dung công việc.');
-    }
-    return item;
-  }
-
-  private async requireContentGroup(id: string) {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('Nhóm nội dung không hợp lệ.');
-    }
-    const item = await this.contentGroupModel.findById(id);
-    if (!item) {
-      throw new BadRequestException('Nhóm nội dung không tồn tại.');
     }
     return item;
   }

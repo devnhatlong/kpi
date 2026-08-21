@@ -63,7 +63,7 @@ import {
   deadlineState,
   silenceDays,
   summarizeTask,
-  workState,
+  workStateOf,
 } from "@/features/personal-kpi/task-summary";
 import {
   canEditPersonalKpi,
@@ -278,9 +278,18 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
           item,
           summary,
           deadline: deadlineState(summary.deadline, todayYmd),
-          work: workState(summary.progressPercent),
-          // Chưa cập nhật lần nào thì tính từ lúc đăng ký nhiệm vụ.
-          silence: silenceDays(item.lastProgressAt ?? item.createdAt, todayYmd),
+          work: workStateOf(summary, {
+            completed: item.status === "COMPLETED",
+            touched: !!item.lastProgressAt,
+          }),
+          /*
+            Chưa cập nhật lần nào thì tính từ lúc đăng ký nhiệm vụ.
+            Trục không có cột tiến độ thì không có gì để "im lặng": cán bộ
+            không cập nhật tiến độ được, kêu im lặng là kêu oan.
+          */
+          silence: summary.tracksProgress
+            ? silenceDays(item.lastProgressAt ?? item.createdAt, todayYmd)
+            : null,
           haystack: normalizeText(
             [
               summary.title,

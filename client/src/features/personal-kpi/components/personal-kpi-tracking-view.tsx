@@ -76,7 +76,7 @@ import {
   deadlineState,
   silenceDays,
   summarizeTask,
-  workState,
+  workStateOf,
   type DeadlineState,
   type TaskSummary,
   type WorkState,
@@ -339,7 +339,16 @@ function TrackingTable({
               </TableCell>
 
               <TableCell className="align-middle">
-                {row.summary.progressPercent === null ? (
+                {/* Trục có mẫu KPI không chấm theo % thì nói thẳng, đừng để ô
+                    trống rồi bị đọc thành "cán bộ chưa nhập". */}
+                {!row.summary.tracksProgress ? (
+                  <span
+                    className="text-xs text-muted-foreground"
+                    title="Mẫu KPI của trục này không có cột tiến độ - chốt hoàn thành theo thẩm định của chỉ huy"
+                  >
+                    Không theo dõi %
+                  </span>
+                ) : row.summary.progressPercent === null ? (
                   <span className="text-sm text-muted-foreground">-</span>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -409,7 +418,11 @@ function TrackingTable({
               </TableCell>
 
               <TableCell className="align-middle text-sm tabular-nums">
-                {row.summary.qualityPercent === null ? (
+                {!row.summary.tracksQuality ? (
+                  <span className="text-xs text-muted-foreground">
+                    Không theo dõi %
+                  </span>
+                ) : row.summary.qualityPercent === null ? (
                   <span className="text-muted-foreground">-</span>
                 ) : (
                   `${row.summary.qualityPercent}%`
@@ -574,11 +587,14 @@ export function PersonalKpiTrackingView() {
             template: axis.template,
             summary,
             deadline: deadlineState(summary.deadline, todayYmd),
-            work: workState(summary.progressPercent),
-            silence: silenceDays(
-              item.lastProgressAt ?? item.createdAt,
-              todayYmd,
-            ),
+            work: workStateOf(summary, {
+              completed: item.status === "COMPLETED",
+              touched: !!item.lastProgressAt,
+            }),
+            // Trục không chấm theo % thì không có tiến độ để im lặng.
+            silence: summary.tracksProgress
+              ? silenceDays(item.lastProgressAt ?? item.createdAt, todayYmd)
+              : null,
             ownerName: item.ownerName ?? "Chưa rõ cán bộ",
             ownerDepartmentName: department || "Chưa rõ đơn vị",
             reportDate: raw.reportDate ?? "",

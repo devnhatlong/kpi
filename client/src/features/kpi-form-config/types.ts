@@ -1,27 +1,3 @@
-export type ContentGroup = {
-  _id: string;
-  id?: string;
-  code: string;
-  name: string;
-  description?: string;
-  sortOrder: number;
-  isActive: boolean;
-};
-
-export type ContentGroupInput = {
-  code?: string;
-  name: string;
-  description?: string;
-  sortOrder?: number;
-  isActive?: boolean;
-};
-
-export type ContentGroupRef = {
-  _id: string;
-  code: string;
-  name: string;
-};
-
 export type Axis = {
   _id: string;
   id?: string;
@@ -65,8 +41,10 @@ export type WorkContent = {
   id?: string;
   code: string;
   name: string;
+  /** Cột "Nhiệm vụ" của bảng KPI - admin khai sẵn, cán bộ chỉ đọc. */
   description?: string;
-  contentGroupId: string | ContentGroupRef;
+  /** Cột "Ghi chú" của bảng KPI - admin khai sẵn (trần điểm của mục…). */
+  note?: string;
   axisId: string | AxisRef;
   /** null ở bản ghi tạo trước khi có trường này - hiện "Chưa gán". */
   scoreGroupId?: string | ScoreGroupRef | null;
@@ -78,7 +56,7 @@ export type WorkContentInput = {
   code?: string;
   name: string;
   description?: string;
-  contentGroupId: string;
+  note?: string;
   axisId: string;
   scoreGroupId: string;
   sortOrder?: number;
@@ -174,6 +152,14 @@ export const FORM_COLUMN_SEMANTICS = [
   "custom",
   "stt",
   "work_content",
+  /**
+   * Hai cột dưới đây do ADMIN khai sẵn ở danh mục Nội dung công việc, cán bộ
+   * chỉ đọc: bảng của trục 2 có sẵn nhiệm vụ và ghi chú cho từng mục, người
+   * nhập chỉ điền kết quả. Giá trị không lưu theo từng nhiệm vụ - đọc thẳng từ
+   * danh mục, sửa danh mục là mọi bảng đổi theo.
+   */
+  "work_content_task",
+  "work_content_note",
   "score_group",
   "quality_level",
 ] as const;
@@ -184,9 +170,24 @@ export const FORM_COLUMN_SEMANTIC_LABEL: Record<FormColumnSemantic, string> = {
   custom: "Không ánh xạ (nhập tự do)",
   stt: "STT",
   work_content: "Nội dung công việc",
+  work_content_task: "Nhiệm vụ",
+  work_content_note: "Ghi chú",
   score_group: "Nhóm điểm",
   quality_level: "Chất lượng thực hiện",
 };
+
+/**
+ * Cột đọc thẳng từ danh mục Nội dung công việc, cán bộ không nhập.
+ * Không lưu theo từng nhiệm vụ: sửa danh mục là mọi bảng đã nhập đổi theo.
+ */
+export const CONTENT_TEXT_SEMANTICS: FormColumnSemantic[] = [
+  "work_content_task",
+  "work_content_note",
+];
+
+export function isContentTextSemantic(semanticKey: FormColumnSemantic) {
+  return CONTENT_TEXT_SEMANTICS.includes(semanticKey);
+}
 
 /** Danh mục mà một cột lấy giá trị. */
 export type ColumnCatalog = "work_content" | "score_group" | "quality_level";
@@ -222,11 +223,17 @@ export function catalogOfSemantic(
  * `system`  ô nhập tay nhưng đổ vào đúng trường hệ thống để chấm và thống kê;
  * `auto`    hệ thống tự điền, người nhập không sửa.
  */
-export type SemanticKind = "free" | "catalog" | "system" | "auto";
+export type SemanticKind =
+  | "free"
+  | "catalog"
+  | "content"
+  | "system"
+  | "auto";
 
 export const SEMANTIC_KIND_LABEL: Record<SemanticKind, string> = {
   free: "Nhập tự do",
   catalog: "Chọn từ danh mục",
+  content: "Admin khai sẵn ở Nội dung công việc",
   system: "Trường hệ thống (nhập tay)",
   auto: "Hệ thống tự điền",
 };
@@ -234,6 +241,8 @@ export const SEMANTIC_KIND_LABEL: Record<SemanticKind, string> = {
 export const SEMANTIC_KIND_HINT: Record<SemanticKind, string> = {
   free: "Giá trị chỉ hiển thị lại trên báo cáo, không dùng để chấm hay thống kê.",
   catalog: "Người nhập chọn trong danh mục, không gõ được giá trị lạ.",
+  content:
+    "Chữ khai một lần ở Danh mục › Nội dung công việc rồi in ra mọi bảng; cán bộ chỉ đọc, không gõ lại.",
   system: "Người nhập tự gõ, giá trị vào đúng trường để chấm và tổng hợp.",
   auto: "Không cần nhập.",
 };
@@ -243,6 +252,8 @@ const AUTO_SEMANTICS: FormColumnSemantic[] = ["stt"];
 export function kindOfSemantic(semanticKey: FormColumnSemantic): SemanticKind {
   if (semanticKey === "custom") return "free";
   if (catalogOfSemantic(semanticKey)) return "catalog";
+  // Nhóm riêng: cùng lấy từ danh mục nhưng admin khai, không phải cán bộ chọn.
+  if (isContentTextSemantic(semanticKey)) return "content";
   if (AUTO_SEMANTICS.includes(semanticKey)) return "auto";
   return "system";
 }
@@ -250,6 +261,7 @@ export function kindOfSemantic(semanticKey: FormColumnSemantic): SemanticKind {
 const SEMANTIC_KIND_ORDER: SemanticKind[] = [
   "free",
   "catalog",
+  "content",
   "system",
   "auto",
 ];
@@ -272,6 +284,8 @@ export const SEMANTIC_DATA_TYPE: Partial<
   Record<FormColumnSemantic, FormColumnDataType>
 > = {
   stt: "auto_increment",
+  work_content_task: "text",
+  work_content_note: "text",
   score_group: "select",
   quality_level: "select",
 };
@@ -294,6 +308,8 @@ export function allowedDataTypes(
   semanticKey: FormColumnSemantic,
 ): FormColumnDataType[] {
   if (semanticKey === "stt") return ["auto_increment"];
+  // Nhiệm vụ / Ghi chú là đoạn chữ admin đã khai - không có kiểu nào khác.
+  if (isContentTextSemantic(semanticKey)) return ["text"];
   // Đổi cột danh mục sang ô nhập tay là mất ràng buộc với danh mục, người nhập
   // gõ được giá trị không tồn tại.
   if (catalogOfSemantic(semanticKey)) return ["select"];
@@ -444,19 +460,44 @@ export function isScoreInGroupRange(
  * Cột nào được cộng ở dòng "Tổng từng cột" suy ra từ dataType = number, không
  * khai lại ở đây.
  */
+/**
+ * Cách quy ra điểm trục.
+ * - `ratio`  : trung bình cộng của (Σ tử số / Σ mẫu số), rồi × điểm tối đa trục.
+ *              Đây là khuôn chung của các trục chấm theo tỉ lệ hoàn thành.
+ * - `sum`    : CỘNG THẲNG điểm của các cột đã khai, chặn ở điểm tối đa trục.
+ *              Dành cho trục chấm theo mục Đạt / Không đạt - mỗi mục có điểm
+ *              chuẩn riêng, cộng lại đúng bằng trần của trục, không có tỉ lệ
+ *              nào để chia.
+ */
+export const FORM_FOOTER_MODES = ["ratio", "sum"] as const;
+export type FormFooterMode = (typeof FORM_FOOTER_MODES)[number];
+
+export const FORM_FOOTER_MODE_LABEL: Record<FormFooterMode, string> = {
+  ratio: "Theo tỉ lệ (Σ tử số ÷ Σ mẫu số)",
+  sum: "Cộng dồn điểm các mục",
+};
+
 export type FormTemplateFooter = {
   enabled: boolean;
-  /** Khoá cột mẫu số - "Điểm chuẩn" trong bảng mẫu. */
+  /** Bỏ trống = "ratio", để mẫu cũ giữ nguyên cách tính. */
+  mode?: FormFooterMode;
+  /** Khoá cột mẫu số - "Điểm chuẩn" trong bảng mẫu. Chế độ cộng dồn không cần. */
   baseColumnKey: string | null;
-  /** Khoá các cột tử số, theo thứ tự hiện trên công thức. */
+  /** Khoá các cột tử số (chế độ cộng dồn: các cột đem cộng), theo thứ tự. */
   ratioColumnKeys: string[];
 };
 
 export const EMPTY_FORM_TEMPLATE_FOOTER: FormTemplateFooter = {
   enabled: false,
+  mode: "ratio",
   baseColumnKey: null,
   ratioColumnKeys: [],
 };
+
+/** Mẫu cũ chưa có `mode` thì vẫn là công thức tỉ lệ. */
+export function footerMode(footer?: FormTemplateFooter | null): FormFooterMode {
+  return footer?.mode === "sum" ? "sum" : "ratio";
+}
 
 /**
  * Cột gán được vào công thức, kèm con số mà cột đó đóng góp.
@@ -465,11 +506,13 @@ export const EMPTY_FORM_TEMPLATE_FOOTER: FormTemplateFooter = {
  * Nhóm điểm, giá trị dùng để tính là điểm tối đa của nhóm được chọn. Tương tự
  * cột Chất lượng thực hiện góp phần trăm của mức được chọn.
  */
-export type FormulaValueSource = "number" | "score_group_max" | "quality_percent";
+export type FormulaValueSource =
+  "number" | "score_group_max" | "quality_percent";
 
 export const FORMULA_VALUE_SOURCE_HINT: Record<FormulaValueSource, string> = {
   number: "lấy đúng số đã nhập",
-  score_group_max: "lấy điểm cao nhất đạt được của nhóm (dải hở thì lùi 1 điểm)",
+  score_group_max:
+    "lấy điểm cao nhất đạt được của nhóm (dải hở thì lùi 1 điểm)",
   quality_percent: "lấy phần trăm của mức chất lượng được chọn",
 };
 

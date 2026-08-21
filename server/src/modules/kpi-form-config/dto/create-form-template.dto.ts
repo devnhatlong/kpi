@@ -4,6 +4,7 @@ import {
   ArrayNotEmpty,
   IsArray,
   IsEnum,
+  IsIn,
   IsMongoId,
   IsOptional,
   IsString,
@@ -19,9 +20,11 @@ import {
   FORM_COLUMN_AUTO_KINDS,
   FORM_COLUMN_DATA_TYPES,
   FORM_COLUMN_SEMANTICS,
+  FORM_FOOTER_MODES,
   type FormColumnAutoKind,
   type FormColumnDataType,
   type FormColumnSemantic,
+  type FormFooterMode,
 } from '../schemas/form-template.schema';
 
 export class FormHeaderGroupDto {
@@ -115,6 +118,14 @@ export class FormTemplateFooterDto {
   @IsOptional()
   @IsString({ message: 'baseColumnKey phải là chuỗi.' })
   baseColumnKey?: string | null;
+
+  @ApiPropertyOptional({
+    enum: FORM_FOOTER_MODES,
+    description: 'ratio = Σ tử số ÷ Σ mẫu số; sum = cộng dồn điểm các mục',
+  })
+  @IsOptional()
+  @IsIn([...FORM_FOOTER_MODES], { message: 'mode chỉ nhận ratio hoặc sum.' })
+  mode?: FormFooterMode;
 
   @ApiPropertyOptional({
     type: [String],

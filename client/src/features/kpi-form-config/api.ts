@@ -3,8 +3,6 @@ import type { ApiResponse } from "@/features/auth/types";
 import type {
   Axis,
   AxisInput,
-  ContentGroup,
-  ContentGroupInput,
   FormTemplate,
   FormTemplateInput,
   ListQueryParams,
@@ -52,52 +50,6 @@ export function updateAxis(id: string, input: Partial<AxisInput>) {
 
 export async function deleteAxis(id: string) {
   await api.delete(`/kpi-form-config/axes/${id}`);
-}
-
-export const contentGroupKeys = {
-  all: ["content-groups"] as const,
-  list: (params: ListQueryParams) =>
-    [
-      "content-groups",
-      params.page,
-      params.limit,
-      params.q ?? "",
-      params.all ?? false,
-    ] as const,
-};
-
-export async function fetchContentGroupsPage(
-  params: ListQueryParams,
-): Promise<PaginatedResult<ContentGroup>> {
-  return unwrapPaginated(
-    api.get<ApiResponse<ContentGroup[]>>("/kpi-form-config/content-groups/all", {
-      params: buildListQuery(params),
-    }),
-  );
-}
-
-export async function fetchContentGroupsAll() {
-  const result = await fetchContentGroupsPage({ all: true });
-  return result.data.filter((item) => item.isActive);
-}
-
-export function createContentGroup(input: ContentGroupInput) {
-  return unwrapData(
-    api.post<ApiResponse<ContentGroup>>("/kpi-form-config/content-groups", input),
-  );
-}
-
-export function updateContentGroup(id: string, input: Partial<ContentGroupInput>) {
-  return unwrapData(
-    api.patch<ApiResponse<ContentGroup>>(
-      `/kpi-form-config/content-groups/${id}`,
-      input,
-    ),
-  );
-}
-
-export async function deleteContentGroup(id: string) {
-  await api.delete(`/kpi-form-config/content-groups/${id}`);
 }
 
 export const workContentKeys = {

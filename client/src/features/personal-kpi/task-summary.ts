@@ -50,6 +50,15 @@ export type TaskSummary = {
   }>;
   /** Có ô nào bị chỉ huy hạ xuống không. */
   reviewLowered: boolean;
+  /**
+   * Mẫu KPI của trục có cột tiến độ / chất lượng hay không.
+   *
+   * Mỗi trục gán một mẫu khác nhau, có trục chấm theo % tiến độ, có trục chỉ
+   * chấm khi chỉ huy chốt. Thiếu cột mà vẫn đọc như "0%" thì danh sách nói sai:
+   * việc đang chạy bình thường bị gắn "Chưa bắt đầu" và "Im lặng N ngày".
+   */
+  tracksProgress: boolean;
+  tracksQuality: boolean;
 };
 
 /** Bộ cột + cây nhóm header + cấu hình công thức của mẫu gán cho trục. */
@@ -319,6 +328,8 @@ export function summarizeTask(
     qualityPercent,
     reviewChanges: changes,
     reviewLowered: changes.some((change) => change.to < change.from),
+    tracksProgress: !!progressColumn,
+    tracksQuality: !!qualityColumn,
   };
 }
 
@@ -392,6 +403,22 @@ export const WORK_STATE_LABEL: Record<WorkState, string> = {
 export function workState(progressPercent: number | null): WorkState {
   if (progressPercent === null || progressPercent <= 0) return "NOT_STARTED";
   return progressPercent >= 100 ? "DONE" : "IN_PROGRESS";
+}
+
+/**
+ * Trạng thái công việc của một dòng, chịu được cả mẫu KPI không có cột tiến độ.
+ *
+ * Trục nào có cột tiến độ thì vẫn đọc từ phần trăm như cũ. Trục không có thì
+ * chỉ còn hai căn cứ thật: chỉ huy đã chốt chưa, và cán bộ đã động vào lần nào
+ * chưa - suy "0%" cho những trục đó là bịa ra một con số mẫu không hề có.
+ */
+export function workStateOf(
+  summary: TaskSummary,
+  state: { completed: boolean; touched: boolean },
+): WorkState {
+  if (summary.tracksProgress) return workState(summary.progressPercent);
+  if (state.completed) return "DONE";
+  return state.touched ? "IN_PROGRESS" : "NOT_STARTED";
 }
 
 /**

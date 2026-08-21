@@ -98,11 +98,6 @@ export const NAV_ITEMS: NavItem[] = [
     permissions: [PERM.KPI_MANAGE],
     children: [
       {
-        title: "Nhóm nội dung",
-        href: "/kpi/form-config/content-groups",
-        icon: Layers,
-      },
-      {
         title: "Trục",
         href: "/kpi/form-config/axes",
         icon: Layers,

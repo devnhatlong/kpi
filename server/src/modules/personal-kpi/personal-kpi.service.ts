@@ -178,7 +178,7 @@ export class PersonalKpiService {
       .find({ _id: { $in: created } })
       .sort({ createdAt: 1 })
       .populate('axisId', 'code name description')
-      .populate('workContentId', 'code name description');
+      .populate('workContentId', 'code name description note');
 
     return {
       message:
@@ -221,7 +221,7 @@ export class PersonalKpiService {
     await item.save();
     await item.populate([
       { path: 'axisId', select: 'code name description' },
-      { path: 'workContentId', select: 'code name description' },
+      { path: 'workContentId', select: 'code name description note' },
     ]);
 
     return { message: 'Đã lưu nháp.', data: item };
@@ -278,7 +278,7 @@ export class PersonalKpiService {
         .skip((page - 1) * limit)
         .limit(limit)
         .populate('axisId', 'code name description')
-        .populate('workContentId', 'code name description')
+        .populate('workContentId', 'code name description note')
         .populate('lastDecidedById', 'fullName username'),
       this.itemModel.countDocuments(filter),
     ]);
@@ -1219,7 +1219,7 @@ export class PersonalKpiService {
       .sort({ reportDate: -1, axisId: 1, workContentId: 1, createdAt: 1 })
       .limit(BOARD_MAX_ROWS)
       .populate('axisId', 'code name description sortOrder maxScore')
-      .populate('workContentId', 'code name description sortOrder')
+      .populate('workContentId', 'code name description note sortOrder')
       .populate('ownerId', 'fullName username')
       .populate('ownerDepartmentId', 'code name')
       .populate('lastSenderId', 'fullName username')
@@ -2066,7 +2066,7 @@ export class PersonalKpiService {
     await item.save();
     await item.populate([
       { path: 'axisId', select: 'code name description' },
-      { path: 'workContentId', select: 'code name description' },
+      { path: 'workContentId', select: 'code name description note' },
     ]);
 
     return { message: 'Đã cập nhật tiến độ.', data: item };
@@ -2737,7 +2737,7 @@ export class PersonalKpiService {
     if (withPopulate) {
       query
         .populate('axisId', 'code name description')
-        .populate('workContentId', 'code name description');
+        .populate('workContentId', 'code name description note');
     }
     const item = await query;
     if (!item) throw new NotFoundException('Không tìm thấy nhiệm vụ.');

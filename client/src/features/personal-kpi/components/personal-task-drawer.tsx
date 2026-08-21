@@ -705,6 +705,7 @@ export function PersonalTaskDrawer({
                             content?.name ?? "Nội dung không còn tồn tại"
                           }
                           contentDescription={content?.description}
+                          contentNote={content?.note}
                           columns={template?.columns ?? []}
                           hasTemplate={!!template}
                           scoreGroupId={

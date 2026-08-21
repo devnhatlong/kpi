@@ -93,13 +93,29 @@ export function PercentCell({
   percent,
   change,
   hint,
+  notTracked = false,
 }: {
   percent: number | null;
   /** Số cán bộ tự chấm, chỉ truyền khi chỉ huy đã chấm khác đi. */
   change?: { from: number; to: number };
   /** Dòng phụ dưới thanh, ví dụ "Cập nhật 3 ngày trước". */
   hint?: string;
+  /**
+   * Mẫu KPI của trục không có cột này. Khác hẳn "có cột mà chưa nhập": một bên
+   * là trục chấm kiểu khác, một bên là cán bộ còn nợ số liệu.
+   */
+  notTracked?: boolean;
 }) {
+  if (notTracked) {
+    return (
+      <span
+        className="text-xs text-muted-foreground"
+        title="Mẫu KPI của trục này không có cột đó nên không chấm theo phần trăm"
+      >
+        Không theo dõi %
+      </span>
+    );
+  }
   if (percent === null) {
     return <span className="text-sm text-muted-foreground">-</span>;
   }

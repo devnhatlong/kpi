@@ -25,7 +25,6 @@ import {
 import {
   createWorkContent,
   fetchAxesAll,
-  fetchContentGroupsAll,
   fetchScoreGroupsAll,
   updateWorkContent,
 } from "@/features/kpi-form-config/api";
@@ -50,16 +49,12 @@ export function WorkContentFormDialog({
 }: WorkContentFormDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [contentGroupId, setContentGroupId] = useState("");
+  const [note, setNote] = useState("");
   const [axisId, setAxisId] = useState("");
   const [scoreGroupId, setScoreGroupId] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
-  const { data: contentGroups = [] } = useSWR(
-    open ? ["content-groups", "all", "for-work-content"] : null,
-    fetchContentGroupsAll,
-  );
   const { data: axes = [] } = useSWR(
     open ? ["axes", "all", "for-work-content"] : null,
     fetchAxesAll,
@@ -74,27 +69,23 @@ export function WorkContentFormDialog({
     if (edit) {
       setName(edit.name);
       setDescription(edit.description ?? "");
-      setContentGroupId(
-        typeof edit.contentGroupId === "string"
-          ? edit.contentGroupId
-          : edit.contentGroupId?._id ?? "",
-      );
+      setNote(edit.note ?? "");
       setAxisId(
         typeof edit.axisId === "string"
           ? edit.axisId
-          : edit.axisId?._id ?? "",
+          : (edit.axisId?._id ?? ""),
       );
       setScoreGroupId(
         typeof edit.scoreGroupId === "string"
           ? edit.scoreGroupId
-          : edit.scoreGroupId?._id ?? "",
+          : (edit.scoreGroupId?._id ?? ""),
       );
       setSortOrder(String(edit.sortOrder ?? 0));
       setIsActive(edit.isActive);
     } else {
       setName("");
       setDescription("");
-      setContentGroupId("");
+      setNote("");
       setAxisId("");
       setScoreGroupId("");
       setSortOrder("0");
@@ -105,10 +96,6 @@ export function WorkContentFormDialog({
   const submit = async () => {
     if (!name.trim()) {
       toast.error("Vui lòng nhập tên nội dung công việc.");
-      return;
-    }
-    if (!contentGroupId) {
-      toast.error("Vui lòng chọn nhóm nội dung.");
       return;
     }
     if (!axisId) {
@@ -129,7 +116,7 @@ export function WorkContentFormDialog({
     const payload = {
       name: name.trim(),
       description: description.trim(),
-      contentGroupId,
+      note: note.trim(),
       axisId,
       scoreGroupId,
       sortOrder: sortOrderNum,
@@ -169,7 +156,12 @@ export function WorkContentFormDialog({
           {edit ? (
             <div className="space-y-2">
               <Label>Mã</Label>
-              <Input value={edit.code} readOnly disabled className="font-mono" />
+              <Input
+                value={edit.code}
+                readOnly
+                disabled
+                className="font-mono"
+              />
               <p className="text-xs text-muted-foreground">
                 Mã tự sinh - không đổi sau khi tạo.
               </p>
@@ -193,32 +185,35 @@ export function WorkContentFormDialog({
             />
           </div>
 
+          {/*
+            Hai ô này là phần admin khai sẵn cho bảng KPI: cán bộ không gõ lại,
+            chỉ đọc rồi nhập kết quả. Đặt đúng tên cột để admin khỏi đoán ô nào
+            ra cột nào.
+          */}
           <div className="space-y-2">
-            <Label htmlFor="work-content-description">Mô tả (tuỳ chọn)</Label>
+            <Label htmlFor="work-content-description">
+              Nhiệm vụ (cột &quot;Nhiệm vụ&quot; của bảng KPI)
+            </Label>
             <Textarea
               id="work-content-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
+              placeholder="VD: Chủ trì tham mưu, triển khai đề án, dự án… (yêu cầu có tài liệu kiểm chứng)"
             />
           </div>
 
           <div className="space-y-2">
-            <Label>
-              Nhóm nội dung <span className="text-destructive">*</span>
+            <Label htmlFor="work-content-note">
+              Ghi chú (cột &quot;Ghi chú&quot; của bảng KPI)
             </Label>
-            <Select value={contentGroupId || undefined} onValueChange={setContentGroupId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Chọn nhóm nội dung" />
-              </SelectTrigger>
-              <SelectContent>
-                {contentGroups.map((group) => (
-                  <SelectItem key={entityId(group)} value={entityId(group)}>
-                    {group.name} ({group.code})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Textarea
+              id="work-content-note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              placeholder="VD: Tối đa mục này 02 điểm"
+            />
           </div>
 
           <div className="space-y-2">
@@ -292,7 +287,11 @@ export function WorkContentFormDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             Hủy
           </Button>
           <Button onClick={submit} disabled={saving}>

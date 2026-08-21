@@ -19,6 +19,8 @@ type TaskEntryCardProps = {
   index: number;
   contentName: string;
   contentDescription?: string;
+  /** Ghi chú admin khai ở danh mục - cột "Ghi chú" của bảng KPI. */
+  contentNote?: string;
   /** Bộ cột của mẫu bảng gán cho trục; rỗng khi trục chưa gán mẫu. */
   columns: FormTemplateColumn[];
   hasTemplate: boolean;
@@ -47,6 +49,7 @@ export function TaskEntryCard({
   index,
   contentName,
   contentDescription,
+  contentNote,
   columns,
   hasTemplate,
   scoreGroupId,
@@ -163,6 +166,8 @@ export function TaskEntryCard({
                   columns={columns}
                   task={task}
                   scoreGroupId={scoreGroupId}
+                  contentTask={contentDescription}
+                  contentNote={contentNote}
                   disabled={disabled}
                   onChange={(patch) => onTaskChange(task.key, patch)}
                 />

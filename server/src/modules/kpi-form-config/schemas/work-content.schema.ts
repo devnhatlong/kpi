@@ -1,6 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import { ContentGroup } from './content-group.schema';
 import { Axis } from './axis.schema';
 import { ScoreGroup } from './score-group.schema';
 
@@ -15,11 +14,17 @@ export class WorkContent {
   @Prop({ required: true, trim: true })
   name!: string;
 
+  /** Cột "Nhiệm vụ" của bảng KPI - admin khai sẵn, cán bộ chỉ đọc. */
   @Prop({ trim: true, default: '' })
   description!: string;
 
-  @Prop({ type: Types.ObjectId, ref: ContentGroup.name, required: true, index: true })
-  contentGroupId!: Types.ObjectId;
+  /**
+   * Cột "Ghi chú" của bảng KPI - trần điểm của mục, quy ước riêng của mục đó...
+   * Admin khai một lần theo nội dung công việc; mọi nhiệm vụ khai theo nội dung
+   * này đều đọc chung, cán bộ không gõ lại.
+   */
+  @Prop({ trim: true, default: '' })
+  note!: string;
 
   @Prop({ type: Types.ObjectId, ref: Axis.name, required: true, index: true })
   axisId!: Types.ObjectId;

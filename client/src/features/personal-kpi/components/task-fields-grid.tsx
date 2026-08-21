@@ -8,6 +8,7 @@ import {
   catalogOfSemantic,
   computeAutoValue,
   formatScoreRange,
+  isContentTextSemantic,
   isScoreInGroupRange,
   type FormTemplateColumn,
 } from "@/features/kpi-form-config/types";
@@ -104,6 +105,13 @@ type TaskFieldsGridProps = {
    * cột điểm trong dòng này.
    */
   scoreGroupId: string;
+  /**
+   * Nhiệm vụ / Ghi chú do admin khai sẵn ở danh mục Nội dung công việc.
+   * Hai cột này chỉ đọc: bảng trục 2 in sẵn nhiệm vụ và trần điểm của từng mục,
+   * cán bộ chỉ điền kết quả.
+   */
+  contentTask?: string;
+  contentNote?: string;
   disabled?: boolean;
   onChange: (patch: Partial<PersonalTaskDraft>) => void;
 };
@@ -117,6 +125,8 @@ export function TaskFieldsGrid({
   columns,
   task,
   scoreGroupId,
+  contentTask = "",
+  contentNote = "",
   disabled = false,
   onChange,
 }: TaskFieldsGridProps) {
@@ -134,6 +144,30 @@ export function TaskFieldsGrid({
   );
 
   const renderControl = (column: FormTemplateColumn) => {
+    // Nhiệm vụ / Ghi chú: chữ admin đã khai ở danh mục, chỉ đọc. Không lưu vào
+    // nhiệm vụ - sửa danh mục là mọi bảng đã nhập đổi theo.
+    if (isContentTextSemantic(column.semanticKey)) {
+      const text =
+        column.semanticKey === "work_content_task" ? contentTask : contentNote;
+      return (
+        <div
+          className={cn(
+            readOnlyClass,
+            "max-h-24 items-start overflow-y-auto px-2 py-1 text-sm leading-5",
+          )}
+          title={text || undefined}
+        >
+          {text ? (
+            <span className="whitespace-pre-wrap">{text}</span>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              Nội dung chưa khai {column.title.toLowerCase()}
+            </span>
+          )}
+        </div>
+      );
+    }
+
     // Nhóm điểm đổ theo nội dung công việc - hiện ra để đối chiếu, không cho
     // chọn. Server tự điền lúc lưu.
     if (column.semanticKey === "score_group") {

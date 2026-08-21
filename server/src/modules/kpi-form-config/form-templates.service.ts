@@ -21,6 +21,7 @@ import {
   FormTemplateDocument,
   FormTemplateFooter,
   formulaValueSource,
+  type FormFooterMode,
   type FormColumnSemantic,
 } from './schemas/form-template.schema';
 import {
@@ -509,6 +510,7 @@ export class FormTemplatesService {
       columns.find((column) => column.key === key)?.title ?? key;
 
     const enabled = footer?.enabled ?? false;
+    const mode: FormFooterMode = footer?.mode === 'sum' ? 'sum' : 'ratio';
     const baseColumnKey = footer?.baseColumnKey?.trim() || null;
     const ratioColumnKeys = [
       ...new Set(
@@ -521,10 +523,32 @@ export class FormTemplatesService {
     if (!enabled) {
       return {
         enabled: false,
+        mode,
         baseColumnKey:
           baseColumnKey && numeric.has(baseColumnKey) ? baseColumnKey : null,
         ratioColumnKeys: ratioColumnKeys.filter((key) => numeric.has(key)),
       };
+    }
+
+    /*
+      Cộng dồn thì không có mẫu số: điểm của trục là tổng điểm các mục đã chấm,
+      trần là điểm tối đa của trục. Bắt chọn "điểm chuẩn" ở đây chỉ tổ đẻ ra một
+      con số vô nghĩa rồi đem chia.
+    */
+    if (mode === 'sum') {
+      if (!ratioColumnKeys.length) {
+        throw new BadRequestException(
+          'Công thức cộng dồn cần ít nhất một cột điểm để cộng.',
+        );
+      }
+      for (const key of ratioColumnKeys) {
+        if (!numeric.has(key)) {
+          throw new BadRequestException(
+            `Cột điểm "${titleOf(key)}" không còn trong mẫu hoặc không quy ra số được.`,
+          );
+        }
+      }
+      return { enabled: true, mode, baseColumnKey: null, ratioColumnKeys };
     }
 
     if (!baseColumnKey) {
@@ -555,7 +579,7 @@ export class FormTemplatesService {
       }
     }
 
-    return { enabled: true, baseColumnKey, ratioColumnKeys };
+    return { enabled: true, mode, baseColumnKey, ratioColumnKeys };
   }
 
   private ensureHeaderPathExists(

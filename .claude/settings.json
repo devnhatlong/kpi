@@ -93,7 +93,10 @@
       "Bash(item)",
       "Bash(echo \"lint=$?\")",
       "Bash(cd \"d:/Project/WebApp/KPI/server\" && ls src/modules/personal-kpi/dto/ && sed -n '225,320p' src/modules/personal-kpi/dto/*.ts)",
-      "Bash(npx prettier *)"
+      "Bash(npx prettier *)",
+      "Bash(grep -n \"return { enabled: true, mode\" src/modules/kpi-form-config/form-templates.service.ts)",
+      "Bash(python -c ' *)",
+      "Bash(rm -f src/modules/kpi-form-config/content-groups.controller.ts src/modules/kpi-form-config/content-groups.service.ts src/modules/kpi-form-config/schemas/content-group.schema.ts src/modules/kpi-form-config/dto/create-content-group.dto.ts src/modules/kpi-form-config/dto/update-content-group.dto.ts)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto"

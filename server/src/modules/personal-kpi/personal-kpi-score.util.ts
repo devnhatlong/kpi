@@ -121,13 +121,31 @@ export function computeAxisScore(
     axisScore: null,
     convertedScore: null,
   };
-  if (
-    !footer?.enabled ||
-    !footer.baseColumnKey ||
-    !footer.ratioColumnKeys?.length
-  ) {
-    return empty;
+  if (!footer?.enabled || !footer.ratioColumnKeys?.length) return empty;
+
+  /*
+    Cộng dồn: điểm trục = tổng điểm các mục đã chấm, chặn ở điểm tối đa trục.
+    Trục kiểu này (Đạt / Không đạt, mỗi mục một điểm chuẩn riêng) không có mẫu
+    số để chia - đem chia thì hai mục cùng đạt lại ra tỉ lệ 1 rồi × trần trục,
+    thành ra mục nào cũng thành điểm tối đa.
+  */
+  if (footer.mode === 'sum') {
+    const scored = footer.ratioColumnKeys.filter(
+      (key) => columnTotals[key] !== undefined,
+    );
+    // Chưa cột nào có số = chưa chấm, khác hẳn "chấm 0 điểm".
+    if (!scored.length) return empty;
+
+    const total = scored.reduce((sum, key) => sum + columnTotals[key]!, 0);
+    const converted = axisMaxScore > 0 ? Math.min(total, axisMaxScore) : total;
+    return {
+      columnTotals,
+      axisScore: axisMaxScore > 0 ? converted / axisMaxScore : null,
+      convertedScore: converted,
+    };
   }
+
+  if (!footer.baseColumnKey) return empty;
 
   const base = columnTotals[footer.baseColumnKey];
   // Mẫu số 0 hoặc trống thì không có tỉ lệ nào để nói, không phải là 0 điểm.

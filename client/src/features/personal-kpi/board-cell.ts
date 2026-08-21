@@ -1,6 +1,7 @@
 import type { PersonalKpiBoardRow } from "@/features/personal-kpi/api";
 import {
   effectiveMaxScore,
+  footerMode,
   formulaValueSource,
   type FormTemplateColumn,
   type FormTemplateFooter,
@@ -16,6 +17,13 @@ export function refLabel(value: unknown): string {
   return ref.fullName ?? ref.name ?? ref.username ?? "";
 }
 
+/** Một trường chữ của tham chiếu đã populate; chuỗi id thì chưa join, không có gì. */
+function refField(value: unknown, field: "description" | "note"): string {
+  if (!value || typeof value === "string") return "";
+  const ref = value as Partial<Record<typeof field, string>>;
+  return ref[field] ?? "";
+}
+
 /**
  * Giá trị hiển thị của một ô theo ánh xạ cột của mẫu.
  * Dùng chung cho bảng duyệt, báo cáo tổng và file xuất ra, để ba nơi không bao
@@ -28,6 +36,15 @@ export function cellText(
   switch (column.semanticKey) {
     case "work_content":
       return refLabel(row.workContentId);
+    /*
+      Nhiệm vụ / Ghi chú: chữ admin khai ở danh mục, đọc thẳng từ nội dung công
+      việc đã populate. Không lưu theo từng nhiệm vụ nên sửa danh mục là mọi
+      bảng cũ đổi theo - đúng ý "admin khai một lần".
+    */
+    case "work_content_task":
+      return refField(row.workContentId, "description");
+    case "work_content_note":
+      return refField(row.workContentId, "note");
     // Cột danh mục lấy theo khoá cột, để hai cột cùng danh mục không lẫn nhau.
     case "score_group":
     case "quality_level":
@@ -147,9 +164,29 @@ export function computeAxisFooter(
   }
 
   const empty = { columnTotals, axisScore: null, convertedScore: null };
-  if (!footer?.enabled || !footer.baseColumnKey || !footer.ratioColumnKeys.length) {
-    return empty;
+  if (!footer?.enabled || !footer.ratioColumnKeys.length) return empty;
+
+  /*
+    Cộng dồn: điểm trục = tổng điểm các mục đã chấm, chặn ở điểm tối đa trục.
+    PHẢI khớp từng chữ với `computeAxisScore` bên server - lệch một nhánh là
+    bảng hiện một số, báo cáo lưu một số khác.
+  */
+  if (footerMode(footer) === "sum") {
+    const scored = footer.ratioColumnKeys.filter(
+      (key) => columnTotals[key] !== undefined,
+    );
+    if (!scored.length) return empty;
+
+    const total = scored.reduce((sum, key) => sum + columnTotals[key]!, 0);
+    const converted = axisMaxScore > 0 ? Math.min(total, axisMaxScore) : total;
+    return {
+      columnTotals,
+      axisScore: axisMaxScore > 0 ? converted / axisMaxScore : null,
+      convertedScore: converted,
+    };
   }
+
+  if (!footer.baseColumnKey) return empty;
 
   const base = columnTotals[footer.baseColumnKey];
   // Mẫu số 0 hoặc trống thì không có tỉ lệ nào để nói, không phải là 0 điểm.

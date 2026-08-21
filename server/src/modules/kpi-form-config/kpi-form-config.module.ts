@@ -6,10 +6,6 @@ import {
   WorkContent,
   WorkContentSchema,
 } from './schemas/work-content.schema';
-import {
-  ContentGroup,
-  ContentGroupSchema,
-} from './schemas/content-group.schema';
 import { Axis, AxisSchema } from './schemas/axis.schema';
 import {
   ScoreGroup,
@@ -25,8 +21,6 @@ import {
 } from './schemas/form-template-version.schema';
 import { WorkContentsController } from './work-contents.controller';
 import { WorkContentsService } from './work-contents.service';
-import { ContentGroupsController } from './content-groups.controller';
-import { ContentGroupsService } from './content-groups.service';
 import { AxesController } from './axes.controller';
 import { AxesService } from './axes.service';
 import { ScoreGroupsController } from './score-groups.controller';
@@ -44,7 +38,6 @@ import {
   imports: [
     MongooseModule.forFeature([
       { name: WorkContent.name, schema: WorkContentSchema },
-      { name: ContentGroup.name, schema: ContentGroupSchema },
       { name: Axis.name, schema: AxisSchema },
       { name: ScoreGroup.name, schema: ScoreGroupSchema },
       { name: FormTemplate.name, schema: FormTemplateSchema },
@@ -56,7 +49,6 @@ import {
   ],
   controllers: [
     WorkContentsController,
-    ContentGroupsController,
     AxesController,
     ScoreGroupsController,
     FormTemplatesController,
@@ -64,7 +56,6 @@ import {
   ],
   providers: [
     WorkContentsService,
-    ContentGroupsService,
     AxesService,
     ScoreGroupsService,
     FormTemplatesService,
@@ -72,7 +63,6 @@ import {
   ],
   exports: [
     WorkContentsService,
-    ContentGroupsService,
     AxesService,
     ScoreGroupsService,
     FormTemplatesService,
