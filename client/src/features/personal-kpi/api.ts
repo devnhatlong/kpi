@@ -156,13 +156,24 @@ function refId(value: string | CatalogRef | null | undefined): string {
   return typeof value === "string" ? value : value._id;
 }
 
-function refName(value: string | CatalogRef, fallback = ""): string {
-  if (typeof value === "string") return fallback;
+/*
+  Tham chiếu có thể là NULL chứ không chỉ là chuỗi id: danh mục bị xoá thì
+  Mongoose populate trả về null. `typeof null === "object"` nên nhánh kiểm tra
+  chuỗi không đỡ được - thiếu chốt này là cả trang trắng vì đọc `.name` của null.
+*/
+function refName(
+  value: string | CatalogRef | null | undefined,
+  fallback = "",
+): string {
+  if (!value || typeof value === "string") return fallback;
   return value.name ?? value.fullName ?? value.username ?? fallback;
 }
 
-function refCode(value: string | CatalogRef, fallback = ""): string {
-  if (typeof value === "string") return fallback;
+function refCode(
+  value: string | CatalogRef | null | undefined,
+  fallback = "",
+): string {
+  if (!value || typeof value === "string") return fallback;
   return value.code ?? fallback;
 }
 
@@ -192,9 +203,11 @@ export function mapPersonalKpiFromApi(
     status: row.reviewStatus ?? "DRAFT",
     holderLevel: row.holderLevel ?? 0,
     axisId: refId(row.axisId),
-    axisName: refName(row.axisId),
+    // Danh mục bị xoá sau khi nhiệm vụ đã lưu: nói thẳng ra thay vì để ô trống,
+    // người duyệt còn biết vì sao dòng này thiếu tên.
+    axisName: refName(row.axisId, "Trục đã bị xoá"),
     workContentId: refId(row.workContentId),
-    workContentName: refName(row.workContentId),
+    workContentName: refName(row.workContentId, "Nội dung đã bị xoá"),
     workContentCode: refCode(row.workContentId),
     task,
     reportDate: row.reportDate || undefined,
