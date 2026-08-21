@@ -5,6 +5,7 @@ import { Check, ClipboardList, Inbox, Info, Plus, Search } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 
+import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,7 +74,9 @@ function searchHaystack(item: {
   code?: string;
   description?: string;
 }): string {
-  return normalizeText(`${item.name} ${item.code ?? ""} ${item.description ?? ""}`);
+  return normalizeText(
+    `${item.name} ${item.code ?? ""} ${item.description ?? ""}`,
+  );
 }
 
 function sortByOrder<T extends { sortOrder: number; name: string }>(
@@ -121,7 +124,10 @@ export function PersonalTaskDrawer({
     data: axes = [],
     isLoading: loadingAxes,
     error: axesError,
-  } = useSWR(open ? ["axes", "all", "personal-task-drawer"] : null, fetchAxesAll);
+  } = useSWR(
+    open ? ["axes", "all", "personal-task-drawer"] : null,
+    fetchAxesAll,
+  );
   const {
     data: workContents = [],
     isLoading: loadingContents,
@@ -138,6 +144,10 @@ export function PersonalTaskDrawer({
   const [saving, setSaving] = useState(false);
   /** Nội dung vừa bấm ở thư viện - cuộn tới thẻ nhập của nó. */
   const [focusKey, setFocusKey] = useState<string | null>(null);
+  /** Trục đang mở ở cột phải; rỗng = lấy trục đầu tiên có nội dung. */
+  const [axisTab, setAxisTab] = useState("");
+  /** Khoá của các nội dung đang thu gọn - giữ ở đây để gấp được cả loạt. */
+  const [collapsedKeys, setCollapsedKeys] = useState<string[]>([]);
 
   const isEdit = !!edit;
   /** Sửa vì bị trả lại - phải nhắc gửi lại, không thì nhiệm vụ nằm im ở nháp. */
@@ -147,7 +157,9 @@ export function PersonalTaskDrawer({
   useEffect(() => {
     if (!open) return;
     if (axesError) {
-      toast.error(getApiErrorMessage(axesError, "Không tải được danh sách trục."));
+      toast.error(
+        getApiErrorMessage(axesError, "Không tải được danh sách trục."),
+      );
     }
   }, [open, axesError]);
 
@@ -217,9 +229,7 @@ export function PersonalTaskDrawer({
         const axisMatched = !term || searchHaystack(axis).includes(term);
         const contents = sortByOrder(
           workContents.filter((item) => workContentAxisId(item) === axisId),
-        ).filter(
-          (item) => axisMatched || searchHaystack(item).includes(term),
-        );
+        ).filter((item) => axisMatched || searchHaystack(item).includes(term));
         return {
           axis,
           axisId,
@@ -278,20 +288,52 @@ export function PersonalTaskDrawer({
 
   const taskCount = entries.reduce((sum, entry) => sum + entry.tasks.length, 0);
 
+  /*
+    Trục đang mở ở cột phải. Suy lại từ danh sách trục thật sự có nội dung: xoá
+    hết nội dung của một trục thì tab đó biến mất, giữ id cũ là cột phải trắng
+    trơn mà không hiểu vì sao.
+  */
+  const activeAxisId =
+    axisGroups.find((group) => group.axisId === axisTab)?.axisId ??
+    axisGroups[0]?.axisId ??
+    "";
+  const activeGroup = axisGroups.find((group) => group.axisId === activeAxisId);
+
   /** Bấm nội dung đã chọn rồi = thêm một việc nữa cho nội dung đó. */
   const pickContent = (axisId: string, workContentId: string) => {
+    // Nhảy sang tab của trục vừa bấm, nếu không thì thẻ vừa thêm nằm ở tab khác.
+    setAxisTab(axisId);
     const existing = entries.find(
       (entry) => entry.workContentId === workContentId,
     );
     if (existing) {
       addTask(existing.key);
-      setFocusKey(existing.key);
+      // Thẻ đang gấp thì bung ra, không thì bấm thêm việc mà chẳng thấy gì đổi.
+      revealEntry(existing);
       return;
     }
     const entry = createContentEntry(axisId, workContentId);
     setEntries((prev) => [...prev, entry]);
     setFocusKey(entry.key);
   };
+
+  /**
+   * Đưa một nội dung ra trước mắt: mở đúng tab trục, bung thẻ nếu đang gấp rồi
+   * cuộn tới. Báo lỗi ở một thẻ đang thu gọn mà không làm gì thì người dùng chỉ
+   * thấy toast, không thấy ô nào sai.
+   */
+  const revealEntry = (entry: DraftContentEntry) => {
+    setAxisTab(entry.axisId);
+    setCollapsedKeys((prev) => prev.filter((key) => key !== entry.key));
+    setFocusKey(entry.key);
+  };
+
+  const toggleCollapsed = (entryKey: string) =>
+    setCollapsedKeys((prev) =>
+      prev.includes(entryKey)
+        ? prev.filter((key) => key !== entryKey)
+        : [...prev, entryKey],
+    );
 
   const removeEntry = (entryKey: string) => {
     setEntries((prev) => prev.filter((entry) => entry.key !== entryKey));
@@ -328,11 +370,11 @@ export function PersonalTaskDrawer({
       prev.map((entry) =>
         entry.key === entryKey
           ? {
-            ...entry,
-            tasks: entry.tasks.map((task) =>
-              task.key === taskKey ? { ...task, ...patch } : task,
-            ),
-          }
+              ...entry,
+              tasks: entry.tasks.map((task) =>
+                task.key === taskKey ? { ...task, ...patch } : task,
+              ),
+            }
           : entry,
       ),
     );
@@ -356,6 +398,7 @@ export function PersonalTaskDrawer({
 
       const template = templates.byAxis.get(entry.axisId);
       if (!template) {
+        revealEntry(entry);
         toast.error(
           `Trục "${axis.name}" chưa gán mẫu bảng nên không nhập được nhiệm vụ. Bỏ nội dung thuộc trục này hoặc liên hệ quản trị.`,
         );
@@ -365,6 +408,7 @@ export function PersonalTaskDrawer({
       // Dòng chưa gõ gì là dòng thừa - bỏ đi thay vì bắt lỗi thiếu cột.
       const tasks = entry.tasks.filter((task) => !isEmptyTask(task));
       if (tasks.length === 0) {
+        revealEntry(entry);
         toast.error(
           `"${content.name}" chưa nhập việc nào. Nhập nội dung hoặc bỏ nội dung này khỏi phiếu.`,
         );
@@ -376,6 +420,7 @@ export function PersonalTaskDrawer({
       for (const task of tasks) {
         const missing = missingRequiredColumns(task, template.columns);
         if (missing.length > 0) {
+          revealEntry(entry);
           toast.error(`"${content.name}": còn thiếu ${missing.join(", ")}.`);
           return;
         }
@@ -387,6 +432,7 @@ export function PersonalTaskDrawer({
           scoreGroupId,
         );
         if (problems.length > 0) {
+          revealEntry(entry);
           toast.error(`"${content.name}": ${problems.join("; ")}.`);
           return;
         }
@@ -578,27 +624,75 @@ export function PersonalTaskDrawer({
                 </p>
               </div>
             ) : (
-              <div className="space-y-5">
-                {axisGroups.map((group) => (
-                  <div key={group.axisId} className="space-y-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Badge
-                          variant="secondary"
-                          className="border-transparent bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-                        >
-                          Trục {group.order}
-                        </Badge>
-                        <span className="truncate text-sm font-semibold">
-                          {group.axis?.name ?? "Trục không còn tồn tại"}
+              <div className="space-y-4">
+                {/*
+                  Trục nằm thành tab ở trên thay vì xếp chồng nhau: nhập một
+                  buổi có thể chạm 3-4 trục, xếp dọc thì phải cuộn qua cả tá thẻ
+                  của trục khác mới tới thẻ mình đang gõ.
+                */}
+                <SegmentedTabs
+                  ariaLabel="Chọn trục đang nhập"
+                  value={activeAxisId}
+                  onChange={setAxisTab}
+                  className="w-fit"
+                  items={axisGroups.map((group) => ({
+                    value: group.axisId,
+                    title: group.axis?.name,
+                    label: (
+                      <span className="flex items-center gap-1.5">
+                        Trục {group.order}
+                        <span className="rounded-full bg-primary/10 px-1.5 text-xs font-medium text-primary tabular-nums">
+                          {group.taskCount}
                         </span>
-                      </div>
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                        {group.entries.length} nội dung · {group.taskCount} việc
                       </span>
+                    ),
+                  }))}
+                />
+
+                {activeGroup ? (
+                  <div key={activeGroup.axisId} className="space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+                      <span className="min-w-0 truncate text-sm font-semibold">
+                        {activeGroup.axis?.name ?? "Trục không còn tồn tại"}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {activeGroup.entries.length} nội dung ·{" "}
+                          {activeGroup.taskCount} việc
+                        </span>
+                        {/* Gấp cả loạt - nhập tới nội dung thứ bảy thì gấp tay
+                            từng thẻ cũng đủ mệt. */}
+                        {activeGroup.entries.length > 1 ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => {
+                              const keys = activeGroup.entries.map(
+                                ({ entry }) => entry.key,
+                              );
+                              const allCollapsed = keys.every((key) =>
+                                collapsedKeys.includes(key),
+                              );
+                              setCollapsedKeys((prev) =>
+                                allCollapsed
+                                  ? prev.filter((key) => !keys.includes(key))
+                                  : [...new Set([...prev, ...keys])],
+                              );
+                            }}
+                          >
+                            {activeGroup.entries.every(({ entry }) =>
+                              collapsedKeys.includes(entry.key),
+                            )
+                              ? "Mở tất cả"
+                              : "Thu gọn tất cả"}
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
 
-                    {group.entries.map(({ entry, index }) => {
+                    {activeGroup.entries.map(({ entry, index }) => {
                       const content = contentById.get(entry.workContentId);
                       const template = templates.byAxis.get(entry.axisId);
                       return (
@@ -607,7 +701,9 @@ export function PersonalTaskDrawer({
                           id={`kpi-entry-${entry.key}`}
                           entry={entry}
                           index={index}
-                          contentName={content?.name ?? "Nội dung không còn tồn tại"}
+                          contentName={
+                            content?.name ?? "Nội dung không còn tồn tại"
+                          }
                           contentDescription={content?.description}
                           columns={template?.columns ?? []}
                           hasTemplate={!!template}
@@ -616,6 +712,8 @@ export function PersonalTaskDrawer({
                           }
                           disabled={saving}
                           fixedTasks={isEdit}
+                          collapsed={collapsedKeys.includes(entry.key)}
+                          onToggleCollapsed={() => toggleCollapsed(entry.key)}
                           onAddTask={() => addTask(entry.key)}
                           onRemoveTask={(taskKey) =>
                             removeTask(entry.key, taskKey)
@@ -628,7 +726,7 @@ export function PersonalTaskDrawer({
                       );
                     })}
                   </div>
-                ))}
+                ) : null}
 
                 {!isEdit ? (
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -670,11 +768,7 @@ export function PersonalTaskDrawer({
               disabled={saving || loading || entries.length === 0}
             >
               <Check className="h-4 w-4" />
-              {saving
-                ? "Đang lưu..."
-                : isEdit
-                  ? "Lưu chỉnh sửa"
-                  : "Lưu nháp"}
+              {saving ? "Đang lưu..." : isEdit ? "Lưu chỉnh sửa" : "Lưu nháp"}
             </Button>
           </div>
         </SheetFooter>
