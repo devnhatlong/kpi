@@ -12,7 +12,11 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 export type SearchableSelectOption = {
@@ -71,8 +75,16 @@ export function SearchableSelect({
           <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
+      {/*
+        Danh sách rộng hơn ô bấm và cho xuống dòng: nhiệm vụ trong bảng KPI là
+        cả đoạn văn, cắt cụt một dòng thì mấy mục đầu giống hệt nhau, không
+        phân biệt nổi mục nào với mục nào.
+      */}
       <PopoverContent
-        className={cn("w-[var(--radix-popover-trigger-width)] p-0", className)}
+        className={cn(
+          "w-[max(var(--radix-popover-trigger-width),22rem)] p-0",
+          className,
+        )}
         align="start"
       >
         <Command>
@@ -81,14 +93,18 @@ export function SearchableSelect({
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
               {options.map((option) => {
-                const searchValue = [option.label, option.keywords, option.value]
+                const searchValue = [
+                  option.label,
+                  option.keywords,
+                  option.value,
+                ]
                   .filter(Boolean)
                   .join(" ");
                 return (
                   <CommandItem
                     key={option.value}
                     value={searchValue}
-                    className="cursor-pointer"
+                    className="cursor-pointer items-start gap-2"
                     onSelect={() => {
                       onValueChange(option.value);
                       setOpen(false);
@@ -96,11 +112,13 @@ export function SearchableSelect({
                   >
                     <Check
                       className={cn(
-                        "size-4 shrink-0",
+                        "mt-0.5 size-4 shrink-0",
                         value === option.value ? "opacity-100" : "opacity-0",
                       )}
                     />
-                    <span className="truncate">{option.label}</span>
+                    <span className="min-w-0 flex-1 whitespace-normal break-words text-xs leading-snug">
+                      {option.label}
+                    </span>
                   </CommandItem>
                 );
               })}

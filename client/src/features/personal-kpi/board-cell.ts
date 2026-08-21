@@ -18,7 +18,7 @@ export function refLabel(value: unknown): string {
 }
 
 /** Một trường chữ của tham chiếu đã populate; chuỗi id thì chưa join, không có gì. */
-function refField(value: unknown, field: "description" | "note"): string {
+function refField(value: unknown, field: "note"): string {
   if (!value || typeof value === "string") return "";
   const ref = value as Partial<Record<typeof field, string>>;
   return ref[field] ?? "";
@@ -41,13 +41,12 @@ export function cellText(
       việc đã populate. Không lưu theo từng nhiệm vụ nên sửa danh mục là mọi
       bảng cũ đổi theo - đúng ý "admin khai một lần".
     */
-    case "work_content_task":
-      return refField(row.workContentId, "description");
     case "work_content_note":
       return refField(row.workContentId, "note");
     // Cột danh mục lấy theo khoá cột, để hai cột cùng danh mục không lẫn nhau.
     case "score_group":
     case "quality_level":
+    case "work_task":
       return row.catalogValues?.[column.key]?.name ?? "";
     case "stt":
       return "";

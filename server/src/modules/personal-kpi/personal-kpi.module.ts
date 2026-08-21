@@ -16,6 +16,10 @@ import {
   FormTemplateSchema,
 } from '../kpi-form-config/schemas/form-template.schema';
 import {
+  WorkTask,
+  WorkTaskSchema,
+} from '../kpi-form-config/schemas/work-task.schema';
+import {
   ScoreGroup,
   ScoreGroupSchema,
 } from '../kpi-form-config/schemas/score-group.schema';
@@ -45,6 +49,7 @@ import {
       { name: Axis.name, schema: AxisSchema },
       { name: WorkContent.name, schema: WorkContentSchema },
       { name: FormTemplate.name, schema: FormTemplateSchema },
+      { name: WorkTask.name, schema: WorkTaskSchema },
       { name: ScoreGroup.name, schema: ScoreGroupSchema },
       { name: QualityLevel.name, schema: QualityLevelSchema },
       { name: User.name, schema: UserSchema },

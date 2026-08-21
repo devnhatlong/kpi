@@ -1,4 +1,9 @@
-import { api, buildListQuery, unwrapData, unwrapPaginated } from "@/lib/api-client";
+import {
+  api,
+  buildListQuery,
+  unwrapData,
+  unwrapPaginated,
+} from "@/lib/api-client";
 import type { ApiResponse } from "@/features/auth/types";
 import type {
   Axis,
@@ -13,12 +18,20 @@ import type {
   ScoreGroupInput,
   WorkContent,
   WorkContentInput,
+  WorkTask,
+  WorkTaskInput,
 } from "./types";
 
 export const axisKeys = {
   all: ["axes"] as const,
   list: (params: ListQueryParams) =>
-    ["axes", params.page, params.limit, params.q ?? "", params.all ?? false] as const,
+    [
+      "axes",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+    ] as const,
 };
 
 export async function fetchAxesPage(
@@ -85,7 +98,10 @@ export function createWorkContent(input: WorkContentInput) {
   );
 }
 
-export function updateWorkContent(id: string, input: Partial<WorkContentInput>) {
+export function updateWorkContent(
+  id: string,
+  input: Partial<WorkContentInput>,
+) {
   return unwrapData(
     api.patch<ApiResponse<WorkContent>>(
       `/kpi-form-config/work-contents/${id}`,
@@ -98,6 +114,58 @@ export async function deleteWorkContent(id: string) {
   await api.delete(`/kpi-form-config/work-contents/${id}`);
 }
 
+export const workTaskKeys = {
+  all: ["work-tasks"] as const,
+  list: (params: ListQueryParams & { workContentId?: string }) =>
+    [
+      "work-tasks",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+      params.workContentId ?? "",
+    ] as const,
+};
+
+export async function fetchWorkTasksPage(
+  params: ListQueryParams & { workContentId?: string },
+): Promise<PaginatedResult<WorkTask>> {
+  return unwrapPaginated(
+    api.get<ApiResponse<WorkTask[]>>("/kpi-form-config/work-tasks/all", {
+      params: {
+        ...buildListQuery(params),
+        ...(params.workContentId
+          ? { workContentId: params.workContentId }
+          : {}),
+      },
+    }),
+  );
+}
+
+/** Nhiệm vụ đang dùng được; truyền nội dung công việc để lọc cho form nhập. */
+export async function fetchWorkTasksAll(workContentId?: string) {
+  const result = await fetchWorkTasksPage({ all: true, workContentId });
+  return result.data.filter((item) => item.isActive);
+}
+
+export function createWorkTask(input: WorkTaskInput) {
+  return unwrapData(
+    api.post<ApiResponse<WorkTask>>("/kpi-form-config/work-tasks", input),
+  );
+}
+
+export function updateWorkTask(id: string, input: Partial<WorkTaskInput>) {
+  return unwrapData(
+    api.patch<ApiResponse<WorkTask>>(
+      `/kpi-form-config/work-tasks/${id}`,
+      input,
+    ),
+  );
+}
+
+export async function deleteWorkTask(id: string) {
+  await api.delete(`/kpi-form-config/work-tasks/${id}`);
+}
 export const scoreGroupKeys = {
   all: ["score-groups"] as const,
   list: (params: ListQueryParams) =>
@@ -214,9 +282,12 @@ export async function fetchFormTemplatesPage(
   params: ListQueryParams,
 ): Promise<PaginatedResult<FormTemplate>> {
   return unwrapPaginated(
-    api.get<ApiResponse<FormTemplate[]>>("/kpi-form-config/form-templates/all", {
-      params: buildListQuery(params),
-    }),
+    api.get<ApiResponse<FormTemplate[]>>(
+      "/kpi-form-config/form-templates/all",
+      {
+        params: buildListQuery(params),
+      },
+    ),
   );
 }
 
@@ -240,7 +311,10 @@ export async function fetchFormTemplateByAxis(
 
 export function createFormTemplate(input: FormTemplateInput) {
   return unwrapData(
-    api.post<ApiResponse<FormTemplate>>("/kpi-form-config/form-templates", input),
+    api.post<ApiResponse<FormTemplate>>(
+      "/kpi-form-config/form-templates",
+      input,
+    ),
   );
 }
 

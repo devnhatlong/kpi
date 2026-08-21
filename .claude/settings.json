@@ -96,7 +96,16 @@
       "Bash(npx prettier *)",
       "Bash(grep -n \"return { enabled: true, mode\" src/modules/kpi-form-config/form-templates.service.ts)",
       "Bash(python -c ' *)",
-      "Bash(rm -f src/modules/kpi-form-config/content-groups.controller.ts src/modules/kpi-form-config/content-groups.service.ts src/modules/kpi-form-config/schemas/content-group.schema.ts src/modules/kpi-form-config/dto/create-content-group.dto.ts src/modules/kpi-form-config/dto/update-content-group.dto.ts)"
+      "Bash(rm -f src/modules/kpi-form-config/content-groups.controller.ts src/modules/kpi-form-config/content-groups.service.ts src/modules/kpi-form-config/schemas/content-group.schema.ts src/modules/kpi-form-config/dto/create-content-group.dto.ts src/modules/kpi-form-config/dto/update-content-group.dto.ts)",
+      "Bash(grep -n \"^import {$\" -A 4 src/modules/personal-kpi/personal-kpi.module.ts)",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId, CreationDate, @{n='Cmd';e={$_.CommandLine.Substring\\(0,[Math]::Min\\(120,$_.CommandLine.Length\\)\\)}} | Format-Table -AutoSize -Wrap)",
+      "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"Name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*dist\\\\main*'\\\\'' } | Select-Object ProcessId, CreationDate | Format-Table -AutoSize')",
+      "PowerShell(Stop-Process -Id 4824 -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId, @{n='Cmd';e={$_.CommandLine.Substring\\(0,[Math]::Min\\(90,$_.CommandLine.Length\\)\\)}} | Format-Table -AutoSize -Wrap)",
+      "Bash(rm -rf dist)",
+      "Bash(npm run *)",
+      "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"Name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*dist*main*'\\\\'' } | Select-Object ProcessId, CreationDate | Format-Table -AutoSize')",
+      "Bash(mongosh \"mongodb://raitonguyen:123456789Aa@127.0.0.1:27017/kpi?authSource=admin\" --quiet --eval 'JSON.stringify\\({tasks: db.kpi_work_tasks.countDocuments\\({}\\), sample: db.kpi_work_tasks.find\\({}, {name:1, workContentId:1, isActive:1}\\).limit\\(3\\).toArray\\(\\)}\\)')",
+      "Bash(mongosh mongodb://raitonguyen:123456789Aa@127.0.0.1:27017/kpi?authSource=admin --quiet --eval ' *)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto"

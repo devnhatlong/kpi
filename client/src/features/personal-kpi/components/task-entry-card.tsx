@@ -166,7 +166,7 @@ export function TaskEntryCard({
                   columns={columns}
                   task={task}
                   scoreGroupId={scoreGroupId}
-                  contentTask={contentDescription}
+                  workContentId={entry.workContentId}
                   contentNote={contentNote}
                   disabled={disabled}
                   onChange={(patch) => onTaskChange(task.key, patch)}

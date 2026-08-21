@@ -12,6 +12,12 @@ import {
   isScoreInGroupRange,
   type FormTemplateColumn,
 } from "@/features/kpi-form-config/types";
+import useSWR from "swr";
+
+import {
+  fetchWorkTasksAll,
+  workTaskKeys,
+} from "@/features/kpi-form-config/api";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import { formatScoreNumber } from "@/features/personal-kpi/board-cell";
@@ -106,12 +112,12 @@ type TaskFieldsGridProps = {
    */
   scoreGroupId: string;
   /**
-   * Nhiệm vụ / Ghi chú do admin khai sẵn ở danh mục Nội dung công việc.
-   * Hai cột này chỉ đọc: bảng trục 2 in sẵn nhiệm vụ và trần điểm của từng mục,
-   * cán bộ chỉ điền kết quả.
+   * Ghi chú của mục do admin khai sẵn ở danh mục Nội dung công việc - cột chỉ
+   * đọc, cán bộ không gõ lại.
    */
-  contentTask?: string;
   contentNote?: string;
+  /** Nội dung công việc của dòng - dropdown Nhiệm vụ lọc theo nó. */
+  workContentId?: string;
   disabled?: boolean;
   onChange: (patch: Partial<PersonalTaskDraft>) => void;
 };
@@ -125,8 +131,8 @@ export function TaskFieldsGrid({
   columns,
   task,
   scoreGroupId,
-  contentTask = "",
   contentNote = "",
+  workContentId,
   disabled = false,
   onChange,
 }: TaskFieldsGridProps) {
@@ -143,12 +149,38 @@ export function TaskFieldsGrid({
     fields.some((column) => column.autoValue),
   );
 
+  /*
+    Nhiệm vụ đã chọn có thể mang điểm chuẩn riêng - cùng một mục nhưng cấp ghi
+    nhận khác nhau thì điểm khác nhau. Có thì ô Điểm chuẩn phải theo nhiệm vụ,
+    không thì mới lùi về nhóm điểm của nội dung công việc (server tính y hệt).
+  */
+  const taskColumn = fields.find(
+    (column) => column.semanticKey === "work_task",
+  );
+  const selectedTaskId = taskColumn
+    ? (task.catalogValues?.[taskColumn.key] ?? "")
+    : "";
+  const { data: workTasks } = useSWR(
+    selectedTaskId && workContentId
+      ? [...workTaskKeys.all, "by-content", workContentId]
+      : null,
+    () => fetchWorkTasksAll(workContentId),
+  );
+  const taskScoreGroupId = (() => {
+    const picked = (workTasks ?? []).find(
+      (entry) => (entry.id ?? entry._id) === selectedTaskId,
+    );
+    const group = picked?.scoreGroupId;
+    if (!group) return "";
+    return typeof group === "string" ? group : group._id;
+  })();
+  const effectiveScoreGroupId = taskScoreGroupId || scoreGroupId;
+
   const renderControl = (column: FormTemplateColumn) => {
-    // Nhiệm vụ / Ghi chú: chữ admin đã khai ở danh mục, chỉ đọc. Không lưu vào
-    // nhiệm vụ - sửa danh mục là mọi bảng đã nhập đổi theo.
+    // Ghi chú: chữ admin đã khai ở danh mục, chỉ đọc. Không lưu vào nhiệm vụ -
+    // sửa danh mục là mọi bảng đã nhập đổi theo.
     if (isContentTextSemantic(column.semanticKey)) {
-      const text =
-        column.semanticKey === "work_content_task" ? contentTask : contentNote;
+      const text = contentNote;
       return (
         <div
           className={cn(
@@ -171,7 +203,7 @@ export function TaskFieldsGrid({
     // Nhóm điểm đổ theo nội dung công việc - hiện ra để đối chiếu, không cho
     // chọn. Server tự điền lúc lưu.
     if (column.semanticKey === "score_group") {
-      const group = scoreGroupById.get(scoreGroupId);
+      const group = scoreGroupById.get(effectiveScoreGroupId);
       return (
         <div
           className={cn(readOnlyClass, controlClass)}
@@ -202,6 +234,7 @@ export function TaskFieldsGrid({
             onChange(writeCellValue(task, column.semanticKey, column.key, next))
           }
           disabled={disabled}
+          workContentId={workContentId}
           triggerClassName="px-2"
         />
       );
@@ -275,7 +308,7 @@ export function TaskFieldsGrid({
     const inputProps = cellInputProps(column.dataType);
     // Cột điểm bị giới hạn thì ô nhập ăn theo nhóm điểm của nội dung công việc.
     const boundGroup = column.rangeFromColumnKey
-      ? scoreGroupById.get(scoreGroupId)
+      ? scoreGroupById.get(effectiveScoreGroupId)
       : undefined;
     const value = readCellValue(task, column.semanticKey, column.key);
     const outOfRange =

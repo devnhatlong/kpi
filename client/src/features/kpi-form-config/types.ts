@@ -63,6 +63,39 @@ export type WorkContentInput = {
   isActive?: boolean;
 };
 
+/** Nhiệm vụ khai sẵn theo nội dung công việc - form nhập chỉ chọn, không gõ. */
+export type WorkTask = {
+  _id: string;
+  id?: string;
+  code: string;
+  /** Nguyên văn nhiệm vụ trong bảng KPI. */
+  name: string;
+  workContentId: string | WorkContentRef;
+  /** Điểm chuẩn riêng; null = lấy nhóm điểm của nội dung công việc. */
+  scoreGroupId?: string | ScoreGroupRef | null;
+  note?: string;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+export type WorkTaskInput = {
+  code?: string;
+  name: string;
+  workContentId: string;
+  scoreGroupId?: string | null;
+  note?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+/** Nội dung công việc đã populate trong bản ghi nhiệm vụ. */
+export type WorkContentRef = {
+  _id: string;
+  code: string;
+  name: string;
+  axisId?: string;
+  scoreGroupId?: string | null;
+};
 export type ScoreGroup = {
   _id: string;
   id?: string;
@@ -152,13 +185,12 @@ export const FORM_COLUMN_SEMANTICS = [
   "custom",
   "stt",
   "work_content",
+  /** Chọn từ danh mục Nhiệm vụ của nội dung công việc đang khai. */
+  "work_task",
   /**
-   * Hai cột dưới đây do ADMIN khai sẵn ở danh mục Nội dung công việc, cán bộ
-   * chỉ đọc: bảng của trục 2 có sẵn nhiệm vụ và ghi chú cho từng mục, người
-   * nhập chỉ điền kết quả. Giá trị không lưu theo từng nhiệm vụ - đọc thẳng từ
-   * danh mục, sửa danh mục là mọi bảng đổi theo.
+   * Ghi chú của mục, ADMIN khai sẵn ở danh mục Nội dung công việc - cán bộ chỉ
+   * đọc. Không lưu theo từng nhiệm vụ: sửa danh mục là mọi bảng đổi theo.
    */
-  "work_content_task",
   "work_content_note",
   "score_group",
   "quality_level",
@@ -170,7 +202,7 @@ export const FORM_COLUMN_SEMANTIC_LABEL: Record<FormColumnSemantic, string> = {
   custom: "Không ánh xạ (nhập tự do)",
   stt: "STT",
   work_content: "Nội dung công việc",
-  work_content_task: "Nhiệm vụ",
+  work_task: "Nhiệm vụ (chọn từ danh mục)",
   work_content_note: "Ghi chú",
   score_group: "Nhóm điểm",
   quality_level: "Chất lượng thực hiện",
@@ -180,17 +212,15 @@ export const FORM_COLUMN_SEMANTIC_LABEL: Record<FormColumnSemantic, string> = {
  * Cột đọc thẳng từ danh mục Nội dung công việc, cán bộ không nhập.
  * Không lưu theo từng nhiệm vụ: sửa danh mục là mọi bảng đã nhập đổi theo.
  */
-export const CONTENT_TEXT_SEMANTICS: FormColumnSemantic[] = [
-  "work_content_task",
-  "work_content_note",
-];
+export const CONTENT_TEXT_SEMANTICS: FormColumnSemantic[] = ["work_content_note"];
 
 export function isContentTextSemantic(semanticKey: FormColumnSemantic) {
   return CONTENT_TEXT_SEMANTICS.includes(semanticKey);
 }
 
 /** Danh mục mà một cột lấy giá trị. */
-export type ColumnCatalog = "work_content" | "score_group" | "quality_level";
+export type ColumnCatalog =
+  "work_content" | "work_task" | "score_group" | "quality_level";
 
 /**
  * Ý nghĩa cột quyết định danh mục nguồn - khai một lần ở đây, cả màn cấu hình
@@ -200,12 +230,14 @@ export const SEMANTIC_CATALOG: Partial<
   Record<FormColumnSemantic, ColumnCatalog>
 > = {
   work_content: "work_content",
+  work_task: "work_task",
   score_group: "score_group",
   quality_level: "quality_level",
 };
 
 export const CATALOG_LABEL: Record<ColumnCatalog, string> = {
   work_content: "Nội dung công việc",
+  work_task: "Nhiệm vụ",
   score_group: "Nhóm điểm",
   quality_level: "Chất lượng thực hiện",
 };
@@ -223,12 +255,7 @@ export function catalogOfSemantic(
  * `system`  ô nhập tay nhưng đổ vào đúng trường hệ thống để chấm và thống kê;
  * `auto`    hệ thống tự điền, người nhập không sửa.
  */
-export type SemanticKind =
-  | "free"
-  | "catalog"
-  | "content"
-  | "system"
-  | "auto";
+export type SemanticKind = "free" | "catalog" | "content" | "system" | "auto";
 
 export const SEMANTIC_KIND_LABEL: Record<SemanticKind, string> = {
   free: "Nhập tự do",
@@ -284,7 +311,6 @@ export const SEMANTIC_DATA_TYPE: Partial<
   Record<FormColumnSemantic, FormColumnDataType>
 > = {
   stt: "auto_increment",
-  work_content_task: "text",
   work_content_note: "text",
   score_group: "select",
   quality_level: "select",

@@ -48,7 +48,6 @@ export function WorkContentFormDialog({
   onSuccess,
 }: WorkContentFormDialogProps) {
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
   const [note, setNote] = useState("");
   const [axisId, setAxisId] = useState("");
   const [scoreGroupId, setScoreGroupId] = useState("");
@@ -68,7 +67,6 @@ export function WorkContentFormDialog({
     if (!open) return;
     if (edit) {
       setName(edit.name);
-      setDescription(edit.description ?? "");
       setNote(edit.note ?? "");
       setAxisId(
         typeof edit.axisId === "string"
@@ -84,7 +82,6 @@ export function WorkContentFormDialog({
       setIsActive(edit.isActive);
     } else {
       setName("");
-      setDescription("");
       setNote("");
       setAxisId("");
       setScoreGroupId("");
@@ -115,7 +112,6 @@ export function WorkContentFormDialog({
 
     const payload = {
       name: name.trim(),
-      description: description.trim(),
       note: note.trim(),
       axisId,
       scoreGroupId,
@@ -185,24 +181,8 @@ export function WorkContentFormDialog({
             />
           </div>
 
-          {/*
-            Hai ô này là phần admin khai sẵn cho bảng KPI: cán bộ không gõ lại,
-            chỉ đọc rồi nhập kết quả. Đặt đúng tên cột để admin khỏi đoán ô nào
-            ra cột nào.
-          */}
-          <div className="space-y-2">
-            <Label htmlFor="work-content-description">
-              Nhiệm vụ (cột &quot;Nhiệm vụ&quot; của bảng KPI)
-            </Label>
-            <Textarea
-              id="work-content-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder="VD: Chủ trì tham mưu, triển khai đề án, dự án… (yêu cầu có tài liệu kiểm chứng)"
-            />
-          </div>
-
+          {/* Nhiệm vụ khai ở trang Danh mục › Nhiệm vụ, không nhập ở đây nữa:
+              một nội dung có nhiều nhiệm vụ, nhét vào đây thì chỉ khai được một. */}
           <div className="space-y-2">
             <Label htmlFor="work-content-note">
               Ghi chú (cột &quot;Ghi chú&quot; của bảng KPI)

@@ -6,8 +6,10 @@ import { SearchableSelect } from "@/components/common/searchable-select";
 import {
   fetchQualityLevelsAll,
   fetchScoreGroupsAll,
+  fetchWorkTasksAll,
   qualityLevelKeys,
   scoreGroupKeys,
+  workTaskKeys,
 } from "@/features/kpi-form-config/api";
 import {
   CATALOG_LABEL,
@@ -21,6 +23,12 @@ type CatalogSelectCellProps = {
   value: string;
   onValueChange: (value: string) => void;
   disabled?: boolean;
+  /**
+   * Nội dung công việc của dòng đang nhập - danh mục Nhiệm vụ lọc theo nó.
+   * Không truyền thì dropdown nhiệm vụ để trống: bày cả nghìn nhiệm vụ của mọi
+   * nội dung ra cho người ta tự dò còn tệ hơn.
+   */
+  workContentId?: string;
   /** Ghi đè kích thước ô - màn nhập cần ô gọn hơn ô trong bảng. */
   triggerClassName?: string;
 };
@@ -34,9 +42,11 @@ export function CatalogSelectCell({
   value,
   onValueChange,
   disabled = false,
+  workContentId,
   triggerClassName,
 }: CatalogSelectCellProps) {
   const isScoreGroup = catalog === "score_group";
+  const isWorkTask = catalog === "work_task";
 
   const { data: scoreGroups } = useSWR(
     isScoreGroup ? scoreGroupKeys.all : null,
@@ -46,18 +56,30 @@ export function CatalogSelectCell({
     catalog === "quality_level" ? qualityLevelKeys.all : null,
     fetchQualityLevelsAll,
   );
+  const { data: workTasks } = useSWR(
+    isWorkTask && workContentId
+      ? [...workTaskKeys.all, "by-content", workContentId]
+      : null,
+    () => fetchWorkTasksAll(workContentId),
+  );
 
-  const options = isScoreGroup
-    ? (scoreGroups ?? []).map((item) => ({
+  const options = isWorkTask
+    ? (workTasks ?? []).map((item) => ({
         value: entityId(item),
         label: item.name,
-        keywords: `${item.code} ${item.minScore}-${item.maxScore}`,
+        keywords: item.code,
       }))
-    : (qualityLevels ?? []).map((item) => ({
-        value: entityId(item),
-        label: item.name,
-        keywords: `${item.code} ${item.percent}`,
-      }));
+    : isScoreGroup
+      ? (scoreGroups ?? []).map((item) => ({
+          value: entityId(item),
+          label: item.name,
+          keywords: `${item.code} ${item.minScore}-${item.maxScore}`,
+        }))
+      : (qualityLevels ?? []).map((item) => ({
+          value: entityId(item),
+          label: item.name,
+          keywords: `${item.code} ${item.percent}`,
+        }));
 
   return (
     <SearchableSelect
@@ -67,7 +89,11 @@ export function CatalogSelectCell({
       disabled={disabled}
       placeholder={CATALOG_LABEL[catalog]}
       searchPlaceholder={`Tìm ${CATALOG_LABEL[catalog].toLowerCase()}...`}
-      emptyText="Danh mục chưa có giá trị nào."
+      emptyText={
+        isWorkTask
+          ? "Nội dung công việc này chưa khai nhiệm vụ nào."
+          : "Danh mục chưa có giá trị nào."
+      }
       triggerClassName={cn("h-8 w-full text-xs font-normal", triggerClassName)}
     />
   );

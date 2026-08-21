@@ -68,6 +68,10 @@ import {
   PersonalKpiReviewStatus,
 } from './schemas/personal-kpi-item.schema';
 import {
+  WorkTask,
+  WorkTaskDocument,
+} from '@/modules/kpi-form-config/schemas/work-task.schema';
+import {
   ScoreGroup,
   ScoreGroupDocument,
 } from '@/modules/kpi-form-config/schemas/score-group.schema';
@@ -128,6 +132,8 @@ export class PersonalKpiService {
     private readonly workContentModel: Model<WorkContentDocument>,
     @InjectModel(FormTemplate.name)
     private readonly formTemplateModel: Model<FormTemplateDocument>,
+    @InjectModel(WorkTask.name)
+    private readonly workTaskModel: Model<WorkTaskDocument>,
     @InjectModel(ScoreGroup.name)
     private readonly scoreGroupModel: Model<ScoreGroupDocument>,
     @InjectModel(QualityLevel.name)
@@ -1545,8 +1551,33 @@ export class PersonalKpiService {
       ]),
     );
 
+    /*
+      Nhiệm vụ được chọn có thể mang điểm chuẩn riêng - cùng một mục nhưng cấp
+      ghi nhận khác nhau thì điểm khác nhau (Bộ Công an 03 điểm, Công an tỉnh
+      01-02...). Có thì lấy của nhiệm vụ, không thì mới lùi về nội dung.
+    */
+    const taskIds = new Set<string>();
+    for (const item of items) {
+      for (const value of Object.values(item.catalogValues ?? {})) {
+        if (value?.id) taskIds.add(value.id);
+      }
+    }
+    const workTasks = taskIds.size
+      ? await this.workTaskModel
+          .find({ _id: { $in: [...taskIds].map((id) => new Types.ObjectId(id)) } })
+          .select('scoreGroupId')
+      : [];
+    const groupIdByTask = new Map(
+      workTasks.map((row) => [
+        String(row._id),
+        row.scoreGroupId ? String(row.scoreGroupId) : '',
+      ]),
+    );
+
     // Tên nhóm điểm chép vào catalogValues; phần trăm tra theo mức đã chọn.
-    const groupIds = [...new Set(groupIdByContent.values())].filter(Boolean);
+    const groupIds = [
+      ...new Set([...groupIdByContent.values(), ...groupIdByTask.values()]),
+    ].filter(Boolean);
     const qualityIds = new Set<string>();
     for (const item of items) {
       for (const value of Object.values(item.catalogValues ?? {})) {
@@ -1579,7 +1610,18 @@ export class PersonalKpiService {
       const catalogValues = { ...(item.catalogValues ?? {}) };
       const fieldValues = { ...(item.fieldValues ?? {}) };
 
-      const groupId = groupIdByContent.get(String(item.workContentId)) ?? '';
+      /*
+        Điểm chuẩn ưu tiên theo NHIỆM VỤ đã chọn; nhiệm vụ không khai riêng thì
+        mới lấy của nội dung công việc.
+      */
+      const taskId = template.columns
+        .filter((column) => column.semanticKey === 'work_task')
+        .map((column) => catalogValues[column.key]?.id)
+        .find(Boolean);
+      const groupId =
+        (taskId ? groupIdByTask.get(taskId) : '') ||
+        groupIdByContent.get(String(item.workContentId)) ||
+        '';
       const groupName = groupId ? groupNameById.get(groupId) : undefined;
       for (const column of template.columns) {
         if (column.semanticKey !== 'score_group') continue;
@@ -2297,6 +2339,7 @@ export class PersonalKpiService {
     switch (column.semanticKey) {
       case 'score_group':
       case 'quality_level':
+      case 'work_task':
         return !item.catalogValues?.[column.key]?.id;
       case 'work_content':
         return !item.workContentId;
@@ -2591,13 +2634,15 @@ export class PersonalKpiService {
     const ids = [...new Set(wanted.values())].map(
       (id) => new Types.ObjectId(id),
     );
-    const [scoreGroups, qualityLevels] = await Promise.all([
+    const [scoreGroups, qualityLevels, workTasks] = await Promise.all([
       this.scoreGroupModel.find({ _id: { $in: ids } }).select('name'),
       this.qualityLevelModel.find({ _id: { $in: ids } }).select('name'),
+      // Nhiệm vụ khai sẵn (trục chấm theo mục) - cán bộ chọn chứ không gõ.
+      this.workTaskModel.find({ _id: { $in: ids } }).select('name'),
     ]);
 
     const nameById = new Map<string, string>();
-    for (const row of [...scoreGroups, ...qualityLevels]) {
+    for (const row of [...scoreGroups, ...qualityLevels, ...workTasks]) {
       nameById.set(String(row._id), row.name);
     }
 

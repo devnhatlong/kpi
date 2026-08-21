@@ -34,8 +34,8 @@ export const FORM_COLUMN_SEMANTICS = [
   'stt',
   /** Chọn từ danh mục Nội dung công việc; cấp trên gom bảng theo cột này. */
   'work_content',
-  /** Nhiệm vụ - đọc mô tả của nội dung công việc, admin khai sẵn. */
-  'work_content_task',
+  /** Chọn từ danh mục Nhiệm vụ của nội dung công việc đang khai. */
+  'work_task',
   /** Ghi chú - đọc ghi chú của nội dung công việc, admin khai sẵn. */
   'work_content_note',
   /** Chọn từ danh mục Nhóm điểm. */
@@ -52,9 +52,13 @@ export type FormColumnSemantic = (typeof FORM_COLUMN_SEMANTICS)[number];
  * nào tự đoán theo tiêu đề cột.
  */
 export const SEMANTIC_CATALOG: Partial<
-  Record<FormColumnSemantic, 'work_content' | 'score_group' | 'quality_level'>
+  Record<
+    FormColumnSemantic,
+    'work_content' | 'work_task' | 'score_group' | 'quality_level'
+  >
 > = {
   work_content: 'work_content',
+  work_task: 'work_task',
   score_group: 'score_group',
   quality_level: 'quality_level',
 };

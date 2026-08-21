@@ -108,6 +108,11 @@ export const NAV_ITEMS: NavItem[] = [
         icon: ListTree,
       },
       {
+        title: "Nhiệm vụ",
+        href: "/kpi/form-config/work-tasks",
+        icon: ClipboardList,
+      },
+      {
         title: "Nhóm điểm",
         href: "/kpi/form-config/score-groups",
         icon: Gauge,
