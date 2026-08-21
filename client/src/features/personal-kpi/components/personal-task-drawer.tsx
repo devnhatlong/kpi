@@ -707,6 +707,7 @@ export function PersonalTaskDrawer({
                           contentDescription={content?.description}
                           contentNote={content?.note}
                           columns={template?.columns ?? []}
+                          headerGroups={template?.headerGroups ?? []}
                           hasTemplate={!!template}
                           scoreGroupId={
                             content ? workContentScoreGroupId(content) : ""

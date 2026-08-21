@@ -4,7 +4,10 @@ import { ChevronDown, Plus, TriangleAlert, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { FormTemplateColumn } from "@/features/kpi-form-config/types";
+import type {
+  FormHeaderGroup,
+  FormTemplateColumn,
+} from "@/features/kpi-form-config/types";
 import { TaskFieldsGrid } from "@/features/personal-kpi/components/task-fields-grid";
 import type {
   DraftContentEntry,
@@ -23,6 +26,8 @@ type TaskEntryCardProps = {
   contentNote?: string;
   /** Bộ cột của mẫu bảng gán cho trục; rỗng khi trục chưa gán mẫu. */
   columns: FormTemplateColumn[];
+  /** Cây nhóm header của mẫu - nhãn ô cần tên nhóm để phân biệt cột trùng tên. */
+  headerGroups?: FormHeaderGroup[];
   hasTemplate: boolean;
   /** Nhóm điểm của nội dung công việc - đổ xuống mọi việc trong thẻ. */
   scoreGroupId: string;
@@ -51,6 +56,7 @@ export function TaskEntryCard({
   contentDescription,
   contentNote,
   columns,
+  headerGroups,
   hasTemplate,
   scoreGroupId,
   disabled = false,
@@ -164,6 +170,7 @@ export function TaskEntryCard({
               <div className="min-w-0 flex-1">
                 <TaskFieldsGrid
                   columns={columns}
+                  headerGroups={headerGroups}
                   task={task}
                   scoreGroupId={scoreGroupId}
                   workContentId={entry.workContentId}

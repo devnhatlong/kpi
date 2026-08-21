@@ -10,6 +10,7 @@ import {
   formatScoreRange,
   isContentTextSemantic,
   isScoreInGroupRange,
+  type FormHeaderGroup,
   type FormTemplateColumn,
 } from "@/features/kpi-form-config/types";
 import useSWR from "swr";
@@ -18,6 +19,7 @@ import {
   fetchWorkTasksAll,
   workTaskKeys,
 } from "@/features/kpi-form-config/api";
+import { flattenHeaderGroups } from "@/features/kpi-form-config/form-template-utils";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import { formatScoreNumber } from "@/features/personal-kpi/board-cell";
@@ -105,6 +107,13 @@ function AutoGrowTextarea({
 type TaskFieldsGridProps = {
   /** Bộ cột của mẫu bảng gán cho trục. */
   columns: FormTemplateColumn[];
+  /**
+   * Cây nhóm header của mẫu - dùng để gắn tên nhóm vào nhãn ô.
+   * Mẫu thật có hai cột trùng tên "Thực tế hoàn thành %" ở hai nhóm khác nhau;
+   * không nói tên nhóm thì người nhập không biết ô nào là tiến độ, ô nào là
+   * chất lượng.
+   */
+  headerGroups?: FormHeaderGroup[];
   task: PersonalTaskDraft;
   /**
    * Nhóm điểm lấy theo nội dung công việc - quyết định dải điểm hợp lệ của các
@@ -129,6 +138,7 @@ type TaskFieldsGridProps = {
  */
 export function TaskFieldsGrid({
   columns,
+  headerGroups = [],
   task,
   scoreGroupId,
   contentNote = "",
@@ -175,6 +185,16 @@ export function TaskFieldsGrid({
     return typeof group === "string" ? group : group._id;
   })();
   const effectiveScoreGroupId = taskScoreGroupId || scoreGroupId;
+
+  /** Tên các nhóm header bọc ngoài một cột, nối bằng dấu chấm giữa. */
+  const groupNameById = new Map(
+    flattenHeaderGroups(headerGroups).map((group) => [group.id, group.name]),
+  );
+  const groupPathOf = (column: FormTemplateColumn) =>
+    (column.headerPath ?? [])
+      .map((id) => groupNameById.get(id) ?? "")
+      .filter(Boolean)
+      .join(" · ");
 
   const renderControl = (column: FormTemplateColumn) => {
     // Ghi chú: chữ admin đã khai ở danh mục, chỉ đọc. Không lưu vào nhiệm vụ -
@@ -378,23 +398,79 @@ export function TaskFieldsGrid({
     );
   };
 
+  /*
+    Gom các cột liền nhau cùng một nhóm header thành MỘT khối, tên nhóm ghi một
+    lần ở trên. Trước đây mỗi ô tự đeo tên nhóm: cột có nhóm cao hai dòng, cột
+    không có nhóm cao một dòng, cả hàng ô nhập so le nhau.
+  */
+  const runs: Array<{
+    key: string;
+    group: string;
+    columns: FormTemplateColumn[];
+  }> = [];
+  for (const column of fields) {
+    const group = groupPathOf(column);
+    const last = runs[runs.length - 1];
+    if (last && last.group === group && group) last.columns.push(column);
+    else runs.push({ key: column.id, group, columns: [column] });
+  }
+
   return (
     <div className="flex flex-wrap items-start gap-x-2.5 gap-y-2">
-      {fields.map((column) => (
+      {runs.map((run) => (
         <div
-          key={column.id}
-          className="min-w-[150px] flex-1 space-y-0.5"
-          style={{ flexBasis: fieldBasis(column.width) }}
+          key={run.key}
+          /*
+            Khối nào cũng có viền + đệm như nhau (nhóm thì hiện viền, lẻ thì
+            viền trong suốt) để mọi ô nhập bắt đầu ở cùng một dòng.
+          */
+          className={cn(
+            "min-w-0 flex-1 rounded-lg border p-1.5",
+            run.group
+              ? "border-primary/20 bg-primary/[0.03]"
+              : "border-transparent",
+          )}
+          style={{
+            flexBasis: run.columns.reduce(
+              (sum, column) => sum + fieldBasis(column.width) + 10,
+              0,
+            ),
+          }}
         >
-          <span className="flex items-center gap-1 truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            <span className="truncate" title={column.title}>
-              {column.title}
-            </span>
-            {column.required ? (
-              <span className="text-destructive">*</span>
-            ) : null}
+          <span
+            className={cn(
+              "block h-4 truncate text-[10px] font-semibold uppercase tracking-wide",
+              run.group ? "text-primary/80" : "text-transparent",
+            )}
+            title={run.group || undefined}
+          >
+            {run.group || " "}
           </span>
-          {renderControl(column)}
+
+          <div className="flex flex-wrap items-start gap-x-2 gap-y-2">
+            {run.columns.map((column) => (
+              <div
+                key={column.id}
+                className="min-w-[150px] flex-1 space-y-0.5"
+                style={{ flexBasis: fieldBasis(column.width) }}
+              >
+                <span className="flex items-center gap-1 truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <span
+                    className="truncate"
+                    title={
+                      run.group ? `${run.group} · ${column.title}` : column.title
+                    }
+                  >
+                    {column.title}
+                  </span>
+                  {column.required ? (
+                    <span className="text-destructive">*</span>
+                  ) : null}
+                </span>
+                {renderControl(column)}
+              </div>
+            ))}
+          </div>
         </div>
       ))}
     </div>
