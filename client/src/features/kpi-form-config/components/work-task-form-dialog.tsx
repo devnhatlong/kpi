@@ -173,7 +173,9 @@ export function WorkTaskFormDialog({
               value={workContentId || undefined}
               onValueChange={setWorkContentId}
             >
-              <SelectTrigger>
+              {/* Tên nội dung là cả một câu dài - cho xuống tối đa 2 dòng thay vì
+                  cắt cụt giữa chừng. */}
+              <SelectTrigger className="h-auto min-h-9 py-1.5 [&>span]:line-clamp-2">
                 <SelectValue placeholder="Chọn nội dung công việc" />
               </SelectTrigger>
               <SelectContent>
@@ -211,9 +213,7 @@ export function WorkTaskFormDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={INHERIT}>
-                  Theo nội dung công việc
-                </SelectItem>
+                <SelectItem value={INHERIT}>Theo nội dung công việc</SelectItem>
                 {scoreGroups.map((group) => (
                   <SelectItem key={entityId(group)} value={entityId(group)}>
                     {group.name} (
