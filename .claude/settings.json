@@ -107,7 +107,15 @@
       "Bash(mongosh \"mongodb://raitonguyen:123456789Aa@127.0.0.1:27017/kpi?authSource=admin\" --quiet --eval 'JSON.stringify\\({tasks: db.kpi_work_tasks.countDocuments\\({}\\), sample: db.kpi_work_tasks.find\\({}, {name:1, workContentId:1, isActive:1}\\).limit\\(3\\).toArray\\(\\)}\\)')",
       "Bash(mongosh mongodb://raitonguyen:123456789Aa@127.0.0.1:27017/kpi?authSource=admin --quiet --eval ' *)",
       "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:5000/api/v1/kpi-form-config/axes/all)",
-      "Bash(curl -s -o /dev/null -w \"axes: HTTP %{http_code}\\\\n\" http://localhost:8080/api/v1/kpi-form-config/axes/all)"
+      "Bash(curl -s -o /dev/null -w \"axes: HTTP %{http_code}\\\\n\" http://localhost:8080/api/v1/kpi-form-config/axes/all)",
+      "Bash(detail)",
+      "Bash(resolveResultColumns)",
+      "Bash(powershell -NoProfile -Command 'Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 3 LocalPort, OwningProcess | Format-Table -AutoSize; Get-CimInstance Win32_Process -Filter \"Name='\\\\''node.exe'\\\\''\" | Select-Object ProcessId, CreationDate, @{n='\\\\''Cmd'\\\\'';e={$_.CommandLine.Substring\\(0,[Math]::Min\\(70,$_.CommandLine.Length\\)\\)}} | Format-Table -AutoSize -Wrap')",
+      "Bash(curl -s -o /dev/null -w \"API: %{http_code}\\\\n\" http://localhost:8080/api/v1/kpi-form-config/axes/all)",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 36284,22720 -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 4\")",
+      "Bash(curl -s -o /dev/null -w \"API sau khi dọn: %{http_code}\\\\n\" http://localhost:8080/api/v1/kpi-form-config/axes/all)",
+      "Bash(touch src/main.ts)",
+      "Bash(curl -s -o /dev/null -w \"API sau khi watcher dựng lại: %{http_code}\\\\n\" http://localhost:8080/api/v1/kpi-form-config/axes/all)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto"

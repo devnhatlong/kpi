@@ -419,6 +419,11 @@ export type PersonalKpiProgressInput = {
   product?: string;
   /** Tệp minh chứng - gửi cả danh sách sau mỗi lần thêm / bớt. */
   evidence?: TaskAttachment[];
+  /**
+   * Trục chấm theo mục (Đạt / Không đạt): khoá cột -> giá trị thô.
+   * Trục kiểu này không có cột phần trăm, khai điểm ở đây chính là cập nhật.
+   */
+  results?: Record<string, string>;
 };
 
 export async function updatePersonalKpiProgress(

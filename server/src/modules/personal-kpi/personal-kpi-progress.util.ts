@@ -215,3 +215,52 @@ export function readItemPercent(
 export function isProgressComplete(percent: number | null): boolean {
   return percent !== null && percent >= 100;
 }
+
+/**
+ * Các ô "kết quả" của trục chấm theo mục (công thức cộng dồn).
+ *
+ * Trục kiểu này không có cột phần trăm nào: cán bộ khai điểm ở cột Đạt, hoặc
+ * tích ô Không đạt. Đó chính là thứ thay cho tiến độ - lấy đúng theo CẤU HÌNH
+ * CÔNG THỨC chứ không đoán theo tiêu đề cột.
+ */
+export type ResultColumns = {
+  /** Cột điểm nằm trong công thức cộng dồn - "Đạt". */
+  scores: FormTemplateColumn[];
+  /** Ô tích của mẫu - "Không đạt". */
+  flags: FormTemplateColumn[];
+};
+
+export function resolveResultColumns(
+  template: TrackingTemplate | null,
+): ResultColumns {
+  if (!template?.columns?.length) return { scores: [], flags: [] };
+
+  const visible = template.columns.filter((column) => column.visible);
+  const footer = template.footer;
+  const flags = visible.filter((column) => column.dataType === 'boolean');
+
+  if (footer?.mode === 'sum' && footer.ratioColumnKeys?.length) {
+    const keys = new Set(footer.ratioColumnKeys);
+    return {
+      // Cột tự tính do hệ thống điền, cán bộ không gõ được.
+      scores: visible.filter(
+        (column) => keys.has(column.key) && !column.autoValue,
+      ),
+      flags,
+    };
+  }
+
+  /*
+    Mẫu chưa khai công thức mà cũng không có cột phần trăm nào: đây vẫn là trục
+    chấm theo mục, ô điểm chính là các cột số nhập tay. Suy tạm như vậy để cán
+    bộ cập nhật được ngay, không phải chờ admin bật công thức mới dùng được.
+  */
+  const { progress } = resolveTrackingColumns(template);
+  if (progress) return { scores: [], flags: [] };
+  return {
+    scores: visible.filter(
+      (column) => column.dataType === 'number' && !column.autoValue,
+    ),
+    flags,
+  };
+}

@@ -53,6 +53,7 @@ import {
 import {
   isProgressComplete,
   readItemPercent,
+  resolveResultColumns,
   resolveScoreColumns,
   resolveTrackingColumns,
   type TrackingTemplate,
@@ -1946,7 +1947,14 @@ export class PersonalKpiService {
 
     const template = await this.trackingTemplateOf(item);
     const columns = resolveTrackingColumns(template);
-    if (!columns.progress) {
+    /*
+      Trục chấm theo mục (công thức cộng dồn) không có cột phần trăm nào: cập
+      nhật của cán bộ là khai điểm ở cột Đạt hoặc tích ô Không đạt. Chỉ khi mẫu
+      không có cả hai loại cột thì mới thật sự không cập nhật được.
+    */
+    const results = resolveResultColumns(template);
+    const hasResultColumns = results.scores.length > 0 || results.flags.length > 0;
+    if (!columns.progress && !hasResultColumns) {
       throw new BadRequestException(
         'Mẫu KPI của trục này chưa có cột tiến độ nên chưa cập nhật được. Liên hệ quản trị để bổ sung cột.',
       );
@@ -1973,13 +1981,57 @@ export class PersonalKpiService {
 
     const fieldValues = { ...(item.fieldValues ?? {}) };
     const catalogValues = { ...(item.catalogValues ?? {}) };
-
-    await this.writeTrackingValue(
-      columns.progress,
-      dto.progress,
-      fieldValues,
-      catalogValues,
+    /** Giá trị cũ của các ô kết quả - để dựng danh sách "đã đổi những gì". */
+    const resultBefore = new Map(
+      [...results.scores, ...results.flags].map((column) => [
+        column.key,
+        String(fieldValues[column.key] ?? '').trim(),
+      ]),
     );
+
+    if (columns.progress) {
+      await this.writeTrackingValue(
+        columns.progress,
+        dto.progress,
+        fieldValues,
+        catalogValues,
+      );
+    }
+
+    /*
+      Ô kết quả: chỉ nhận đúng cột nằm trong công thức cộng dồn và ô tích của
+      mẫu. Client gửi khoá lạ thì bỏ qua chứ không ghi bừa vào nhiệm vụ.
+    */
+    if (dto.results) {
+      const allowed = new Map(
+        [...results.scores, ...results.flags].map((column) => [
+          column.key,
+          column,
+        ]),
+      );
+      for (const [key, raw] of Object.entries(dto.results)) {
+        const column = allowed.get(key);
+        if (!column) continue;
+        const value = String(raw ?? '').trim();
+        if (column.dataType === 'boolean') {
+          // Ô tích lưu "1"; bỏ tích thì xoá hẳn khoá cho ô trống là ô trống.
+          if (value === '1' || value === 'true') fieldValues[key] = '1';
+          else delete fieldValues[key];
+          continue;
+        }
+        if (!value) {
+          delete fieldValues[key];
+          continue;
+        }
+        const parsed = Number(value.replace(',', '.'));
+        if (!Number.isFinite(parsed)) {
+          throw new BadRequestException(
+            `Giá trị cột "${column.title}" phải là số.`,
+          );
+        }
+        fieldValues[key] = parsed;
+      }
+    }
 
     /**
      * Lùi tiến độ thì bắt nêu lý do, KHÔNG cấm.
@@ -2066,6 +2118,19 @@ export class PersonalKpiService {
       value === null ? '' : String(value);
 
     pushChange('progress', percentText(percentBefore), percentText(percentNow));
+    // Ô kết quả ghi kèm TÊN CỘT ở `detail`: mẫu mỗi trục một bộ cột, nhật ký
+    // không có tên thì đọc lại chỉ thấy "đổi 0 thành 2".
+    for (const [key, before] of resultBefore) {
+      const column = [...results.scores, ...results.flags].find(
+        (entry) => entry.key === key,
+      );
+      pushChange(
+        'result',
+        before,
+        String(item.fieldValues?.[key] ?? '').trim(),
+        column?.title ?? '',
+      );
+    }
     if (columns.quality) {
       pushChange(
         'quality',
@@ -2142,17 +2207,25 @@ export class PersonalKpiService {
 
     const template = await this.trackingTemplateOf(item);
     const scoreColumns = resolveScoreColumns(template);
-    if (!scoreColumns.entries.length) {
+    /*
+      Trục chấm theo mục (Đạt / Không đạt) không có công thức tỉ lệ: chỉ huy
+      chấm thẳng vào ô điểm và ô tích - hạ điểm, hoặc tích Không đạt là 0 điểm.
+    */
+    const resultColumns = resolveResultColumns(template);
+    if (!scoreColumns.entries.length && !resultColumns.scores.length) {
       throw new BadRequestException(
         'Mẫu KPI của trục này chưa cấu hình công thức điểm nên chưa chấm được. Cấu hình tại Cấu hình form KPI › Mẫu bảng KPI.',
       );
     }
 
-    // Chỉ nhận đúng các cột trong công thức - gửi thừa khoá khác thì bỏ qua.
+    // Chỉ nhận đúng các cột chấm được - gửi thừa khoá khác thì bỏ qua.
     const allowed = new Map<string, FormTemplateColumn>();
     for (const entry of scoreColumns.entries) {
       allowed.set(entry.score.key, entry.score);
       if (entry.percent) allowed.set(entry.percent.key, entry.percent);
+    }
+    for (const column of [...resultColumns.scores, ...resultColumns.flags]) {
+      allowed.set(column.key, column);
     }
 
     const reviewValues = { ...(item.reviewValues ?? {}) };
@@ -2180,6 +2253,13 @@ export class PersonalKpiService {
         continue;
       }
 
+      // Ô tích "Không đạt": lưu "1", bỏ tích thì xoá hẳn khoá.
+      if (column.dataType === 'boolean') {
+        if (value === '1' || value === 'true') reviewValues[key] = '1';
+        else delete reviewValues[key];
+        continue;
+      }
+
       if (!value) {
         delete reviewValues[key];
         continue;
@@ -2189,6 +2269,21 @@ export class PersonalKpiService {
         throw new BadRequestException(`"${column.title}" phải là số.`);
       }
       reviewValues[key] = parsed;
+    }
+
+    /*
+      Không đạt thì KHÔNG có điểm - ép mọi ô điểm của trục chấm theo mục về 0.
+      Để chỉ huy vừa tích "Không đạt" vừa để nguyên điểm cũ thì công thức cộng
+      dồn vẫn cộng số điểm đó vào tổng trục.
+    */
+    const failed = resultColumns.flags.some(
+      (column) =>
+        String(
+          reviewValues[column.key] ?? item.fieldValues?.[column.key] ?? '',
+        ) === '1',
+    );
+    if (failed) {
+      for (const column of resultColumns.scores) reviewValues[column.key] = 0;
     }
 
     /*

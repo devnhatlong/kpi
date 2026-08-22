@@ -49,7 +49,9 @@ import {
   type CatalogMaps,
 } from "@/features/personal-kpi/review-scores";
 import { kpiTone } from "@/features/personal-kpi/status-styles";
+import { ResultScoreForm } from "@/features/personal-kpi/components/result-score-form";
 import {
+  resultColumns,
   scoreColumns,
   type ScoreColumns,
   type ScoreEntry,
@@ -150,9 +152,11 @@ function ScoreForm({
     const auto = column.autoValue;
     if (!auto) return null;
     const base = Number(
-      (values[auto.baseColumnKey] ??
+      (
+        values[auto.baseColumnKey] ??
         item.task.fieldValues?.[auto.baseColumnKey] ??
-        "").replace(",", "."),
+        ""
+      ).replace(",", "."),
     );
     return computeAutoValue(
       auto.kind,
@@ -343,10 +347,7 @@ function ScoreForm({
                             {column.autoValue ? (
                               <>
                                 Tự chấm: {show(column, selfValue(item, column))}
-                                <DeltaTag
-                                  gap={autoDeltaOf(column)}
-                                  suffix=""
-                                />
+                                <DeltaTag gap={autoDeltaOf(column)} suffix="" />
                               </>
                             ) : (
                               <>
@@ -459,6 +460,18 @@ export function ReviewScoreDialog({
   const shown = item;
 
   const columns = scoreColumns(template);
+  /* Trục chấm theo mục: không có công thức tỉ lệ, chấm thẳng ô điểm / ô tích. */
+  const results = resultColumns(template);
+  /* Khung điểm chuẩn cạnh ô điểm - đọc nhóm điểm đã lưu ở ô "Điểm chuẩn". */
+  const scoreGroupById = useScoreGroupMap();
+  const scoreGroupColumnKey = template?.columns.find(
+    (column) => column.semanticKey === "score_group",
+  )?.key;
+  const resultScoreGroup = scoreGroupColumnKey
+    ? (scoreGroupById.get(
+        shown?.task.catalogValues?.[scoreGroupColumnKey] ?? "",
+      ) ?? null)
+    : null;
 
   const groupNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -485,7 +498,17 @@ export function ReviewScoreDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {!shown ? null : columns.entries.length === 0 ? (
+        {!shown ? null : results.scores.length > 0 ||
+          results.flags.length > 0 ? (
+          <ResultScoreForm
+            key={shown.id}
+            item={shown}
+            columns={results}
+            scoreGroup={resultScoreGroup}
+            onDone={() => onOpenChange(false)}
+            onScored={onScored}
+          />
+        ) : columns.entries.length === 0 ? (
           <>
             <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
               <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500" />

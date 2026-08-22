@@ -106,6 +106,8 @@ export const PERSONAL_KPI_PROGRESS_FIELDS = [
   'quality',
   'product',
   'evidence',
+  /** Ô kết quả của trục chấm theo mục - tên cột nằm ở `detail`. */
+  'result',
 ] as const;
 
 export type PersonalKpiProgressField =

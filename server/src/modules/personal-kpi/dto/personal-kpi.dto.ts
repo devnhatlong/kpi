@@ -127,6 +127,19 @@ export class UpdatePersonalKpiProgressDto {
   @IsOptional()
   @IsArray()
   evidence?: unknown[];
+
+  /**
+   * Kết quả của trục chấm theo mục (công thức cộng dồn): khoá cột -> giá trị
+   * thô ("2" cho ô điểm, "1"/"" cho ô tích). Trục kiểu này không có cột phần
+   * trăm nào, khai điểm ở đây chính là cập nhật tiến độ.
+   * Service chỉ nhận đúng cột nằm trong công thức và ô tích của mẫu.
+   */
+  @ApiPropertyOptional({
+    description: 'Kết quả theo khoá cột, dùng cho trục chấm Đạt / Không đạt',
+  })
+  @IsOptional()
+  @IsObject()
+  results?: Record<string, string>;
 }
 
 /**

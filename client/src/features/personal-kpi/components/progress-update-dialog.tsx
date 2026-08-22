@@ -34,10 +34,13 @@ import {
   qualityLevelKeys,
 } from "@/features/kpi-form-config/api";
 import type { ResolvedTemplate } from "@/features/kpi-form-config/form-template-utils";
+import type { ScoreGroup } from "@/features/kpi-form-config/types";
 import { entityId } from "@/features/kpi-form-config/types";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
+import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import { updatePersonalKpiProgress } from "@/features/personal-kpi/api";
 import { AttachmentCell } from "@/features/personal-kpi/components/attachment-cell";
+import { ResultFields } from "@/features/personal-kpi/components/result-fields";
 import { ReviewScoreSummary } from "@/features/personal-kpi/components/review-score-summary";
 import {
   useReviewScores,
@@ -47,9 +50,11 @@ import { kpiTone } from "@/features/personal-kpi/status-styles";
 import {
   WORK_STATE_LABEL,
   deadlineState,
+  resultColumns,
   summarizeTask,
   trackingColumns,
   workState,
+  type ResultColumns,
   type TrackingColumns,
 } from "@/features/personal-kpi/task-summary";
 import {
@@ -457,8 +462,19 @@ function TaskTimeline({
                 </p>
               ) : null}
 
+              {/* Lời nhắn đóng khung riêng: đó là chữ NGƯỜI TA viết, để trần
+                  giữa dòng ngày giờ và tên người thì đọc lẫn vào nhau. */}
               {log.note ? (
-                <p className="mt-0.5 text-sm">
+                <div
+                  className={cn(
+                    "mt-1 rounded-md border px-2.5 py-1.5 text-sm",
+                    log.type === "RETURN"
+                      ? "border-rose-200 bg-rose-500/5 dark:border-rose-900"
+                      : isRollback(log)
+                        ? "border-amber-200 bg-amber-500/5 dark:border-amber-900"
+                        : "bg-muted/30",
+                  )}
+                >
                   <span className="font-medium">{noteLabel(log)}: </span>
                   <span
                     className={cn(
@@ -471,14 +487,14 @@ function TaskTimeline({
                   >
                     {log.note}
                   </span>
-                </p>
+                </div>
               ) : null}
 
               {log.changes.length > 0 ? (
                 <div className="mt-1 space-y-0.5 rounded-md bg-muted/50 px-2 py-1">
                   {log.changes.map((change) => (
                     <ChangeLine
-                      key={change.field}
+                      key={`${change.field}-${change.detail}`}
                       change={change}
                       columns={columns}
                     />
@@ -516,9 +532,16 @@ function ChangeLine({
     quality: "Chất lượng",
     product: columns.productColumn?.title ?? "Sản phẩm",
     evidence: columns.evidenceColumn?.title ?? "Minh chứng",
+    // Ô kết quả của trục chấm theo mục: tên cột do server ghi kèm ở `detail`.
+    result: change.detail || "Kết quả",
   }[change.field];
 
   const show = (raw: string) => {
+    if (change.field === "result") {
+      // Ô tích lưu "1"; ô điểm lưu con số.
+      if (!raw.trim()) return "-";
+      return raw === "1" ? "Có" : raw;
+    }
     if (!raw.trim()) return "-";
     if (change.field === "progress" || change.field === "quality") {
       return `${raw}%`;
@@ -533,7 +556,7 @@ function ChangeLine({
       <span className="line-through">{show(change.from)}</span>
       <span className="mx-1">→</span>
       <span className="text-foreground">{show(change.to)}</span>
-      {change.detail ? (
+      {change.detail && change.field !== "result" ? (
         <span className="text-muted-foreground"> (+{change.detail})</span>
       ) : null}
     </p>
@@ -658,6 +681,13 @@ type ProgressFormProps = {
   /** Mốc của cột chất lượng (nhóm C) - có thể khác nguồn với tiến độ. */
   qualityMilestones: Milestone[];
   snapQuality: boolean;
+  /**
+   * Cột kết quả của trục chấm theo mục (Đạt / Không đạt).
+   * Trục kiểu này không có thanh tiến độ - cập nhật chính là khai điểm.
+   */
+  results: ResultColumns;
+  /** Nhóm điểm của nhiệm vụ - nguồn "Khung chuẩn" cho ô điểm. */
+  resultScoreGroup: ScoreGroup | null;
   /** Việc đã chốt hoàn thành - chỉ xem lại, không sửa. */
   readOnly: boolean;
   /**
@@ -679,6 +709,8 @@ function ProgressForm({
   snapToMilestones,
   qualityMilestones,
   snapQuality,
+  results,
+  resultScoreGroup,
   readOnly,
   scored,
   review,
@@ -715,6 +747,16 @@ function ProgressForm({
   const [product, setProduct] = useState(initialProduct);
   const [note, setNote] = useState("");
   const [evidence, setEvidence] = useState<TaskAttachment[]>(initialEvidence);
+  /** Giá trị các ô kết quả (Đạt / Không đạt) lúc mở hộp thoại. */
+  const resultFields = [...results.scores, ...results.flags];
+  const initialResults = Object.fromEntries(
+    resultFields.map((column) => [
+      column.key,
+      String(fieldValues[column.key] ?? "").trim(),
+    ]),
+  );
+  const [resultValues, setResultValues] =
+    useState<Record<string, string>>(initialResults);
   const [saving, setSaving] = useState(false);
 
   const logs = item.progressLogs ?? [];
@@ -745,7 +787,12 @@ function ProgressForm({
    * trong nhật ký, và tệ hơn: nó làm mới mốc "cập nhật gần nhất" nên việc bỏ bê
    * vẫn trông như đang chạy, cảnh báo im lặng không bao giờ kêu.
    */
+  const resultsChanged = resultFields.some(
+    (column) =>
+      (resultValues[column.key] ?? "") !== (initialResults[column.key] ?? ""),
+  );
   const dirty =
+    resultsChanged ||
     progress !== initialProgress ||
     quality !== initialQuality ||
     product !== initialProduct ||
@@ -758,7 +805,17 @@ function ProgressForm({
    */
   const percentFinal = scored?.progress ?? percentNow;
 
-  const done = percentFinal >= 100;
+  /*
+    Trục chấm theo mục không có phần trăm: "xong" nghĩa là đã khai kết quả -
+    có điểm ở ô Đạt hoặc đã tích ô Không đạt.
+  */
+  const hasResultValue = resultFields.some((column) =>
+    column.dataType === "boolean"
+      ? resultValues[column.key] === "1"
+      : (resultValues[column.key] ?? "").trim() !== "",
+  );
+  const tracksProgress = !!columns.progressColumn;
+  const done = tracksProgress ? percentFinal >= 100 : hasResultValue;
   const hasProduct = !columns.productColumn || product.trim().length > 0;
   /**
    * Tệp minh chứng KHÔNG phải điều kiện chốt - nhiều việc chẳng đẻ ra tệp nào,
@@ -769,11 +826,11 @@ function ProgressForm({
   const isReturned = item.status === "RETURNED";
 
   const save = async () => {
-    if (!columns.progressColumn) return;
     setSaving(true);
     try {
       await updatePersonalKpiProgress(item.id, {
-        progress,
+        progress: tracksProgress ? progress : undefined,
+        results: resultFields.length ? resultValues : undefined,
         quality: columns.qualityColumn ? quality : undefined,
         note: columns.noteColumn ? note.trim() : undefined,
         product: columns.productColumn ? product : undefined,
@@ -790,16 +847,20 @@ function ProgressForm({
     }
   };
 
-  if (!columns.progressColumn) {
+  /*
+    Mẫu không có cột tiến độ và cũng chẳng có ô kết quả nào - lúc đó mới thật
+    sự bó tay. Trục chấm theo mục (Đạt / Không đạt) vẫn cập nhật được ở dưới.
+  */
+  if (!tracksProgress && resultFields.length === 0) {
     return (
       <>
         <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500" />
           <p className="text-muted-foreground">
             Mẫu KPI của trục này chưa có cột tiến độ (ô phần trăm thuộc nhóm
-            &quot;KPI tiến độ&quot;) nên chưa cập nhật tiến độ được. Sửa mẫu tại
-            Cấu hình form KPI › Mẫu bảng KPI, hoặc dùng &quot;Sửa chi tiết&quot;
-            để nhập tay.
+            &quot;KPI tiến độ&quot;) lẫn cột điểm trong công thức, nên chưa cập
+            nhật được. Sửa mẫu tại Cấu hình form KPI › Mẫu bảng KPI, hoặc dùng
+            &quot;Sửa chi tiết&quot; để nhập tay.
           </p>
         </div>
         <DialogFooter>
@@ -818,7 +879,13 @@ function ProgressForm({
         <div className="space-y-4">
           <SectionTitle
             icon={readOnly ? Eye : SquarePen}
-            text={readOnly ? "Kết quả đã chốt" : "Cập nhật tiến độ"}
+            text={
+              readOnly
+                ? "Kết quả đã chốt"
+                : tracksProgress
+                  ? "Cập nhật tiến độ"
+                  : "Cập nhật kết quả"
+            }
           />
 
           {/* Bị trả lại là việc cần xử lý ngay - đặt lý do lên đầu cột nhập,
@@ -869,17 +936,45 @@ function ProgressForm({
 
           <ReviewScoreSummary report={review} />
 
-          <MilestoneSlider
-            label="Tiến độ nhiệm vụ (KPI)"
-            columnTitle={columns.progressColumn.title}
-            milestones={milestones}
-            snap={snapToMilestones}
-            value={progress}
-            initialValue={initialProgress}
-            scoredPercent={scored?.progress ?? null}
-            disabled={saving || readOnly}
-            onChange={setProgress}
-          />
+          {/*
+            Trục chấm theo mục: thay thanh tiến độ bằng chính các ô kết quả -
+            khai điểm ở ô Đạt hoặc tích ô Không đạt. Đây là "tiến độ" của trục
+            kiểu này, không có phần trăm nào để kéo.
+          */}
+          {resultFields.length > 0 ? (
+            <div className="space-y-2">
+              <Label>Kết quả</Label>
+              <div className="rounded-lg border p-3">
+                <ResultFields
+                  columns={results}
+                  values={resultValues}
+                  initialValues={initialResults}
+                  scoreGroup={resultScoreGroup}
+                  disabled={saving || readOnly}
+                  onChange={setResultValues}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Trục này chấm theo mục: nhập điểm đạt được, hoặc chọn
+                &quot;Không đạt&quot;. Điểm phải nằm trong khung điểm chuẩn của
+                nhiệm vụ.
+              </p>
+            </div>
+          ) : null}
+
+          {tracksProgress && columns.progressColumn ? (
+            <MilestoneSlider
+              label="Tiến độ nhiệm vụ (KPI)"
+              columnTitle={columns.progressColumn.title}
+              milestones={milestones}
+              snap={snapToMilestones}
+              value={progress}
+              initialValue={initialProgress}
+              scoredPercent={scored?.progress ?? null}
+              disabled={saving || readOnly}
+              onChange={setProgress}
+            />
+          ) : null}
 
           {/* Chất lượng không nói lên tiến độ, nhưng cũng là mốc cấu hình sẵn
               nên bày cùng một kiểu thanh cho dễ nhập. */}
@@ -967,7 +1062,14 @@ function ProgressForm({
 
           {/* Điều kiện để cấp trên chốt - server kiểm điều đầu tiên. */}
           <div className="space-y-1.5 border-t pt-3">
-            <CheckLine ok={done} label="Tiến độ đạt 100%" />
+            <CheckLine
+              ok={done}
+              label={
+                tracksProgress
+                  ? "Tiến độ đạt 100%"
+                  : "Đã khai kết quả (Đạt / Không đạt)"
+              }
+            />
             {columns.productColumn ? (
               <CheckLine
                 ok={hasProduct}
@@ -979,11 +1081,14 @@ function ProgressForm({
 
         {/* ----------------------------------------- cột phải: mốc + nhật ký */}
         <div className="space-y-4 md:border-l md:pl-6">
-          <MilestoneTrack
-            milestones={milestones}
-            percentNow={percentFinal}
-            logs={logs}
-          />
+          {/* Trục chấm theo mục không có mốc phần trăm nào để đi qua. */}
+          {tracksProgress ? (
+            <MilestoneTrack
+              milestones={milestones}
+              percentNow={percentFinal}
+              logs={logs}
+            />
+          ) : null}
 
           <TaskTimeline logs={logs} columns={columns} />
         </div>
@@ -1001,8 +1106,12 @@ function ProgressForm({
             : sendable
               ? "Đủ điều kiện thì bấm xin xác nhận để gửi lên chỉ huy."
               : done
-                ? "Đã báo đủ 100% - đang chờ chỉ huy xác nhận hoàn thành."
-                : "Nhiệm vụ đang ở chỗ chỉ huy; báo đủ 100% là vào mục chờ xác nhận."}
+                ? tracksProgress
+                  ? "Đã báo đủ 100% - đang chờ chỉ huy xác nhận hoàn thành."
+                  : "Đã khai kết quả - đang chờ chỉ huy chấm điểm."
+                : tracksProgress
+                  ? "Nhiệm vụ đang ở chỗ chỉ huy; báo đủ 100% là vào mục chờ xác nhận."
+                  : "Nhiệm vụ đang ở chỗ chỉ huy; khai kết quả xong là vào mục chờ xác nhận."}
         </p>
         <Button
           type="button"
@@ -1099,6 +1208,22 @@ export function ProgressUpdateDialog({
   const shown = item;
 
   const columns = trackingColumns(template, shown?.task);
+  /** Ô kết quả của trục chấm theo mục - thay chỗ cho thanh tiến độ. */
+  const results = resultColumns(template);
+  /*
+    Khung điểm chuẩn của nhiệm vụ: đọc nhóm điểm đã lưu ở ô "Điểm chuẩn".
+    Server đổ nhóm này theo nhiệm vụ / nội dung công việc nên đây là con số
+    thật, không phải suy đoán.
+  */
+  const scoreGroupById = useScoreGroupMap(results.scores.length > 0);
+  const scoreGroupColumnKey = template?.columns.find(
+    (column) => column.semanticKey === "score_group",
+  )?.key;
+  const resultScoreGroup = scoreGroupColumnKey
+    ? (scoreGroupById.get(
+        shown?.task.catalogValues?.[scoreGroupColumnKey] ?? "",
+      ) ?? null)
+    : null;
   const progressColumn = columns.progressColumn;
   const isCatalogProgress = progressColumn?.semanticKey === "quality_level";
   const isCatalogQuality =
@@ -1236,6 +1361,8 @@ export function ProgressUpdateDialog({
             snapToMilestones={isCatalogProgress}
             qualityMilestones={qualityMilestones}
             snapQuality={isCatalogQuality}
+            results={results}
+            resultScoreGroup={resultScoreGroup}
             readOnly={readOnly}
             scored={scored}
             review={review}

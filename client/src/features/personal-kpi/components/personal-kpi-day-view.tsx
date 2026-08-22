@@ -62,6 +62,8 @@ import {
   SILENCE_ALERT_DAYS,
   deadlineState,
   silenceDays,
+  hasResult,
+  resultColumns,
   summarizeTask,
   workStateOf,
 } from "@/features/personal-kpi/task-summary";
@@ -281,6 +283,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
           work: workStateOf(summary, {
             completed: item.status === "COMPLETED",
             touched: !!item.lastProgressAt,
+            hasResult: hasResult(item.task, resultColumns(template)),
           }),
           /*
             Chưa cập nhật lần nào thì tính từ lúc đăng ký nhiệm vụ.

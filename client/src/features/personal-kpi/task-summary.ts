@@ -414,10 +414,12 @@ export function workState(progressPercent: number | null): WorkState {
  */
 export function workStateOf(
   summary: TaskSummary,
-  state: { completed: boolean; touched: boolean },
+  state: { completed: boolean; touched: boolean; hasResult?: boolean },
 ): WorkState {
   if (summary.tracksProgress) return workState(summary.progressPercent);
   if (state.completed) return "DONE";
+  // Trục chấm theo mục: khai xong điểm Đạt / tích Không đạt là coi như xong.
+  if (state.hasResult) return "DONE";
   return state.touched ? "IN_PROGRESS" : "NOT_STARTED";
 }
 
@@ -468,4 +470,64 @@ export function deadlineState(
   if (days === 0) return { days, label: "Hạn hôm nay", tone: "warning" };
   if (days <= 2) return { days, label: `Còn ${days} ngày`, tone: "warning" };
   return { days, label: `Còn ${days} ngày`, tone: "muted" };
+}
+
+/**
+ * Các ô "kết quả" của trục chấm theo mục (công thức cộng dồn).
+ *
+ * Trục kiểu này (trục 2) không có cột phần trăm nào: cán bộ khai điểm ở cột
+ * Đạt hoặc tích ô Không đạt - đó chính là thứ thay cho tiến độ. Lấy theo CẤU
+ * HÌNH CÔNG THỨC, phải khớp `resolveResultColumns` bên server.
+ */
+export type ResultColumns = {
+  scores: FormTemplateColumn[];
+  flags: FormTemplateColumn[];
+};
+
+export function resultColumns(template: TemplateShape | null): ResultColumns {
+  if (!template?.columns?.length) return { scores: [], flags: [] };
+
+  const visible = template.columns.filter((column) => column.visible);
+  const footer = template.footer;
+  const flags = visible.filter((column) => column.dataType === "boolean");
+
+  if (footer?.mode === "sum" && footer.ratioColumnKeys?.length) {
+    const keys = new Set(footer.ratioColumnKeys);
+    return {
+      // Cột tự tính do hệ thống điền, cán bộ không gõ được.
+      scores: visible.filter(
+        (column) => keys.has(column.key) && !column.autoValue,
+      ),
+      flags,
+    };
+  }
+
+  /*
+    Mẫu chưa khai công thức mà cũng không có cột phần trăm nào: vẫn là trục
+    chấm theo mục, ô điểm chính là các cột số nhập tay. Suy tạm như vậy để
+    dùng được ngay, không phải chờ admin bật công thức.
+    PHẢI khớp  bên server.
+  */
+  const { progressColumn } = trackingColumns(template);
+  if (progressColumn) return { scores: [], flags: [] };
+  return {
+    scores: visible.filter(
+      (column) => column.dataType === "number" && !column.autoValue,
+    ),
+    flags,
+  };
+}
+
+/** Đã khai kết quả chưa: có điểm ở ô Đạt, hoặc đã tích ô Không đạt. */
+export function hasResult(
+  task: PersonalTaskDraft,
+  columns: ResultColumns,
+): boolean {
+  const scored = columns.scores.some((column) =>
+    (task.fieldValues?.[column.key] ?? "").trim(),
+  );
+  const flagged = columns.flags.some(
+    (column) => (task.fieldValues?.[column.key] ?? "") === "1",
+  );
+  return scored || flagged;
 }

@@ -81,7 +81,9 @@ export type PersonalKpiProgressField =
   | "progress"
   | "quality"
   | "product"
-  | "evidence";
+  | "evidence"
+  /** Ô kết quả của trục chấm theo mục - tên cột nằm ở `detail`. */
+  | "result";
 
 /**
  * Một ô đổi giá trị. Giá trị là thô: phần trăm và số tệp lưu dạng số trong

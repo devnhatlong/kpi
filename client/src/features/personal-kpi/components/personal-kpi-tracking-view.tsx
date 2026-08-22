@@ -75,6 +75,8 @@ import {
   SILENCE_ALERT_DAYS,
   deadlineState,
   silenceDays,
+  hasResult,
+  resultColumns,
   summarizeTask,
   workStateOf,
   type DeadlineState,
@@ -590,6 +592,7 @@ export function PersonalKpiTrackingView() {
             work: workStateOf(summary, {
               completed: item.status === "COMPLETED",
               touched: !!item.lastProgressAt,
+              hasResult: hasResult(item.task, resultColumns(axis.template)),
             }),
             // Trục không chấm theo % thì không có tiến độ để im lặng.
             silence: summary.tracksProgress
