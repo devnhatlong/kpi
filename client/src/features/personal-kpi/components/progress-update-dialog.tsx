@@ -58,6 +58,7 @@ import {
   type TrackingColumns,
 } from "@/features/personal-kpi/task-summary";
 import {
+  canCompletePersonalKpi,
   canSendPersonalKpi,
   canUpdateProgress,
   type PersonalKpiItem,
@@ -700,6 +701,8 @@ type ProgressFormProps = {
   onDone: () => void;
   onSaved: () => void | Promise<void>;
   onRequestConfirm?: (item: PersonalKpiItem) => void;
+  /** Chỉ huy chốt hoàn thành ngay trong màn chi tiết. */
+  onComplete?: (item: PersonalKpiItem) => void;
 };
 
 function ProgressForm({
@@ -717,6 +720,7 @@ function ProgressForm({
   onDone,
   onSaved,
   onRequestConfirm,
+  onComplete,
 }: ProgressFormProps) {
   const fieldValues = item.task.fieldValues ?? {};
   const catalogValues = item.task.catalogValues ?? {};
@@ -1140,6 +1144,17 @@ function ProgressForm({
             {saving ? "Đang lưu..." : "Lưu cập nhật"}
           </Button>
         )}
+        {/*
+          Chỉ huy chốt ngay tại màn chi tiết: xem xong số liệu là bấm được,
+          khỏi đóng hộp thoại rồi dò lại đúng dòng đó ngoài bảng.
+        */}
+        {onComplete && canCompletePersonalKpi(item.status) ? (
+          <Button type="button" onClick={() => onComplete(item)}>
+            <CircleCheck className="h-4 w-4" />
+            Hoàn thành
+          </Button>
+        ) : null}
+
         {/* Việc bị trả lại thì gửi lại được ngay, không đòi đủ 100% - cấp trên
             trả về để sửa chứ không phải để chốt. */}
         {onRequestConfirm && !readOnly && sendable ? (
@@ -1184,6 +1199,11 @@ type ProgressUpdateDialogProps = {
   /** Bấm "Xin xác nhận hoàn thành" - mở luồng gửi lên cấp trên. */
   onRequestConfirm?: (item: PersonalKpiItem) => void;
   /**
+   * Chỉ huy bấm "Hoàn thành" ngay trong màn chi tiết - mở form chấm điểm.
+   * Bỏ trống = người xem không có quyền chốt (màn của cán bộ).
+   */
+  onComplete?: (item: PersonalKpiItem) => void;
+  /**
    * Ép chế độ chỉ xem. Cấp trên mở nhiệm vụ của cán bộ thì chỉ để theo dõi -
    * số liệu là do cán bộ tự khai, người duyệt không gõ hộ.
    */
@@ -1203,6 +1223,7 @@ export function ProgressUpdateDialog({
   onOpenChange,
   onSaved,
   onRequestConfirm,
+  onComplete,
   readOnly: forceReadOnly = false,
 }: ProgressUpdateDialogProps) {
   const shown = item;
@@ -1369,6 +1390,7 @@ export function ProgressUpdateDialog({
             onDone={() => onOpenChange(false)}
             onSaved={onSaved}
             onRequestConfirm={onRequestConfirm}
+            onComplete={onComplete}
           />
         ) : null}
       </DialogContent>

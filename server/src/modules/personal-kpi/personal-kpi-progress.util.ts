@@ -8,8 +8,8 @@ import {
  * Rút cột theo dõi ra khỏi mẫu bảng: KPI tiến độ, KPI chất lượng, ghi chú.
  *
  * PHẢI khớp từng luật với `task-summary.ts` bên client - client dùng để hiện
- * thanh tiến độ, server dùng để quyết định có cho chốt hoàn thành hay không.
- * Hai bên lệch nhau là người dùng thấy 100% mà bấm vẫn báo lỗi.
+ * thanh tiến độ và cảnh báo chốt sớm, server dùng để đọc số vào công thức
+ * điểm. Hai bên lệch nhau là mỗi bên hiểu một kiểu về cùng một nhiệm vụ.
  */
 
 /** Khoá cột cố định của mẫu mặc định (createDefaultTemplateDraft bên client). */
@@ -209,11 +209,6 @@ export function readItemPercent(
   }
   const value = Number(raw);
   return Number.isFinite(value) ? clampPercent(value) : null;
-}
-
-/** Đủ tiến độ để cấp trên chốt hoàn thành. */
-export function isProgressComplete(percent: number | null): boolean {
-  return percent !== null && percent >= 100;
 }
 
 /**

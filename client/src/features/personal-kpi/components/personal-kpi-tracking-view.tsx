@@ -475,14 +475,23 @@ function TrackingTable({
                         quyết ở chỗ mình. */}
                   {row.item.status === "PENDING" ? (
                     <>
+                      {/* Chốt được ở bất kỳ mức tiến độ nào - việc dừng giữa
+                          chừng vẫn phải khoá sổ. Chưa đủ 100% thì đổi màu để
+                          thấy ngay, và form chấm điểm sẽ cảnh báo trước khi
+                          quyết. */}
                       <Button
                         size="sm"
                         onClick={() => onComplete(row)}
-                        disabled={busy || !awaiting}
+                        disabled={busy}
+                        variant={awaiting ? "default" : "outline"}
+                        className={cn(
+                          !awaiting &&
+                            "border-amber-300 bg-background text-amber-700 hover:border-amber-400 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-900 dark:text-amber-500",
+                        )}
                         title={
                           awaiting
                             ? "Chốt hoàn thành nhiệm vụ này"
-                            : "KPI tiến độ chưa đạt 100%"
+                            : "KPI tiến độ chưa đạt 100% - vẫn chốt được, sẽ có cảnh báo trước khi chốt"
                         }
                       >
                         <CheckCheck className="h-4 w-4" />
@@ -970,6 +979,7 @@ export function PersonalKpiTrackingView() {
         item={scoreRow?.item ?? null}
         template={scoreRow?.template ?? null}
         progressPercent={scoreRow?.summary.progressPercent ?? null}
+        tracksProgress={scoreRow?.summary.tracksProgress ?? false}
         onOpenChange={setScoreOpen}
         onScored={refresh}
       />
@@ -981,6 +991,12 @@ export function PersonalKpiTrackingView() {
         readOnly
         onOpenChange={setDetailOpen}
         onSaved={refresh}
+        /* Chốt hoàn thành ngay trong màn chi tiết: đóng chi tiết rồi mở đúng
+           form chấm điểm của dòng đang xem. */
+        onComplete={() => {
+          setDetailOpen(false);
+          if (detailRow) openScore(detailRow);
+        }}
       />
 
       <Dialog

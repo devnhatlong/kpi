@@ -78,6 +78,8 @@ type ScoreFormProps = {
   /** Tên nhóm header của từng cột - dòng tiêu đề gộp của bảng. */
   groupLabel: (entry: ScoreEntry) => string;
   progressPercent: number | null;
+  /** Mẫu có cột tiến độ hay không - không có thì đừng nói chuyện phần trăm. */
+  tracksProgress: boolean;
   onDone: () => void;
   onScored: () => void | Promise<void>;
 };
@@ -88,6 +90,7 @@ function ScoreForm({
   templateColumns,
   groupLabel,
   progressPercent,
+  tracksProgress,
   onDone,
   onScored,
 }: ScoreFormProps) {
@@ -120,6 +123,16 @@ function ScoreForm({
   });
   const [note, setNote] = useState(item.reviewNote || NOTE_PRESETS[0]!);
   const [saving, setSaving] = useState(false);
+
+  /**
+   * Chốt sớm: KPI tiến độ chưa tới 100%, hoặc cán bộ chưa nhập số nào.
+   *
+   * Nghiệp vụ không cấm - việc vẫn phải khoá sổ khi dừng giữa chừng, và điểm
+   * tính theo phần đã làm - nhưng đây là bước một chiều nên phải cảnh báo ngay
+   * trước nút bấm, kèm lối đi khác là trả lại cho cán bộ làm tiếp.
+   */
+  const earlyClose =
+    tracksProgress && (progressPercent === null || progressPercent < 100);
 
   const show = (column: FormTemplateColumn, raw: string) =>
     showValue(column, raw, maps);
@@ -245,6 +258,30 @@ function ScoreForm({
             </p>
           </div>
         </div>
+
+        {earlyClose ? (
+          <div
+            className={cn(
+              "flex items-start gap-2 rounded-lg border p-3 text-sm",
+              kpiTone.warning.soft,
+            )}
+          >
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+            <div className="min-w-0 space-y-1">
+              <p className="font-medium text-foreground">
+                {progressPercent === null
+                  ? "Nhiệm vụ chưa có số liệu tiến độ."
+                  : `Nhiệm vụ mới đạt ${progressPercent}%, chưa hoàn thành 100%.`}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Chốt hoàn thành là khoá nhiệm vụ ở mức này: cán bộ không cập
+                nhật tiến độ được nữa và điểm KPI tính theo số chấm bên dưới.
+                Muốn cán bộ làm tiếp thì đóng form này và bấm{" "}
+                <span className="font-medium text-foreground">Trả lại</span>.
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         {/* Bảng 1: số cán bộ khai, chỉ để đối chiếu. */}
         <div className="space-y-1.5">
@@ -421,9 +458,27 @@ function ScoreForm({
         >
           Hủy
         </Button>
-        <Button type="button" onClick={() => void submit()} disabled={saving}>
-          <CheckCheck className="h-4 w-4" />
-          {saving ? "Đang lưu..." : "Chấm điểm & xác nhận hoàn thành"}
+        {/* Chốt sớm thì nói thẳng trên mặt nút, đừng để người ta bấm theo quán
+            tính rồi mới đọc cảnh báo. */}
+        <Button
+          type="button"
+          onClick={() => void submit()}
+          disabled={saving}
+          className={cn(
+            earlyClose &&
+              "bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-700",
+          )}
+        >
+          {earlyClose ? (
+            <TriangleAlert className="h-4 w-4" />
+          ) : (
+            <CheckCheck className="h-4 w-4" />
+          )}
+          {saving
+            ? "Đang lưu..."
+            : earlyClose
+              ? `Vẫn chốt hoàn thành${progressPercent === null ? "" : ` khi mới ${progressPercent}%`}`
+              : "Chấm điểm & xác nhận hoàn thành"}
         </Button>
       </DialogFooter>
     </>
@@ -438,6 +493,8 @@ type ReviewScoreDialogProps = {
   template: ResolvedTemplate | null;
   /** KPI tiến độ hiện tại, hiện ở dòng tóm tắt. */
   progressPercent: number | null;
+  /** Mẫu có theo dõi tiến độ không - căn cứ để cảnh báo chốt khi chưa 100%. */
+  tracksProgress?: boolean;
   onOpenChange: (open: boolean) => void;
   onScored: () => void | Promise<void>;
 };
@@ -454,6 +511,7 @@ export function ReviewScoreDialog({
   item,
   template,
   progressPercent,
+  tracksProgress = false,
   onOpenChange,
   onScored,
 }: ReviewScoreDialogProps) {
@@ -536,6 +594,7 @@ export function ReviewScoreDialog({
             groupLabel={groupLabel}
             templateColumns={template?.columns ?? []}
             progressPercent={progressPercent}
+            tracksProgress={tracksProgress}
             onDone={() => onOpenChange(false)}
             onScored={onScored}
           />

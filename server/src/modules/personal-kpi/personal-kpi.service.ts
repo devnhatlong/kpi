@@ -51,7 +51,6 @@ import {
   type ScoreCatalogs,
 } from './personal-kpi-score.util';
 import {
-  isProgressComplete,
   readItemPercent,
   resolveResultColumns,
   resolveScoreColumns,
@@ -1069,7 +1068,11 @@ export class PersonalKpiService {
     const now = new Date();
 
     if (dto.decision === 'COMPLETE') {
-      await this.assertProgressComplete(items);
+      /*
+        Không chặn theo tiến độ nữa: chỉ huy được chốt ở bất kỳ mức nào - việc
+        dừng giữa chừng vẫn phải khoá sổ và tính điểm theo thực tế. Cảnh báo
+        "chưa đủ 100%" đặt ở giao diện, ngay trước lúc bấm.
+      */
       const percentById = await this.progressPercentOf(items);
       for (const item of items) {
         item.reviewStatus = 'COMPLETED';
@@ -1847,39 +1850,6 @@ export class PersonalKpiService {
   }
 
   /**
-   * Chỉ chốt hoàn thành khi KPI tiến độ đã đủ 100%.
-   *
-   * "Hoàn thành" là điểm dừng của chuỗi duyệt và đi thẳng vào số liệu KPI, nên
-   * không cho chốt một việc mới chạy được 45% - muốn chốt thì trả lại để cán bộ
-   * cập nhật tiến độ trước. Mẫu không có cột tiến độ thì không chặn, vì lúc đó
-   * hệ thống chẳng có căn cứ nào để nói việc xong hay chưa.
-   */
-  private async assertProgressComplete(items: PersonalKpiItemDocument[]) {
-    const percentByLevelId = await this.qualityPercentMap();
-    const cache = new Map<string, TrackingTemplate | null>();
-    const problems: string[] = [];
-
-    for (const [index, item] of items.entries()) {
-      const template = await this.trackingTemplateOf(item, cache);
-      const { progress } = resolveTrackingColumns(template);
-      if (!progress) continue;
-
-      const percent = readItemPercent(item, progress, percentByLevelId);
-      if (isProgressComplete(percent)) continue;
-
-      problems.push(
-        `dòng ${index + 1} ${percent === null ? 'chưa nhập tiến độ' : `mới đạt ${percent}%`}`,
-      );
-    }
-
-    if (problems.length) {
-      throw new BadRequestException(
-        `Chỉ chốt hoàn thành khi KPI tiến độ đạt 100% - ${problems.join('; ')}. Trả lại để cán bộ cập nhật tiến độ trước.`,
-      );
-    }
-  }
-
-  /**
    * Ghi một ô theo dõi. Ô chọn mức lưu vào catalogValues kèm tên chép sẵn, ô số
    * lưu vào fieldValues sau khi kẹp về 0-100.
    */
@@ -2185,6 +2155,9 @@ export class PersonalKpiService {
    * Điểm chấm ghi vào `reviewValues` chứ không đè lên ô của cán bộ: số tự chấm
    * phải còn để đối chiếu. Công thức tính điểm trục vẫn y nguyên như cấu hình,
    * chỉ khác nguồn đọc - ô nào chỉ huy đã chấm thì lấy số đó.
+   *
+   * Không đòi tiến độ phải đủ 100%: nhiệm vụ dừng giữa chừng vẫn phải khoá sổ
+   * và ăn điểm theo phần đã làm. Giao diện cảnh báo trước khi chỉ huy bấm chốt.
    */
   async scoreAndComplete(
     userId: string,
@@ -2202,8 +2175,6 @@ export class PersonalKpiService {
         'Không tìm thấy nhiệm vụ đang chờ bạn chốt.',
       );
     }
-
-    await this.assertProgressComplete([item]);
 
     const template = await this.trackingTemplateOf(item);
     const scoreColumns = resolveScoreColumns(template);

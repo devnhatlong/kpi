@@ -115,7 +115,11 @@
       "Bash(powershell -NoProfile -Command \"Stop-Process -Id 36284,22720 -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 4\")",
       "Bash(curl -s -o /dev/null -w \"API sau khi dọn: %{http_code}\\\\n\" http://localhost:8080/api/v1/kpi-form-config/axes/all)",
       "Bash(touch src/main.ts)",
-      "Bash(curl -s -o /dev/null -w \"API sau khi watcher dựng lại: %{http_code}\\\\n\" http://localhost:8080/api/v1/kpi-form-config/axes/all)"
+      "Bash(curl -s -o /dev/null -w \"API sau khi watcher dựng lại: %{http_code}\\\\n\" http://localhost:8080/api/v1/kpi-form-config/axes/all)",
+      "Bash(node /tmp/patch-complete.mjs)",
+      "Bash(grep -n \"  onSaved,$\" -A 3 src/features/personal-kpi/components/progress-update-dialog.tsx)",
+      "Bash(grep -n \"  onRequestConfirm,$\" -A 2 src/features/personal-kpi/components/progress-update-dialog.tsx)",
+      "Bash(git -C .. show HEAD:server/src/modules/personal-kpi/personal-kpi.service.ts)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto"
