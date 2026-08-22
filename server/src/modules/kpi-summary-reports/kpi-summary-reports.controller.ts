@@ -18,7 +18,9 @@ import type { JwtPayloadUser } from '@/common/interfaces/jwt-payload-user.interf
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import {
   ChangeSummaryItemsDto,
+  CreateSummaryManualItemDto,
   CreateSummaryReportDto,
+  SendSummaryReportDto,
   SummaryCandidatesQueryDto,
   SummaryReportListQueryDto,
   UpdateSummaryReportDto,
@@ -48,7 +50,13 @@ export class KpiSummaryReportsController {
     return this.service.candidates(user.uid, query);
   }
 
-  @ApiOperation({ summary: 'Danh sách báo cáo tổng của tôi' })
+  @ApiOperation({ summary: 'Đếm báo cáo của tôi: tổng số và số đã trình' })
+  @Get('stats')
+  stats(@CurrentUser() user: JwtPayloadUser) {
+    return this.service.stats(user.uid);
+  }
+
+  @ApiOperation({ summary: 'Danh sách báo cáo tổng hợp của tôi' })
   @Get()
   findAll(
     @CurrentUser() user: JwtPayloadUser,
@@ -102,19 +110,43 @@ export class KpiSummaryReportsController {
     return this.service.removeItems(user.uid, id, dto);
   }
 
-  @ApiOperation({ summary: 'Chốt báo cáo tổng' })
-  @Post(':id/finalize')
-  finalize(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
-    return this.service.finalize(user.uid, id);
+  @ApiOperation({ summary: 'Thêm nhiệm vụ tự nhập vào báo cáo' })
+  @Post(':id/manual-items')
+  addManualItem(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: CreateSummaryManualItemDto,
+  ) {
+    return this.service.addManualItem(user.uid, id, dto);
   }
 
-  @ApiOperation({ summary: 'Mở lại báo cáo đã chốt để sửa' })
-  @Post(':id/reopen')
-  reopen(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
-    return this.service.reopen(user.uid, id);
+  @ApiOperation({ summary: 'Bỏ một nhiệm vụ tự nhập khỏi báo cáo' })
+  @Delete(':id/manual-items/:manualId')
+  removeManualItem(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Param('manualId') manualId: string,
+  ) {
+    return this.service.removeManualItem(user.uid, id, manualId);
   }
 
-  @ApiOperation({ summary: 'Xoá báo cáo tổng còn nháp' })
+  @ApiOperation({ summary: 'Trình báo cáo tổng hợp lên cấp trên' })
+  @Post(':id/send')
+  send(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: SendSummaryReportDto,
+  ) {
+    return this.service.send(user.uid, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Thu hồi báo cáo đã trình để sửa tiếp' })
+  @Post(':id/recall')
+  recall(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
+    return this.service.recall(user.uid, id);
+  }
+
+  @ApiOperation({ summary: 'Xoá báo cáo tổng hợp đang soạn' })
   @Delete(':id')
   remove(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
     return this.service.remove(user.uid, id);

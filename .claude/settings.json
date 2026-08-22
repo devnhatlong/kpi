@@ -119,10 +119,19 @@
       "Bash(node /tmp/patch-complete.mjs)",
       "Bash(grep -n \"  onSaved,$\" -A 3 src/features/personal-kpi/components/progress-update-dialog.tsx)",
       "Bash(grep -n \"  onRequestConfirm,$\" -A 2 src/features/personal-kpi/components/progress-update-dialog.tsx)",
-      "Bash(git -C .. show HEAD:server/src/modules/personal-kpi/personal-kpi.service.ts)"
+      "Bash(git -C .. show HEAD:server/src/modules/personal-kpi/personal-kpi.service.ts)",
+      "Bash(cd \"d:/Project/WebApp/KPI/client\" && rm -f src/features/kpi-summary-report/components/add-to-report-dialog.tsx src/features/kpi-summary-report/components/summary-report-list.tsx src/features/kpi-summary-report/components/summary-report-detail.tsx src/features/kpi-summary-report/components/summary-axis-table.tsx && rm -rf \"src/app/\\(dashboard\\)/kpi/promote/[id]\" && ls src/features/kpi-summary-report/components && ls \"src/app/\\(dashboard\\)/kpi/promote\")",
+      "Bash(npx nest *)",
+      "Bash(echo \"build exit=$?\")",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId, @{n='cmd';e={$_.CommandLine.Substring\\(0,[Math]::Min\\(110,$_.CommandLine.Length\\)\\)}} | Format-Table -AutoSize | Out-String -Width 200)",
+      "Bash(curl -s -o /dev/null -w \"root=%{http_code}\\\\n\" http://localhost:8080/api/v1/)",
+      "Bash(curl -s -i http://localhost:8080/api/v1/kpi-summary-reports/stats)",
+      "Bash(curl -s -o /dev/null -w \"api=%{http_code}\\\\n\" --max-time 5 http://localhost:8080/api/v1/kpi-summary-reports/stats)",
+      "Bash(curl -s -o /dev/null -w \"web=%{http_code}\\\\n\" --max-time 5 http://localhost:3000/)"
     ],
     "additionalDirectories": [
-      "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto"
+      "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
+      "D:\\Project\\WebApp\\KPI\\client\\src\\app\\(dashboard)\\kpi\\promote\\[id]"
     ]
   }
 }

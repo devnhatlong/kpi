@@ -75,7 +75,7 @@ export const NAV_ITEMS: NavItem[] = [
     permissions: [PERM.TASK_VIEW],
   },
   {
-    title: "Báo cáo tổng",
+    title: "Báo cáo tổng hợp",
     href: "/kpi/promote",
     icon: FileSpreadsheet,
     permissions: [PERM.EVALUATION_APPROVE],

@@ -6,6 +6,7 @@ import {
   Department,
   DepartmentSchema,
 } from '../departments/schemas/department.schema';
+import { Axis, AxisSchema } from '../kpi-form-config/schemas/axis.schema';
 import { PersonalKpiModule } from '../personal-kpi/personal-kpi.module';
 import {
   PersonalKpiItem,
@@ -27,6 +28,8 @@ import {
       { name: PersonalKpiItem.name, schema: PersonalKpiItemSchema },
       { name: User.name, schema: UserSchema },
       { name: Department.name, schema: DepartmentSchema },
+      // Nhiệm vụ tự nhập chọn trục từ danh mục, nên cần model Trục ở đây.
+      { name: Axis.name, schema: AxisSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),

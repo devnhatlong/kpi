@@ -912,6 +912,19 @@ export class PersonalKpiService {
     return { message: 'OK', data };
   }
 
+  /**
+   * Cấp trên hợp lệ để nhận một bản trình, dùng cho module khác (báo cáo tổng
+   * hợp). Mở ra ở đây để cả hệ thống chỉ có một định nghĩa "cấp trên của tôi".
+   */
+  async resolveRecipientUp(userId: string, recipientId: string) {
+    const target = await this.requireValidRecipient(userId, recipientId);
+    return {
+      id: target.id,
+      name: target.name,
+      departmentId: target.departmentId,
+    };
+  }
+
   /** Cán bộ gửi báo cáo ngày của chính mình lên cấp trên (lượt cấp 1). */
   async submit(
     userId: string,

@@ -7,15 +7,17 @@ import {
   IsIn,
   IsInt,
   IsMongoId,
+  IsNumber,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
 
 import { KPI_SUMMARY_REPORT_STATUSES } from '../schemas/kpi-summary-report.schema';
 
-/** Kho nhiệm vụ đã hoàn thành để nhặt vào báo cáo tổng. */
+/** Kho nhiệm vụ đã hoàn thành để nhặt vào báo cáo tổng hợp. */
 export class SummaryCandidatesQueryDto {
   @ApiPropertyOptional({ description: 'YYYY-MM-DD' })
   @IsOptional()
@@ -87,17 +89,26 @@ export class CreateSummaryReportDto {
   @IsString()
   toDate?: string;
 
+  @ApiPropertyOptional({ description: 'Đơn vị được tổng hợp trong báo cáo' })
+  @IsOptional()
+  @IsMongoId()
+  scopeDepartmentId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   note?: string;
 
-  @ApiProperty({ description: 'Nhiệm vụ đã hoàn thành được tích' })
+  /**
+   * Tích sẵn từ bước "Chọn nhiệm vụ hoàn thành". Cho phép rỗng: lập khung báo
+   * cáo trước rồi nhặt việc sau là cách làm bình thường.
+   */
+  @ApiPropertyOptional({ description: 'Nhiệm vụ đã hoàn thành được tích' })
+  @IsOptional()
   @IsArray()
-  @ArrayNotEmpty()
   @IsMongoId({ each: true })
-  itemIds!: string[];
+  itemIds?: string[];
 }
 
 export class UpdateSummaryReportDto {
@@ -116,6 +127,11 @@ export class UpdateSummaryReportDto {
   @IsOptional()
   @IsString()
   toDate?: string;
+
+  @ApiPropertyOptional({ description: 'Đơn vị được tổng hợp trong báo cáo' })
+  @IsOptional()
+  @IsMongoId()
+  scopeDepartmentId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -140,6 +156,58 @@ export class ChangeSummaryItemsDto {
   itemIds!: string[];
 }
 
+/** Nhiệm vụ tự nhập - việc không đi qua KPI cá nhân. */
+export class CreateSummaryManualItemDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(300)
+  title!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsMongoId()
+  axisId?: string;
+
+  @ApiPropertyOptional({ description: 'Cán bộ / bộ phận thực hiện' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  ownerName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  departmentName?: string;
+
+  @ApiPropertyOptional({ description: 'Điểm chỉ huy ghi cho việc này' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  score?: number;
+}
+
+/** Trình báo cáo lên cấp trên - cùng luật người nhận với báo cáo ngày. */
+export class SendSummaryReportDto {
+  @ApiProperty({ description: 'Cấp trên nhận báo cáo' })
+  @IsMongoId()
+  recipientId!: string;
+
+  @ApiPropertyOptional({ description: 'Lời trình gửi kèm' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
 export class SummaryReportListQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
@@ -160,7 +228,7 @@ export class SummaryReportListQueryDto {
   @IsIn([...KPI_SUMMARY_REPORT_STATUSES])
   status?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Tìm theo tên báo cáo hoặc phạm vi' })
   @IsOptional()
   @IsString()
   q?: string;

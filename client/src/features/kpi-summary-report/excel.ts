@@ -68,8 +68,16 @@ function placeHeaderCells(
         colSpan: cell.colSpan,
       });
 
-      for (let r = rowIdx; r < Math.min(rowCount, rowIdx + cell.rowSpan); r += 1) {
-        for (let c = cursor; c < Math.min(colCount, cursor + cell.colSpan); c += 1) {
+      for (
+        let r = rowIdx;
+        r < Math.min(rowCount, rowIdx + cell.rowSpan);
+        r += 1
+      ) {
+        for (
+          let c = cursor;
+          c < Math.min(colCount, cursor + cell.colSpan);
+          c += 1
+        ) {
           occupied[r]![c] = true;
         }
       }
@@ -90,7 +98,8 @@ function exportCellText(
       .map((file) => file.name)
       .join(", ");
   }
-  if (column.dataType === "boolean") return isTickedCell(row, column) ? "x" : "";
+  if (column.dataType === "boolean")
+    return isTickedCell(row, column) ? "x" : "";
   return cellText(row, column);
 }
 
@@ -141,7 +150,9 @@ export async function exportSummaryReportToExcel(
 
   axes.forEach((axis, axisIndex) => {
     const template = axis.template;
-    const visible = (template?.columns ?? []).filter((column) => column.visible);
+    const visible = (template?.columns ?? []).filter(
+      (column) => column.visible,
+    );
     const sheet = workbook.addWorksheet(
       sheetName(axis.axisName || axis.axisCode, `Truc ${axisIndex + 1}`),
     );
@@ -177,7 +188,11 @@ export async function exportSummaryReportToExcel(
 
     // -------------------------------------------------------------- header
     const placed = template
-      ? placeHeaderCells(template.columns, template.headerGroups, LEADING.length)
+      ? placeHeaderCells(
+          template.columns,
+          template.headerGroups,
+          LEADING.length,
+        )
       : null;
     const headerRows = placed?.rowCount ?? 1;
 

@@ -11,12 +11,14 @@ import type {
   SummaryReport,
   SummaryReportDetail,
   SummaryReportListQuery,
+  SummaryReportStats,
 } from "@/features/kpi-summary-report/types";
 
 const BASE = "/kpi-summary-reports";
 
 export const summaryReportKeys = {
   all: ["kpi-summary-reports"] as const,
+  stats: ["kpi-summary-reports", "stats"] as const,
   candidates: (params: SummaryCandidatesQuery) =>
     [
       "kpi-summary-reports",
@@ -83,18 +85,21 @@ export async function fetchSummaryReports(params: SummaryReportListQuery) {
   );
 }
 
+export async function fetchSummaryReportStats() {
+  return unwrapData(api.get<ApiResponse<SummaryReportStats>>(`${BASE}/stats`));
+}
+
 export async function fetchSummaryReport(id: string) {
-  return unwrapData(
-    api.get<ApiResponse<SummaryReportDetail>>(`${BASE}/${id}`),
-  );
+  return unwrapData(api.get<ApiResponse<SummaryReportDetail>>(`${BASE}/${id}`));
 }
 
 export type CreateSummaryReportInput = {
   title: string;
   fromDate?: string;
   toDate?: string;
+  scopeDepartmentId?: string;
   note?: string;
-  itemIds: string[];
+  itemIds?: string[];
 };
 
 export async function createSummaryReport(input: CreateSummaryReportInput) {
@@ -105,6 +110,7 @@ export type UpdateSummaryReportInput = {
   title?: string;
   fromDate?: string;
   toDate?: string;
+  scopeDepartmentId?: string;
   note?: string;
   itemIds?: string[];
 };
@@ -136,15 +142,45 @@ export async function removeSummaryReportItems(id: string, itemIds: string[]) {
   );
 }
 
-export async function finalizeSummaryReport(id: string) {
+export type SummaryManualItemInput = {
+  title: string;
+  note?: string;
+  axisId?: string;
+  ownerName?: string;
+  departmentName?: string;
+  score?: number;
+};
+
+export async function addSummaryManualItem(
+  id: string,
+  input: SummaryManualItemInput,
+) {
   return unwrapData(
-    api.post<ApiResponse<SummaryReport>>(`${BASE}/${id}/finalize`, {}),
+    api.post<ApiResponse<SummaryReport>>(`${BASE}/${id}/manual-items`, input),
   );
 }
 
-export async function reopenSummaryReport(id: string) {
+export async function removeSummaryManualItem(id: string, manualId: string) {
   return unwrapData(
-    api.post<ApiResponse<SummaryReport>>(`${BASE}/${id}/reopen`, {}),
+    api.delete<ApiResponse<SummaryReport>>(
+      `${BASE}/${id}/manual-items/${manualId}`,
+    ),
+  );
+}
+
+/** Trình báo cáo lên cấp trên - người nhận theo đúng luật của báo cáo ngày. */
+export async function sendSummaryReport(
+  id: string,
+  input: { recipientId: string; note?: string },
+) {
+  return unwrapData(
+    api.post<ApiResponse<SummaryReport>>(`${BASE}/${id}/send`, input),
+  );
+}
+
+export async function recallSummaryReport(id: string) {
+  return unwrapData(
+    api.post<ApiResponse<SummaryReport>>(`${BASE}/${id}/recall`, {}),
   );
 }
 

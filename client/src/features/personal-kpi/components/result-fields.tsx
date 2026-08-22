@@ -13,6 +13,12 @@ import { kpiTone } from "@/features/personal-kpi/status-styles";
 import type { ResultColumns } from "@/features/personal-kpi/task-summary";
 import { cn } from "@/lib/utils";
 
+/** Tên cột trống, hoặc chính là chữ "Đạt" - không dùng làm nhãn nút được. */
+function isPassLabel(title: string): boolean {
+  const plain = title.trim().toLowerCase();
+  return !plain || plain === "đạt" || plain === "dat";
+}
+
 /**
  * Ô kết quả của trục chấm theo mục: chọn Đạt / Không đạt rồi nhập điểm.
  *
@@ -46,7 +52,17 @@ export function ResultFields({
   onChange: (next: Record<string, string>) => void;
 }) {
   const failed = columns.flags.some((column) => values[column.key] === "1");
-  const flagTitle = columns.flags[0]?.title ?? "Không đạt";
+  /*
+    Nút bên phải luôn mang nghĩa KHÔNG ĐẠT: ô tích của trục chấm theo mục là ô
+    đánh dấu việc không đạt, tích vào là điểm về 0 (server cũng xử đúng vậy).
+    Mẫu nào đặt tên cột tích là "Đạt" hoặc bỏ trống thì hai nút sẽ đọc y hệt
+    nhau, không ai phân biệt được - lúc đó dùng nhãn chuẩn, tên cột thật đẩy
+    xuống tooltip để còn lần ra cột nào đang được ghi.
+  */
+  const flagColumnTitle = columns.flags[0]?.title?.trim() ?? "";
+  const flagTitle = isPassLabel(flagColumnTitle)
+    ? "Không đạt"
+    : flagColumnTitle;
   /** Điểm ngay trước khi bấm "Không đạt" - bấm "Đạt" lại là lấy về. */
   const stashed = useRef<Record<string, string>>({});
 
@@ -86,9 +102,16 @@ export function ResultFields({
             const active = failed === value;
             return (
               <button
-                key={label}
+                // Khoá theo vế Đạt / Không đạt, không theo nhãn: mẫu đặt tên
+                // cột trùng chữ "Đạt" là hai nút trùng khoá, React báo lỗi.
+                key={value ? "failed" : "passed"}
                 type="button"
                 disabled={disabled}
+                title={
+                  value && flagColumnTitle
+                    ? `Ghi vào cột "${flagColumnTitle}"`
+                    : undefined
+                }
                 onClick={() => setFailed(value)}
                 className={cn(
                   "flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60",

@@ -11,6 +11,7 @@ import {
   Department,
   DepartmentDocument,
 } from '@/modules/departments/schemas/department.schema';
+import { Axis, AxisDocument } from '@/modules/kpi-form-config/schemas/axis.schema';
 import { PersonalKpiService } from '@/modules/personal-kpi/personal-kpi.service';
 import { isYmd } from '@/modules/personal-kpi/personal-kpi.time';
 import {
@@ -20,12 +21,15 @@ import {
 import { User, UserDocument } from '@/modules/users/schemas/user.schema';
 import {
   ChangeSummaryItemsDto,
+  CreateSummaryManualItemDto,
   CreateSummaryReportDto,
+  SendSummaryReportDto,
   SummaryCandidatesQueryDto,
   SummaryReportListQueryDto,
   UpdateSummaryReportDto,
 } from './dto/kpi-summary-report.dto';
 import {
+  KpiSummaryLogType,
   KpiSummaryReport,
   KpiSummaryReportDocument,
 } from './schemas/kpi-summary-report.schema';
@@ -33,8 +37,11 @@ import {
 /** Trần số dòng của kho nhiệm vụ, khớp bảng tổng để hai màn hình cùng nhịp. */
 const CANDIDATES_MAX_ROWS = 2000;
 
-/** Một báo cáo tổng ôm quá số này thì file xuất ra cũng không ai đọc nổi. */
+/** Một báo cáo tổng hợp ôm quá số này thì file xuất ra cũng không ai đọc nổi. */
 const MAX_ITEMS_PER_REPORT = 2000;
+
+/** Nhật ký giữ lại bấy nhiêu mục gần nhất - đủ tra, không phình vô hạn. */
+const MAX_LOGS = 200;
 
 type ActorScope = {
   id: Types.ObjectId;
@@ -55,6 +62,8 @@ export class KpiSummaryReportsService {
     private readonly userModel: Model<UserDocument>,
     @InjectModel(Department.name)
     private readonly departmentModel: Model<DepartmentDocument>,
+    @InjectModel(Axis.name)
+    private readonly axisModel: Model<AxisDocument>,
     private readonly personalKpiService: PersonalKpiService,
   ) {}
 
@@ -62,8 +71,8 @@ export class KpiSummaryReportsService {
 
   /**
    * Nhiệm vụ đã hoàn thành mà tôi được phép đưa vào báo cáo, gom theo trục.
-   * Không phân trang: báo cáo tổng phải nhìn được cả kỳ một lượt mới tích chọn
-   * có nghĩa, nên chặn bằng trần dòng và báo `truncated` thay vì cắt trang.
+   * Không phân trang: báo cáo tổng hợp phải nhìn được cả kỳ một lượt mới tích
+   * chọn có nghĩa, nên chặn bằng trần dòng và báo `truncated` thay vì cắt trang.
    */
   async candidates(userId: string, query: SummaryCandidatesQueryDto) {
     const actor = await this.resolveScope(userId);
@@ -96,13 +105,16 @@ export class KpiSummaryReportsService {
     };
   }
 
-  // ============================================================== báo cáo tổng
+  // ========================================================= báo cáo tổng hợp
 
   async create(userId: string, dto: CreateSummaryReportDto) {
     const actor = await this.resolveScope(userId);
     const title = this.requireTitle(dto.title);
     const { fromDate, toDate } = this.requirePeriod(dto.fromDate, dto.toDate);
-    const itemIds = await this.requireEligibleItems(actor, dto.itemIds);
+    const scope = await this.resolveReportScope(actor, dto.scopeDepartmentId);
+    const itemIds = await this.requireEligibleItems(actor, dto.itemIds ?? [], {
+      allowEmpty: true,
+    });
 
     const report = await this.reportModel.create({
       title,
@@ -112,14 +124,28 @@ export class KpiSummaryReportsService {
       ownerId: actor.id,
       ownerName: actor.name,
       ownerDepartmentId: actor.departmentId,
+      scopeDepartmentId: scope.id,
+      scopeName: scope.name,
       itemIds,
       itemCount: itemIds.length,
+      manualItems: [],
+      logs: [
+        {
+          type: 'CREATE' as const,
+          message: itemIds.length
+            ? `Khởi tạo báo cáo tổng hợp với ${itemIds.length} nhiệm vụ`
+            : 'Khởi tạo báo cáo tổng hợp',
+          byId: actor.id,
+          byName: actor.name,
+          at: new Date(),
+        },
+      ],
       status: 'DRAFT' as const,
     });
 
     return {
-      message: `Đã tạo báo cáo tổng với ${itemIds.length} nhiệm vụ.`,
-      data: report,
+      message: `Đã tạo báo cáo tổng hợp với ${itemIds.length} nhiệm vụ.`,
+      data: this.toReportSummary(report),
     };
   }
 
@@ -129,23 +155,45 @@ export class KpiSummaryReportsService {
     const limit = Math.max(1, query.limit ?? 10);
 
     const filter: Record<string, unknown> = { ownerId: actor.id };
-    if (query.status) filter.status = query.status;
+    if (query.status) filter.status = this.statusFilter(query.status);
     if (query.q?.trim()) {
       const escaped = query.q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      filter.title = new RegExp(escaped, 'i');
+      const pattern = new RegExp(escaped, 'i');
+      // Tìm cả theo phạm vi: người lập nhớ "báo cáo của Phòng Tham mưu" nhiều
+      // hơn là nhớ đúng tên đã đặt.
+      filter.$or = [{ title: pattern }, { scopeName: pattern }];
     }
 
     const [data, total] = await Promise.all([
       this.reportModel
         .find(filter)
-        .select('-itemIds')
+        .select('-itemIds -logs')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
       this.reportModel.countDocuments(filter),
     ]);
 
-    return buildPaginatedResponse(data, total, page, limit);
+    return buildPaginatedResponse(
+      data.map((report) => this.toReportSummary(report)),
+      total,
+      page,
+      limit,
+    );
+  }
+
+  /** Đếm cho dòng "N báo cáo · M đã gửi" trên đầu trang. */
+  async stats(userId: string) {
+    const actor = await this.resolveScope(userId);
+    const [total, draft] = await Promise.all([
+      this.reportModel.countDocuments({ ownerId: actor.id }),
+      this.reportModel.countDocuments({ ownerId: actor.id, status: 'DRAFT' }),
+    ]);
+
+    return {
+      message: 'OK',
+      data: { total, draft, sent: total - draft },
+    };
   }
 
   /** Chi tiết: thông tin báo cáo + các nhiệm vụ đã gom theo trục. */
@@ -183,28 +231,50 @@ export class KpiSummaryReportsService {
   async update(userId: string, id: string, dto: UpdateSummaryReportDto) {
     const actor = await this.resolveScope(userId);
     const report = await this.requireDraft(actor, id);
+    const changes: string[] = [];
 
-    if (dto.title !== undefined) report.title = this.requireTitle(dto.title);
+    if (dto.title !== undefined) {
+      const title = this.requireTitle(dto.title);
+      if (title !== report.title) changes.push(`tên báo cáo → "${title}"`);
+      report.title = title;
+    }
     if (dto.note !== undefined) report.note = dto.note.trim();
+    if (dto.scopeDepartmentId !== undefined) {
+      const scope = await this.resolveReportScope(actor, dto.scopeDepartmentId);
+      if (scope.name !== report.scopeName) {
+        changes.push(`phạm vi → ${scope.name || 'không đặt'}`);
+      }
+      report.scopeDepartmentId = scope.id;
+      report.scopeName = scope.name;
+    }
     if (dto.fromDate !== undefined || dto.toDate !== undefined) {
       const { fromDate, toDate } = this.requirePeriod(
         dto.fromDate ?? report.fromDate,
         dto.toDate ?? report.toDate,
       );
+      if (fromDate !== report.fromDate || toDate !== report.toDate) {
+        changes.push('kỳ báo cáo');
+      }
       report.fromDate = fromDate;
       report.toDate = toDate;
     }
     if (dto.itemIds !== undefined) {
-      const itemIds = await this.requireEligibleItems(actor, dto.itemIds);
+      const itemIds = await this.requireEligibleItems(actor, dto.itemIds, {
+        allowEmpty: true,
+      });
       report.itemIds = itemIds;
       report.itemCount = itemIds.length;
+      changes.push(`danh sách nhiệm vụ (${itemIds.length})`);
     }
 
+    if (changes.length) {
+      this.pushLog(report, actor, 'UPDATE', `Sửa ${changes.join(', ')}`);
+    }
     await report.save();
-    return { message: 'Đã lưu báo cáo tổng.', data: report };
+    return { message: 'Đã lưu báo cáo tổng hợp.', data: this.toReportSummary(report) };
   }
 
-  /** Nhặt thêm nhiệm vụ vào báo cáo nháp, bỏ qua dòng đã có sẵn. */
+  /** Nhặt thêm nhiệm vụ vào báo cáo đang soạn, bỏ qua dòng đã có sẵn. */
   async addItems(userId: string, id: string, dto: ChangeSummaryItemsDto) {
     const actor = await this.resolveScope(userId);
     const report = await this.requireDraft(actor, id);
@@ -224,6 +294,12 @@ export class KpiSummaryReportsService {
     this.assertItemLimit(next.length);
     report.itemIds = next;
     report.itemCount = next.length;
+    this.pushLog(
+      report,
+      actor,
+      'ADD_ITEMS',
+      `Đưa ${added.length} nhiệm vụ đã hoàn thành vào báo cáo`,
+    );
     await report.save();
 
     return {
@@ -240,11 +316,19 @@ export class KpiSummaryReportsService {
     const next = report.itemIds.filter((item) => !drop.has(String(item)));
     const removed = report.itemIds.length - next.length;
     if (!removed) {
-      throw new BadRequestException('Không có nhiệm vụ nào trong báo cáo để bỏ.');
+      throw new BadRequestException(
+        'Không có nhiệm vụ nào trong báo cáo để bỏ.',
+      );
     }
 
     report.itemIds = next;
     report.itemCount = next.length;
+    this.pushLog(
+      report,
+      actor,
+      'REMOVE_ITEMS',
+      `Bỏ ${removed} nhiệm vụ khỏi báo cáo`,
+    );
     await report.save();
 
     return {
@@ -253,47 +337,160 @@ export class KpiSummaryReportsService {
     };
   }
 
-  /** Chốt báo cáo: khoá danh sách nhiệm vụ, từ đây chỉ xem và xuất file. */
-  async finalize(userId: string, id: string) {
+  // ======================================================= nhiệm vụ tự nhập
+
+  /**
+   * Việc không đi qua KPI cá nhân vẫn phải có mặt trong báo cáo tổng hợp.
+   * Chép thẳng nội dung vào báo cáo: không có bản ghi gốc nào để trỏ tới, nên
+   * cũng không có gì để đồng bộ về sau.
+   */
+  async addManualItem(
+    userId: string,
+    id: string,
+    dto: CreateSummaryManualItemDto,
+  ) {
     const actor = await this.resolveScope(userId);
     const report = await this.requireDraft(actor, id);
 
-    if (!report.itemIds.length) {
+    const title = dto.title?.trim() ?? '';
+    if (!title) throw new BadRequestException('Tên nhiệm vụ là bắt buộc.');
+
+    let axisId: Types.ObjectId | null = null;
+    let axisName = '';
+    if (dto.axisId) {
+      const axis = await this.axisModel
+        .findById(this.requireObjectId(dto.axisId, 'Trục'))
+        .select('name code');
+      if (!axis) throw new BadRequestException('Trục không tồn tại.');
+      axisId = axis._id as Types.ObjectId;
+      axisName = axis.name?.trim() || axis.code;
+    }
+
+    this.assertItemLimit(report.itemCount + report.manualItems.length + 1);
+    report.manualItems.push({
+      title,
+      note: dto.note?.trim() ?? '',
+      axisId,
+      axisName,
+      ownerName: dto.ownerName?.trim() ?? '',
+      departmentName: dto.departmentName?.trim() ?? '',
+      score: dto.score ?? null,
+      createdAt: new Date(),
+    });
+    this.pushLog(report, actor, 'ADD_MANUAL', `Thêm nhiệm vụ tự nhập "${title}"`);
+    await report.save();
+
+    return {
+      message: 'Đã thêm nhiệm vụ tự nhập.',
+      data: this.toReportSummary(report),
+    };
+  }
+
+  async removeManualItem(userId: string, id: string, manualId: string) {
+    const actor = await this.resolveScope(userId);
+    const report = await this.requireDraft(actor, id);
+
+    const target = this.requireObjectId(manualId, 'Nhiệm vụ tự nhập');
+    const before = report.manualItems.length;
+    const removed = report.manualItems.find(
+      (item) => String((item as { _id?: Types.ObjectId })._id) === String(target),
+    );
+    report.manualItems = report.manualItems.filter(
+      (item) => String((item as { _id?: Types.ObjectId })._id) !== String(target),
+    );
+    if (report.manualItems.length === before) {
+      throw new BadRequestException('Không tìm thấy nhiệm vụ tự nhập này.');
+    }
+
+    this.pushLog(
+      report,
+      actor,
+      'REMOVE_MANUAL',
+      `Bỏ nhiệm vụ tự nhập "${removed?.title ?? ''}"`,
+    );
+    await report.save();
+
+    return {
+      message: 'Đã bỏ nhiệm vụ tự nhập.',
+      data: this.toReportSummary(report),
+    };
+  }
+
+  // ============================================================ trình cấp trên
+
+  /**
+   * Trình báo cáo lên cấp trên: khoá nội dung và ghi lại ai nhận.
+   *
+   * Người nhận đi qua đúng luật của báo cáo ngày (cấp trên trong nhánh đơn vị),
+   * để cả hệ thống chỉ có một định nghĩa "cấp trên của tôi".
+   */
+  async send(userId: string, id: string, dto: SendSummaryReportDto) {
+    const actor = await this.resolveScope(userId);
+    const report = await this.requireDraft(actor, id);
+
+    if (!report.itemIds.length && !report.manualItems.length) {
       throw new BadRequestException(
-        'Báo cáo chưa có nhiệm vụ nào - chọn nhiệm vụ trước khi chốt.',
+        'Báo cáo chưa có nhiệm vụ nào - chọn nhiệm vụ trước khi trình cấp trên.',
       );
     }
 
-    report.status = 'FINALIZED';
-    report.finalizedById = actor.id;
-    report.finalizedAt = new Date();
+    const recipient = await this.personalKpiService.resolveRecipientUp(
+      userId,
+      dto.recipientId,
+    );
+
+    report.status = 'SENT';
+    report.sentToId = recipient.id;
+    report.sentToName = recipient.name;
+    report.sentNote = dto.note?.trim() ?? '';
+    report.sentAt = new Date();
+    this.pushLog(
+      report,
+      actor,
+      'SEND',
+      `Trình ${recipient.name}${report.sentNote ? ` - ${report.sentNote}` : ''}`,
+    );
     await report.save();
 
-    return { message: 'Đã chốt báo cáo tổng.', data: report };
+    return {
+      message: `Đã trình báo cáo lên ${recipient.name}.`,
+      data: this.toReportSummary(report),
+    };
   }
 
-  /** Mở lại báo cáo đã chốt để sửa tiếp - chỉ người lập mới mở được. */
-  async reopen(userId: string, id: string) {
+  /** Thu hồi bản đã trình để sửa tiếp - chỉ người lập mới thu hồi được. */
+  async recall(userId: string, id: string) {
     const actor = await this.resolveScope(userId);
     const report = await this.requireOwned(actor, id);
 
-    if (report.status !== 'FINALIZED') {
-      throw new BadRequestException('Báo cáo đang ở trạng thái nháp.');
+    if (report.status === 'DRAFT') {
+      throw new BadRequestException('Báo cáo đang soạn, chưa trình đi đâu cả.');
     }
 
+    const sentTo = report.sentToName;
     report.status = 'DRAFT';
-    report.finalizedById = null;
-    report.finalizedAt = null;
+    report.sentToId = null;
+    report.sentToName = '';
+    report.sentAt = null;
+    this.pushLog(
+      report,
+      actor,
+      'RECALL',
+      sentTo ? `Thu hồi bản đã trình ${sentTo}` : 'Thu hồi bản đã trình',
+    );
     await report.save();
 
-    return { message: 'Đã mở lại báo cáo để sửa.', data: report };
+    return {
+      message: 'Đã thu hồi báo cáo về trạng thái đang soạn.',
+      data: this.toReportSummary(report),
+    };
   }
 
   async remove(userId: string, id: string) {
     const actor = await this.resolveScope(userId);
     const report = await this.requireDraft(actor, id);
     await report.deleteOne();
-    return { message: 'Đã xoá báo cáo tổng.', data: { id } };
+    return { message: 'Đã xoá báo cáo tổng hợp.', data: { id } };
   }
 
   // ================================================================== nội bộ
@@ -326,6 +523,36 @@ export class KpiSummaryReportsService {
       name: user.fullName?.trim() || user.username,
       departmentId,
       departmentIds,
+    };
+  }
+
+  /**
+   * Phạm vi tổng hợp của báo cáo. Bỏ trống thì lấy đơn vị của người lập - báo
+   * cáo nào cũng phải nói được nó tổng hợp cho ai.
+   */
+  private async resolveReportScope(
+    actor: ActorScope,
+    scopeDepartmentId?: string,
+  ): Promise<{ id: Types.ObjectId | null; name: string }> {
+    const wanted = scopeDepartmentId?.trim()
+      ? this.requireObjectId(scopeDepartmentId, 'Phạm vi tổng hợp')
+      : actor.departmentId;
+    if (!wanted) return { id: null, name: '' };
+
+    if (!actor.departmentIds.some((id) => id.equals(wanted))) {
+      throw new BadRequestException(
+        'Phạm vi tổng hợp phải là đơn vị trong nhánh bạn quản lý.',
+      );
+    }
+
+    const department = await this.departmentModel
+      .findById(wanted)
+      .select('name code');
+    if (!department) throw new BadRequestException('Đơn vị không tồn tại.');
+
+    return {
+      id: department._id as Types.ObjectId,
+      name: department.name?.trim() || department.code,
     };
   }
 
@@ -422,13 +649,18 @@ export class KpiSummaryReportsService {
    * nhiệm vụ ĐÃ HOÀN THÀNH nằm trong phạm vi của tôi. Kiểm ở server chứ không
    * tin client, vì gọi thẳng API là nhét được id bất kỳ vào báo cáo.
    */
-  private async requireEligibleItems(actor: ActorScope, raw: string[]) {
+  private async requireEligibleItems(
+    actor: ActorScope,
+    raw: string[],
+    options: { allowEmpty?: boolean } = {},
+  ) {
     const wanted = new Map<string, Types.ObjectId>();
     for (const value of raw) {
       const id = this.requireObjectId(value, 'Nhiệm vụ');
       wanted.set(String(id), id);
     }
     if (!wanted.size) {
+      if (options.allowEmpty) return [];
       throw new BadRequestException('Chưa chọn nhiệm vụ nào.');
     }
     this.assertItemLimit(wanted.size);
@@ -452,8 +684,26 @@ export class KpiSummaryReportsService {
   private assertItemLimit(count: number) {
     if (count > MAX_ITEMS_PER_REPORT) {
       throw new BadRequestException(
-        `Một báo cáo tổng tối đa ${MAX_ITEMS_PER_REPORT} nhiệm vụ - hãy tách theo kỳ hoặc theo đơn vị.`,
+        `Một báo cáo tổng hợp tối đa ${MAX_ITEMS_PER_REPORT} nhiệm vụ - hãy tách theo kỳ hoặc theo đơn vị.`,
       );
+    }
+  }
+
+  private pushLog(
+    report: KpiSummaryReportDocument,
+    actor: ActorScope,
+    type: KpiSummaryLogType,
+    message: string,
+  ) {
+    report.logs.push({
+      type,
+      message,
+      byId: actor.id,
+      byName: actor.name,
+      at: new Date(),
+    });
+    if (report.logs.length > MAX_LOGS) {
+      report.logs = report.logs.slice(-MAX_LOGS);
     }
   }
 
@@ -462,18 +712,31 @@ export class KpiSummaryReportsService {
       _id: this.requireObjectId(id, 'Báo cáo'),
       ownerId: actor.id,
     });
-    if (!report) throw new NotFoundException('Không tìm thấy báo cáo tổng.');
+    if (!report) throw new NotFoundException('Không tìm thấy báo cáo tổng hợp.');
     return report;
   }
 
   private async requireDraft(actor: ActorScope, id: string) {
     const report = await this.requireOwned(actor, id);
-    if (report.status !== 'DRAFT') {
+    if (this.readStatus(report) !== 'DRAFT') {
       throw new BadRequestException(
-        'Báo cáo đã chốt - mở lại báo cáo trước khi sửa.',
+        'Báo cáo đã trình cấp trên - thu hồi trước khi sửa.',
       );
     }
     return report;
+  }
+
+  /**
+   * Trạng thái để đối chiếu. Bản ghi cũ còn 'FINALIZED' của thời "chốt báo
+   * cáo": coi như đã trình, vì cả hai đều là trạng thái khoá nội dung.
+   */
+  private readStatus(report: KpiSummaryReportDocument) {
+    return report.status === 'DRAFT' ? 'DRAFT' : 'SENT';
+  }
+
+  /** Lọc theo trạng thái có tính tới bản ghi cũ mang 'FINALIZED'. */
+  private statusFilter(status: string) {
+    return status === 'DRAFT' ? 'DRAFT' : { $ne: 'DRAFT' };
   }
 
   private toReportSummary(report: KpiSummaryReportDocument) {
@@ -485,9 +748,33 @@ export class KpiSummaryReportsService {
       note: report.note,
       ownerId: String(report.ownerId),
       ownerName: report.ownerName,
-      status: report.status,
+      scopeDepartmentId: report.scopeDepartmentId
+        ? String(report.scopeDepartmentId)
+        : null,
+      scopeName: report.scopeName ?? '',
+      status: this.readStatus(report),
       itemCount: report.itemCount,
-      finalizedAt: report.finalizedAt,
+      manualItems: (report.manualItems ?? []).map((item) => ({
+        _id: String((item as { _id?: Types.ObjectId })._id ?? ''),
+        title: item.title,
+        note: item.note ?? '',
+        axisId: item.axisId ? String(item.axisId) : null,
+        axisName: item.axisName ?? '',
+        ownerName: item.ownerName ?? '',
+        departmentName: item.departmentName ?? '',
+        score: item.score ?? null,
+        createdAt: item.createdAt,
+      })),
+      logs: (report.logs ?? []).map((log) => ({
+        type: log.type,
+        message: log.message,
+        byName: log.byName,
+        at: log.at,
+      })),
+      sentToId: report.sentToId ? String(report.sentToId) : null,
+      sentToName: report.sentToName ?? '',
+      sentNote: report.sentNote ?? '',
+      sentAt: report.sentAt,
       createdAt: report.createdAt,
       updatedAt: report.updatedAt,
     };

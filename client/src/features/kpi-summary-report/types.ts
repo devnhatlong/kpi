@@ -4,36 +4,66 @@ import type {
 } from "@/features/personal-kpi/api";
 
 /**
- * Khối trục của báo cáo tổng dùng chung kiểu với bảng tổng: server gom bằng
+ * Khối trục của báo cáo tổng hợp dùng chung kiểu với bảng tổng: server gom bằng
  * cùng một hàm nên hai màn hình luôn nhận đúng một hình dạng dữ liệu.
  */
 export type SummaryAxisBlock = PersonalKpiBoardAxis;
 export type SummaryRow = PersonalKpiBoardRow;
 
 /**
- * - DRAFT     : còn thêm bớt nhiệm vụ được
- * - FINALIZED : đã chốt, chỉ còn xem và xuất file
+ * - DRAFT : đang soạn, còn thêm bớt nhiệm vụ được
+ * - SENT  : đã trình cấp trên, muốn sửa thì thu hồi
  */
-export type SummaryReportStatus = "DRAFT" | "FINALIZED";
+export type SummaryReportStatus = "DRAFT" | "SENT";
 
-export const SUMMARY_REPORT_STATUS_LABEL: Record<SummaryReportStatus, string> = {
-  DRAFT: "Nháp",
-  FINALIZED: "Đã chốt",
-};
+export const SUMMARY_REPORT_STATUS_LABEL: Record<SummaryReportStatus, string> =
+  {
+    DRAFT: "Đang soạn",
+    SENT: "Đã gửi",
+  };
 
 export function summaryReportStatusBadgeClass(
   status: SummaryReportStatus,
 ): string {
-  return status === "FINALIZED"
-    ? "border-transparent bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
-    : "border-transparent bg-slate-100 text-slate-700 dark:bg-slate-800/70 dark:text-slate-300";
+  return status === "SENT"
+    ? "border-transparent bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:text-emerald-300"
+    : "border-transparent bg-violet-100 text-violet-700 hover:bg-violet-100 dark:bg-violet-950/60 dark:text-violet-300";
 }
 
 export function canEditSummaryReport(status: SummaryReportStatus) {
   return status === "DRAFT";
 }
 
-/** Dòng trong danh sách báo cáo - không kèm itemIds cho nhẹ. */
+/** Nhiệm vụ gõ tay vào báo cáo - việc không đi qua KPI cá nhân. */
+export type SummaryManualItem = {
+  _id: string;
+  title: string;
+  note: string;
+  axisId: string | null;
+  axisName: string;
+  ownerName: string;
+  departmentName: string;
+  score: number | null;
+  createdAt: string;
+};
+
+export type SummaryReportLogType =
+  | "CREATE"
+  | "UPDATE"
+  | "ADD_ITEMS"
+  | "REMOVE_ITEMS"
+  | "ADD_MANUAL"
+  | "REMOVE_MANUAL"
+  | "SEND"
+  | "RECALL";
+
+export type SummaryReportLog = {
+  type: SummaryReportLogType;
+  message: string;
+  byName: string;
+  at: string;
+};
+
 export type SummaryReport = {
   _id: string;
   title: string;
@@ -42,9 +72,19 @@ export type SummaryReport = {
   note: string;
   ownerId: string;
   ownerName: string;
+  /** Đơn vị mà báo cáo này tổng hợp thay. */
+  scopeDepartmentId: string | null;
+  scopeName: string;
   status: SummaryReportStatus;
+  /** Số nhiệm vụ lấy từ KPI - chưa tính nhiệm vụ tự nhập. */
   itemCount: number;
-  finalizedAt?: string | null;
+  manualItems: SummaryManualItem[];
+  /** Danh sách báo cáo không kèm nhật ký cho nhẹ; chi tiết mới có. */
+  logs: SummaryReportLog[];
+  sentToId: string | null;
+  sentToName: string;
+  sentNote: string;
+  sentAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -55,6 +95,13 @@ export type SummaryReportDetail = {
   rowCount: number;
   /** Nhiệm vụ đã lưu trong báo cáo nhưng không còn trong hệ thống. */
   missingCount: number;
+};
+
+/** Đếm cho dòng "N báo cáo · M đã gửi" trên đầu trang. */
+export type SummaryReportStats = {
+  total: number;
+  draft: number;
+  sent: number;
 };
 
 export type SummaryCandidates = {
