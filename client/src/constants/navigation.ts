@@ -5,6 +5,7 @@ import {
   FileSpreadsheet,
   FormInput,
   Gauge,
+  Inbox,
   KeyRound,
   Layers,
   ListTree,
@@ -43,7 +44,7 @@ export type NavItem = {
 
 /**
  * Menu theo đặc tả:
- * - KPI của tôi: báo cáo bottom-up (Staff/Manager tự khai)
+ * - KPI cá nhân: báo cáo bottom-up (Staff/Manager tự khai)
  * - Duyệt KPI cấp dưới: cấp trên nhận & duyệt
  * - KPI cấp trên giao: nhiệm vụ top-down giao xuống
  */
@@ -54,7 +55,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Gauge,
   },
   {
-    title: "KPI của tôi",
+    title: "KPI cá nhân",
     href: "/kpi/personal",
     icon: ClipboardList,
     permissions: [PERM.EVALUATION_SELF],
@@ -75,10 +76,24 @@ export const NAV_ITEMS: NavItem[] = [
     permissions: [PERM.TASK_VIEW],
   },
   {
+    // Hai ngăn tách thành hai mục con: bản mình lập và bản cấp dưới trình lên
+    // là hai việc khác nhau, gộp một trang rồi bắt người dùng gạt qua lại thì
+    // không ai biết mình đang đứng ở đâu khi vào từ menu.
     title: "Báo cáo tổng hợp",
-    href: "/kpi/promote",
     icon: FileSpreadsheet,
     permissions: [PERM.EVALUATION_APPROVE],
+    children: [
+      {
+        title: "Tạo báo cáo",
+        href: "/kpi/promote",
+        icon: FileSpreadsheet,
+      },
+      {
+        title: "Duyệt báo cáo",
+        href: "/kpi/promote/incoming",
+        icon: Inbox,
+      },
+    ],
   },
   {
     title: "Giao KPI xuống",

@@ -27,15 +27,10 @@ export type ReportTab = "ALL" | SummaryReportStatus;
 export type ReportScope = "mine" | "incoming";
 
 /*
-  Hai ngăn: bản mình lập và bản cấp dưới trình lên. Mỗi ngăn có bộ tab riêng vì
-  trạng thái đáng quan tâm khác hẳn nhau - bên mình là "soạn tiếp / bị trả lại",
-  bên nhận là "chờ mình quyết".
+  Hai ngăn (bản mình lập / bản cấp dưới trình lên) là hai mục con trên menu, mỗi
+  ngăn một trang riêng. Bộ tab trạng thái thì khác nhau vì thứ đáng quan tâm
+  khác nhau: bên mình là "soạn tiếp / bị trả lại", bên nhận là "chờ mình quyết".
 */
-const SCOPES: Array<{ value: ReportScope; label: string }> = [
-  { value: "mine", label: "Tôi lập" },
-  { value: "incoming", label: "Cấp dưới trình" },
-];
-
 const MINE_TABS: Array<{ value: ReportTab; label: string }> = [
   { value: "ALL", label: "Tất cả" },
   { value: "DRAFT", label: "Đang soạn" },
@@ -61,9 +56,6 @@ type SummaryReportListPanelProps = {
   tab: ReportTab;
   onTabChange: (value: ReportTab) => void;
   scope: ReportScope;
-  onScopeChange: (value: ReportScope) => void;
-  /** Số bản đang chờ tôi quyết - gắn lên nhãn ngăn "Cấp dưới trình". */
-  incomingPending: number;
   page: number;
   total: number;
   totalPages: number;
@@ -90,8 +82,6 @@ export function SummaryReportListPanel({
   tab,
   onTabChange,
   scope,
-  onScopeChange,
-  incomingPending,
   page,
   total,
   totalPages,
@@ -100,34 +90,11 @@ export function SummaryReportListPanel({
   return (
     <Card className="h-fit">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">Danh sách báo cáo</CardTitle>
+        <CardTitle className="text-base">
+          {scope === "incoming" ? "Cấp dưới trình lên" : "Báo cáo đã lập"}
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <SegmentedTabs
-          items={SCOPES.map((item) => ({
-            value: item.value,
-            label:
-              item.value === "incoming" && incomingPending > 0 ? (
-                <span className="flex items-center gap-1.5">
-                  {item.label}
-                  <span
-                    className={cn(
-                      "rounded-full px-1.5 text-xs font-medium tabular-nums",
-                      kpiTone.warning.soft,
-                    )}
-                  >
-                    {incomingPending}
-                  </span>
-                </span>
-              ) : (
-                item.label
-              ),
-          }))}
-          value={scope}
-          onChange={onScopeChange}
-          ariaLabel="Báo cáo tôi lập hay cấp dưới trình lên"
-        />
-
         <div className="relative">
           <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input

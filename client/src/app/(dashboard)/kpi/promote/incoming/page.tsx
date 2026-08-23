@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import { SummaryReportWorkspace } from "@/features/kpi-summary-report/components/summary-report-workspace";
 
 export const metadata: Metadata = {
-  title: "Tạo báo cáo tổng hợp",
+  title: "Duyệt báo cáo tổng hợp",
 };
 
-export default function KpiSummaryReportsPage() {
-  return <SummaryReportWorkspace />;
+export default function IncomingSummaryReportsPage() {
+  return <SummaryReportWorkspace scope="incoming" />;
 }

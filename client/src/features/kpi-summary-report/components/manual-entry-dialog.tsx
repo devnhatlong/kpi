@@ -20,7 +20,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchAxesAll } from "@/features/kpi-form-config/api";
 import { entityId } from "@/features/kpi-form-config/types";
-import { addSummaryManualItem } from "@/features/kpi-summary-report/api";
+import {
+  addSummaryManualItem,
+  updateSummaryManualItem,
+} from "@/features/kpi-summary-report/api";
+import type { SummaryManualItem } from "@/features/kpi-summary-report/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 
 const NO_AXIS = "__none__";
@@ -29,6 +33,8 @@ type ManualEntryDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   reportId: string;
+  /** Có dòng = đang sửa dòng đó; bỏ trống = thêm dòng mới. */
+  item?: SummaryManualItem | null;
   onAdded: () => void | Promise<void>;
 };
 
@@ -44,6 +50,7 @@ export function ManualEntryDialog({
   open,
   onOpenChange,
   reportId,
+  item = null,
   onAdded,
 }: ManualEntryDialogProps) {
   const [title, setTitle] = useState("");
@@ -59,18 +66,25 @@ export function ManualEntryDialog({
     fetchAxesAll,
   );
 
-  /* Mở lại là form trắng - dọn ngay trong render, không đợi effect. */
-  const [wasOpen, setWasOpen] = useState(open);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) {
-      setTitle("");
-      setNote("");
-      setAxisId(NO_AXIS);
-      setOwnerName("");
-      setDepartmentName("");
-      setScore("");
-    }
+  /*
+    Mở lên là nạp lại theo dòng đang sửa (hoặc form trắng khi thêm mới), dọn
+    ngay trong render chứ không đợi effect - effect chạy sau khi vẽ nên sẽ chớp
+    qua dữ liệu của lần mở trước.
+  */
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const currentKey = open ? (item?._id ?? "new") : null;
+  if (currentKey !== loadedKey) {
+    setLoadedKey(currentKey);
+    setTitle(item?.title ?? "");
+    setNote(item?.note ?? "");
+    setAxisId(item?.axisId || NO_AXIS);
+    setOwnerName(item?.ownerName ?? "");
+    setDepartmentName(item?.departmentName ?? "");
+    setScore(
+      item?.score === null || item?.score === undefined
+        ? ""
+        : String(item.score),
+    );
   }
 
   const submit = async () => {
@@ -88,15 +102,22 @@ export function ManualEntryDialog({
 
     setBusy(true);
     try {
-      await addSummaryManualItem(reportId, {
+      const payload = {
         title: name,
         note: note.trim() || undefined,
         axisId: axisId === NO_AXIS ? undefined : axisId,
         ownerName: ownerName.trim() || undefined,
         departmentName: departmentName.trim() || undefined,
         score: score.trim() ? parsed : undefined,
-      });
-      toast.success("Đã thêm nhiệm vụ tự nhập.");
+      };
+      if (item) {
+        await updateSummaryManualItem(reportId, item._id, payload);
+      } else {
+        await addSummaryManualItem(reportId, payload);
+      }
+      toast.success(
+        item ? "Đã sửa nhiệm vụ tự nhập." : "Đã thêm nhiệm vụ tự nhập.",
+      );
       await onAdded();
       onOpenChange(false);
     } catch (error) {
@@ -110,7 +131,9 @@ export function ManualEntryDialog({
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Thêm nhiệm vụ tự nhập</DialogTitle>
+          <DialogTitle>
+            {item ? "Sửa nhiệm vụ tự nhập" : "Thêm nhiệm vụ tự nhập"}
+          </DialogTitle>
           <DialogDescription>
             Dành cho việc không có trong KPI cá nhân. Dòng này sẽ mang nhãn
             &quot;Tự nhập&quot; trong báo cáo.
@@ -210,7 +233,7 @@ export function ManualEntryDialog({
           </Button>
           <Button type="button" onClick={() => void submit()} disabled={busy}>
             <Plus className="size-4" />
-            {busy ? "Đang thêm..." : "Thêm vào báo cáo"}
+            {busy ? "Đang lưu..." : item ? "Lưu" : "Thêm vào báo cáo"}
           </Button>
         </DialogFooter>
       </DialogContent>

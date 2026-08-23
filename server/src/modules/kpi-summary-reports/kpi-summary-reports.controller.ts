@@ -121,6 +121,17 @@ export class KpiSummaryReportsController {
     return this.service.addManualItem(user.uid, id, dto);
   }
 
+  @ApiOperation({ summary: 'Sửa một nhiệm vụ tự nhập trong báo cáo' })
+  @Patch(':id/manual-items/:manualId')
+  updateManualItem(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Param('manualId') manualId: string,
+    @Body() dto: CreateSummaryManualItemDto,
+  ) {
+    return this.service.updateManualItem(user.uid, id, manualId, dto);
+  }
+
   @ApiOperation({ summary: 'Bỏ một nhiệm vụ tự nhập khỏi báo cáo' })
   @Delete(':id/manual-items/:manualId')
   removeManualItem(
@@ -161,11 +172,6 @@ export class KpiSummaryReportsController {
     return this.service.returnBack(user.uid, id, dto.reason ?? '');
   }
 
-  @ApiOperation({ summary: 'Thu hồi báo cáo đã trình để sửa tiếp' })
-  @Post(':id/recall')
-  recall(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
-    return this.service.recall(user.uid, id);
-  }
 
   @ApiOperation({ summary: 'Xoá báo cáo tổng hợp đang soạn' })
   @Delete(':id')

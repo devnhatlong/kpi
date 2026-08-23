@@ -43,7 +43,7 @@ export function SettingsView() {
     <div className="space-y-4">
       <div className="space-y-1">
         <h1 className="font-display text-2xl font-semibold tracking-tight">
-          Tài khoản của tôi
+          Tài khoản
         </h1>
         <p className="text-sm text-muted-foreground">
           Thông tin cá nhân, mật khẩu đăng nhập và chứng thư số

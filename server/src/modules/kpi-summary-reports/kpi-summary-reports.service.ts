@@ -162,7 +162,11 @@ export class KpiSummaryReportsService {
     */
     const filter: Record<string, unknown> =
       query.scope === 'incoming'
-        ? { sentToId: actor.id }
+        ? {
+            // Bản ghi cũ chưa có holderIds thì vẫn tra theo người nhận.
+            $or: [{ holderIds: actor.id }, { sentToId: actor.id }],
+            ownerId: { $ne: actor.id },
+          }
         : { ownerId: actor.id };
     if (query.status) filter.status = this.statusFilter(query.status);
     if (query.q?.trim()) {
@@ -197,7 +201,10 @@ export class KpiSummaryReportsService {
     const [total, draft, incoming, incomingPending] = await Promise.all([
       this.reportModel.countDocuments({ ownerId: actor.id }),
       this.reportModel.countDocuments({ ownerId: actor.id, status: 'DRAFT' }),
-      this.reportModel.countDocuments({ sentToId: actor.id }),
+      this.reportModel.countDocuments({
+        $or: [{ holderIds: actor.id }, { sentToId: actor.id }],
+        ownerId: { $ne: actor.id },
+      }),
       // Chỉ bản đang chờ mình quyết mới đáng gắn số lên menu.
       this.reportModel.countDocuments({
         sentToId: actor.id,
@@ -407,6 +414,62 @@ export class KpiSummaryReportsService {
     };
   }
 
+  /**
+   * Sửa một dòng tự nhập ngay trong báo cáo.
+   *
+   * Dòng này không có bản ghi KPI nào đứng sau nên sửa ở đây là sửa đúng nguồn
+   * - không đụng gì tới nhiệm vụ của cán bộ.
+   */
+  async updateManualItem(
+    userId: string,
+    id: string,
+    manualId: string,
+    dto: CreateSummaryManualItemDto,
+  ) {
+    const actor = await this.resolveScope(userId);
+    const report = await this.requireEditable(actor, id);
+
+    const target = this.requireObjectId(manualId, 'Nhiệm vụ tự nhập');
+    const current = report.manualItems.find(
+      (item) =>
+        String((item as { _id?: Types.ObjectId })._id) === String(target),
+    );
+    if (!current) {
+      throw new BadRequestException('Không tìm thấy nhiệm vụ tự nhập này.');
+    }
+
+    const title = dto.title?.trim() ?? '';
+    if (!title) throw new BadRequestException('Tên nhiệm vụ là bắt buộc.');
+
+    let axisId: Types.ObjectId | null = null;
+    let axisName = '';
+    if (dto.axisId) {
+      const axis = await this.axisModel
+        .findById(this.requireObjectId(dto.axisId, 'Trục'))
+        .select('name code');
+      if (!axis) throw new BadRequestException('Trục không tồn tại.');
+      axisId = axis._id as Types.ObjectId;
+      axisName = axis.name?.trim() || axis.code;
+    }
+
+    current.title = title;
+    current.note = dto.note?.trim() ?? '';
+    current.axisId = axisId;
+    current.axisName = axisName;
+    current.ownerName = dto.ownerName?.trim() ?? '';
+    current.departmentName = dto.departmentName?.trim() ?? '';
+    current.score = dto.score ?? null;
+    report.markModified('manualItems');
+
+    this.pushLog(report, actor, 'UPDATE', `Sửa nhiệm vụ tự nhập "${title}"`);
+    await report.save();
+
+    return {
+      message: 'Đã sửa nhiệm vụ tự nhập.',
+      data: this.toReportSummary(report),
+    };
+  }
+
   async removeManualItem(userId: string, id: string, manualId: string) {
     const actor = await this.resolveScope(userId);
     const report = await this.requireEditable(actor, id);
@@ -440,22 +503,42 @@ export class KpiSummaryReportsService {
   // ============================================================ trình cấp trên
 
   /**
-   * Trình báo cáo lên cấp trên: khoá nội dung và ghi lại ai nhận.
+   * Trình báo cáo lên cấp trên - dùng cho cả chuỗi Đội → Phòng → Công an tỉnh.
+   *
+   * Ba tình huống đều là một việc "đưa bản này lên cấp trên của tôi":
+   *  - người lập trình bản đang soạn;
+   *  - người vừa bị trả lại sửa xong trình lại;
+   *  - cấp trên đã duyệt thì CHUYỂN TIẾP bản đó lên cấp cao hơn.
    *
    * Người nhận đi qua đúng luật của báo cáo ngày (cấp trên trong nhánh đơn vị),
    * để cả hệ thống chỉ có một định nghĩa "cấp trên của tôi".
    */
   async send(userId: string, id: string, dto: SendSummaryReportDto) {
     const actor = await this.resolveScope(userId);
-    // Chỉ NGƯỜI LẬP trình bản của mình. Cấp trên muốn báo cáo tiếp lên trên
-    // thì tự lập bản tổng hợp của cấp mình, không đẩy tiếp bản của cấp dưới.
-    const report = await this.requireOwned(actor, id);
+    const report = await this.requireVisible(actor, id);
     const status = this.readStatus(report);
-    if (status !== 'DRAFT' && status !== 'RETURNED') {
+    const responsible = String(report.sentById ?? report.ownerId);
+    const mine = String(report.ownerId) === String(actor.id);
+    const holding =
+      report.sentToId && String(report.sentToId) === String(actor.id);
+
+    /*
+      Chuyển tiếp sau khi duyệt là một lượt trình mới: bản giữ nguyên nội dung,
+      chỉ đổi người trình và người nhận. Cấp đã duyệt vẫn nằm trong `holderIds`
+      nên vẫn tra lại được bản mình đã xử lý.
+    */
+    const forwarding = status === 'APPROVED' && holding;
+    const resending =
+      (status === 'DRAFT' && mine) ||
+      (status === 'RETURNED' && responsible === String(actor.id));
+
+    if (!forwarding && !resending) {
       throw new BadRequestException(
-        status === 'APPROVED'
-          ? 'Báo cáo đã được duyệt - không trình lại.'
-          : 'Báo cáo đang ở chỗ cấp trên - thu hồi trước khi trình lại.',
+        status === 'SENT'
+          ? 'Báo cáo đang chờ cấp trên quyết - chưa trình tiếp được.'
+          : status === 'APPROVED'
+            ? 'Chỉ cấp đang giữ bản đã duyệt mới chuyển tiếp lên trên được.'
+            : 'Báo cáo không nằm ở chỗ bạn.',
       );
     }
 
@@ -473,15 +556,22 @@ export class KpiSummaryReportsService {
     report.status = 'SENT';
     report.sentToId = recipient.id;
     report.sentToName = recipient.name;
+    report.sentById = actor.id;
+    report.sentByName = actor.name;
     report.sentNote = dto.note?.trim() ?? '';
     report.sentAt = new Date();
     // Trình lại sau khi sửa thì lý do trả lại cũ hết hiệu lực.
     report.returnReason = '';
+    if (!report.holderIds.some((holder) => holder.equals(recipient.id))) {
+      report.holderIds.push(recipient.id);
+    }
     this.pushLog(
       report,
       actor,
-      'SEND',
-      `Trình ${recipient.name}${report.sentNote ? ` - ${report.sentNote}` : ''}`,
+      forwarding ? 'FORWARD' : 'SEND',
+      `${forwarding ? 'Chuyển tiếp' : 'Trình'} ${recipient.name}${
+        report.sentNote ? ` - ${report.sentNote}` : ''
+      }`,
     );
     await report.save();
 
@@ -491,48 +581,13 @@ export class KpiSummaryReportsService {
     };
   }
 
-  /** Thu hồi bản đã trình để sửa tiếp - chỉ người lập mới thu hồi được. */
-  async recall(userId: string, id: string) {
-    const actor = await this.resolveScope(userId);
-    const report = await this.requireOwned(actor, id);
-
-    const status = this.readStatus(report);
-    if (status === 'DRAFT' || status === 'RETURNED') {
-      throw new BadRequestException('Báo cáo đang soạn, chưa trình đi đâu cả.');
-    }
-    if (status === 'APPROVED') {
-      throw new BadRequestException(
-        'Cấp trên đã duyệt báo cáo này - không thu hồi được nữa.',
-      );
-    }
-
-    const sentTo = report.sentToName;
-    report.status = 'DRAFT';
-    report.sentToId = null;
-    report.sentToName = '';
-    report.sentAt = null;
-    this.pushLog(
-      report,
-      actor,
-      'RECALL',
-      sentTo ? `Thu hồi bản đã trình ${sentTo}` : 'Thu hồi bản đã trình',
-    );
-    await report.save();
-
-    return {
-      message: 'Đã thu hồi báo cáo về trạng thái đang soạn.',
-      data: this.toReportSummary(report),
-    };
-  }
-
   // ===================================================== cấp trên quyết
 
   /**
    * Cấp trên duyệt bản trình - điểm dừng của chuỗi.
    *
-   * Duyệt xong khoá luôn cả hai phía: người lập không sửa hay thu hồi nữa, cấp
-   * trên cũng thôi. Muốn tổng hợp tiếp lên cấp cao hơn thì lập báo cáo của cấp
-   * mình, không đẩy tiếp bản của cấp dưới.
+   * Duyệt xong khoá luôn cả hai phía. Muốn tổng hợp tiếp lên cấp cao hơn thì
+   * lập báo cáo của cấp mình, không đẩy tiếp bản của cấp dưới.
    */
   async approve(userId: string, id: string, note?: string) {
     const actor = await this.resolveScope(userId);
@@ -591,9 +646,24 @@ export class KpiSummaryReportsService {
     };
   }
 
+  /**
+   * Xoá báo cáo - chỉ NGƯỜI LẬP, và chỉ khi bản đó chưa đi đâu cả.
+   *
+   * Không dùng chung `requireEditable` với các thao tác sửa: cấp trên đang giữ
+   * bản trình thì được sửa nội dung, nhưng xoá hẳn báo cáo của cấp dưới thì
+   * không.
+   */
   async remove(userId: string, id: string) {
     const actor = await this.resolveScope(userId);
-    const report = await this.requireEditable(actor, id);
+    const report = await this.requireOwned(actor, id);
+    const status = this.readStatus(report);
+    if (status !== 'DRAFT' && status !== 'RETURNED') {
+      throw new BadRequestException(
+        status === 'APPROVED'
+          ? 'Báo cáo đã được duyệt - không xoá được.'
+          : 'Báo cáo đang ở chỗ cấp trên - không xoá được.',
+      );
+    }
     await report.deleteOne();
     return { message: 'Đã xoá báo cáo tổng hợp.', data: { id } };
   }
@@ -846,7 +916,12 @@ export class KpiSummaryReportsService {
   private async requireEditable(actor: ActorScope, id: string) {
     const report = await this.requireVisible(actor, id);
     const status = this.readStatus(report);
-    const mine = String(report.ownerId) === String(actor.id);
+    // Bị trả lại thì người chịu trách nhiệm là người vừa trình bản đó.
+    const responsible = String(report.sentById ?? report.ownerId);
+    const mine =
+      status === 'RETURNED'
+        ? responsible === String(actor.id)
+        : String(report.ownerId) === String(actor.id);
     const holding =
       report.sentToId && String(report.sentToId) === String(actor.id);
 
@@ -934,6 +1009,8 @@ export class KpiSummaryReportsService {
       })),
       sentToId: report.sentToId ? String(report.sentToId) : null,
       sentToName: report.sentToName ?? '',
+      sentById: report.sentById ? String(report.sentById) : null,
+      sentByName: report.sentByName ?? '',
       sentNote: report.sentNote ?? '',
       sentAt: report.sentAt,
       returnReason: report.returnReason ?? '',

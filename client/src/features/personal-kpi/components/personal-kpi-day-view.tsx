@@ -360,7 +360,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
       const key =
         groupMode === "AXIS"
           ? row.item.axisName || "Chưa rõ trục"
-          : user?.departmentName || "Đơn vị của tôi";
+          : user?.departmentName || "Đơn vị công tác";
       byKey.set(key, [...(byKey.get(key) ?? []), row]);
     }
 
@@ -558,8 +558,9 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
               {user?.fullName ? ` · ${user.fullName}` : ""}
               {user?.departmentName ? ` · ${user.departmentName}` : ""}
             </p>
+            {/* Trùng đúng chữ với mục menu để vào trang là biết mình đang ở đâu. */}
             <h1 className="font-display text-2xl font-semibold tracking-tight">
-              Nhiệm vụ của tôi
+              KPI cá nhân
             </h1>
             <div className="flex flex-wrap items-center gap-2">
               {/*

@@ -7,6 +7,8 @@ import {
   Download,
   FileText,
   Loader2,
+  MoreHorizontal,
+  PencilLine,
   Plus,
   Send,
   Trash2,
@@ -20,6 +22,13 @@ import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -30,19 +39,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useAuth } from "@/features/auth/auth-provider";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
 import { useAxisTemplates } from "@/features/personal-kpi/use-axis-templates";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import {
   approveSummaryReport,
   deleteSummaryReport,
-  recallSummaryReport,
   returnSummaryReport,
   removeSummaryManualItem,
   removeSummaryReportItems,
   sendSummaryReport,
 } from "@/features/kpi-summary-report/api";
 import { ManualEntryDialog } from "@/features/kpi-summary-report/components/manual-entry-dialog";
+import { mapPersonalKpiFromApi } from "@/features/personal-kpi/api";
+import { ProgressUpdateDialog } from "@/features/personal-kpi/components/progress-update-dialog";
+import { ReviewerEditDialog } from "@/features/personal-kpi/components/reviewer-edit-dialog";
 import { PickCompletedDialog } from "@/features/kpi-summary-report/components/pick-completed-dialog";
 import { SummaryEntriesTable } from "@/features/kpi-summary-report/components/summary-entries-table";
 import { exportSummaryReportToExcel } from "@/features/kpi-summary-report/excel";
@@ -58,6 +70,7 @@ import {
   periodLabel,
   SUMMARY_REPORT_STATUS_LABEL,
   summaryReportStatusBadgeClass,
+  type SummaryManualItem,
   type SummaryReportDetail,
   type SummaryReportRole,
 } from "@/features/kpi-summary-report/types";
@@ -169,13 +182,24 @@ export function SummaryReportPanel({
   onChanged,
   onDeleted,
 }: SummaryReportPanelProps) {
+  const { user } = useAuth();
   const [view, setView] = useState<ViewMode>("axis");
   const [pickOpen, setPickOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
+  /* Cấp trên mặc định ở chế độ ĐỌC; bật sửa mới hiện nút thêm / bớt. */
+  const [reviewEdit, setReviewEdit] = useState(false);
   const [returnReason, setReturnReason] = useState("");
+  /** Dòng tự nhập đang sửa; null = đang thêm mới. */
+  const [manualEditing, setManualEditing] = useState<SummaryManualItem | null>(
+    null,
+  );
+  /** Nhiệm vụ KPI đang mở chi tiết ngay trong báo cáo. */
+  const [taskRow, setTaskRow] = useState<ReportEntry | null>(null);
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [taskEditOpen, setTaskEditOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -183,6 +207,14 @@ export function SummaryReportPanel({
   const editable = canEditSummaryReport(report.status, role);
   const reviewing = role === "REVIEWER";
   const decidable = reviewing && canDecideSummaryReport(report.status);
+  /*
+    Duyệt xong, cấp đang giữ bản đó chuyển tiếp lên cấp cao hơn: cùng một báo
+    cáo chạy hết chuỗi Đội › Phòng › Công an tỉnh, không ai phải gõ lại.
+  */
+  const holding = Boolean(user?.id && report.sentToId === user.id);
+  const forwardable = report.status === "APPROVED" && holding;
+  /** Nút thêm / bớt nhiệm vụ có hiện không. */
+  const canEditNow = editable && (!reviewing || reviewEdit);
 
   const scoreGroupById = useScoreGroupMap();
   const qualityLevelById = useQualityLevelMap();
@@ -222,6 +254,31 @@ export function SummaryReportPanel({
     return groupByAxis(content.entries, content.axisScores);
   }, [view, content]);
 
+  /*
+    Bấm một dòng: dòng KPI mở đúng hộp thoại chi tiết của nhiệm vụ (số liệu,
+    điểm chỉ huy đã chốt, nhật ký theo ngày); dòng tự nhập mở thẳng form sửa vì
+    nó không có nhiệm vụ nào đứng sau để mà xem.
+  */
+  const openEntry = (entry: ReportEntry) => {
+    if (entry.kind === "MANUAL") {
+      const manual = (report.manualItems ?? []).find(
+        (item) => item._id === entry.manualId,
+      );
+      if (!manual) return;
+      setManualEditing(manual);
+      setManualOpen(true);
+      return;
+    }
+    setTaskRow(entry);
+    setTaskOpen(true);
+  };
+
+  /** Nhiệm vụ đang mở, quy về đúng kiểu của màn KPI cá nhân. */
+  const taskItem = useMemo(
+    () => (taskRow?.row ? mapPersonalKpiFromApi(taskRow.row) : null),
+    [taskRow],
+  );
+
   const removeEntry = async (entry: ReportEntry) => {
     setBusy(true);
     try {
@@ -248,19 +305,6 @@ export function SummaryReportPanel({
       await onChanged();
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không gửi được báo cáo."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doRecall = async () => {
-    setBusy(true);
-    try {
-      await recallSummaryReport(report._id);
-      toast.success("Đã thu hồi báo cáo về trạng thái đang soạn.");
-      await onChanged();
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "Không thu hồi được báo cáo."));
     } finally {
       setBusy(false);
     }
@@ -380,17 +424,13 @@ export function SummaryReportPanel({
               ) : null}
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="bg-background"
-                onClick={() => void doExport()}
-                disabled={exporting}
-              >
-                <Download className="size-4" />
-                {exporting ? "Đang xuất..." : "Xuất Excel"}
-              </Button>
+            {/*
+              Một nút chính cho việc chính, phần còn lại vào menu "...". Cấp
+              trên vào đây để QUYẾT, nên "Duyệt" đứng ngoài; xuất file, sửa nội
+              dung, xoá là việc phụ - bày ngang hàng thì nút nào cũng như nút
+              nào, mắt không biết bấm đâu.
+            */}
+            <div className="flex flex-wrap items-center gap-2">
               {/* Cấp trên đang giữ bản trình: duyệt hoặc trả lại. Người lập:
                   trình đi, hoặc thu hồi bản đang nằm ở trên. */}
               {decidable ? (
@@ -414,43 +454,103 @@ export function SummaryReportPanel({
                     Duyệt báo cáo
                   </Button>
                 </>
+              ) : forwardable ? (
+                /* Duyệt xong thì bản đó đi tiếp lên cấp cao hơn - Đội › Phòng
+                   › Công an tỉnh chạy trên cùng một báo cáo. */
+                <Button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setSendOpen(true)}
+                >
+                  <Send className="size-4" />
+                  Trình lên cấp trên
+                </Button>
               ) : reviewing ? null : editable ? (
-                <>
+                <Button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setSendOpen(true)}
+                >
+                  <Send className="size-4" />
+                  {report.status === "RETURNED"
+                    ? "Trình lại cấp trên"
+                    : "Gửi lên cấp trên"}
+                </Button>
+              ) : null}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="text-destructive hover:text-destructive"
-                    title="Xoá báo cáo"
-                    disabled={busy}
-                    onClick={() => setDeleteOpen(true)}
+                    className="size-9"
+                    aria-label="Thao tác khác"
                   >
-                    <Trash2 className="size-4" />
+                    <MoreHorizontal className="size-4" />
                   </Button>
-                  <Button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => setSendOpen(true)}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {/* Cấp trên sửa bản trình phải bật hẳn chế độ sửa: mặc định
+                      là đọc để quyết, không phải để nghịch vào bản của cấp
+                      dưới. */}
+                  {reviewing && canEditSummaryReport(report.status, role) ? (
+                    <DropdownMenuItem
+                      onSelect={() => setReviewEdit((prev) => !prev)}
+                    >
+                      <PencilLine className="size-4" />
+                      {reviewEdit ? "Xong, thôi sửa" : "Sửa nội dung"}
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem
+                    onSelect={() => void doExport()}
+                    disabled={exporting}
                   >
-                    <Send className="size-4" />
-                    {report.status === "RETURNED"
-                      ? "Trình lại cấp trên"
-                      : "Gửi lên cấp trên"}
-                  </Button>
-                </>
-              ) : report.status === "SENT" ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => void doRecall()}
-                >
-                  <Undo2 className="size-4" />
-                  Thu hồi để sửa
-                </Button>
-              ) : null}
+                    <Download className="size-4" />
+                    {exporting ? "Đang xuất..." : "Xuất Excel"}
+                  </DropdownMenuItem>
+                  {!reviewing && editable ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() => setDeleteOpen(true)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="size-4" />
+                        Xoá báo cáo
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
+
+          {/* Đang sửa bản của cấp dưới thì phải nhắc liên tục - sửa xong bấm
+              "Xong" để về lại chế độ đọc. */}
+          {reviewing && reviewEdit ? (
+            <div
+              className={cn(
+                "flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2.5 text-xs",
+                kpiTone.warning.soft,
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <PencilLine className="size-4 shrink-0" />
+                Đang sửa bản trình của {report.ownerName || "cấp dưới"} - thêm,
+                bớt nhiệm vụ đều ghi vào nhật ký báo cáo.
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="bg-background"
+                onClick={() => setReviewEdit(false)}
+              >
+                Xong
+              </Button>
+            </div>
+          ) : null}
 
           {/* Bị trả lại thì lý do phải nằm ngay đầu báo cáo, không bắt người
               lập đi lục nhật ký mới biết phải sửa gì. */}
@@ -550,7 +650,7 @@ export function SummaryReportPanel({
                 ariaLabel="Cách xem nhiệm vụ trong báo cáo"
               />
             </div>
-            {editable ? (
+            {canEditNow ? (
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
@@ -567,7 +667,10 @@ export function SummaryReportPanel({
                   variant="outline"
                   className="bg-background"
                   disabled={busy}
-                  onClick={() => setManualOpen(true)}
+                  onClick={() => {
+                    setManualEditing(null);
+                    setManualOpen(true);
+                  }}
                 >
                   <Plus className="size-4" />
                   Thêm nhiệm vụ tự nhập
@@ -582,7 +685,8 @@ export function SummaryReportPanel({
             /* Xem theo trục thì tiêu đề nhóm đã nói trục rồi, bỏ cột đi cho
                gọn; hai cách xem kia không có gì nói thay nên phải giữ. */
             showAxis={view !== "axis"}
-            editable={editable}
+            editable={canEditNow}
+            onOpen={openEntry}
             busy={busy}
             onRemove={(entry) => void removeEntry(entry)}
           />
@@ -632,15 +736,54 @@ export function SummaryReportPanel({
         open={manualOpen}
         onOpenChange={setManualOpen}
         reportId={report._id}
+        item={manualEditing}
         onAdded={onChanged}
+      />
+
+      {/* Chi tiết một nhiệm vụ KPI ngay trong báo cáo - chỉ đọc, có đường sang
+          form sửa nếu người xem còn quyền sửa báo cáo. */}
+      <ProgressUpdateDialog
+        open={taskOpen}
+        item={taskItem}
+        template={taskRow?.template ?? null}
+        readOnly
+        onOpenChange={setTaskOpen}
+        onSaved={onChanged}
+        onEdit={
+          canEditNow
+            ? () => {
+                setTaskOpen(false);
+                setTaskEditOpen(true);
+              }
+            : undefined
+        }
+      />
+
+      <ReviewerEditDialog
+        open={taskEditOpen}
+        item={taskItem}
+        onOpenChange={setTaskEditOpen}
+        /* Sửa xong nạp lại báo cáo rồi mở lại chi tiết của đúng nhiệm vụ đó. */
+        onSaved={async () => {
+          await onChanged();
+          setTaskOpen(true);
+        }}
       />
 
       <SendRecipientDialog
         open={sendOpen}
         onOpenChange={setSendOpen}
-        title="Trình báo cáo tổng hợp"
-        description="Chọn cấp trên nhận báo cáo. Gửi xong báo cáo bị khoá, muốn sửa thì thu hồi."
-        confirmLabel="Gửi lên cấp trên"
+        title={
+          forwardable
+            ? "Chuyển tiếp báo cáo lên trên"
+            : "Trình báo cáo tổng hợp"
+        }
+        description={
+          forwardable
+            ? "Bản đã duyệt đi tiếp lên cấp cao hơn, giữ nguyên nội dung và nhật ký."
+            : "Chọn cấp trên nhận báo cáo. Trình xong là khoá - sai thì chờ cấp trên trả lại."
+        }
+        confirmLabel={forwardable ? "Chuyển tiếp" : "Gửi lên cấp trên"}
         submitting={busy}
         onConfirm={(payload) =>
           doSend({ recipientId: payload.recipientId, note: payload.note })

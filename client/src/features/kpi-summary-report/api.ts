@@ -162,6 +162,20 @@ export async function addSummaryManualItem(
   );
 }
 
+/** Sửa một dòng tự nhập - chỉ đụng dữ liệu trong báo cáo. */
+export async function updateSummaryManualItem(
+  id: string,
+  manualId: string,
+  input: SummaryManualItemInput,
+) {
+  return unwrapData(
+    api.patch<ApiResponse<SummaryReport>>(
+      BASE + "/" + id + "/manual-items/" + manualId,
+      input,
+    ),
+  );
+}
+
 export async function removeSummaryManualItem(id: string, manualId: string) {
   return unwrapData(
     api.delete<ApiResponse<SummaryReport>>(
@@ -191,12 +205,6 @@ export async function approveSummaryReport(id: string, note?: string) {
 export async function returnSummaryReport(id: string, reason: string) {
   return unwrapData(
     api.post<ApiResponse<SummaryReport>>(`${BASE}/${id}/return`, { reason }),
-  );
-}
-
-export async function recallSummaryReport(id: string) {
-  return unwrapData(
-    api.post<ApiResponse<SummaryReport>>(`${BASE}/${id}/recall`, {}),
   );
 }
 

@@ -67,6 +67,12 @@ export type ReportEntry = {
   /** Điểm chất lượng cán bộ tự khai. */
   qualitySelfScore: number | null;
   reportDate: string;
+  /**
+   * Bản ghi gốc và mẫu bảng đã khoá của dòng KPI - để mở chi tiết hay sửa
+   * nhiệm vụ ngay từ báo cáo mà không phải gọi lại API.
+   */
+  row?: SummaryRow;
+  template?: SummaryAxisBlock["template"];
 };
 
 /**
@@ -454,6 +460,8 @@ export function buildReportContent(
             ? rowSelfScore(row, [qualityPointColumn], "sum")
             : null,
           reportDate: row.reportDate ?? "",
+          row,
+          template,
         });
       }
     }

@@ -880,7 +880,7 @@ export class PersonalKpiService {
       return {
         applied: 'unit' as const,
         canViewUnit,
-        label: 'Đơn vị của tôi và các đơn vị trực thuộc',
+        label: 'Toàn đơn vị và các đơn vị trực thuộc',
         filter: { ownerDepartmentId: { $in: departmentIds } },
       };
     }
@@ -888,7 +888,7 @@ export class PersonalKpiService {
     return {
       applied: 'mine' as const,
       canViewUnit,
-      label: 'Nhiệm vụ của tôi',
+      label: 'Nhiệm vụ cá nhân',
       filter: { ownerId: actor.id },
     };
   }
@@ -1148,26 +1148,41 @@ export class PersonalKpiService {
     dto: ReviewerEditPersonalKpiDto,
   ) {
     const actor = await this.requireActor(userId);
-    const item = await this.itemModel.findOne({
-      _id: this.requireObjectId(id, 'Nhiệm vụ'),
-      currentRecipientId: actor.id,
-    });
-    if (!item) {
-      throw new NotFoundException('Không tìm thấy nhiệm vụ ở chỗ bạn.');
-    }
-    if (item.holderLevel < 1) {
-      throw new BadRequestException(
-        'Nhiệm vụ đang ở chỗ cán bộ - để cán bộ tự sửa.',
-      );
-    }
+    const item = await this.itemModel.findById(
+      this.requireObjectId(id, 'Nhiệm vụ'),
+    );
+    if (!item) throw new NotFoundException('Không tìm thấy nhiệm vụ.');
+
     /*
-      Đã chốt hoàn thành thì điểm đã vào bảng KPI - sửa nội dung lúc này là đổi
-      số sau lưng người đã duyệt. Muốn sửa thì trả lại rồi chốt lại.
+      Hai đường được sửa:
+
+      - Nhiệm vụ ĐANG chờ quyết ở chỗ mình: đường thường ngày, sửa rồi chốt.
+      - Nhiệm vụ ĐÃ CHỐT hoàn thành: chỉ cấp trên trong nhánh đơn vị của cán bộ
+        mới đụng được, và phải hiểu là đang đổi số đã vào bảng KPI - điểm trục,
+        thống kê, mọi báo cáo tổng hợp chứa nhiệm vụ này đều đổi theo. Vì vậy
+        vẫn bắt nêu lý do và vẫn ghi vào nhật ký như mọi lần sửa khác.
     */
     if (item.reviewStatus === 'COMPLETED') {
-      throw new BadRequestException(
-        'Nhiệm vụ đã chốt hoàn thành - không sửa nội dung nữa.',
-      );
+      const branch = actor.departmentId
+        ? await this.departmentSubtreeIds(actor.departmentId)
+        : [];
+      const ownerDept = item.ownerDepartmentId;
+      const inBranch =
+        ownerDept && branch.some((deptId) => deptId.equals(ownerDept));
+      if (!inBranch) {
+        throw new BadRequestException(
+          'Nhiệm vụ đã chốt hoàn thành - chỉ cấp trên trong nhánh đơn vị của cán bộ mới sửa được.',
+        );
+      }
+    } else {
+      if (String(item.currentRecipientId ?? '') !== String(actor.id)) {
+        throw new NotFoundException('Không tìm thấy nhiệm vụ ở chỗ bạn.');
+      }
+      if (item.holderLevel < 1) {
+        throw new BadRequestException(
+          'Nhiệm vụ đang ở chỗ cán bộ - để cán bộ tự sửa.',
+        );
+      }
     }
 
     const reason = dto.reason.trim();
@@ -1200,6 +1215,7 @@ export class PersonalKpiService {
     await this.applyContent(item, dto);
     // Cấp trên sửa cột chất lượng thì điểm tự chấm phải chạy lại theo.
     await this.applyDerivedColumns([item]);
+    this.dropStaleReviewValues(item, dto, template);
 
     const now = new Date();
     item.edits.push({
@@ -1229,6 +1245,53 @@ export class PersonalKpiService {
       message: `Đã sửa ${changes.length} trường và lưu vết.`,
       data: item,
     };
+  }
+
+  /**
+   * Ô nào vừa bị sửa thì bỏ luôn số chỉ huy đã chấm cho ô đó.
+   *
+   * `cellNumber` ưu tiên đọc `reviewValues`, nên giữ lại số chốt cũ là sửa xong
+   * mà bảng vẫn hiện số cũ - người sửa tưởng mình bấm hụt. Bỏ cả ô tự tính ăn
+   * theo (điểm tự chấm quy từ % vừa sửa), vì số cũ của nó cũng hết đúng.
+   */
+  private dropStaleReviewValues(
+    item: PersonalKpiItemDocument,
+    dto: ReviewerEditPersonalKpiDto,
+    template?: TrackingTemplate | null,
+  ) {
+    const touched = new Set([
+      ...Object.keys(dto.fieldValues ?? {}),
+      ...Object.keys(dto.catalogValues ?? {}),
+    ]);
+    if (!touched.size) return;
+
+    for (const column of template?.columns ?? []) {
+      const auto = column.autoValue;
+      if (!auto) continue;
+      if (touched.has(auto.percentColumnKey) || touched.has(auto.baseColumnKey)) {
+        touched.add(column.key);
+      }
+    }
+
+    const reviewValues = { ...(item.reviewValues ?? {}) };
+    const reviewCatalogValues = { ...(item.reviewCatalogValues ?? {}) };
+    let changed = false;
+    for (const key of touched) {
+      if (key in reviewValues) {
+        delete reviewValues[key];
+        changed = true;
+      }
+      if (key in reviewCatalogValues) {
+        delete reviewCatalogValues[key];
+        changed = true;
+      }
+    }
+    if (!changed) return;
+
+    item.reviewValues = reviewValues;
+    item.reviewCatalogValues = reviewCatalogValues;
+    item.markModified('reviewValues');
+    item.markModified('reviewCatalogValues');
   }
 
   /** Giá trị trong nhật ký chỉ là chữ - ô trống ghi rỗng chứ không ghi "null". */

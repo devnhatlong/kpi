@@ -34,12 +34,20 @@ const PAGE_SIZE = 8;
 /**
  * Trang báo cáo tổng hợp: danh sách bên trái, báo cáo đang mở bên phải.
  *
- * Một màn duy nhất chứ không phải hai tab rồi nhảy trang: người lập vừa sửa
- * báo cáo vừa liếc sang các bản khác trong kỳ, tách ra là mất mạch việc.
+ * Dùng chung cho hai mục con của menu - "Tạo báo cáo" và "Duyệt báo cáo". Hai
+ * ngăn khác nhau ở dữ liệu và ở việc phải làm, nhưng cách xem một báo cáo thì
+ * y hệt nhau, nên chỉ khác nhau đúng một tham số `scope`.
  */
-export function SummaryReportWorkspace() {
+type SummaryReportWorkspaceProps = {
+  /** Trang nào đang mở: bản tôi lập hay bản cấp dưới trình lên. */
+  scope?: ReportScope;
+};
+
+export function SummaryReportWorkspace({
+  scope = "mine",
+}: SummaryReportWorkspaceProps) {
   const { mutate } = useSWRConfig();
-  const [scope, setScope] = useState<ReportScope>("mine");
+  const incoming = scope === "incoming";
   const [tab, setTab] = useState<ReportTab>("ALL");
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -124,10 +132,12 @@ export function SummaryReportWorkspace() {
             </span>
             <div>
               <h1 className="font-display text-xl font-semibold tracking-tight">
-                Báo cáo tổng hợp
+                {incoming ? "Duyệt báo cáo tổng hợp" : "Tạo báo cáo tổng hợp"}
               </h1>
               <p className="text-sm text-muted-foreground">
-                Tổng hợp nhiệm vụ đã xác nhận hoàn thành và trình lên cấp trên.
+                {incoming
+                  ? "Bản tổng hợp cấp dưới trình lên - duyệt, trả lại hoặc trình tiếp lên trên."
+                  : "Tổng hợp nhiệm vụ đã xác nhận hoàn thành và trình lên cấp trên."}
               </p>
             </div>
           </div>
@@ -135,14 +145,25 @@ export function SummaryReportWorkspace() {
           <div className="flex flex-wrap items-center gap-2">
             <Badge
               variant="secondary"
-              className={cn("font-normal", kpiTone.neutral.soft)}
+              className={cn(
+                "font-normal",
+                incoming && (stats.data?.incomingPending ?? 0) > 0
+                  ? kpiTone.warning.soft
+                  : kpiTone.neutral.soft,
+              )}
             >
-              {stats.data?.total ?? 0} báo cáo · {stats.data?.sent ?? 0} đã gửi
+              {incoming
+                ? `${stats.data?.incoming ?? 0} báo cáo · ${stats.data?.incomingPending ?? 0} chờ duyệt`
+                : `${stats.data?.total ?? 0} báo cáo · ${stats.data?.sent ?? 0} đã gửi`}
             </Badge>
-            <Button type="button" onClick={() => setWizardOpen(true)}>
-              <Plus className="size-4" />
-              Tạo báo cáo tổng hợp
-            </Button>
+            {/* Trang duyệt không có gì để tạo - bản tổng hợp của cấp mình thì
+                lập ở trang "Tạo báo cáo". */}
+            {incoming ? null : (
+              <Button type="button" onClick={() => setWizardOpen(true)}>
+                <Plus className="size-4" />
+                Tạo báo cáo tổng hợp
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -161,14 +182,6 @@ export function SummaryReportWorkspace() {
             setPage(1);
           }}
           scope={scope}
-          onScopeChange={(next) => {
-            setScope(next);
-            // Tab của hai ngăn khác nhau - đổi ngăn thì về "Tất cả" cho chắc.
-            setTab("ALL");
-            setPickedId(null);
-            setPage(1);
-          }}
-          incomingPending={stats.data?.incomingPending ?? 0}
           page={meta?.page ?? page}
           total={meta?.total ?? 0}
           totalPages={meta?.totalPages ?? 1}
@@ -188,19 +201,26 @@ export function SummaryReportWorkspace() {
           <Card>
             <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
               <FileSpreadsheet className="size-10 text-muted-foreground" />
-              <p className="text-sm font-medium">Chưa chọn báo cáo nào</p>
-              <p className="max-w-sm text-xs text-muted-foreground">
-                Tạo một báo cáo tổng hợp để gom các nhiệm vụ đã hoàn thành trong
-                nhánh đơn vị của bạn thành một bản trình cấp trên.
+              <p className="text-sm font-medium">
+                {incoming
+                  ? "Chưa có bản nào trình lên"
+                  : "Chưa chọn báo cáo nào"}
               </p>
-              <Button
-                type="button"
-                className="mt-2"
-                onClick={() => setWizardOpen(true)}
-              >
-                <Plus className="size-4" />
-                Tạo báo cáo tổng hợp
-              </Button>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                {incoming
+                  ? "Cấp dưới trình báo cáo tổng hợp lên thì nó nằm ở đây, chờ bạn duyệt hoặc trả lại."
+                  : "Tạo một báo cáo tổng hợp để gom các nhiệm vụ đã hoàn thành trong nhánh đơn vị của bạn thành một bản trình cấp trên."}
+              </p>
+              {incoming ? null : (
+                <Button
+                  type="button"
+                  className="mt-2"
+                  onClick={() => setWizardOpen(true)}
+                >
+                  <Plus className="size-4" />
+                  Tạo báo cáo tổng hợp
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : detail.error ? (

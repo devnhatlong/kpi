@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { PersonalKpiDayView } from "@/features/personal-kpi/components/personal-kpi-day-view";
 
 export const metadata: Metadata = {
-  title: "KPI của tôi",
+  title: "KPI cá nhân",
 };
 
 /**

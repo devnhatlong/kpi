@@ -96,6 +96,7 @@ import {
 } from "@/features/personal-kpi/task-summary";
 import {
   PERSONAL_KPI_STATUS_LABEL,
+  canReviewPersonalKpi,
   type PersonalKpiItem,
 } from "@/features/personal-kpi/types";
 import { useListPagination } from "@/hooks/use-list-pagination";
@@ -1142,20 +1143,26 @@ export function PersonalKpiTrackingView() {
           setDetailOpen(false);
           if (detailRow) openScore(detailRow);
         }}
-        onEdit={() => {
-          setDetailOpen(false);
-          if (detailRow) {
-            setEditRow(detailRow);
-            setEditOpen(true);
-          }
-        }}
-        onReturn={() => {
-          setDetailOpen(false);
-          if (detailRow) {
-            setReturnRow(detailRow);
-            setReturnReason("");
-          }
-        }}
+        /* Sửa / trả lại chỉ áp cho việc còn chờ mình quyết - hộp thoại không
+           tự đoán luật, màn gọi truyền vào hay không truyền. */
+        onEdit={
+          detailRow && canReviewPersonalKpi(detailRow.item.status)
+            ? () => {
+                setDetailOpen(false);
+                setEditRow(detailRow);
+                setEditOpen(true);
+              }
+            : undefined
+        }
+        onReturn={
+          detailRow && canReviewPersonalKpi(detailRow.item.status)
+            ? () => {
+                setDetailOpen(false);
+                setReturnRow(detailRow);
+                setReturnReason("");
+              }
+            : undefined
+        }
       />
 
       <Dialog

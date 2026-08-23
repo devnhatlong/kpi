@@ -60,7 +60,6 @@ import {
 } from "@/features/personal-kpi/task-summary";
 import {
   canCompletePersonalKpi,
-  canReviewPersonalKpi,
   canSendPersonalKpi,
   canUpdateProgress,
   type PersonalKpiItem,
@@ -1168,7 +1167,7 @@ function ProgressForm({
           Chỉ huy chốt ngay tại màn chi tiết: xem xong số liệu là bấm được,
           khỏi đóng hộp thoại rồi dò lại đúng dòng đó ngoài bảng.
         */}
-        {onEdit && canReviewPersonalKpi(item.status) ? (
+        {onEdit ? (
           <Button
             type="button"
             variant="outline"
@@ -1180,7 +1179,7 @@ function ProgressForm({
             Sửa nội dung
           </Button>
         ) : null}
-        {onReturn && canReviewPersonalKpi(item.status) ? (
+        {onReturn ? (
           <Button
             type="button"
             variant="outline"

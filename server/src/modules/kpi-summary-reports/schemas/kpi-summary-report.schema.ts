@@ -39,6 +39,7 @@ export const KPI_SUMMARY_LOG_TYPES = [
   'RECALL',
   'APPROVE',
   'RETURN',
+  'FORWARD',
 ] as const;
 
 export type KpiSummaryLogType = (typeof KPI_SUMMARY_LOG_TYPES)[number];
@@ -174,9 +175,31 @@ export class KpiSummaryReport {
   })
   status!: KpiSummaryReportStatus;
 
-  /** Cấp trên đã nhận bản trình gần nhất. */
+  /** Cấp trên đang giữ bản trình hiện tại. */
   @Prop({ type: Types.ObjectId, ref: User.name, default: null })
   sentToId!: Types.ObjectId | null;
+
+  /**
+   * Người trình bản hiện tại: lần đầu là người lập, những lần sau là cấp trên
+   * chuyển tiếp lên. Trả lại thì báo cáo về đúng tay người này, không rơi thẳng
+   * xuống người lập ban đầu.
+   */
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null })
+  sentById!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  sentByName!: string;
+
+  /**
+   * Mọi cấp đã từng giữ báo cáo này. Chuyển tiếp lên trên rồi thì cấp dưới vẫn
+   * thấy bản mình đã xử lý trong hộp thư, không phải là biến mất.
+   */
+  @Prop({
+    type: [{ type: Types.ObjectId, ref: User.name }],
+    default: [],
+    index: true,
+  })
+  holderIds!: Types.ObjectId[];
 
   @Prop({ trim: true, default: '' })
   sentToName!: string;

@@ -95,7 +95,7 @@ export function StatisticsView() {
           {/* Nút hành động dẫn sang màn nhập, không dựng lối nhập thứ hai ở
               đây - trang này chỉ để đọc số. */}
           <Button asChild variant="outline" className="bg-background">
-            <Link href="/kpi/personal">Nhập KPI của tôi</Link>
+            <Link href="/kpi/personal">Nhập KPI cá nhân</Link>
           </Button>
           {data?.canViewUnit ? (
             <Select
@@ -106,8 +106,8 @@ export function StatisticsView() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="mine">Nhiệm vụ của tôi</SelectItem>
-                <SelectItem value="unit">Đơn vị của tôi</SelectItem>
+                <SelectItem value="mine">Nhiệm vụ cá nhân</SelectItem>
+                <SelectItem value="unit">Toàn đơn vị</SelectItem>
               </SelectContent>
             </Select>
           ) : null}
@@ -236,55 +236,57 @@ export function StatisticsView() {
               <AxisScoreMeters axes={data.axes} />
             ) : (
               <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">
-                  Nội dung công việc nhiều nhiệm vụ nhất
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Tối đa 10 nội dung, xếp theo số nhiệm vụ.
-                </p>
-              </CardHeader>
-              <CardContent>
-                {data.workContents.length === 0 ? (
-                  <p className="py-10 text-center text-sm text-muted-foreground">
-                    Chưa có nhiệm vụ nào trong khoảng này.
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">
+                    Nội dung công việc nhiều nhiệm vụ nhất
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Tối đa 10 nội dung, xếp theo số nhiệm vụ.
                   </p>
-                ) : (
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-12">#</TableHead>
-                          <TableHead>Nội dung công việc</TableHead>
-                          <TableHead className="w-24 text-right">
-                            Nhiệm vụ
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {data.workContents.map((content, index) => (
-                          <TableRow key={content.workContentId}>
-                            <TableCell className="text-muted-foreground tabular-nums">
-                              {index + 1}
-                            </TableCell>
-                            <TableCell>
-                              <div className="font-medium">{content.name}</div>
-                              {content.code ? (
-                                <div className="text-xs text-muted-foreground">
-                                  {content.code}
-                                </div>
-                              ) : null}
-                            </TableCell>
-                            <TableCell className="text-right font-medium tabular-nums">
-                              {content.taskCount}
-                            </TableCell>
+                </CardHeader>
+                <CardContent>
+                  {data.workContents.length === 0 ? (
+                    <p className="py-10 text-center text-sm text-muted-foreground">
+                      Chưa có nhiệm vụ nào trong khoảng này.
+                    </p>
+                  ) : (
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-12">#</TableHead>
+                            <TableHead>Nội dung công việc</TableHead>
+                            <TableHead className="w-24 text-right">
+                              Nhiệm vụ
+                            </TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
+                        </TableHeader>
+                        <TableBody>
+                          {data.workContents.map((content, index) => (
+                            <TableRow key={content.workContentId}>
+                              <TableCell className="text-muted-foreground tabular-nums">
+                                {index + 1}
+                              </TableCell>
+                              <TableCell>
+                                <div className="font-medium">
+                                  {content.name}
+                                </div>
+                                {content.code ? (
+                                  <div className="text-xs text-muted-foreground">
+                                    {content.code}
+                                  </div>
+                                ) : null}
+                              </TableCell>
+                              <TableCell className="text-right font-medium tabular-nums">
+                                {content.taskCount}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
               </Card>
             )}
           </div>

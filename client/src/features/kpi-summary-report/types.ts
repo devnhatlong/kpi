@@ -16,11 +16,7 @@ export type SummaryRow = PersonalKpiBoardRow;
  * - RETURNED : cấp trên trả lại kèm lý do - sửa rồi trình lại
  * - APPROVED : cấp trên đã duyệt, khoá lại
  */
-export type SummaryReportStatus =
-  | "DRAFT"
-  | "SENT"
-  | "RETURNED"
-  | "APPROVED";
+export type SummaryReportStatus = "DRAFT" | "SENT" | "RETURNED" | "APPROVED";
 
 export const SUMMARY_REPORT_STATUS_LABEL: Record<SummaryReportStatus, string> =
   {
@@ -93,6 +89,7 @@ export type SummaryReportLogType =
   | "REMOVE_MANUAL"
   | "SEND"
   | "RECALL"
+  | "FORWARD"
   | "APPROVE"
   | "RETURN";
 
@@ -122,6 +119,9 @@ export type SummaryReport = {
   logs: SummaryReportLog[];
   sentToId: string | null;
   sentToName: string;
+  /** Người trình bản hiện tại - trả lại thì báo cáo về đúng tay người này. */
+  sentById: string | null;
+  sentByName: string;
   sentNote: string;
   sentAt?: string | null;
   /** Lý do cấp trên trả lại lần gần nhất. */

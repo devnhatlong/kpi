@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  PencilLine,
+  Trash2,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -302,6 +308,8 @@ type SummaryEntriesTableProps = {
   showAxis?: boolean;
   /** Còn sửa được thì mỗi dòng có nút bỏ khỏi báo cáo. */
   editable?: boolean;
+  /** Mở chi tiết một dòng - dòng KPI mở nhiệm vụ, dòng tự nhập mở form sửa. */
+  onOpen?: (entry: ReportEntry) => void;
   busy?: boolean;
   onRemove?: (entry: ReportEntry) => void;
 };
@@ -318,6 +326,7 @@ export function SummaryEntriesTable({
   grouped = true,
   showAxis = true,
   editable = false,
+  onOpen,
   busy = false,
   onRemove,
 }: SummaryEntriesTableProps) {
@@ -377,11 +386,13 @@ export function SummaryEntriesTable({
           (tiến độ %, điểm tiến độ, chất lượng %, điểm chất lượng); bộ cột theo
           mục chỉ có một cột Kết quả.
         */
+        // Cột thao tác có mặt khi mở được chi tiết hoặc bỏ được dòng.
+        const hasActions = Boolean(onOpen) || editable;
         const columnCount =
           (percent ? 7 : 4) +
           (showAxis ? 1 : 0) +
           (showTotal ? 1 : 0) +
-          (editable ? 1 : 0);
+          (hasActions ? 1 : 0);
 
         return (
           <div key={group.key} className="overflow-hidden rounded-lg border">
@@ -468,9 +479,9 @@ export function SummaryEntriesTable({
                           Điểm
                         </TableHead>
                       ) : null}
-                      {editable ? (
-                        <TableHead className="w-[60px] text-right">
-                          Bỏ
+                      {hasActions ? (
+                        <TableHead className="w-[96px] text-right">
+                          Thao tác
                         </TableHead>
                       ) : null}
                     </TableRow>
@@ -583,18 +594,39 @@ export function SummaryEntriesTable({
                           />
                         ) : null}
 
-                        {editable ? (
-                          <TableCell className="text-right align-middle">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="size-8 text-destructive hover:text-destructive"
-                              disabled={busy}
-                              title="Bỏ nhiệm vụ này khỏi báo cáo"
-                              onClick={() => onRemove?.(entry)}
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
+                        {hasActions ? (
+                          <TableCell className="text-right align-middle whitespace-nowrap">
+                            {onOpen ? (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-8"
+                                title={
+                                  entry.kind === "MANUAL"
+                                    ? "Sửa nhiệm vụ tự nhập"
+                                    : "Xem chi tiết nhiệm vụ"
+                                }
+                                onClick={() => onOpen(entry)}
+                              >
+                                {entry.kind === "MANUAL" ? (
+                                  <PencilLine className="size-4" />
+                                ) : (
+                                  <Eye className="size-4" />
+                                )}
+                              </Button>
+                            ) : null}
+                            {editable ? (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-8 text-destructive hover:text-destructive"
+                                disabled={busy}
+                                title="Bỏ nhiệm vụ này khỏi báo cáo"
+                                onClick={() => onRemove?.(entry)}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            ) : null}
                           </TableCell>
                         ) : null}
                       </TableRow>
@@ -613,7 +645,7 @@ export function SummaryEntriesTable({
                       leadingSpan={2 + (showAxis ? 1 : 0)}
                       columnCount={columnCount}
                       showTotal={showTotal}
-                      trailing={editable ? 1 : 0}
+                      trailing={hasActions ? 1 : 0}
                     />
                   ) : null}
                 </Table>
