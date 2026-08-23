@@ -186,7 +186,7 @@ export function KpiScopeConfigView() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {items.map((item) => (
           <Card key={item.roleCode} className={cn(!item.isEnabled && "opacity-70")}>
-            <CardContent className="space-y-2 pt-5">
+            <CardContent className="space-y-2 pt-4">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <Shield className="size-4 shrink-0 text-primary" />
@@ -235,7 +235,7 @@ export function KpiScopeConfigView() {
         </Card>
       ) : view === "MATRIX" ? (
         <Card>
-          <CardContent className="space-y-3 pt-6">
+          <CardContent className="space-y-3 pt-4">
             <h2 className="text-sm font-semibold">Ma trận vai trò × phạm vi</h2>
             <div className="overflow-x-auto rounded-md border">
               <Table className="min-w-[820px]">
@@ -306,7 +306,7 @@ export function KpiScopeConfigView() {
         </Card>
       ) : (
         <Card>
-          <CardContent className="space-y-5 pt-6">
+          <CardContent className="space-y-5 pt-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-sm font-semibold">
                 Chi tiết vai trò: {current?.roleName ?? "-"}

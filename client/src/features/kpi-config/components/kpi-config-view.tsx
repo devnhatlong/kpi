@@ -425,7 +425,7 @@ export function KpiConfigView() {
           ) : null}
 
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-4">
               <TaskAssignmentGrid
                 template={selectedTemplate}
                 groups={systemGroups}
@@ -457,7 +457,7 @@ export function KpiConfigView() {
 
         <TabsContent value="contents" className="mt-4">
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-4">
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
@@ -546,7 +546,7 @@ export function KpiConfigView() {
 
         <TabsContent value="groups" className="mt-4">
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-4">
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>

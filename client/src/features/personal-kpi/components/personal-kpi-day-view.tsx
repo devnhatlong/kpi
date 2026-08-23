@@ -551,7 +551,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   return (
     <div className="space-y-4">
       <Card className="shadow-sm">
-        <CardContent className="flex flex-wrap items-start justify-between gap-4 py-5">
+        <CardContent className="flex flex-wrap items-start justify-between gap-4 py-4">
           <div className="min-w-0 space-y-2">
             <p className="text-sm text-muted-foreground">
               Báo cáo ngày
@@ -723,7 +723,7 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
       </div>
 
       <Card className="shadow-sm">
-        <CardContent className="space-y-4 py-5">
+        <CardContent className="space-y-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <SegmentedTabs
               ariaLabel="Lọc theo trạng thái"

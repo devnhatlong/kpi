@@ -165,7 +165,7 @@ export function SummaryReportWorkspace() {
 
         {list.error ? (
           <Card>
-            <CardContent className="p-6 text-sm text-destructive">
+            <CardContent className="p-4 text-sm text-destructive">
               {getApiErrorMessage(
                 list.error,
                 "Không tải được danh sách báo cáo.",
@@ -193,13 +193,13 @@ export function SummaryReportWorkspace() {
           </Card>
         ) : detail.error ? (
           <Card>
-            <CardContent className="p-6 text-sm text-destructive">
+            <CardContent className="p-4 text-sm text-destructive">
               {getApiErrorMessage(detail.error, "Không tải được báo cáo.")}
             </CardContent>
           </Card>
         ) : !detail.data ? (
           <Card>
-            <CardContent className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
+            <CardContent className="flex items-center gap-2 p-4 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
               Đang tải báo cáo...
             </CardContent>

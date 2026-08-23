@@ -898,7 +898,7 @@ export function PersonalKpiTrackingView() {
       </div>
 
       <Card className="shadow-sm">
-        <CardContent className="space-y-4 py-5">
+        <CardContent className="space-y-4 py-4">
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

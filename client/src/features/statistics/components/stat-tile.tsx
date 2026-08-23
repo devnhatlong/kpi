@@ -90,7 +90,7 @@ export function StatTile({
     <Card>
       {/* Căn giữa theo trục dọc: khối chữ cao thấp khác nhau tuỳ ô có dòng so
           sánh hay không, neo biểu tượng lên đỉnh thì hàng thẻ nhìn so le. */}
-      <CardContent className="flex items-center gap-3 py-5">
+      <CardContent className="flex items-center gap-3 py-4">
         <span
           className={cn(
             "flex size-10 shrink-0 items-center justify-center rounded-lg",

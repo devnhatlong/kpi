@@ -460,7 +460,7 @@ export function UnitsView() {
 
         {/* Detail */}
         <Card className="flex h-full min-h-0 max-h-full flex-col overflow-hidden border-border/80 shadow-sm">
-          <CardContent className="min-h-0 flex-1 overflow-auto p-5 md:p-6">
+          <CardContent className="min-h-0 flex-1 overflow-auto p-4">
             {!selected ? (
               <div className="flex flex-col items-center justify-center gap-2 py-20 text-muted-foreground">
                 <FolderTree className="h-10 w-10 opacity-40" />
