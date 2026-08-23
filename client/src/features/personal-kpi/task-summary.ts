@@ -531,3 +531,59 @@ export function hasResult(
   );
   return scored || flagged;
 }
+
+/**
+ * Kết quả của trục chấm theo mục, quy về một hình dạng cho mọi bảng đọc.
+ *
+ * Trục kiểu này không có phần trăm nào, nên bảng nào bày nó cũng chỉ cần đúng
+ * hai thứ: Đạt / Không đạt và điểm của mục. Gom vào đây để màn của cán bộ và
+ * màn của chỉ huy không tự đọc mỗi nơi một kiểu.
+ */
+export type ResultInfo = {
+  /** Cán bộ đã khai kết quả chưa - chưa khai thì không nói Đạt hay Không đạt. */
+  declared: boolean;
+  failed: boolean;
+  /** Điểm chốt: ô nào chỉ huy chấm lại thì lấy của chỉ huy. */
+  score: number | null;
+  /** Điểm cán bộ tự khai, để nói rõ chỉ huy đã sửa bao nhiêu. */
+  selfScore: number | null;
+};
+
+/** Số trong một ô đã lưu; ô trống hoặc không ra số thì coi như chưa có. */
+function numberAt(
+  source: Record<string, string | number> | undefined,
+  key: string,
+): number | null {
+  const raw = source?.[key];
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return null;
+  }
+  const parsed = Number(String(raw).replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function readResultInfo(
+  task: PersonalTaskDraft,
+  columns: ResultColumns,
+  review?: ReviewInput,
+): ResultInfo {
+  const failed = columns.flags.some(
+    (column) =>
+      String(
+        review?.values?.[column.key] ?? task.fieldValues?.[column.key] ?? "",
+      ) === "1",
+  );
+
+  let score: number | null = null;
+  let selfScore: number | null = null;
+  for (const column of columns.scores) {
+    const scored =
+      numberAt(review?.values, column.key) ??
+      numberAt(task.fieldValues, column.key);
+    if (scored !== null) score = (score ?? 0) + scored;
+    const self = numberAt(task.fieldValues, column.key);
+    if (self !== null) selfScore = (selfScore ?? 0) + self;
+  }
+
+  return { declared: hasResult(task, columns), failed, score, selfScore };
+}

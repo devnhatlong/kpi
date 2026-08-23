@@ -75,11 +75,12 @@ import {
   SILENCE_ALERT_DAYS,
   deadlineState,
   silenceDays,
-  hasResult,
+  readResultInfo,
   resultColumns,
   summarizeTask,
   workStateOf,
   type DeadlineState,
+  type ResultInfo,
   type TaskSummary,
   type WorkState,
 } from "@/features/personal-kpi/task-summary";
@@ -129,6 +130,7 @@ type TrackingRow = {
   /** Mẫu bảng của trục - hộp thoại chi tiết cần để dựng mốc tiến độ. */
   template: ResolvedTemplate | null;
   summary: TaskSummary;
+  result: ResultInfo;
   deadline: DeadlineState | null;
   work: WorkState;
   silence: number | null;
@@ -268,7 +270,14 @@ type TrackingTableProps = {
   onReturn: (row: TrackingRow) => void;
 };
 
-/** Bảng nhiệm vụ - dùng lại cho cả xem phẳng lẫn từng nhóm thu gọn được. */
+/**
+ * Bảng nhiệm vụ - dùng lại cho cả xem phẳng lẫn từng nhóm thu gọn được.
+ *
+ * Nhóm nào toàn nhiệm vụ của trục chấm theo mục (trục 2) thì đổi hẳn bộ cột:
+ * trục kiểu đó không có tiến độ, không có chất lượng %, nên bày mấy cột ấy chỉ
+ * để ghi "Không theo dõi %" ba lần một dòng. Thay bằng Kết quả và Điểm - đúng
+ * hai thứ chỉ huy cần nhìn để quyết.
+ */
 function TrackingTable({
   rows,
   busyId,
@@ -276,17 +285,39 @@ function TrackingTable({
   onComplete,
   onReturn,
 }: TrackingTableProps) {
+  const resultOnly =
+    rows.length > 0 && rows.every((row) => !row.summary.tracksProgress);
+  // Mẫu của trục chấm theo mục thường không có cột hạn - có dòng nào khai hạn
+  // thì mới giữ cột lại.
+  const showDeadline =
+    !resultOnly || rows.some((row) => Boolean(row.summary.deadline));
+
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead className="w-[180px]">Cán bộ</TableHead>
           <TableHead className="w-[360px]">Trục · Nhiệm vụ</TableHead>
-          <TableHead className="w-[190px] whitespace-nowrap">Tiến độ</TableHead>
-          <TableHead className="w-[140px]">Hạn</TableHead>
+          {resultOnly ? (
+            <>
+              <TableHead className="w-[150px]">Kết quả</TableHead>
+              <TableHead className="w-[110px] text-right">Điểm</TableHead>
+            </>
+          ) : (
+            <TableHead className="w-[190px] whitespace-nowrap">
+              Tiến độ
+            </TableHead>
+          )}
+          {showDeadline ? (
+            <TableHead className="w-[140px]">Hạn</TableHead>
+          ) : null}
           <TableHead className="w-[130px]">Trạng thái duyệt</TableHead>
-          <TableHead className="w-[110px]">Chất lượng</TableHead>
-          <TableHead className="w-[160px]">Tình trạng thực hiện</TableHead>
+          {resultOnly ? null : (
+            <>
+              <TableHead className="w-[110px]">Chất lượng</TableHead>
+              <TableHead className="w-[160px]">Tình trạng thực hiện</TableHead>
+            </>
+          )}
           <TableHead className="w-[210px] text-right">Thao tác</TableHead>
         </TableRow>
       </TableHeader>
@@ -340,61 +371,104 @@ function TrackingTable({
                 </div>
               </TableCell>
 
-              <TableCell className="align-middle">
-                {/* Trục có mẫu KPI không chấm theo % thì nói thẳng, đừng để ô
-                    trống rồi bị đọc thành "cán bộ chưa nhập". */}
-                {!row.summary.tracksProgress ? (
-                  <span
-                    className="text-xs text-muted-foreground"
-                    title="Mẫu KPI của trục này không có cột tiến độ - chốt hoàn thành theo thẩm định của chỉ huy"
+              {resultOnly ? (
+                <>
+                  <TableCell className="align-middle">
+                    {!row.result.declared ? (
+                      <span className="text-xs text-muted-foreground">
+                        Chưa khai kết quả
+                      </span>
+                    ) : (
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          "font-normal",
+                          row.result.failed
+                            ? kpiTone.danger.soft
+                            : kpiTone.success.soft,
+                        )}
+                      >
+                        {row.result.failed ? "Không đạt" : "Đạt"}
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell
+                    className="text-right align-middle text-sm font-medium tabular-nums"
+                    title={
+                      row.result.score !== null &&
+                      row.result.selfScore !== null &&
+                      row.result.selfScore !== row.result.score
+                        ? `Chỉ huy chấm lại - cán bộ tự chấm ${row.result.selfScore}`
+                        : undefined
+                    }
                   >
-                    Không theo dõi %
-                  </span>
-                ) : row.summary.progressPercent === null ? (
-                  <span className="text-sm text-muted-foreground">-</span>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <ProgressBar
-                      percent={row.summary.progressPercent}
-                      className="flex-1"
-                    />
-                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                      {row.summary.progressPercent}%
+                    {row.result.score === null ? (
+                      <span className="text-muted-foreground">-</span>
+                    ) : (
+                      row.result.score
+                    )}
+                  </TableCell>
+                </>
+              ) : (
+                <TableCell className="align-middle">
+                  {/* Trục có mẫu KPI không chấm theo % thì nói thẳng, đừng để ô
+                    trống rồi bị đọc thành "cán bộ chưa nhập". */}
+                  {!row.summary.tracksProgress ? (
+                    <span
+                      className="text-xs text-muted-foreground"
+                      title="Mẫu KPI của trục này không có cột tiến độ - chốt hoàn thành theo thẩm định của chỉ huy"
+                    >
+                      Không theo dõi %
                     </span>
-                  </div>
-                )}
-                {/*
+                  ) : row.summary.progressPercent === null ? (
+                    <span className="text-sm text-muted-foreground">-</span>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <ProgressBar
+                        percent={row.summary.progressPercent}
+                        className="flex-1"
+                      />
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        {row.summary.progressPercent}%
+                      </span>
+                    </div>
+                  )}
+                  {/*
                     Chỉ huy đã chấm khác cán bộ thì nói rõ số cũ ngay tại ô.
                     Gọi theo TÊN NHÓM CỘT ("KPI tiến độ (B)") chứ không gọi tên
                     cột: mẫu thật đặt hai cột trùng tên "Thực tế hoàn thành %"
                     nên nói tên cột thì không biết là tiến độ hay chất lượng.
                   */}
-                {row.summary.reviewChanges.map((change) => (
-                  <p
-                    key={change.field}
-                    className={cn(
-                      "mt-0.5 whitespace-nowrap text-xs tabular-nums",
-                      change.to < change.from
-                        ? kpiTone.danger.text
-                        : kpiTone.success.text,
-                    )}
-                    title={`${change.groupTitle ? `${change.groupTitle} · ` : ""}${change.title}: cán bộ tự chấm ${change.from}%, chỉ huy chốt ${change.to}%`}
-                  >
-                    {change.to < change.from ? "▼" : "▲"}{" "}
-                    {change.groupTitle || change.title}: tự chấm {change.from}%
-                  </p>
-                ))}
-                <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
-                  {lastTouchedLabel(row)}
-                </div>
-              </TableCell>
+                  {row.summary.reviewChanges.map((change) => (
+                    <p
+                      key={change.field}
+                      className={cn(
+                        "mt-0.5 whitespace-nowrap text-xs tabular-nums",
+                        change.to < change.from
+                          ? kpiTone.danger.text
+                          : kpiTone.success.text,
+                      )}
+                      title={`${change.groupTitle ? `${change.groupTitle} · ` : ""}${change.title}: cán bộ tự chấm ${change.from}%, chỉ huy chốt ${change.to}%`}
+                    >
+                      {change.to < change.from ? "▼" : "▲"}{" "}
+                      {change.groupTitle || change.title}: tự chấm {change.from}
+                      %
+                    </p>
+                  ))}
+                  <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
+                    {lastTouchedLabel(row)}
+                  </div>
+                </TableCell>
+              )}
 
-              <TableCell className="whitespace-nowrap align-middle">
-                <DeadlineCell
-                  deadline={row.summary.deadline}
-                  state={row.deadline}
-                />
-              </TableCell>
+              {showDeadline ? (
+                <TableCell className="whitespace-nowrap align-middle">
+                  <DeadlineCell
+                    deadline={row.summary.deadline}
+                    state={row.deadline}
+                  />
+                </TableCell>
+              ) : null}
 
               <TableCell className="align-middle">
                 <Badge
@@ -419,46 +493,50 @@ function TrackingTable({
                 ) : null}
               </TableCell>
 
-              <TableCell className="align-middle text-sm tabular-nums">
-                {!row.summary.tracksQuality ? (
-                  <span className="text-xs text-muted-foreground">
-                    Không theo dõi %
-                  </span>
-                ) : row.summary.qualityPercent === null ? (
-                  <span className="text-muted-foreground">-</span>
-                ) : (
-                  `${row.summary.qualityPercent}%`
-                )}
-              </TableCell>
+              {resultOnly ? null : (
+                <>
+                  <TableCell className="align-middle text-sm tabular-nums">
+                    {!row.summary.tracksQuality ? (
+                      <span className="text-xs text-muted-foreground">
+                        Không theo dõi %
+                      </span>
+                    ) : row.summary.qualityPercent === null ? (
+                      <span className="text-muted-foreground">-</span>
+                    ) : (
+                      `${row.summary.qualityPercent}%`
+                    )}
+                  </TableCell>
 
-              <TableCell className="align-middle">
-                <div className="flex flex-wrap gap-1">
-                  <WorkStateBadge work={row.work} />
-                  {isOverdue(row) ? (
-                    <Badge
-                      variant="secondary"
-                      className={cn("font-normal", kpiTone.danger.soft)}
-                    >
-                      Trễ hạn
-                    </Badge>
-                  ) : isDueSoon(row) ? (
-                    <Badge
-                      variant="secondary"
-                      className={cn("font-normal", kpiTone.warning.soft)}
-                    >
-                      Sắp đến hạn
-                    </Badge>
-                  ) : null}
-                  {isSilent(row) ? (
-                    <Badge
-                      variant="secondary"
-                      className={cn("font-normal", kpiTone.warning.soft)}
-                    >
-                      Im lặng {row.silence} ngày
-                    </Badge>
-                  ) : null}
-                </div>
-              </TableCell>
+                  <TableCell className="align-middle">
+                    <div className="flex flex-wrap gap-1">
+                      <WorkStateBadge work={row.work} />
+                      {isOverdue(row) ? (
+                        <Badge
+                          variant="secondary"
+                          className={cn("font-normal", kpiTone.danger.soft)}
+                        >
+                          Trễ hạn
+                        </Badge>
+                      ) : isDueSoon(row) ? (
+                        <Badge
+                          variant="secondary"
+                          className={cn("font-normal", kpiTone.warning.soft)}
+                        >
+                          Sắp đến hạn
+                        </Badge>
+                      ) : null}
+                      {isSilent(row) ? (
+                        <Badge
+                          variant="secondary"
+                          className={cn("font-normal", kpiTone.warning.soft)}
+                        >
+                          Im lặng {row.silence} ngày
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                </>
+              )}
 
               <TableCell className="text-right align-middle">
                 <div className="inline-flex flex-wrap justify-end gap-1">
@@ -593,15 +671,24 @@ export function PersonalKpiTrackingView() {
             raw.ownerDepartmentId && typeof raw.ownerDepartmentId === "object"
               ? (raw.ownerDepartmentId.name ?? "")
               : "";
+          const resultInfo = readResultInfo(
+            item.task,
+            resultColumns(axis.template),
+            {
+              values: item.reviewValues,
+              catalogValues: item.reviewCatalogValues,
+            },
+          );
           result.push({
             item,
             template: axis.template,
             summary,
+            result: resultInfo,
             deadline: deadlineState(summary.deadline, todayYmd),
             work: workStateOf(summary, {
               completed: item.status === "COMPLETED",
               touched: !!item.lastProgressAt,
-              hasResult: hasResult(item.task, resultColumns(axis.template)),
+              hasResult: resultInfo.declared,
             }),
             // Trục không chấm theo % thì không có tiến độ để im lặng.
             silence: summary.tracksProgress

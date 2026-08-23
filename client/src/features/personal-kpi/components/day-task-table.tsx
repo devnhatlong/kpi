@@ -39,6 +39,7 @@ import {
 import {
   SILENCE_ALERT_DAYS,
   type DeadlineState,
+  type ResultInfo,
   type TaskSummary,
   type WorkState,
 } from "@/features/personal-kpi/task-summary";
@@ -55,6 +56,8 @@ import { cn } from "@/lib/utils";
 export type DayTaskRow = {
   item: PersonalKpiItem;
   summary: TaskSummary;
+  /** Kết quả Đạt / Không đạt của trục chấm theo mục - trục 2 đọc ở đây. */
+  result: ResultInfo;
   deadline: DeadlineState | null;
   /** Trạng thái công việc theo KPI tiến độ, tách khỏi trạng thái duyệt. */
   work: WorkState;
@@ -113,7 +116,14 @@ type DayTaskTableProps = {
   onDelete: (item: PersonalKpiItem) => void;
 };
 
-/** Bảng nhiệm vụ - dùng chung cho cả xem phẳng lẫn xem theo nhóm. */
+/**
+ * Bảng nhiệm vụ - dùng chung cho cả xem phẳng lẫn xem theo nhóm.
+ *
+ * Nhóm nào toàn nhiệm vụ của trục chấm theo mục (trục 2) thì đổi bộ cột: trục
+ * kiểu đó không có tiến độ, không có chất lượng %, để nguyên thì mỗi dòng ghi
+ * "Không theo dõi %" hai lần mà chẳng nói được kết quả ra sao. Đúng luật đang
+ * dùng ở màn theo dõi của chỉ huy.
+ */
 export function DayTaskTable({
   rows,
   deadlineHeader,
@@ -127,6 +137,14 @@ export function DayTaskTable({
   onSend,
   onDelete,
 }: DayTaskTableProps) {
+  const resultOnly =
+    rows.length > 0 && rows.every((row) => !row.summary.tracksProgress);
+  // Mẫu của trục chấm theo mục thường không có cột hạn - có dòng nào khai hạn
+  // thì mới giữ cột lại.
+  const showDeadline =
+    !resultOnly || rows.some((row) => Boolean(row.summary.deadline));
+  const columnCount = resultOnly ? (showDeadline ? 8 : 7) : 9;
+
   return (
     <Table>
       {hideHeader ? null : (
@@ -134,10 +152,23 @@ export function DayTaskTable({
           <TableRow>
             <TableHead className="min-w-[280px]">Nhiệm vụ</TableHead>
             <TableHead className="w-[80px]">Trục</TableHead>
-            <TableHead className="w-[160px]">Tiến độ nhiệm vụ</TableHead>
-            <TableHead className="w-[160px]">Chất lượng nhiệm vụ</TableHead>
-            <TableHead className="w-[150px]">{deadlineHeader}</TableHead>
-            <TableHead className="w-[170px]">Tình trạng thực hiện</TableHead>
+            {resultOnly ? (
+              <>
+                <TableHead className="w-[150px]">Kết quả</TableHead>
+                <TableHead className="w-[100px] text-right">Điểm</TableHead>
+              </>
+            ) : (
+              <>
+                <TableHead className="w-[160px]">Tiến độ nhiệm vụ</TableHead>
+                <TableHead className="w-[160px]">Chất lượng nhiệm vụ</TableHead>
+              </>
+            )}
+            {showDeadline ? (
+              <TableHead className="w-[150px]">{deadlineHeader}</TableHead>
+            ) : null}
+            {resultOnly ? null : (
+              <TableHead className="w-[170px]">Tình trạng thực hiện</TableHead>
+            )}
             <TableHead className="w-[130px]">Trạng thái duyệt</TableHead>
             <TableHead className="w-[160px]">Cấp trên theo dõi</TableHead>
             <TableHead className="w-[170px] text-right">Thao tác</TableHead>
@@ -148,7 +179,7 @@ export function DayTaskTable({
         {loading ? (
           <TableRow>
             <TableCell
-              colSpan={9}
+              colSpan={columnCount}
               className="h-28 text-center text-muted-foreground"
             >
               Đang tải...
@@ -157,7 +188,7 @@ export function DayTaskTable({
         ) : rows.length === 0 ? (
           <TableRow>
             <TableCell
-              colSpan={9}
+              colSpan={columnCount}
               className="h-28 text-center text-muted-foreground"
             >
               <div className="inline-flex flex-col items-center gap-2">
@@ -202,56 +233,107 @@ export function DayTaskTable({
                   </Badge>
                 </TableCell>
 
-                {/* Tiến độ (nhóm B) - căn cứ cho tình trạng thực hiện. */}
-                <TableCell className="align-middle">
-                  <PercentCell
-                    percent={summary.progressPercent}
-                    notTracked={!summary.tracksProgress}
-                    change={summary.reviewChanges.find(
-                      (entry) => entry.field === "progress",
-                    )}
-                  />
-                </TableCell>
+                {resultOnly ? (
+                  <>
+                    {/* Trục chấm theo mục: chỉ có Đạt / Không đạt và điểm. */}
+                    <TableCell className="align-middle">
+                      {!row.result.declared ? (
+                        <span className="text-xs text-muted-foreground">
+                          Chưa khai kết quả
+                        </span>
+                      ) : (
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            "font-normal",
+                            row.result.failed
+                              ? kpiTone.danger.soft
+                              : kpiTone.success.soft,
+                          )}
+                        >
+                          {row.result.failed ? "Không đạt" : "Đạt"}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell
+                      className="text-right align-middle text-sm font-medium tabular-nums"
+                      title={
+                        row.result.score !== null &&
+                        row.result.selfScore !== null &&
+                        row.result.selfScore !== row.result.score
+                          ? `Chỉ huy chấm lại - bạn tự chấm ${row.result.selfScore}`
+                          : undefined
+                      }
+                    >
+                      {row.result.score === null ? (
+                        <span className="text-muted-foreground">-</span>
+                      ) : (
+                        row.result.score
+                      )}
+                    </TableCell>
+                  </>
+                ) : (
+                  <>
+                    {/* Tiến độ (nhóm B) - căn cứ cho tình trạng thực hiện. */}
+                    <TableCell className="align-middle">
+                      <PercentCell
+                        percent={summary.progressPercent}
+                        notTracked={!summary.tracksProgress}
+                        change={summary.reviewChanges.find(
+                          (entry) => entry.field === "progress",
+                        )}
+                      />
+                    </TableCell>
 
-                {/* Chất lượng (nhóm C) - đứng riêng vì tiến độ 100% mà chất
-                    lượng 75% là chuyện bình thường, hai con số không thay nhau. */}
-                <TableCell className="align-middle">
-                  <PercentCell
-                    percent={summary.qualityPercent}
-                    notTracked={!summary.tracksQuality}
-                    change={summary.reviewChanges.find(
-                      (entry) => entry.field === "quality",
-                    )}
-                  />
-                </TableCell>
+                    {/* Chất lượng (nhóm C) - đứng riêng vì tiến độ 100% mà chất
+                        lượng 75% là chuyện bình thường, hai con số không thay
+                        nhau. */}
+                    <TableCell className="align-middle">
+                      <PercentCell
+                        percent={summary.qualityPercent}
+                        notTracked={!summary.tracksQuality}
+                        change={summary.reviewChanges.find(
+                          (entry) => entry.field === "quality",
+                        )}
+                      />
+                    </TableCell>
+                  </>
+                )}
 
-                <TableCell className="align-middle">
-                  <DeadlineCell deadline={summary.deadline} state={deadline} />
-                </TableCell>
+                {showDeadline ? (
+                  <TableCell className="align-middle">
+                    <DeadlineCell
+                      deadline={summary.deadline}
+                      state={deadline}
+                    />
+                  </TableCell>
+                ) : null}
 
                 {/* Việc chạy tới đâu - theo KPI tiến độ và hạn. */}
-                <TableCell className="align-middle">
-                  <div className="flex flex-wrap gap-1">
-                    <WorkStateBadge work={work} />
-                    {health ? (
-                      <Badge
-                        variant="secondary"
-                        className={cn("font-normal", health.className)}
-                      >
-                        {health.label}
-                      </Badge>
-                    ) : null}
-                    {isSilent(row) ? (
-                      <Badge
-                        variant="secondary"
-                        className={cn("font-normal", kpiTone.warning.soft)}
-                        title="Lâu rồi chưa cập nhật tiến độ"
-                      >
-                        Im lặng {row.silence} ngày
-                      </Badge>
-                    ) : null}
-                  </div>
-                </TableCell>
+                {resultOnly ? null : (
+                  <TableCell className="align-middle">
+                    <div className="flex flex-wrap gap-1">
+                      <WorkStateBadge work={work} />
+                      {health ? (
+                        <Badge
+                          variant="secondary"
+                          className={cn("font-normal", health.className)}
+                        >
+                          {health.label}
+                        </Badge>
+                      ) : null}
+                      {isSilent(row) ? (
+                        <Badge
+                          variant="secondary"
+                          className={cn("font-normal", kpiTone.warning.soft)}
+                          title="Lâu rồi chưa cập nhật tiến độ"
+                        >
+                          Im lặng {row.silence} ngày
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                )}
 
                 {/* Việc đang ở chặng nào của luồng duyệt. */}
                 <TableCell className="align-middle">

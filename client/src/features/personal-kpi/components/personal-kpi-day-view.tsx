@@ -62,7 +62,7 @@ import {
   SILENCE_ALERT_DAYS,
   deadlineState,
   silenceDays,
-  hasResult,
+  readResultInfo,
   resultColumns,
   summarizeTask,
   workStateOf,
@@ -276,14 +276,19 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
           values: item.reviewValues,
           catalogValues: item.reviewCatalogValues,
         });
+        const result = readResultInfo(item.task, resultColumns(template), {
+          values: item.reviewValues,
+          catalogValues: item.reviewCatalogValues,
+        });
         return {
           item,
           summary,
+          result,
           deadline: deadlineState(summary.deadline, todayYmd),
           work: workStateOf(summary, {
             completed: item.status === "COMPLETED",
             touched: !!item.lastProgressAt,
-            hasResult: hasResult(item.task, resultColumns(template)),
+            hasResult: result.declared,
           }),
           /*
             Chưa cập nhật lần nào thì tính từ lúc đăng ký nhiệm vụ.

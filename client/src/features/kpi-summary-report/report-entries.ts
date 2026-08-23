@@ -47,6 +47,8 @@ export type ReportEntry = {
   progressPercent: number | null;
   /** Điểm của nhóm KPI tiến độ - ô "Điểm tự chấm" quy từ % tiến độ. */
   progressScore: number | null;
+  /** Điểm tiến độ cán bộ tự khai, để biết chỉ huy có sửa hay không. */
+  progressSelfScore: number | null;
   tracksProgress: boolean;
   /** Trục chấm theo mục: đã tích "Không đạt". */
   failed: boolean;
@@ -60,6 +62,8 @@ export type ReportEntry = {
   qualityPercent: number | null;
   /** Điểm của nhóm KPI chất lượng - ô "Điểm tự chấm" quy từ % chất lượng. */
   qualityScore: number | null;
+  /** Điểm chất lượng cán bộ tự khai. */
+  qualitySelfScore: number | null;
   reportDate: string;
 };
 
@@ -233,6 +237,7 @@ function manualEntry(item: SummaryManualItem): ReportEntry {
     axisName: item.axisName,
     progressPercent: null,
     progressScore: null,
+    progressSelfScore: null,
     tracksProgress: false,
     failed: false,
     score: item.score,
@@ -240,6 +245,7 @@ function manualEntry(item: SummaryManualItem): ReportEntry {
     baseScore: null,
     qualityPercent: null,
     qualityScore: null,
+    qualitySelfScore: null,
     reportDate: "",
   };
 }
@@ -318,6 +324,9 @@ export function buildReportContent(
           progressScore: progressPointColumn
             ? cellNumber(row, progressPointColumn, catalogs)
             : null,
+          progressSelfScore: progressPointColumn
+            ? rowSelfScore(row, [progressPointColumn], "sum")
+            : null,
           tracksProgress: Boolean(tracking.progressColumn),
           failed: results.flags.some(
             (column) =>
@@ -337,6 +346,9 @@ export function buildReportContent(
             : null,
           qualityScore: qualityPointColumn
             ? cellNumber(row, qualityPointColumn, catalogs)
+            : null,
+          qualitySelfScore: qualityPointColumn
+            ? rowSelfScore(row, [qualityPointColumn], "sum")
             : null,
           reportDate: row.reportDate ?? "",
         });
