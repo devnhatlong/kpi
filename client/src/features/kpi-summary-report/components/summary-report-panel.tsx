@@ -383,7 +383,7 @@ export function SummaryReportPanel({
           icon={FileText}
         />
         <StatCard
-          label="Hoàn thành / Tự nhập"
+          label="KPI cá nhân / Tự nhập"
           value={`${content.stats.kpiCount} / ${content.stats.manualCount}`}
           icon={CircleCheck}
           tone={kpiTone.success}
@@ -448,6 +448,9 @@ export function SummaryReportPanel({
           <SummaryEntriesTable
             groups={groups}
             grouped={view !== "flat"}
+            /* Xem theo trục thì tiêu đề nhóm đã nói trục rồi, bỏ cột đi cho
+               gọn; hai cách xem kia không có gì nói thay nên phải giữ. */
+            showAxis={view !== "axis"}
             editable={editable}
             busy={busy}
             onRemove={(entry) => void removeEntry(entry)}

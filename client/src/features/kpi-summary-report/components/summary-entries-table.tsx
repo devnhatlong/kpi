@@ -27,16 +27,30 @@ function scoreText(value: number | null): string {
   return value === null ? "-" : formatScoreNumber(value);
 }
 
+/**
+ * Dòng này ở đâu ra.
+ *
+ * Không ghi "Đã hoàn thành": báo cáo tổng hợp vốn chỉ lấy việc đã xác nhận
+ * hoàn thành nên dòng nào cũng vậy, cột không nói thêm được gì. Thứ người đọc
+ * cần biết là số này có bản ghi KPI đứng sau hay do người lập gõ tay - gõ tay
+ * thì không tra ngược được về nhật ký tiến độ và điểm chỉ huy đã chấm.
+ */
 function SourceBadge({ kind }: { kind: ReportEntry["kind"] }) {
+  const fromKpi = kind === "KPI";
   return (
     <Badge
       variant="secondary"
       className={cn(
         "font-normal",
-        kind === "KPI" ? kpiTone.success.soft : kpiTone.info.soft,
+        fromKpi ? kpiTone.success.soft : kpiTone.warning.soft,
       )}
+      title={
+        fromKpi
+          ? "Lấy từ nhiệm vụ KPI cá nhân đã được chỉ huy xác nhận hoàn thành"
+          : "Người lập báo cáo tự nhập, không có nhiệm vụ KPI nào đứng sau"
+      }
     >
-      {kind === "KPI" ? "Đã hoàn thành" : "Tự nhập"}
+      {fromKpi ? "KPI cá nhân" : "Tự nhập"}
     </Badge>
   );
 }
@@ -45,6 +59,11 @@ type SummaryEntriesTableProps = {
   groups: EntryGroup[];
   /** Hiện dòng tiêu đề nhóm (thu gọn được). Xem dạng danh sách thì tắt. */
   grouped?: boolean;
+  /**
+   * Hiện cột Trục. Gom nhóm theo trục thì tắt: tiêu đề nhóm ngay phía trên đã
+   * nói rồi, để thêm một cột lặp lại chỉ tốn chỗ.
+   */
+  showAxis?: boolean;
   /** Còn sửa được thì mỗi dòng có nút bỏ khỏi báo cáo. */
   editable?: boolean;
   busy?: boolean;
@@ -61,6 +80,7 @@ type SummaryEntriesTableProps = {
 export function SummaryEntriesTable({
   groups,
   grouped = true,
+  showAxis = true,
   editable = false,
   busy = false,
   onRemove,
@@ -76,18 +96,22 @@ export function SummaryEntriesTable({
     });
   };
 
-  const columnCount = 7 + (editable ? 1 : 0);
+  const columnCount = 6 + (showAxis ? 1 : 0) + (editable ? 1 : 0);
   const total = groups.reduce((sum, group) => sum + group.entries.length, 0);
 
   return (
     <div className="overflow-x-auto rounded-lg border bg-card">
-      <Table className="min-w-[1080px]">
+      <Table className={showAxis ? "min-w-[1080px]" : "min-w-[920px]"}>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="min-w-[260px]">Nhiệm vụ ({total})</TableHead>
-            <TableHead className="w-[130px]">Nguồn</TableHead>
+            <TableHead className="w-[130px]" title="Số liệu lấy từ đâu ra">
+              Nguồn số liệu
+            </TableHead>
             <TableHead className="w-[170px]">Cán bộ</TableHead>
-            <TableHead className="w-[170px]">Trục</TableHead>
+            {showAxis ? (
+              <TableHead className="w-[170px]">Trục</TableHead>
+            ) : null}
             <TableHead className="w-[160px]">Kết quả</TableHead>
             <TableHead className="w-[120px]">Điểm chỉ huy</TableHead>
             <TableHead className="w-[110px]">Chất lượng</TableHead>
@@ -173,23 +197,25 @@ export function SummaryEntriesTable({
                             </p>
                           ) : null}
                         </TableCell>
-                        <TableCell className="align-middle">
-                          {entry.axisName ? (
-                            <Badge
-                              variant="secondary"
-                              className={cn(
-                                "font-normal",
-                                kpiTone.neutral.soft,
-                              )}
-                            >
-                              {entry.axisName}
-                            </Badge>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">
-                              -
-                            </span>
-                          )}
-                        </TableCell>
+                        {showAxis ? (
+                          <TableCell className="align-middle">
+                            {entry.axisName ? (
+                              <Badge
+                                variant="secondary"
+                                className={cn(
+                                  "font-normal",
+                                  kpiTone.neutral.soft,
+                                )}
+                              >
+                                {entry.axisName}
+                              </Badge>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">
+                                -
+                              </span>
+                            )}
+                          </TableCell>
+                        ) : null}
                         <TableCell className="align-middle">
                           {/* Trục chấm theo mục không có %: nói Đạt / Không đạt
                               thay vì vẽ thanh tiến độ rỗng. */}
@@ -213,16 +239,19 @@ export function SummaryEntriesTable({
                             </Badge>
                           )}
                         </TableCell>
-                        <TableCell className="align-middle text-sm tabular-nums">
-                          <span className="font-medium">
-                            {scoreText(entry.score)}
-                          </span>
-                          {entry.baseScore !== null ? (
-                            <span className="text-muted-foreground">
-                              {" "}
-                              / {formatScoreNumber(entry.baseScore)}
-                            </span>
-                          ) : null}
+                        {/* Một con số thôi. Điểm chuẩn của dòng chuyển xuống
+                            tooltip: để cạnh nhau thì đọc thành phân số, mà hai
+                            số này chỉ cùng đơn vị khi mẫu khai tử số là cột
+                            điểm - khai nhầm cột phần trăm là ra "50 / 49". */}
+                        <TableCell
+                          className="align-middle text-sm font-medium tabular-nums"
+                          title={
+                            entry.baseScore === null
+                              ? undefined
+                              : `Điểm chuẩn của nhiệm vụ: ${formatScoreNumber(entry.baseScore)}`
+                          }
+                        >
+                          {scoreText(entry.score)}
                         </TableCell>
                         <TableCell className="align-middle">
                           {entry.qualityPercent === null ? (

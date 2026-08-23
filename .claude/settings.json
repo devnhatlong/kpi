@@ -127,7 +127,8 @@
       "Bash(curl -s -o /dev/null -w \"root=%{http_code}\\\\n\" http://localhost:8080/api/v1/)",
       "Bash(curl -s -i http://localhost:8080/api/v1/kpi-summary-reports/stats)",
       "Bash(curl -s -o /dev/null -w \"api=%{http_code}\\\\n\" --max-time 5 http://localhost:8080/api/v1/kpi-summary-reports/stats)",
-      "Bash(curl -s -o /dev/null -w \"web=%{http_code}\\\\n\" --max-time 5 http://localhost:3000/)"
+      "Bash(curl -s -o /dev/null -w \"web=%{http_code}\\\\n\" --max-time 5 http://localhost:3000/)",
+      "Bash(mongosh mongodb://127.0.0.1:27017/kpi --quiet --eval ' *)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
