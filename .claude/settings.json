@@ -132,7 +132,9 @@
       "Bash(grep -E \"^[A-Z]:\\\\\\\\\\\\\\\\|error|warning\")",
       "Bash(sed -n '/for \\(const bucket of axisBuckets.values\\(\\)\\)/,/const baseTotal/p' src/features/kpi-summary-report/report-entries.ts)",
       "Bash(grep -n \"Trả lại$\" -B 12 src/features/personal-kpi/components/personal-kpi-tracking-view.tsx)",
-      "Bash(requireEditable)"
+      "Bash(requireEditable)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/caad15fc-814e-4380-9fc0-1d820a211084/scratchpad/sheetname-check.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/caad15fc-814e-4380-9fc0-1d820a211084/scratchpad/layout-check.js\")"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

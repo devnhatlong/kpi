@@ -27,7 +27,13 @@ export const KPI_SUMMARY_REPORT_STATUSES = [
 export type KpiSummaryReportStatus =
   (typeof KPI_SUMMARY_REPORT_STATUSES)[number];
 
-/** Việc đã xảy ra với báo cáo - đủ để dựng nhật ký mà không cần bảng riêng. */
+/**
+ * Việc đã xảy ra với báo cáo - đủ để dựng nhật ký mà không cần bảng riêng.
+ *
+ * 'RECALL' (thu hồi) và 'FORWARD' (chuyển tiếp bản đã duyệt lên cấp cao hơn)
+ * không còn sinh ra nữa, nhưng vẫn phải nằm trong enum: bản ghi cũ có sẵn mấy
+ * mốc đó, bỏ đi là mọi lần lưu sau đều vướng validate.
+ */
 export const KPI_SUMMARY_LOG_TYPES = [
   'CREATE',
   'UPDATE',
@@ -180,9 +186,8 @@ export class KpiSummaryReport {
   sentToId!: Types.ObjectId | null;
 
   /**
-   * Người trình bản hiện tại: lần đầu là người lập, những lần sau là cấp trên
-   * chuyển tiếp lên. Trả lại thì báo cáo về đúng tay người này, không rơi thẳng
-   * xuống người lập ban đầu.
+   * Người trình bản này - luôn là người lập, vì một bản chỉ đi lên một cấp.
+   * Bản ghi cũ (thời còn chuyển tiếp) có thể mang tên cấp trung gian.
    */
   @Prop({ type: Types.ObjectId, ref: User.name, default: null })
   sentById!: Types.ObjectId | null;
@@ -191,8 +196,8 @@ export class KpiSummaryReport {
   sentByName!: string;
 
   /**
-   * Mọi cấp đã từng giữ báo cáo này. Chuyển tiếp lên trên rồi thì cấp dưới vẫn
-   * thấy bản mình đã xử lý trong hộp thư, không phải là biến mất.
+   * Mọi cấp đã từng giữ báo cáo này. Giờ chỉ có một người nhận, nhưng bản ghi
+   * cũ từng đi qua nhiều cấp vẫn phải tra lại được ở hộp thư của từng cấp.
    */
   @Prop({
     type: [{ type: Types.ObjectId, ref: User.name }],

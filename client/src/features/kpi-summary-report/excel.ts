@@ -134,9 +134,12 @@ function setOutlineBorder(cell: ExcelJS.Cell) {
 }
 
 /**
- * Xuất báo cáo tổng ra Excel: MỖI TRỤC MỘT SHEET.
- * Các trục dùng mẫu bảng khác nhau nên bộ cột khác nhau - nhồi chung một sheet
- * sẽ phải rút gọn về mẫu số chung và mất đúng phần đặc thù của từng trục.
+ * Xuất báo cáo tổng ra Excel: MỘT SHEET DUY NHẤT, các trục nối tiếp nhau.
+ *
+ * Mỗi trục dùng một mẫu bảng riêng nên bộ cột khác nhau - không ép chung một
+ * hàng tiêu đề được. Cách làm: mỗi trục là một khối có dải tên trục, hàng tiêu
+ * đề của riêng nó rồi tới dữ liệu; hết khối chừa một dòng trống rồi sang trục
+ * kế. Đọc một mạch từ trên xuống, in ra cũng liền một mạch.
  */
 export async function exportSummaryReportToExcel(
   report: SummaryReport,
@@ -146,47 +149,92 @@ export async function exportSummaryReportToExcel(
   workbook.creator = report.ownerName || "KPI Manager";
   workbook.created = new Date();
 
+  const sheet = workbook.addWorksheet(
+    sheetName(report.title, "Bao cao tong hop"),
+  );
+
+  const visibleOf = (axis: SummaryAxisBlock) =>
+    (axis.template?.columns ?? []).filter((column) => column.visible);
+
+  /*
+    Các trục dài ngắn khác nhau nên phần tiêu đề gộp theo trục rộng nhất, nếu
+    không thì tiêu đề hụt so với bảng bên dưới.
+  */
+  const widestCol = axes.reduce(
+    (max, axis) =>
+      Math.max(max, LEADING.length + Math.max(1, visibleOf(axis).length)),
+    LEADING.length + 1,
+  );
+
+  /*
+    Cột dùng chung cho mọi trục nên bề rộng phải lấy theo trục cần rộng nhất,
+    chứ trục sau ghi đè trục trước là bảng trên bị bóp lại.
+  */
+  const widenColumn = (col: number, width: number) => {
+    const current = sheet.getColumn(col).width ?? 0;
+    if (width > current) sheet.getColumn(col).width = width;
+  };
+  LEADING.forEach((column, index) => widenColumn(index + 1, column.width));
+
+  /*
+    Một trục ra nhiều khối khi nhiệm vụ trong báo cáo được gửi ở các phiên bản
+    mẫu khác nhau. Ghi rõ phiên bản trên dải tên trục để người đọc hiểu vì sao
+    có hai bảng cùng tên trục mà cột lại khác nhau.
+  */
+  const blocksPerAxis = new Map<string, number>();
+  for (const axis of axes) {
+    blocksPerAxis.set(axis.axisId, (blocksPerAxis.get(axis.axisId) ?? 0) + 1);
+  }
+
+  // -------------------------------------------------------------- tiêu đề
+  sheet.mergeCells(1, 1, 1, widestCol);
+  const titleCell = sheet.getCell(1, 1);
+  titleCell.value = report.title;
+  titleCell.font = { bold: true, size: 14 };
+  titleCell.alignment = { horizontal: "center", vertical: "middle" };
+
+  sheet.mergeCells(2, 1, 2, widestCol);
+  const metaCell = sheet.getCell(2, 1);
+  metaCell.value = `Kỳ báo cáo: ${periodLabel(report.fromDate, report.toDate)}   ·   Người lập: ${report.ownerName || "-"}   ·   Số nhiệm vụ: ${report.itemCount}`;
+  metaCell.alignment = { horizontal: "center", vertical: "middle" };
+
+  let cursor = 3;
+  if (report.note?.trim()) {
+    sheet.mergeCells(cursor, 1, cursor, widestCol);
+    const noteCell = sheet.getCell(cursor, 1);
+    noteCell.value = `Ghi chú: ${report.note.trim()}`;
+    noteCell.alignment = { wrapText: true, vertical: "top" };
+    cursor += 1;
+  }
+  cursor += 1;
+
   let ordinal = 0;
 
-  axes.forEach((axis, axisIndex) => {
+  for (const axis of axes) {
     const template = axis.template;
-    const visible = (template?.columns ?? []).filter(
-      (column) => column.visible,
-    );
-    const sheet = workbook.addWorksheet(
-      sheetName(axis.axisName || axis.axisCode, `Truc ${axisIndex + 1}`),
-    );
+    const visible = visibleOf(axis);
+    const axisLabel = axis.axisName || axis.axisCode;
+    const split = (blocksPerAxis.get(axis.axisId) ?? 0) > 1;
+    const lastCol = LEADING.length + Math.max(1, visible.length);
 
-    const totalCols = LEADING.length + Math.max(1, visible.length);
-    const lastCol = totalCols;
+    // ------------------------------------------------------- dải tên trục
+    sheet.mergeCells(cursor, 1, cursor, lastCol);
+    const axisCell = sheet.getCell(cursor, 1);
+    axisCell.value =
+      split && template
+        ? `TRỤC: ${axisLabel}   ·   Mẫu ${template.name} (phiên bản ${template.version})`
+        : `TRỤC: ${axisLabel}`;
+    axisCell.font = { bold: true, size: 12 };
+    axisCell.alignment = { vertical: "middle" };
+    axisCell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFE2E8F0" },
+    };
+    setOutlineBorder(axisCell);
+    cursor += 1;
 
-    // ------------------------------------------------------------- tiêu đề
-    sheet.mergeCells(1, 1, 1, lastCol);
-    const titleCell = sheet.getCell(1, 1);
-    titleCell.value = report.title;
-    titleCell.font = { bold: true, size: 14 };
-    titleCell.alignment = { horizontal: "center", vertical: "middle" };
-
-    sheet.mergeCells(2, 1, 2, lastCol);
-    const metaCell = sheet.getCell(2, 1);
-    metaCell.value = `Kỳ báo cáo: ${periodLabel(report.fromDate, report.toDate)}   ·   Người lập: ${report.ownerName || "-"}   ·   Số nhiệm vụ: ${report.itemCount}`;
-    metaCell.alignment = { horizontal: "center", vertical: "middle" };
-
-    sheet.mergeCells(3, 1, 3, lastCol);
-    const axisCell = sheet.getCell(3, 1);
-    axisCell.value = `Trục: ${axis.axisName || axis.axisCode}`;
-    axisCell.font = { bold: true };
-
-    if (report.note?.trim()) {
-      sheet.mergeCells(4, 1, 4, lastCol);
-      const noteCell = sheet.getCell(4, 1);
-      noteCell.value = `Ghi chú: ${report.note.trim()}`;
-      noteCell.alignment = { wrapText: true, vertical: "top" };
-    }
-
-    const headerTop = 6;
-
-    // -------------------------------------------------------------- header
+    // ------------------------------------------------------------- header
     const placed = template
       ? placeHeaderCells(
           template.columns,
@@ -195,6 +243,7 @@ export async function exportSummaryReportToExcel(
         )
       : null;
     const headerRows = placed?.rowCount ?? 1;
+    const headerTop = cursor;
 
     LEADING.forEach((column, index) => {
       const col = index + 1;
@@ -208,7 +257,6 @@ export async function exportSummaryReportToExcel(
         wrapText: true,
       };
       setOutlineBorder(cell);
-      sheet.getColumn(col).width = column.width;
     });
 
     if (placed) {
@@ -232,9 +280,9 @@ export async function exportSummaryReportToExcel(
       }
       visible.forEach((column, index) => {
         // Bề rộng cột trong mẫu tính bằng pixel, Excel tính bằng ký tự.
-        sheet.getColumn(LEADING.length + index + 1).width = Math.max(
-          10,
-          Math.round(column.width / 7),
+        widenColumn(
+          LEADING.length + index + 1,
+          Math.max(10, Math.round(column.width / 7)),
         );
       });
     } else {
@@ -244,9 +292,9 @@ export async function exportSummaryReportToExcel(
       setOutlineBorder(cell);
     }
 
-    // ---------------------------------------------------------- dòng dữ liệu
-    let cursor = headerTop + headerRows;
+    cursor = headerTop + headerRows;
 
+    // --------------------------------------------------------- dòng dữ liệu
     for (const group of axis.groups) {
       sheet.mergeCells(cursor, 1, cursor, lastCol);
       const groupCell = sheet.getCell(cursor, 1);
@@ -285,13 +333,15 @@ export async function exportSummaryReportToExcel(
       const cell = sheet.getCell(cursor, 1);
       cell.value = "Trục này chưa có nhiệm vụ nào trong báo cáo.";
       cell.font = { italic: true };
+      cursor += 1;
     }
-  });
+
+    // Một dòng trống ngăn khối này với trục kế, khỏi dính vào nhau khi in.
+    cursor += 1;
+  }
 
   if (!axes.length) {
-    const sheet = workbook.addWorksheet("BaoCaoTong");
-    sheet.getCell(1, 1).value = report.title;
-    sheet.getCell(2, 1).value = "Báo cáo chưa có nhiệm vụ nào.";
+    sheet.getCell(cursor, 1).value = "Báo cáo chưa có nhiệm vụ nào.";
   }
 
   const buffer = await workbook.xlsx.writeBuffer();

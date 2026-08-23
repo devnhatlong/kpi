@@ -80,6 +80,10 @@ export type SummaryManualItem = {
   createdAt: string;
 };
 
+/**
+ * "RECALL" (thu hồi) và "FORWARD" (chuyển tiếp bản đã duyệt) không còn sinh ra
+ * nữa - giữ lại để đọc được nhật ký của các báo cáo cũ.
+ */
 export type SummaryReportLogType =
   | "CREATE"
   | "UPDATE"

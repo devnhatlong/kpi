@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Building2,
   CircleCheck,
@@ -39,13 +40,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useAuth } from "@/features/auth/auth-provider";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
 import { useAxisTemplates } from "@/features/personal-kpi/use-axis-templates";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import {
   approveSummaryReport,
   deleteSummaryReport,
+  fetchSummaryReport,
   returnSummaryReport,
   removeSummaryManualItem,
   removeSummaryReportItems,
@@ -182,7 +183,6 @@ export function SummaryReportPanel({
   onChanged,
   onDeleted,
 }: SummaryReportPanelProps) {
-  const { user } = useAuth();
   const [view, setView] = useState<ViewMode>("axis");
   const [pickOpen, setPickOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
@@ -207,12 +207,6 @@ export function SummaryReportPanel({
   const editable = canEditSummaryReport(report.status, role);
   const reviewing = role === "REVIEWER";
   const decidable = reviewing && canDecideSummaryReport(report.status);
-  /*
-    Duyệt xong, cấp đang giữ bản đó chuyển tiếp lên cấp cao hơn: cùng một báo
-    cáo chạy hết chuỗi Đội › Phòng › Công an tỉnh, không ai phải gõ lại.
-  */
-  const holding = Boolean(user?.id && report.sentToId === user.id);
-  const forwardable = report.status === "APPROVED" && holding;
   /** Nút thêm / bớt nhiệm vụ có hiện không. */
   const canEditNow = editable && (!reviewing || reviewEdit);
 
@@ -357,11 +351,24 @@ export function SummaryReportPanel({
     }
   };
 
+  /**
+   * File xuất ra phải là số của LÚC BẤM, không phải bản đang nằm trong bộ nhớ
+   * đệm: báo cáo có thể vừa bị cấp trên sửa, hoặc mở từ hôm qua chưa nạp lại.
+   * Nạp lại một lượt rồi mới dựng file; khác với bản trên màn hình thì đồng bộ
+   * luôn màn hình, không để người dùng cầm file lệch với thứ họ đang nhìn.
+   */
   const doExport = async () => {
     setExporting(true);
     try {
-      await exportSummaryReportToExcel(report, detail.axes);
-      toast.success("Đã xuất file Excel.");
+      const fresh = await fetchSummaryReport(report._id);
+      await exportSummaryReportToExcel(fresh.report, fresh.axes);
+      const stale = fresh.report.updatedAt !== report.updatedAt;
+      if (stale) await onChanged();
+      toast.success(
+        stale
+          ? "Đã xuất file Excel theo số liệu mới nhất - báo cáo trên màn hình cũng vừa được nạp lại."
+          : "Đã xuất file Excel.",
+      );
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không xuất được file."));
     } finally {
@@ -422,6 +429,20 @@ export function SummaryReportPanel({
                     : ""}
                 </p>
               ) : null}
+              {/* Duyệt là hết đời bản của cấp dưới. Nói thẳng bước tiếp theo ở
+                  đây, không thì cấp trên ngồi tìm nút "gửi lên trên" không có. */}
+              {reviewing && report.status === "APPROVED" ? (
+                <p className="text-xs text-muted-foreground">
+                  Muốn báo cáo lên cấp trên thì{" "}
+                  <Link
+                    href="/kpi/promote"
+                    className="font-medium underline underline-offset-2"
+                  >
+                    lập bản tổng hợp của cấp mình
+                  </Link>{" "}
+                  - các nhiệm vụ trong bản này vẫn nhặt lại được.
+                </p>
+              ) : null}
             </div>
 
             {/*
@@ -432,7 +453,8 @@ export function SummaryReportPanel({
             */}
             <div className="flex flex-wrap items-center gap-2">
               {/* Cấp trên đang giữ bản trình: duyệt hoặc trả lại. Người lập:
-                  trình đi, hoặc thu hồi bản đang nằm ở trên. */}
+                  trình bản của mình lên. Duyệt xong là hết đời bản đó - cấp
+                  trên muốn báo cáo tiếp thì lập bản của cấp mình. */}
               {decidable ? (
                 <>
                   <Button
@@ -454,17 +476,6 @@ export function SummaryReportPanel({
                     Duyệt báo cáo
                   </Button>
                 </>
-              ) : forwardable ? (
-                /* Duyệt xong thì bản đó đi tiếp lên cấp cao hơn - Đội › Phòng
-                   › Công an tỉnh chạy trên cùng một báo cáo. */
-                <Button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setSendOpen(true)}
-                >
-                  <Send className="size-4" />
-                  Trình lên cấp trên
-                </Button>
               ) : reviewing ? null : editable ? (
                 <Button
                   type="button"
@@ -773,17 +784,9 @@ export function SummaryReportPanel({
       <SendRecipientDialog
         open={sendOpen}
         onOpenChange={setSendOpen}
-        title={
-          forwardable
-            ? "Chuyển tiếp báo cáo lên trên"
-            : "Trình báo cáo tổng hợp"
-        }
-        description={
-          forwardable
-            ? "Bản đã duyệt đi tiếp lên cấp cao hơn, giữ nguyên nội dung và nhật ký."
-            : "Chọn cấp trên nhận báo cáo. Trình xong là khoá - sai thì chờ cấp trên trả lại."
-        }
-        confirmLabel={forwardable ? "Chuyển tiếp" : "Gửi lên cấp trên"}
+        title="Trình báo cáo tổng hợp"
+        description="Chọn cấp trên nhận báo cáo. Trình xong là khoá - sai thì chờ cấp trên trả lại."
+        confirmLabel="Gửi lên cấp trên"
         submitting={busy}
         onConfirm={(payload) =>
           doSend({ recipientId: payload.recipientId, note: payload.note })

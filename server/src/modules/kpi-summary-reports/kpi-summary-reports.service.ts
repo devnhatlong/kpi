@@ -503,12 +503,12 @@ export class KpiSummaryReportsService {
   // ============================================================ trình cấp trên
 
   /**
-   * Trình báo cáo lên cấp trên - dùng cho cả chuỗi Đội → Phòng → Công an tỉnh.
+   * Trình báo cáo lên cấp trên - MỘT BẢN CHỈ ĐI LÊN MỘT CẤP.
    *
-   * Ba tình huống đều là một việc "đưa bản này lên cấp trên của tôi":
-   *  - người lập trình bản đang soạn;
-   *  - người vừa bị trả lại sửa xong trình lại;
-   *  - cấp trên đã duyệt thì CHUYỂN TIẾP bản đó lên cấp cao hơn.
+   * Chỉ người lập trình bản của mình: bản đang soạn, hoặc bản vừa bị trả lại đã
+   * sửa xong. Cấp trên duyệt là hết đời bản đó - muốn tổng hợp tiếp lên cấp cao
+   * hơn thì lập báo cáo của cấp mình rồi nhặt nhiệm vụ trong nhánh, chứ không
+   * đẩy tiếp bản của cấp dưới: mỗi cấp có cách gom và cách diễn giải của mình.
    *
    * Người nhận đi qua đúng luật của báo cáo ngày (cấp trên trong nhánh đơn vị),
    * để cả hệ thống chỉ có một định nghĩa "cấp trên của tôi".
@@ -517,27 +517,17 @@ export class KpiSummaryReportsService {
     const actor = await this.resolveScope(userId);
     const report = await this.requireVisible(actor, id);
     const status = this.readStatus(report);
-    const responsible = String(report.sentById ?? report.ownerId);
     const mine = String(report.ownerId) === String(actor.id);
-    const holding =
-      report.sentToId && String(report.sentToId) === String(actor.id);
 
-    /*
-      Chuyển tiếp sau khi duyệt là một lượt trình mới: bản giữ nguyên nội dung,
-      chỉ đổi người trình và người nhận. Cấp đã duyệt vẫn nằm trong `holderIds`
-      nên vẫn tra lại được bản mình đã xử lý.
-    */
-    const forwarding = status === 'APPROVED' && holding;
-    const resending =
-      (status === 'DRAFT' && mine) ||
-      (status === 'RETURNED' && responsible === String(actor.id));
+    const sendable =
+      mine && (status === 'DRAFT' || status === 'RETURNED');
 
-    if (!forwarding && !resending) {
+    if (!sendable) {
       throw new BadRequestException(
         status === 'SENT'
           ? 'Báo cáo đang chờ cấp trên quyết - chưa trình tiếp được.'
           : status === 'APPROVED'
-            ? 'Chỉ cấp đang giữ bản đã duyệt mới chuyển tiếp lên trên được.'
+            ? 'Báo cáo đã được duyệt. Muốn báo cáo lên cấp trên nữa thì lập bản tổng hợp của cấp mình.'
             : 'Báo cáo không nằm ở chỗ bạn.',
       );
     }
@@ -568,8 +558,8 @@ export class KpiSummaryReportsService {
     this.pushLog(
       report,
       actor,
-      forwarding ? 'FORWARD' : 'SEND',
-      `${forwarding ? 'Chuyển tiếp' : 'Trình'} ${recipient.name}${
+      'SEND',
+      `Trình ${recipient.name}${
         report.sentNote ? ` - ${report.sentNote}` : ''
       }`,
     );
