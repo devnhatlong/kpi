@@ -6,24 +6,19 @@ import type {
   FormHeaderGroup,
   FormTemplateColumn,
 } from "@/features/kpi-form-config/types";
-import {
-  cellText,
-  isTickedCell,
-  rowSenderLabel,
-} from "@/features/personal-kpi/board-cell";
+import { cellText, isTickedCell } from "@/features/personal-kpi/board-cell";
 import type {
   SummaryAxisBlock,
   SummaryReport,
 } from "@/features/kpi-summary-report/types";
 import { periodLabel } from "@/features/kpi-summary-report/types";
 
-/** Cột hệ thống chèn trước cột của mẫu, giống hệt bảng trên màn hình. */
-const LEADING = [
-  { label: "TT", width: 6 },
-  { label: "Cán bộ", width: 24 },
-  { label: "Đơn vị", width: 24 },
-  { label: "Ngày báo cáo", width: 14 },
-] as const;
+/*
+  File xuất ra bám đúng mẫu giấy: CHỈ có các cột của mẫu bảng KPI, không chèn
+  thêm cột hệ thống nào. Bảng trên màn hình có thêm TT / Cán bộ / Đơn vị / Ngày
+  báo cáo để người dùng tra cứu, nhưng bản in nộp lên thì mẫu quy định sao in
+  đúng vậy.
+*/
 
 type PlacedCell = {
   label: string;
@@ -124,6 +119,66 @@ function slugify(raw: string): string {
   );
 }
 
+/**
+ * Gộp các khối cùng một trục thành MỘT bảng, dùng mẫu của phiên bản mới nhất.
+ *
+ * Server phát một khối cho mỗi cặp (trục, phiên bản mẫu lúc gửi), nên trục nào
+ * có nhiệm vụ gửi rải qua vài lần sửa mẫu sẽ ra ba bốn khối cùng tên - đọc báo
+ * cáo mà thấy "Trục 1" ba lần thì không ai hiểu. Bảng trên màn hình đã gộp theo
+ * đúng luật này rồi (xem `axisBuckets` trong report-entries.ts), file xuất phải
+ * khớp với thứ người dùng đang nhìn.
+ *
+ * Dòng của phiên bản cũ vẫn hiện đủ: ô nào có cột tương ứng trong mẫu mới thì
+ * ra giá trị, cột mới thêm sau thì để trống - đúng như trên màn hình.
+ */
+function mergeAxisBlocks(axes: SummaryAxisBlock[]): SummaryAxisBlock[] {
+  const order: string[] = [];
+  const buckets = new Map<
+    string,
+    {
+      axis: SummaryAxisBlock;
+      version: number;
+      groups: Map<string, SummaryAxisBlock["groups"][number]>;
+    }
+  >();
+
+  for (const axis of axes) {
+    const version = axis.template?.version ?? 0;
+    let bucket = buckets.get(axis.axisId);
+
+    if (!bucket) {
+      bucket = { axis: { ...axis, groups: [] }, version, groups: new Map() };
+      buckets.set(axis.axisId, bucket);
+      order.push(axis.axisId);
+    } else if (version > bucket.version) {
+      // Mẫu mới nhất quyết định bộ cột của cả trục.
+      bucket.axis = { ...bucket.axis, template: axis.template };
+      bucket.version = version;
+    }
+
+    for (const group of axis.groups) {
+      const key = group.workContentId || group.workContentCode;
+      const existing = bucket.groups.get(key);
+      if (existing) existing.rows = [...existing.rows, ...group.rows];
+      else bucket.groups.set(key, { ...group, rows: [...group.rows] });
+    }
+  }
+
+  return order.map((axisId) => {
+    const bucket = buckets.get(axisId)!;
+    return {
+      ...bucket.axis,
+      groups: [...bucket.groups.values()].map((group) => ({
+        ...group,
+        // Gộp từ nhiều khối nên thứ tự vỡ - xếp lại theo ngày báo cáo, mới trước.
+        rows: [...group.rows].sort((left, right) =>
+          (right.reportDate ?? "").localeCompare(left.reportDate ?? ""),
+        ),
+      })),
+    };
+  });
+}
+
 function setOutlineBorder(cell: ExcelJS.Cell) {
   cell.border = {
     top: { style: "thin" },
@@ -134,16 +189,20 @@ function setOutlineBorder(cell: ExcelJS.Cell) {
 }
 
 /**
- * Xuất báo cáo tổng ra Excel: MỘT SHEET DUY NHẤT, các trục nối tiếp nhau.
+ * Xuất báo cáo tổng ra Excel: MỘT SHEET DUY NHẤT, mỗi trục một bảng, nối tiếp
+ * nhau từ trên xuống.
  *
  * Mỗi trục dùng một mẫu bảng riêng nên bộ cột khác nhau - không ép chung một
  * hàng tiêu đề được. Cách làm: mỗi trục là một khối có dải tên trục, hàng tiêu
  * đề của riêng nó rồi tới dữ liệu; hết khối chừa một dòng trống rồi sang trục
  * kế. Đọc một mạch từ trên xuống, in ra cũng liền một mạch.
+ *
+ * `blocks` là dữ liệu thô của server, có thể có nhiều khối cùng một trục -
+ * `mergeAxisBlocks` gom lại thành một bảng theo mẫu mới nhất.
  */
 export async function exportSummaryReportToExcel(
   report: SummaryReport,
-  axes: SummaryAxisBlock[],
+  blocks: SummaryAxisBlock[],
 ) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = report.ownerName || "KPI Manager";
@@ -153,6 +212,9 @@ export async function exportSummaryReportToExcel(
     sheetName(report.title, "Bao cao tong hop"),
   );
 
+  // Mỗi trục đúng một bảng, theo mẫu mới nhất - xem `mergeAxisBlocks`.
+  const axes = mergeAxisBlocks(blocks);
+
   const visibleOf = (axis: SummaryAxisBlock) =>
     (axis.template?.columns ?? []).filter((column) => column.visible);
 
@@ -161,9 +223,8 @@ export async function exportSummaryReportToExcel(
     không thì tiêu đề hụt so với bảng bên dưới.
   */
   const widestCol = axes.reduce(
-    (max, axis) =>
-      Math.max(max, LEADING.length + Math.max(1, visibleOf(axis).length)),
-    LEADING.length + 1,
+    (max, axis) => Math.max(max, visibleOf(axis).length),
+    1,
   );
 
   /*
@@ -174,17 +235,18 @@ export async function exportSummaryReportToExcel(
     const current = sheet.getColumn(col).width ?? 0;
     if (width > current) sheet.getColumn(col).width = width;
   };
-  LEADING.forEach((column, index) => widenColumn(index + 1, column.width));
 
-  /*
-    Một trục ra nhiều khối khi nhiệm vụ trong báo cáo được gửi ở các phiên bản
-    mẫu khác nhau. Ghi rõ phiên bản trên dải tên trục để người đọc hiểu vì sao
-    có hai bảng cùng tên trục mà cột lại khác nhau.
-  */
-  const blocksPerAxis = new Map<string, number>();
-  for (const axis of axes) {
-    blocksPerAxis.set(axis.axisId, (blocksPerAxis.get(axis.axisId) ?? 0) + 1);
-  }
+  /**
+   * Gộp dọc một cột từ dòng `top` tới dòng `bottom`, chữ nằm ở ô trên cùng.
+   * Excel giữ giá trị của ô trên cùng và bỏ phần còn lại, nên chỉ gọi khi cả
+   * vùng đó đúng là một nội dung.
+   */
+  const mergeDown = (col: number, top: number, bottom: number) => {
+    if (bottom <= top) return;
+    sheet.mergeCells(top, col, bottom, col);
+    const cell = sheet.getCell(top, col);
+    cell.alignment = { ...cell.alignment, vertical: "middle" };
+  };
 
   // -------------------------------------------------------------- tiêu đề
   sheet.mergeCells(1, 1, 1, widestCol);
@@ -208,22 +270,16 @@ export async function exportSummaryReportToExcel(
   }
   cursor += 1;
 
-  let ordinal = 0;
-
   for (const axis of axes) {
     const template = axis.template;
     const visible = visibleOf(axis);
     const axisLabel = axis.axisName || axis.axisCode;
-    const split = (blocksPerAxis.get(axis.axisId) ?? 0) > 1;
-    const lastCol = LEADING.length + Math.max(1, visible.length);
+    const lastCol = Math.max(1, visible.length);
 
     // ------------------------------------------------------- dải tên trục
     sheet.mergeCells(cursor, 1, cursor, lastCol);
     const axisCell = sheet.getCell(cursor, 1);
-    axisCell.value =
-      split && template
-        ? `TRỤC: ${axisLabel}   ·   Mẫu ${template.name} (phiên bản ${template.version})`
-        : `TRỤC: ${axisLabel}`;
+    axisCell.value = `TRỤC: ${axisLabel}`;
     axisCell.font = { bold: true, size: 12 };
     axisCell.alignment = { vertical: "middle" };
     axisCell.fill = {
@@ -236,28 +292,10 @@ export async function exportSummaryReportToExcel(
 
     // ------------------------------------------------------------- header
     const placed = template
-      ? placeHeaderCells(
-          template.columns,
-          template.headerGroups,
-          LEADING.length,
-        )
+      ? placeHeaderCells(template.columns, template.headerGroups, 0)
       : null;
     const headerRows = placed?.rowCount ?? 1;
     const headerTop = cursor;
-
-    LEADING.forEach((column, index) => {
-      const col = index + 1;
-      sheet.mergeCells(headerTop, col, headerTop + headerRows - 1, col);
-      const cell = sheet.getCell(headerTop, col);
-      cell.value = column.label;
-      cell.font = { bold: true };
-      cell.alignment = {
-        horizontal: "center",
-        vertical: "middle",
-        wrapText: true,
-      };
-      setOutlineBorder(cell);
-    });
 
     if (placed) {
       for (const cell of placed.cells) {
@@ -280,13 +318,10 @@ export async function exportSummaryReportToExcel(
       }
       visible.forEach((column, index) => {
         // Bề rộng cột trong mẫu tính bằng pixel, Excel tính bằng ký tự.
-        widenColumn(
-          LEADING.length + index + 1,
-          Math.max(10, Math.round(column.width / 7)),
-        );
+        widenColumn(index + 1, Math.max(10, Math.round(column.width / 7)));
       });
     } else {
-      const cell = sheet.getCell(headerTop, LEADING.length + 1);
+      const cell = sheet.getCell(headerTop, 1);
       cell.value = "Trục chưa gán mẫu bảng";
       cell.font = { bold: true };
       setOutlineBorder(cell);
@@ -294,38 +329,74 @@ export async function exportSummaryReportToExcel(
 
     cursor = headerTop + headerRows;
 
+    /*
+      Mẫu giấy không lặp lại chữ giống nhau ở từng dòng: một nội dung công việc
+      là MỘT ô gộp dọc, trải hết các nhiệm vụ thuộc nó, và STT đánh theo nội
+      dung chứ không theo nhiệm vụ. Bám đúng mẫu thì cột nội dung mới là chỗ ghi
+      tên nhóm - chỉ mẫu nào không có cột đó mới cần dải tên nhóm như trước, nếu
+      không người đọc mất luôn thông tin nhiệm vụ này thuộc nội dung nào.
+    */
+    const sttIndex = visible.findIndex(
+      (column) => column.semanticKey === "stt",
+    );
+    const hasContentColumn = visible.some(
+      (column) => column.semanticKey === "work_content",
+    );
+    let groupOrdinal = 0;
+
     // --------------------------------------------------------- dòng dữ liệu
     for (const group of axis.groups) {
-      sheet.mergeCells(cursor, 1, cursor, lastCol);
-      const groupCell = sheet.getCell(cursor, 1);
-      groupCell.value = `${group.workContentName || group.workContentCode} (${group.rows.length} nhiệm vụ)`;
-      groupCell.font = { bold: true, italic: true };
-      groupCell.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FFF1F5F9" },
-      };
-      setOutlineBorder(groupCell);
-      cursor += 1;
+      if (!hasContentColumn) {
+        sheet.mergeCells(cursor, 1, cursor, lastCol);
+        const groupCell = sheet.getCell(cursor, 1);
+        groupCell.value = `${group.workContentName || group.workContentCode} (${group.rows.length} nhiệm vụ)`;
+        groupCell.font = { bold: true, italic: true };
+        groupCell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFF1F5F9" },
+        };
+        setOutlineBorder(groupCell);
+        cursor += 1;
+      }
+
+      groupOrdinal += 1;
+      const firstRow = cursor;
 
       for (const row of group.rows) {
-        ordinal += 1;
-        const sender = rowSenderLabel(row);
-        const values: (string | number)[] = [
-          ordinal,
-          sender.name,
-          sender.department,
-          row.reportDate ?? "",
-          ...visible.map((column) => exportCellText(row, column)),
-        ];
-
-        values.forEach((value, index) => {
+        visible.forEach((column, index) => {
           const cell = sheet.getCell(cursor, index + 1);
-          cell.value = value;
+          cell.value = exportCellText(row, column);
           cell.alignment = { vertical: "top", wrapText: true };
           setOutlineBorder(cell);
         });
         cursor += 1;
+      }
+
+      const lastRow = cursor - 1;
+      if (lastRow > firstRow) {
+        /*
+          Cột của mẫu thì gộp theo ngữ nghĩa chứ không so chữ: nội dung công
+          việc và ghi chú của nó vốn là một bản ghi dùng chung cho cả cụm. Các
+          cột số liệu KHÔNG gộp dù trùng giá trị - hai nhiệm vụ cùng đạt 40 điểm
+          vẫn là hai sự việc, gộp lại là đọc thành một.
+        */
+        visible.forEach((column, index) => {
+          if (
+            column.semanticKey === "stt" ||
+            column.semanticKey === "work_content" ||
+            column.semanticKey === "work_content_note"
+          ) {
+            mergeDown(index + 1, firstRow, lastRow);
+          }
+        });
+      }
+
+      // STT đánh theo nội dung công việc, khớp cách đánh số của mẫu giấy.
+      if (sttIndex >= 0) {
+        const cell = sheet.getCell(firstRow, sttIndex + 1);
+        cell.value = groupOrdinal;
+        cell.alignment = { horizontal: "center", vertical: "middle" };
       }
     }
 
