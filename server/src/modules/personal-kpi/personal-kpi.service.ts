@@ -100,10 +100,6 @@ const ROLE_LADDER: RoleCode[] = [
   RoleCode.CAT_ADMIN,
 ];
 
-/** Nhãn cột để hiển thị trong lịch sử sửa. */
-const CONTENT_FIELD_LABELS: Record<string, string> = {
-};
-
 const BOARD_MAX_ROWS = 2000;
 
 /**
@@ -1136,7 +1132,16 @@ export class PersonalKpiService {
     };
   }
 
-  /** Cấp trên sửa nội dung nhiệm vụ đang nằm ở tay mình - luôn lưu vết. */
+  /**
+   * Cấp trên sửa nội dung nhiệm vụ đang nằm ở tay mình - luôn lưu vết.
+   *
+   * Sửa được MỌI trường: trục, nội dung công việc, và mọi ô của mẫu (tên nhiệm
+   * vụ, điểm chuẩn, hạn, ghi chú...). Đổi trục thì mẫu bảng cũng phải đóng dấu
+   * lại theo trục mới, nếu không nhiệm vụ sẽ mang bộ cột của trục cũ.
+   *
+   * Mọi thay đổi vào cả hai chỗ: `edits` để tra cứu chi tiết, và một mốc EDIT
+   * trong nhật ký để hiện ngay ở "Nhật ký theo ngày" của nhiệm vụ.
+   */
   async reviewerEdit(
     userId: string,
     id: string,
@@ -1155,20 +1160,48 @@ export class PersonalKpiService {
         'Nhiệm vụ đang ở chỗ cán bộ - để cán bộ tự sửa.',
       );
     }
+    /*
+      Đã chốt hoàn thành thì điểm đã vào bảng KPI - sửa nội dung lúc này là đổi
+      số sau lưng người đã duyệt. Muốn sửa thì trả lại rồi chốt lại.
+    */
+    if (item.reviewStatus === 'COMPLETED') {
+      throw new BadRequestException(
+        'Nhiệm vụ đã chốt hoàn thành - không sửa nội dung nữa.',
+      );
+    }
 
     const reason = dto.reason.trim();
     if (!reason) {
       throw new BadRequestException('Lý do sửa là bắt buộc.');
     }
 
-    const changes = this.diffContent(item, dto);
+    const template = await this.trackingTemplateOf(item);
+    const changes = await this.diffContent(item, dto, template);
     if (!changes.length) {
       throw new BadRequestException('Không có thay đổi nào để lưu.');
+    }
+
+    if (dto.axisId !== undefined || dto.workContentId !== undefined) {
+      const { axis, workContent } = await this.requireAxisAndContent(
+        dto.axisId ?? String(item.axisId),
+        dto.workContentId ?? String(item.workContentId),
+      );
+      const axisChanged = String(item.axisId) !== String(axis._id);
+      item.axisId = axis._id;
+      item.workContentId = workContent._id;
+      if (axisChanged) {
+        // Đóng dấu lại mẫu của trục mới: xoá dấu cũ rồi để stampTemplates chạy.
+        item.formTemplateId = null;
+        item.formTemplateVersion = null;
+        await this.stampTemplates([item]);
+      }
     }
 
     await this.applyContent(item, dto);
     // Cấp trên sửa cột chất lượng thì điểm tự chấm phải chạy lại theo.
     await this.applyDerivedColumns([item]);
+
+    const now = new Date();
     item.edits.push({
       byId: actor.id,
       byName: actor.name,
@@ -1176,7 +1209,19 @@ export class PersonalKpiService {
       level: item.holderLevel,
       changes,
       reason,
-      at: new Date(),
+      at: now,
+    });
+    this.appendLog(item, {
+      type: 'EDIT',
+      actor,
+      note: reason,
+      at: now,
+      changes: changes.map((change) => ({
+        field: 'content' as const,
+        detail: change.label,
+        from: this.changeText(change.from),
+        to: this.changeText(change.to),
+      })),
     });
     await item.save();
 
@@ -1184,6 +1229,12 @@ export class PersonalKpiService {
       message: `Đã sửa ${changes.length} trường và lưu vết.`,
       data: item,
     };
+  }
+
+  /** Giá trị trong nhật ký chỉ là chữ - ô trống ghi rỗng chứ không ghi "null". */
+  private changeText(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    return String(value).trim();
   }
 
   // ======================================================= bảng tổng theo trục
@@ -2795,10 +2846,17 @@ export class PersonalKpiService {
     }
   }
 
-  /** Trường nào thực sự đổi - dùng để ghi lịch sử sửa của cấp trên. */
-  private diffContent(
+  /**
+   * Trường nào thực sự đổi - dùng để ghi lịch sử sửa của cấp trên.
+   *
+   * Nhãn lấy TÊN CỘT trong mẫu chứ không phải khoá cột: người đọc nhật ký cần
+   * thấy "Thời hạn hoàn thành", không phải "deadline". Ô danh mục so theo tên
+   * đã chép sẵn, tệp đính kèm so theo số lượng - đọc ra được là đủ.
+   */
+  private async diffContent(
     item: PersonalKpiItemDocument,
     dto: ReviewerEditPersonalKpiDto,
+    template?: TrackingTemplate | null,
   ) {
     const changes: Array<{
       field: string;
@@ -2807,33 +2865,103 @@ export class PersonalKpiService {
       to: unknown;
     }> = [];
 
-    const compare = (field: keyof typeof CONTENT_FIELD_LABELS, next: unknown) => {
-      if (next === undefined) return;
-      const current = (item as unknown as Record<string, unknown>)[field];
-      const normalized =
-        typeof next === 'string' ? next.trim() : (next as unknown);
-      if (String(current ?? '') === String(normalized ?? '')) return;
-      changes.push({
-        field,
-        label: CONTENT_FIELD_LABELS[field] ?? field,
-        from: current ?? null,
-        to: normalized ?? null,
-      });
-    };
+    const titleOf = (key: string) =>
+      template?.columns?.find((column) => column.key === key)?.title ?? key;
 
+    if (dto.axisId !== undefined && String(item.axisId) !== dto.axisId) {
+      const axis = await this.axisModel
+        .findById(this.requireObjectId(dto.axisId, 'Trục'))
+        .select('name code');
+      changes.push({
+        field: 'axisId',
+        label: 'Trục',
+        from: await this.axisLabel(item.axisId),
+        to: axis?.name ?? axis?.code ?? dto.axisId,
+      });
+    }
+
+    if (
+      dto.workContentId !== undefined &&
+      String(item.workContentId) !== dto.workContentId
+    ) {
+      const content = await this.workContentModel
+        .findById(this.requireObjectId(dto.workContentId, 'Nội dung công việc'))
+        .select('name code');
+      changes.push({
+        field: 'workContentId',
+        label: 'Nội dung công việc',
+        from: await this.workContentLabel(item.workContentId),
+        to: content?.name ?? content?.code ?? dto.workContentId,
+      });
+    }
 
     for (const [key, next] of Object.entries(dto.fieldValues ?? {})) {
       const current = item.fieldValues?.[key];
       if (String(current ?? '') === String(next ?? '')) continue;
       changes.push({
         field: `fieldValues.${key}`,
-        label: key,
+        label: titleOf(key),
         from: current ?? null,
         to: next ?? null,
       });
     }
 
+    // Ô danh mục: so theo TÊN, vì id đổi mà tên giữ nguyên thì người đọc không
+    // hiểu vừa đổi cái gì.
+    if (dto.catalogValues !== undefined) {
+      const resolved = await this.resolveCatalogValues(dto.catalogValues);
+      const keys = new Set([
+        ...Object.keys(item.catalogValues ?? {}),
+        ...Object.keys(resolved),
+      ]);
+      for (const key of keys) {
+        const from = item.catalogValues?.[key]?.name ?? '';
+        const to = resolved[key]?.name ?? '';
+        if (from === to) continue;
+        changes.push({
+          field: `catalogValues.${key}`,
+          label: titleOf(key),
+          from,
+          to,
+        });
+      }
+    }
+
+    if (dto.attachments !== undefined) {
+      const resolved = await this.sanitizeAttachments(dto.attachments);
+      const keys = new Set([
+        ...Object.keys(item.attachments ?? {}),
+        ...Object.keys(resolved),
+      ]);
+      for (const key of keys) {
+        const from = item.attachments?.[key]?.length ?? 0;
+        const to = resolved[key]?.length ?? 0;
+        if (from === to) continue;
+        changes.push({
+          field: `attachments.${key}`,
+          label: titleOf(key),
+          from: `${from} tệp`,
+          to: `${to} tệp`,
+        });
+      }
+    }
+
     return changes;
+  }
+
+  /** Tên trục để ghi vào nhật ký; trục đã xoá thì nói thẳng. */
+  private async axisLabel(axisId: unknown): Promise<string> {
+    if (!axisId) return '';
+    const axis = await this.axisModel.findById(axisId).select('name code');
+    return axis?.name ?? axis?.code ?? 'Trục đã bị xoá';
+  }
+
+  private async workContentLabel(contentId: unknown): Promise<string> {
+    if (!contentId) return '';
+    const content = await this.workContentModel
+      .findById(contentId)
+      .select('name code');
+    return content?.name ?? content?.code ?? 'Nội dung đã bị xoá';
   }
 
   private resolveReportDate(value?: string) {

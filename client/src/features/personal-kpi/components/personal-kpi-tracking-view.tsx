@@ -6,6 +6,8 @@ import {
   ChevronDown,
   Crosshair,
   Eye,
+  MoreHorizontal,
+  PencilLine,
   Search,
   TrendingUp,
   TriangleAlert,
@@ -21,6 +23,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Collapsible,
   CollapsibleContent,
@@ -66,6 +75,7 @@ import {
   WorkStateBadge,
 } from "@/features/personal-kpi/components/kpi-cells";
 import { ProgressUpdateDialog } from "@/features/personal-kpi/components/progress-update-dialog";
+import { ReviewerEditDialog } from "@/features/personal-kpi/components/reviewer-edit-dialog";
 import { ReviewScoreDialog } from "@/features/personal-kpi/components/review-score-dialog";
 import {
   kpiTone,
@@ -266,6 +276,7 @@ type TrackingTableProps = {
   /** Dòng đang chờ thao tác chạy xong - khoá nút của riêng dòng đó. */
   busyId: string | null;
   onDetail: (row: TrackingRow) => void;
+  onEdit: (row: TrackingRow) => void;
   onComplete: (row: TrackingRow) => void;
   onReturn: (row: TrackingRow) => void;
 };
@@ -282,6 +293,7 @@ function TrackingTable({
   rows,
   busyId,
   onDetail,
+  onEdit,
   onComplete,
   onReturn,
 }: TrackingTableProps) {
@@ -538,8 +550,14 @@ function TrackingTable({
                 </>
               )}
 
+              {/*
+                Một nút mở chi tiết, phần quyết định gom vào menu "..." - bày cả
+                bốn nút ra hàng thì mỗi dòng là một rừng nút, mà thao tác hay
+                dùng nhất vẫn là mở ra đọc đã. Menu giữ lại đường duyệt nhanh
+                cho người đã nắm việc, khỏi phải mở hộp thoại.
+              */}
               <TableCell className="text-right align-middle">
-                <div className="inline-flex flex-wrap justify-end gap-1">
+                <div className="inline-flex items-center justify-end gap-1">
                   <Button
                     size="sm"
                     variant="outline"
@@ -549,43 +567,52 @@ function TrackingTable({
                     <Eye className="h-4 w-4" />
                     Chi tiết
                   </Button>
-                  {/* Chốt / trả lại chỉ áp cho việc đang chờ
-                        quyết ở chỗ mình. */}
+                  {/* Chốt / sửa / trả lại chỉ áp cho việc đang chờ quyết ở chỗ
+                      mình. */}
                   {row.item.status === "PENDING" ? (
-                    <>
-                      {/* Chốt được ở bất kỳ mức tiến độ nào - việc dừng giữa
-                          chừng vẫn phải khoá sổ. Chưa đủ 100% thì đổi màu để
-                          thấy ngay, và form chấm điểm sẽ cảnh báo trước khi
-                          quyết. */}
-                      <Button
-                        size="sm"
-                        onClick={() => onComplete(row)}
-                        disabled={busy}
-                        variant={awaiting ? "default" : "outline"}
-                        className={cn(
-                          !awaiting &&
-                            "border-amber-300 bg-background text-amber-700 hover:border-amber-400 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-900 dark:text-amber-500",
-                        )}
-                        title={
-                          awaiting
-                            ? "Chốt hoàn thành nhiệm vụ này"
-                            : "KPI tiến độ chưa đạt 100% - vẫn chốt được, sẽ có cảnh báo trước khi chốt"
-                        }
-                      >
-                        <CheckCheck className="h-4 w-4" />
-                        Hoàn thành
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-rose-300 bg-background text-rose-600 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900 dark:text-rose-400"
-                        onClick={() => onReturn(row)}
-                        disabled={busy}
-                      >
-                        <Undo2 className="h-4 w-4" />
-                        Trả lại
-                      </Button>
-                    </>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-8"
+                          disabled={busy}
+                          aria-label="Thao tác khác"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {/* Chốt được ở bất kỳ mức tiến độ nào - việc dừng giữa
+                            chừng vẫn phải khoá sổ. Chưa đủ 100% thì form chấm
+                            điểm sẽ cảnh báo trước khi quyết. */}
+                        <DropdownMenuItem onSelect={() => onComplete(row)}>
+                          <CheckCheck className="h-4 w-4" />
+                          Hoàn thành
+                          {awaiting ? null : (
+                            <span
+                              className={cn("text-xs", kpiTone.warning.text)}
+                            >
+                              chưa đủ 100%
+                            </span>
+                          )}
+                        </DropdownMenuItem>
+                        {/* Sửa được mọi trường của nhiệm vụ cán bộ gửi lên -
+                            mọi thay đổi đều vào nhật ký kèm lý do. */}
+                        <DropdownMenuItem onSelect={() => onEdit(row)}>
+                          <PencilLine className="h-4 w-4" />
+                          Sửa nội dung
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onSelect={() => onReturn(row)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Undo2 className="h-4 w-4" />
+                          Trả lại
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   ) : null}
                 </div>
               </TableCell>
@@ -612,9 +639,15 @@ export function PersonalKpiTrackingView() {
    */
   const [fromOverride, setFromOverride] = useState<string | null>(null);
   const [toOverride, setToOverride] = useState<string | null>(null);
-  const [detailRow, setDetailRow] = useState<TrackingRow | null>(null);
+  /* Giữ ID chứ không giữ nguyên đối tượng dòng: sửa xong nạp lại danh sách
+     thì hộp thoại chi tiết phải hiện số liệu và nhật ký mới, không phải bản
+     chụp lúc bấm mở. */
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   /** Nhiệm vụ đang mở form chấm điểm để chốt hoàn thành. */
+  const [editRow, setEditRow] = useState<TrackingRow | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+
   const [scoreRow, setScoreRow] = useState<TrackingRow | null>(null);
   const [scoreOpen, setScoreOpen] = useState(false);
   const [returnRow, setReturnRow] = useState<TrackingRow | null>(null);
@@ -712,6 +745,12 @@ export function PersonalKpiTrackingView() {
     }
     return result;
   }, [data, qualityLevelById, todayYmd]);
+
+  /** Dòng đang mở ở hộp thoại chi tiết, luôn lấy bản mới nhất của danh sách. */
+  const detailRow = useMemo(
+    () => rows.find((row) => row.item.id === detailId) ?? null,
+    [rows, detailId],
+  );
 
   const departments = useMemo(() => {
     const names = new Set(rows.map((row) => row.ownerDepartmentName));
@@ -952,8 +991,12 @@ export function PersonalKpiTrackingView() {
                     rows={group.rows}
                     busyId={busyId}
                     onDetail={(row) => {
-                      setDetailRow(row);
+                      setDetailId(row.item.id);
                       setDetailOpen(true);
+                    }}
+                    onEdit={(row) => {
+                      setEditRow(row);
+                      setEditOpen(true);
                     }}
                     onComplete={openScore}
                     onReturn={(row) => {
@@ -1061,6 +1104,21 @@ export function PersonalKpiTrackingView() {
         </CardContent>
       </Card>
 
+      <ReviewerEditDialog
+        open={editOpen}
+        item={editRow?.item ?? null}
+        onOpenChange={setEditOpen}
+        /* Sửa xong quay về đúng hộp thoại chi tiết của nhiệm vụ đó - người
+           duyệt xem lại ngay số vừa sửa và mốc vừa ghi vào nhật ký. */
+        onSaved={async () => {
+          await refresh();
+          if (editRow) {
+            setDetailId(editRow.item.id);
+            setDetailOpen(true);
+          }
+        }}
+      />
+
       <ReviewScoreDialog
         open={scoreOpen}
         item={scoreRow?.item ?? null}
@@ -1072,17 +1130,31 @@ export function PersonalKpiTrackingView() {
       />
 
       <ProgressUpdateDialog
-        open={detailOpen}
+        open={detailOpen && Boolean(detailRow)}
         item={detailRow?.item ?? null}
         template={detailRow?.template ?? null}
         readOnly
         onOpenChange={setDetailOpen}
         onSaved={refresh}
-        /* Chốt hoàn thành ngay trong màn chi tiết: đóng chi tiết rồi mở đúng
-           form chấm điểm của dòng đang xem. */
+        /* Quyết ngay trong màn chi tiết: đóng chi tiết rồi mở đúng form của
+           dòng đang xem, khỏi phải dò lại ngoài bảng. */
         onComplete={() => {
           setDetailOpen(false);
           if (detailRow) openScore(detailRow);
+        }}
+        onEdit={() => {
+          setDetailOpen(false);
+          if (detailRow) {
+            setEditRow(detailRow);
+            setEditOpen(true);
+          }
+        }}
+        onReturn={() => {
+          setDetailOpen(false);
+          if (detailRow) {
+            setReturnRow(detailRow);
+            setReturnReason("");
+          }
         }}
       />
 

@@ -6,11 +6,7 @@
  * - RETURNED : bị trả lại, quay về chỗ người gửi để sửa
  */
 export type PersonalKpiStatus =
-  | "DRAFT"
-  | "PENDING"
-  | "APPROVED"
-  | "RETURNED"
-  | "COMPLETED";
+  "DRAFT" | "PENDING" | "APPROVED" | "RETURNED" | "COMPLETED";
 
 export const PERSONAL_KPI_STATUSES: PersonalKpiStatus[] = [
   "DRAFT",
@@ -83,7 +79,9 @@ export type PersonalKpiProgressField =
   | "product"
   | "evidence"
   /** Ô kết quả của trục chấm theo mục - tên cột nằm ở `detail`. */
-  | "result";
+  | "result"
+  /** Cấp trên sửa một ô nội dung - tên trường nằm ở `detail`. */
+  | "content";
 
 /**
  * Một ô đổi giá trị. Giá trị là thô: phần trăm và số tệp lưu dạng số trong
@@ -100,13 +98,10 @@ export type PersonalKpiProgressChange = {
 /**
  * Loại mốc trong đời nhiệm vụ.
  * PROGRESS = cán bộ cập nhật; SUBMIT = gửi lên; RETURN = cấp trên trả lại;
- * COMPLETE = cấp trên chốt hoàn thành.
+ * COMPLETE = cấp trên chốt hoàn thành; EDIT = cấp trên sửa nội dung.
  */
 export type PersonalKpiLogType =
-  | "PROGRESS"
-  | "SUBMIT"
-  | "RETURN"
-  | "COMPLETE";
+  "PROGRESS" | "SUBMIT" | "RETURN" | "COMPLETE" | "EDIT";
 
 /** Một mốc trong đời nhiệm vụ - dòng trong timeline. */
 export type PersonalKpiProgressLog = {
@@ -182,6 +177,15 @@ export function canForwardPersonalKpi(
 /** Chốt hoàn thành được khi việc đang ở chỗ mình và chưa chốt. */
 export function canCompletePersonalKpi(status: PersonalKpiStatus) {
   return status === "PENDING" || status === "APPROVED";
+}
+
+/**
+ * Sửa nội dung / trả lại được khi việc còn đang chờ mình quyết.
+ * Đã chốt hoàn thành là điểm đã vào bảng KPI - sửa hay trả lại lúc đó là đổi số
+ * sau lưng người đã duyệt, server cũng chặn.
+ */
+export function canReviewPersonalKpi(status: PersonalKpiStatus) {
+  return status === "PENDING";
 }
 
 function localKey(prefix: string) {

@@ -108,6 +108,11 @@ export const PERSONAL_KPI_PROGRESS_FIELDS = [
   'evidence',
   /** Ô kết quả của trục chấm theo mục - tên cột nằm ở `detail`. */
   'result',
+  /**
+   * Cấp trên sửa một ô nội dung - tên trường (trục, nội dung công việc, hoặc
+   * tên cột của mẫu) nằm ở `detail`.
+   */
+  'content',
 ] as const;
 
 export type PersonalKpiProgressField =
@@ -146,13 +151,14 @@ export const PersonalKpiProgressChangeSchema = SchemaFactory.createForClass(
 /**
  * Loại việc đã xảy ra với nhiệm vụ.
  * PROGRESS = cán bộ cập nhật tiến độ; SUBMIT = gửi lên trên; RETURN = cấp trên
- * trả lại; COMPLETE = cấp trên chốt hoàn thành.
+ * trả lại; COMPLETE = cấp trên chốt hoàn thành; EDIT = cấp trên sửa nội dung.
  */
 export const PERSONAL_KPI_LOG_TYPES = [
   'PROGRESS',
   'SUBMIT',
   'RETURN',
   'COMPLETE',
+  'EDIT',
 ] as const;
 
 export type PersonalKpiLogType = (typeof PERSONAL_KPI_LOG_TYPES)[number];

@@ -8,6 +8,7 @@ import {
   Clock3,
   Eye,
   Flag,
+  PencilLine,
   SquarePen,
   TriangleAlert,
   Undo2,
@@ -59,6 +60,7 @@ import {
 } from "@/features/personal-kpi/task-summary";
 import {
   canCompletePersonalKpi,
+  canReviewPersonalKpi,
   canSendPersonalKpi,
   canUpdateProgress,
   type PersonalKpiItem,
@@ -333,6 +335,8 @@ function logTitle(log: PersonalKpiProgressLog): string {
       return "Cấp trên trả lại";
     case "COMPLETE":
       return "Cấp trên chốt hoàn thành";
+    case "EDIT":
+      return "Cấp trên sửa nội dung";
     default:
       return "Cập nhật tiến độ";
   }
@@ -348,6 +352,7 @@ function logYmd(log: PersonalKpiProgressLog): string {
 function logDotClass(type: PersonalKpiProgressLog["type"]): string {
   if (type === "RETURN") return "border-rose-400";
   if (type === "COMPLETE") return "border-emerald-400";
+  if (type === "EDIT") return "border-amber-400";
   if (type === "SUBMIT") return "border-primary";
   return "border-primary/50";
 }
@@ -356,6 +361,7 @@ function logDotClass(type: PersonalKpiProgressLog["type"]): string {
 function logTitleClass(type: PersonalKpiProgressLog["type"]): string {
   if (type === "RETURN") return kpiTone.danger.text;
   if (type === "COMPLETE") return kpiTone.success.text;
+  if (type === "EDIT") return kpiTone.warning.text;
   if (type === "SUBMIT") return kpiTone.info.text;
   return "";
 }
@@ -373,6 +379,8 @@ function noteLabel(log: PersonalKpiProgressLog): string {
       return "Lý do trả lại";
     case "COMPLETE":
       return "Nhận xét của chỉ huy";
+    case "EDIT":
+      return "Lý do sửa";
     default:
       return isRollback(log) ? "Lý do lùi tiến độ" : "Kết quả trong ngày";
   }
@@ -535,9 +543,13 @@ function ChangeLine({
     evidence: columns.evidenceColumn?.title ?? "Minh chứng",
     // Ô kết quả của trục chấm theo mục: tên cột do server ghi kèm ở `detail`.
     result: change.detail || "Kết quả",
+    // Cấp trên sửa nội dung: tên trường (Trục, Nội dung công việc, tên cột của
+    // mẫu) cũng nằm ở `detail`.
+    content: change.detail || "Nội dung",
   }[change.field];
 
   const show = (raw: string) => {
+    if (change.field === "content") return raw.trim() || "(để trống)";
     if (change.field === "result") {
       // Ô tích lưu "1"; ô điểm lưu con số.
       if (!raw.trim()) return "-";
@@ -557,7 +569,9 @@ function ChangeLine({
       <span className="line-through">{show(change.from)}</span>
       <span className="mx-1">→</span>
       <span className="text-foreground">{show(change.to)}</span>
-      {change.detail && change.field !== "result" ? (
+      {change.detail &&
+      change.field !== "result" &&
+      change.field !== "content" ? (
         <span className="text-muted-foreground"> (+{change.detail})</span>
       ) : null}
     </p>
@@ -703,6 +717,10 @@ type ProgressFormProps = {
   onRequestConfirm?: (item: PersonalKpiItem) => void;
   /** Chỉ huy chốt hoàn thành ngay trong màn chi tiết. */
   onComplete?: (item: PersonalKpiItem) => void;
+  /** Chỉ huy sửa nội dung nhiệm vụ - mở form sửa của dòng đang xem. */
+  onEdit?: (item: PersonalKpiItem) => void;
+  /** Chỉ huy trả lại nhiệm vụ cho cấp dưới. */
+  onReturn?: (item: PersonalKpiItem) => void;
 };
 
 function ProgressForm({
@@ -721,6 +739,8 @@ function ProgressForm({
   onSaved,
   onRequestConfirm,
   onComplete,
+  onEdit,
+  onReturn,
 }: ProgressFormProps) {
   const fieldValues = item.task.fieldValues ?? {};
   const catalogValues = item.task.catalogValues ?? {};
@@ -1148,6 +1168,29 @@ function ProgressForm({
           Chỉ huy chốt ngay tại màn chi tiết: xem xong số liệu là bấm được,
           khỏi đóng hộp thoại rồi dò lại đúng dòng đó ngoài bảng.
         */}
+        {onEdit && canReviewPersonalKpi(item.status) ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="bg-background"
+            onClick={() => onEdit(item)}
+            title="Sửa nội dung nhiệm vụ - có ghi nhật ký"
+          >
+            <PencilLine className="h-4 w-4" />
+            Sửa nội dung
+          </Button>
+        ) : null}
+        {onReturn && canReviewPersonalKpi(item.status) ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="border-rose-300 bg-background text-rose-600 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900 dark:text-rose-400"
+            onClick={() => onReturn(item)}
+          >
+            <Undo2 className="h-4 w-4" />
+            Trả lại
+          </Button>
+        ) : null}
         {onComplete && canCompletePersonalKpi(item.status) ? (
           <Button type="button" onClick={() => onComplete(item)}>
             <CircleCheck className="h-4 w-4" />
@@ -1203,6 +1246,10 @@ type ProgressUpdateDialogProps = {
    * Bỏ trống = người xem không có quyền chốt (màn của cán bộ).
    */
   onComplete?: (item: PersonalKpiItem) => void;
+  /** Chỉ huy sửa nội dung nhiệm vụ - mở form sửa của dòng đang xem. */
+  onEdit?: (item: PersonalKpiItem) => void;
+  /** Chỉ huy trả lại nhiệm vụ cho cấp dưới. */
+  onReturn?: (item: PersonalKpiItem) => void;
   /**
    * Ép chế độ chỉ xem. Cấp trên mở nhiệm vụ của cán bộ thì chỉ để theo dõi -
    * số liệu là do cán bộ tự khai, người duyệt không gõ hộ.
@@ -1224,6 +1271,8 @@ export function ProgressUpdateDialog({
   onSaved,
   onRequestConfirm,
   onComplete,
+  onEdit,
+  onReturn,
   readOnly: forceReadOnly = false,
 }: ProgressUpdateDialogProps) {
   const shown = item;
@@ -1391,6 +1440,8 @@ export function ProgressUpdateDialog({
             onSaved={onSaved}
             onRequestConfirm={onRequestConfirm}
             onComplete={onComplete}
+            onEdit={onEdit}
+            onReturn={onReturn}
           />
         ) : null}
       </DialogContent>

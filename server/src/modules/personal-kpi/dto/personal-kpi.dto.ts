@@ -164,7 +164,12 @@ export class ScorePersonalKpiDto {
 }
 
 /** Cấp trên sửa nội dung nhiệm vụ đang nằm ở tay mình - bắt buộc nêu lý do. */
-export class ReviewerEditPersonalKpiDto extends PersonalKpiContentDto {
+/**
+ * Cấp trên sửa nhiệm vụ cán bộ đã gửi lên - sửa được MỌI trường: trục, nội dung
+ * công việc, và toàn bộ ô của mẫu (tên nhiệm vụ, điểm, hạn...). Kế thừa
+ * UpdatePersonalKpiDto để nhận cả axisId / workContentId.
+ */
+export class ReviewerEditPersonalKpiDto extends UpdatePersonalKpiDto {
   @ApiProperty({ description: 'Lý do sửa - hiện trong lịch sử nhiệm vụ' })
   @IsString()
   @MaxLength(500)
