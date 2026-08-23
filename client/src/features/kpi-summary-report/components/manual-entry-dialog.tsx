@@ -149,7 +149,7 @@ export function ManualEntryDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="manual-score">Điểm chỉ huy</Label>
+              <Label htmlFor="manual-score">Điểm</Label>
               <Input
                 id="manual-score"
                 value={score}

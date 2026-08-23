@@ -151,7 +151,7 @@ type SummaryReportPanelProps = {
  *
  * Nhiệm vụ trong báo cáo xem được theo trục, theo đơn vị hoặc dạng danh sách -
  * cùng một bộ dòng, chỉ khác cách gom. Điểm ở tiêu đề nhóm trục là điểm quy đổi
- * của trục (tính trên tổng cột), không phải tổng mấy ô "Điểm chỉ huy" bên dưới.
+ * của trục (tính trên tổng cột), không phải tổng mấy ô "Điểm" bên dưới.
  */
 export function SummaryReportPanel({
   detail,
@@ -389,7 +389,7 @@ export function SummaryReportPanel({
           tone={kpiTone.success}
         />
         <StatCard
-          label="Tổng điểm chỉ huy"
+          label="Tổng điểm đã chốt"
           value={formatScoreNumber(content.stats.totalScore)}
           hint={
             content.stats.manualScore

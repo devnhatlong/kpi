@@ -28,12 +28,50 @@ function scoreText(value: number | null): string {
 }
 
 /**
+ * Chỉ huy đã chấm khác số cán bộ tự khai thì nói rõ ở tooltip - bảng để một
+ * con số, nhưng người duyệt vẫn phải tra được đã hạ hay nâng bao nhiêu.
+ */
+function scoreHint(entry: ReportEntry): string | undefined {
+  if (
+    entry.score === null ||
+    entry.selfScore === null ||
+    entry.selfScore === entry.score
+  ) {
+    return undefined;
+  }
+  return `Chỉ huy chấm lại - cán bộ tự chấm ${formatScoreNumber(entry.selfScore)}`;
+}
+
+/** Ô số căn phải; ô trống để gạch chứ không hiện 0 giả. */
+function NumberCell({
+  value,
+  strong = false,
+  hint,
+}: {
+  value: number | null;
+  strong?: boolean;
+  hint?: string;
+}) {
+  return (
+    <TableCell
+      className={cn(
+        "text-right align-middle text-sm tabular-nums",
+        strong ? "font-medium" : "text-muted-foreground",
+      )}
+      title={hint}
+    >
+      {scoreText(value)}
+    </TableCell>
+  );
+}
+
+/**
  * Dòng này ở đâu ra.
  *
  * Không ghi "Đã hoàn thành": báo cáo tổng hợp vốn chỉ lấy việc đã xác nhận
  * hoàn thành nên dòng nào cũng vậy, cột không nói thêm được gì. Thứ người đọc
  * cần biết là số này có bản ghi KPI đứng sau hay do người lập gõ tay - gõ tay
- * thì không tra ngược được về nhật ký tiến độ và điểm chỉ huy đã chấm.
+ * thì không tra ngược được về nhật ký tiến độ và điểm đã chấm.
  */
 function SourceBadge({ kind }: { kind: ReportEntry["kind"] }) {
   const fromKpi = kind === "KPI";
@@ -96,25 +134,32 @@ export function SummaryEntriesTable({
     });
   };
 
-  const columnCount = 6 + (showAxis ? 1 : 0) + (editable ? 1 : 0);
+  const columnCount = 9 + (showAxis ? 1 : 0) + (editable ? 1 : 0);
   const total = groups.reduce((sum, group) => sum + group.entries.length, 0);
 
   return (
     <div className="overflow-x-auto rounded-lg border bg-card">
-      <Table className={showAxis ? "min-w-[1080px]" : "min-w-[920px]"}>
+      <Table className={showAxis ? "min-w-[1420px]" : "min-w-[1260px]"}>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="min-w-[260px]">Nhiệm vụ ({total})</TableHead>
+            <TableHead className="min-w-[240px]">Nhiệm vụ ({total})</TableHead>
             <TableHead className="w-[130px]" title="Số liệu lấy từ đâu ra">
               Nguồn số liệu
             </TableHead>
-            <TableHead className="w-[170px]">Cán bộ</TableHead>
+            <TableHead className="w-[160px]">Cán bộ</TableHead>
             {showAxis ? (
-              <TableHead className="w-[170px]">Trục</TableHead>
+              <TableHead className="w-[150px]">Trục</TableHead>
             ) : null}
-            <TableHead className="w-[160px]">Kết quả</TableHead>
-            <TableHead className="w-[120px]">Điểm chỉ huy</TableHead>
-            <TableHead className="w-[110px]">Chất lượng</TableHead>
+            <TableHead className="w-[100px] text-right">Điểm chuẩn</TableHead>
+            {/* Cặp % - điểm của từng nhóm, để đọc ra được vì sao điểm bằng
+                chừng đó thay vì phải tự nhân nhẩm với điểm chuẩn. */}
+            <TableHead className="w-[150px]">Tiến độ %</TableHead>
+            <TableHead className="w-[110px] text-right">Điểm tiến độ</TableHead>
+            <TableHead className="w-[110px]">Chất lượng %</TableHead>
+            <TableHead className="w-[120px] text-right">
+              Điểm chất lượng
+            </TableHead>
+            <TableHead className="w-[90px] text-right">Điểm</TableHead>
             {editable ? (
               <TableHead className="w-[60px] text-right">Bỏ</TableHead>
             ) : null}
@@ -157,7 +202,7 @@ export function SummaryEntriesTable({
                           {group.entries.length} nhiệm vụ
                         </Badge>
                         {/* Điểm là của TRỤC, tính trên tổng cột - không phải
-                            cộng mấy con số ở cột "Điểm chỉ huy" bên dưới. */}
+                            cộng mấy con số ở cột "Điểm" bên dưới. */}
                         {group.score !== null ? (
                           <span
                             className={cn(
@@ -216,6 +261,8 @@ export function SummaryEntriesTable({
                             )}
                           </TableCell>
                         ) : null}
+                        <NumberCell value={entry.baseScore} />
+
                         <TableCell className="align-middle">
                           {/* Trục chấm theo mục không có %: nói Đạt / Không đạt
                               thay vì vẽ thanh tiến độ rỗng. */}
@@ -239,20 +286,8 @@ export function SummaryEntriesTable({
                             </Badge>
                           )}
                         </TableCell>
-                        {/* Một con số thôi. Điểm chuẩn của dòng chuyển xuống
-                            tooltip: để cạnh nhau thì đọc thành phân số, mà hai
-                            số này chỉ cùng đơn vị khi mẫu khai tử số là cột
-                            điểm - khai nhầm cột phần trăm là ra "50 / 49". */}
-                        <TableCell
-                          className="align-middle text-sm font-medium tabular-nums"
-                          title={
-                            entry.baseScore === null
-                              ? undefined
-                              : `Điểm chuẩn của nhiệm vụ: ${formatScoreNumber(entry.baseScore)}`
-                          }
-                        >
-                          {scoreText(entry.score)}
-                        </TableCell>
+                        <NumberCell value={entry.progressScore} />
+
                         <TableCell className="align-middle">
                           {entry.qualityPercent === null ? (
                             <span className="text-sm text-muted-foreground">
@@ -270,6 +305,15 @@ export function SummaryEntriesTable({
                             </Badge>
                           )}
                         </TableCell>
+                        <NumberCell value={entry.qualityScore} />
+
+                        {/* Điểm chốt của dòng: chỉ huy chấm lại thì lấy số của
+                            chỉ huy. Số gốc của cán bộ nằm ở tooltip. */}
+                        <NumberCell
+                          value={entry.score}
+                          strong
+                          hint={scoreHint(entry)}
+                        />
                         {editable ? (
                           <TableCell className="text-right align-middle">
                             <Button
