@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
+import { useAxisTemplates } from "@/features/personal-kpi/use-axis-templates";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import {
   deleteSummaryReport,
@@ -172,14 +173,22 @@ export function SummaryReportPanel({
 
   const scoreGroupById = useScoreGroupMap();
   const qualityLevelById = useQualityLevelMap();
+  /*
+    Nhiệm vụ khoá bộ cột theo phiên bản mẫu lúc gửi, nhưng CÔNG THỨC tính điểm
+    thì lấy theo mẫu đang áp dụng của trục - admin sửa công thức xong phải thấy
+    báo cáo đổi theo, chứ không phải chờ gửi nhiệm vụ mới mới biết mình sửa gì.
+  */
+  const { byAxis } = useAxisTemplates();
 
   const content = useMemo(
     () =>
-      buildReportContent(detail.axes, report.manualItems ?? [], {
-        scoreGroups: scoreGroupById,
-        qualityLevels: qualityLevelById,
-      }),
-    [detail.axes, report.manualItems, scoreGroupById, qualityLevelById],
+      buildReportContent(
+        detail.axes,
+        report.manualItems ?? [],
+        { scoreGroups: scoreGroupById, qualityLevels: qualityLevelById },
+        byAxis,
+      ),
+    [detail.axes, report.manualItems, scoreGroupById, qualityLevelById, byAxis],
   );
 
   const groups = useMemo(() => {
@@ -191,6 +200,8 @@ export function SummaryReportPanel({
           label: "",
           score: null,
           maxScore: null,
+          // Xem phẳng thì trộn mọi trục, không có công thức nào áp cho cả bảng.
+          footer: null,
           entries: content.entries,
         },
       ];

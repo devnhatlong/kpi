@@ -129,7 +129,8 @@
       "Bash(curl -s -o /dev/null -w \"api=%{http_code}\\\\n\" --max-time 5 http://localhost:8080/api/v1/kpi-summary-reports/stats)",
       "Bash(curl -s -o /dev/null -w \"web=%{http_code}\\\\n\" --max-time 5 http://localhost:3000/)",
       "Bash(mongosh mongodb://127.0.0.1:27017/kpi --quiet --eval ' *)",
-      "Bash(grep -E \"^[A-Z]:\\\\\\\\\\\\\\\\|error|warning\")"
+      "Bash(grep -E \"^[A-Z]:\\\\\\\\\\\\\\\\|error|warning\")",
+      "Bash(sed -n '/for \\(const bucket of axisBuckets.values\\(\\)\\)/,/const baseTotal/p' src/features/kpi-summary-report/report-entries.ts)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

@@ -9,6 +9,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -17,6 +18,7 @@ import { formatScoreNumber } from "@/features/personal-kpi/board-cell";
 import { PercentCell } from "@/features/personal-kpi/components/kpi-cells";
 import { kpiTone } from "@/features/personal-kpi/status-styles";
 import type {
+  AxisFooter,
   EntryGroup,
   ReportEntry,
 } from "@/features/kpi-summary-report/report-entries";
@@ -120,6 +122,175 @@ function ResultBadge({ entry }: { entry: ReportEntry }) {
   );
 }
 
+/**
+ * Ba dòng cuối bảng của một trục: "Tổng từng cột" → "Tổng điểm trục" → "Điểm
+ * quy đổi".
+ *
+ * Số ở đây tính trên chính các cột phía trên, và bày luôn phép chia ra để người
+ * duyệt cộng tay kiểm lại được chứ không phải tin vào một con số từ trên trời.
+ */
+function AxisFooterRows({
+  footer,
+  axisName,
+  maxScore,
+  percent,
+  leadingSpan,
+  columnCount,
+  showTotal,
+  trailing,
+}: {
+  footer: AxisFooter;
+  axisName: string;
+  maxScore: number | null;
+  /** Bảng đang dùng bộ cột của trục chấm theo % hay của trục chấm theo mục. */
+  percent: boolean;
+  /** Số cột đầu bảng gộp lại làm nhãn dòng tổng. */
+  leadingSpan: number;
+  columnCount: number;
+  showTotal: boolean;
+  /** Số cột cuối bảng phải để trống (cột nút "Bỏ"). */
+  trailing: number;
+}) {
+  const cell = (value: number | null) =>
+    value === null ? "" : scoreText(value);
+  const sumMode = footer.mode === "sum";
+  /**
+   * Phép vừa chạy, viết lại bằng số thật:
+   * - tỉ lệ  : "[110/160 + 110/160] / 2"
+   * - cộng dồn: "1 + 2 + 4" (điểm các mục, mục không đạt đã bằng 0)
+   */
+  const denominator = footer.denominator;
+  const formula = sumMode
+    ? // Một cột điểm duy nhất thì "= 1" chẳng giải thích thêm được gì.
+      footer.parts.length > 1
+      ? footer.parts.map((part) => formatScoreNumber(part.total)).join(" + ")
+      : ""
+    : denominator?.total && footer.parts.length
+      ? `[${footer.parts
+          .map(
+            (part) =>
+              `${formatScoreNumber(part.total)}/${formatScoreNumber(denominator.total!)}`,
+          )
+          .join(" + ")}] / ${footer.parts.length}`
+      : "";
+  /** Mẫu số của công thức lệch với cột "Điểm chuẩn" đang bày. */
+  const mismatch =
+    !sumMode &&
+    denominator?.total != null &&
+    footer.base != null &&
+    denominator.total !== footer.base;
+  /** Tên cột đang đóng vai tử số / mẫu số - mẫu số có thể khác cột Điểm chuẩn. */
+  const formulaHint = sumMode
+    ? `Cộng điểm các cột: ${footer.parts.map((part) => part.label).join(", ")}`
+    : denominator
+      ? `Tử số: ${footer.parts
+          .map((part) => part.label)
+          .join(", ")} · Mẫu số: ${denominator.label}`
+      : undefined;
+
+  return (
+    <TableFooter className="bg-muted/40">
+      <TableRow className="hover:bg-transparent">
+        <TableCell colSpan={leadingSpan} className="font-medium">
+          Tổng từng cột
+        </TableCell>
+        <TableCell className="text-right tabular-nums">
+          {cell(footer.base)}
+        </TableCell>
+        {percent ? (
+          <>
+            <TableCell />
+            <TableCell className="text-right tabular-nums">
+              {cell(footer.progress)}
+            </TableCell>
+            <TableCell />
+            <TableCell className="text-right tabular-nums">
+              {cell(footer.quality)}
+            </TableCell>
+          </>
+        ) : (
+          // Bảng trục chấm theo mục: giữa "Điểm chuẩn" và "Điểm" chỉ có cột
+          // Kết quả, không có gì để cộng.
+          <TableCell />
+        )}
+        {showTotal ? (
+          <TableCell className="text-right tabular-nums">
+            {cell(footer.score)}
+          </TableCell>
+        ) : null}
+        {trailing ? <TableCell /> : null}
+      </TableRow>
+
+      <TableRow className="hover:bg-transparent">
+        <TableCell
+          colSpan={columnCount - 1 - trailing}
+          className="font-medium"
+          title={formulaHint}
+        >
+          Tổng điểm trục {axisName}
+          {formula ? (
+            <span className="ml-2 font-normal text-muted-foreground">
+              = {formula}
+              {/* Mẫu số của công thức có thể là cột khác cột "Điểm chuẩn" đang
+                  bày - nói tên ra thì mới hết ngờ số ở đâu chui ra. */}
+              {!sumMode && denominator ? ` · mẫu số: ${denominator.label}` : ""}
+            </span>
+          ) : null}
+        </TableCell>
+        <TableCell className="text-right tabular-nums">
+          {sumMode
+            ? scoreText(footer.score)
+            : footer.ratio === null
+              ? "-"
+              : formatScoreNumber(footer.ratio, 4)}
+        </TableCell>
+        {trailing ? <TableCell /> : null}
+      </TableRow>
+
+      {/*
+        Mẫu số của công thức không phải cột "Điểm chuẩn" đang bày thì hai con số
+        trong bảng không khớp nhau - nói thẳng ra chỗ lệch, đừng để người đọc
+        ngồi dò xem 187 ở đâu chui ra.
+      */}
+      {mismatch ? (
+        <TableRow className="hover:bg-transparent">
+          <TableCell colSpan={columnCount} className="py-1.5">
+            <span className={cn("text-xs", kpiTone.warning.text)}>
+              Công thức đang chia cho cột &quot;{denominator?.label}&quot; (Σ{" "}
+              {scoreText(denominator?.total ?? null)}), không phải cột Điểm
+              chuẩn ở trên (Σ {scoreText(footer.base)}). Muốn chia theo điểm
+              chuẩn thì đổi &quot;Cột mẫu số (A)&quot; trong Cấu hình form KPI ›
+              Mẫu bảng KPI.
+            </span>
+          </TableCell>
+        </TableRow>
+      ) : null}
+
+      <TableRow className="hover:bg-transparent">
+        <TableCell colSpan={columnCount - 1 - trailing} className="font-medium">
+          Điểm quy đổi
+          <span className="ml-2 font-normal text-muted-foreground">
+            {sumMode
+              ? `= Tổng điểm trục, chặn ở ${maxScore ?? 0}`
+              : `= Tổng điểm trục × ${maxScore ?? 0}`}
+          </span>
+        </TableCell>
+        <TableCell
+          className={cn(
+            "text-right font-semibold tabular-nums",
+            kpiTone.success.text,
+          )}
+        >
+          {footer.converted === null
+            ? "-"
+            : `${formatScoreNumber(footer.converted)}${maxScore ? ` / ${maxScore}` : ""}`}
+        </TableCell>
+        {trailing ? <TableCell /> : null}
+      </TableRow>
+    </TableFooter>
+  );
+}
+
 type SummaryEntriesTableProps = {
   groups: EntryGroup[];
   /** Hiện thanh tiêu đề nhóm (thu gọn được). Xem dạng danh sách thì tắt. */
@@ -161,6 +332,21 @@ export function SummaryEntriesTable({
     });
   };
 
+  /*
+    Dòng chốt của cả báo cáo: cộng điểm quy đổi của các trục CÓ CÔNG THỨC. Trục
+    chưa cấu hình công thức thì không có điểm nào để cộng, và cũng không được
+    tính vào trần điểm - nếu không thì tổng nhìn như đang hụt.
+  */
+  const scoredAxes = groups.filter((group) => group.footer?.converted != null);
+  const axisTotal = scoredAxes.reduce(
+    (sum, group) => sum + (group.footer?.converted ?? 0),
+    0,
+  );
+  const axisMaxTotal = scoredAxes.reduce(
+    (sum, group) => sum + (group.maxScore ?? 0),
+    0,
+  );
+
   if (groups.length === 0) {
     return (
       <div className="rounded-lg border bg-card py-10 text-center text-sm text-muted-foreground">
@@ -186,6 +372,16 @@ export function SummaryEntriesTable({
         );
         const minWidth =
           (percent ? 1090 : 720) + (showAxis ? 150 : 0) + (showTotal ? 90 : 0);
+        /*
+          Đếm cột để dòng tổng gộp ô cho đúng. Bộ cột theo % có thêm bốn cột
+          (tiến độ %, điểm tiến độ, chất lượng %, điểm chất lượng); bộ cột theo
+          mục chỉ có một cột Kết quả.
+        */
+        const columnCount =
+          (percent ? 7 : 4) +
+          (showAxis ? 1 : 0) +
+          (showTotal ? 1 : 0) +
+          (editable ? 1 : 0);
 
         return (
           <div key={group.key} className="overflow-hidden rounded-lg border">
@@ -404,12 +600,55 @@ export function SummaryEntriesTable({
                       </TableRow>
                     ))}
                   </TableBody>
+
+                  {/* Ba dòng cuối theo đúng khuôn công thức của mẫu. Chỉ trục
+                      đã bật công thức mới có - trục chấm theo mục thì cộng
+                      thẳng điểm, không có tỉ lệ nào để quy đổi. */}
+                  {group.footer ? (
+                    <AxisFooterRows
+                      footer={group.footer}
+                      axisName={group.label}
+                      maxScore={group.maxScore}
+                      percent={percent}
+                      leadingSpan={2 + (showAxis ? 1 : 0)}
+                      columnCount={columnCount}
+                      showTotal={showTotal}
+                      trailing={editable ? 1 : 0}
+                    />
+                  ) : null}
                 </Table>
               </div>
             ) : null}
           </div>
         );
       })}
+
+      {/* Dòng chốt của cả báo cáo - cộng điểm quy đổi của các trục. */}
+      {scoredAxes.length > 0 ? (
+        <div
+          className={cn(
+            "flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2.5",
+            kpiTone.success.soft,
+          )}
+        >
+          <span className="text-sm font-semibold text-foreground">
+            Tổng điểm các trục
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              = cộng dòng &quot;Điểm quy đổi&quot; của {scoredAxes.length} trục
+              có công thức
+            </span>
+          </span>
+          <span className="text-base font-semibold tabular-nums">
+            {formatScoreNumber(axisTotal)}
+            {axisMaxTotal ? (
+              <span className="text-muted-foreground">
+                {" "}
+                / {formatScoreNumber(axisMaxTotal)}
+              </span>
+            ) : null}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
