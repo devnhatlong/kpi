@@ -131,7 +131,8 @@
       "Bash(mongosh mongodb://127.0.0.1:27017/kpi --quiet --eval ' *)",
       "Bash(grep -E \"^[A-Z]:\\\\\\\\\\\\\\\\|error|warning\")",
       "Bash(sed -n '/for \\(const bucket of axisBuckets.values\\(\\)\\)/,/const baseTotal/p' src/features/kpi-summary-report/report-entries.ts)",
-      "Bash(grep -n \"Trả lại$\" -B 12 src/features/personal-kpi/components/personal-kpi-tracking-view.tsx)"
+      "Bash(grep -n \"Trả lại$\" -B 12 src/features/personal-kpi/components/personal-kpi-tracking-view.tsx)",
+      "Bash(requireEditable)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

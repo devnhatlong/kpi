@@ -18,6 +18,7 @@ import type { JwtPayloadUser } from '@/common/interfaces/jwt-payload-user.interf
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import {
   ChangeSummaryItemsDto,
+  DecideSummaryReportDto,
   CreateSummaryManualItemDto,
   CreateSummaryReportDto,
   SendSummaryReportDto,
@@ -138,6 +139,26 @@ export class KpiSummaryReportsController {
     @Body() dto: SendSummaryReportDto,
   ) {
     return this.service.send(user.uid, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Cấp trên duyệt báo cáo cấp dưới trình lên' })
+  @Post(':id/approve')
+  approve(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: DecideSummaryReportDto,
+  ) {
+    return this.service.approve(user.uid, id, dto.note);
+  }
+
+  @ApiOperation({ summary: 'Cấp trên trả lại báo cáo kèm lý do' })
+  @Post(':id/return')
+  returnBack(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: DecideSummaryReportDto,
+  ) {
+    return this.service.returnBack(user.uid, id, dto.reason ?? '');
   }
 
   @ApiOperation({ summary: 'Thu hồi báo cáo đã trình để sửa tiếp' })

@@ -8,13 +8,21 @@ import { User } from '@/modules/users/schemas/user.schema';
 export type KpiSummaryReportDocument = HydratedDocument<KpiSummaryReport>;
 
 /**
- * - DRAFT : còn sửa được, thêm bớt nhiệm vụ thoải mái
- * - SENT  : đã trình cấp trên, khoá nội dung - muốn sửa thì thu hồi
+ * Đời của một báo cáo tổng hợp, chạy đúng chuỗi duyệt của KPI cá nhân:
+ * - DRAFT    : còn sửa được, thêm bớt nhiệm vụ thoải mái
+ * - SENT     : đã trình, đang nằm ở chỗ cấp trên chờ quyết
+ * - RETURNED : cấp trên trả lại kèm lý do - người lập sửa rồi trình lại
+ * - APPROVED : cấp trên đã duyệt, khoá lại
  *
  * Bản ghi cũ còn trạng thái 'FINALIZED' (thời còn "chốt báo cáo"): đọc lên vẫn
  * chạy, service quy về SENT khi trả cho client nên không cần chuyển dữ liệu.
  */
-export const KPI_SUMMARY_REPORT_STATUSES = ['DRAFT', 'SENT'] as const;
+export const KPI_SUMMARY_REPORT_STATUSES = [
+  'DRAFT',
+  'SENT',
+  'RETURNED',
+  'APPROVED',
+] as const;
 
 export type KpiSummaryReportStatus =
   (typeof KPI_SUMMARY_REPORT_STATUSES)[number];
@@ -29,6 +37,8 @@ export const KPI_SUMMARY_LOG_TYPES = [
   'REMOVE_MANUAL',
   'SEND',
   'RECALL',
+  'APPROVE',
+  'RETURN',
 ] as const;
 
 export type KpiSummaryLogType = (typeof KPI_SUMMARY_LOG_TYPES)[number];
@@ -177,6 +187,20 @@ export class KpiSummaryReport {
   @Prop({ type: Date, default: null })
   sentAt!: Date | null;
 
+  /** Lý do cấp trên trả lại lần gần nhất - người lập phải đọc được. */
+  @Prop({ trim: true, default: '', maxlength: 1000 })
+  returnReason!: string;
+
+  /** Ai duyệt / trả lại gần nhất, lúc nào. */
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null })
+  decidedById!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  decidedByName!: string;
+
+  @Prop({ type: Date, default: null })
+  decidedAt!: Date | null;
+
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -186,6 +210,9 @@ export const KpiSummaryReportSchema =
 
 /** Danh sách báo cáo của tôi, mới nhất trước. */
 KpiSummaryReportSchema.index({ ownerId: 1, createdAt: -1 });
+
+/** Hộp thư đến của cấp trên: báo cáo cấp dưới trình lên mình. */
+KpiSummaryReportSchema.index({ sentToId: 1, createdAt: -1 });
 
 /** Tra ngược "nhiệm vụ này đã nằm trong báo cáo nào chưa". */
 KpiSummaryReportSchema.index({ itemIds: 1, ownerId: 1 });

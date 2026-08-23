@@ -208,7 +208,31 @@ export class SendSummaryReportDto {
   note?: string;
 }
 
+/** Cấp trên duyệt / trả lại bản trình. */
+export class DecideSummaryReportDto {
+  @ApiPropertyOptional({ description: 'Nhận xét khi duyệt' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+
+  @ApiPropertyOptional({ description: 'Lý do trả lại - bắt buộc khi trả lại' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
+}
+
 export class SummaryReportListQueryDto {
+  /**
+   * mine     = báo cáo tôi lập (mặc định)
+   * incoming = báo cáo cấp dưới trình lên tôi
+   */
+  @ApiPropertyOptional({ enum: ['mine', 'incoming'] })
+  @IsOptional()
+  @IsIn(['mine', 'incoming'])
+  scope?: 'mine' | 'incoming';
+
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)

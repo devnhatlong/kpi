@@ -16,6 +16,7 @@ import {
 import { CreateReportWizard } from "@/features/kpi-summary-report/components/create-report-wizard";
 import {
   SummaryReportListPanel,
+  type ReportScope,
   type ReportTab,
 } from "@/features/kpi-summary-report/components/summary-report-list-panel";
 import { SummaryReportPanel } from "@/features/kpi-summary-report/components/summary-report-panel";
@@ -38,6 +39,7 @@ const PAGE_SIZE = 8;
  */
 export function SummaryReportWorkspace() {
   const { mutate } = useSWRConfig();
+  const [scope, setScope] = useState<ReportScope>("mine");
   const [tab, setTab] = useState<ReportTab>("ALL");
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -56,10 +58,11 @@ export function SummaryReportWorkspace() {
     () => ({
       page,
       limit,
+      scope,
       status: tab === "ALL" ? "" : (tab as SummaryReportStatus),
       q: debouncedQuery,
     }),
-    [page, limit, tab, debouncedQuery],
+    [page, limit, scope, tab, debouncedQuery],
   );
 
   const list = useSWR(summaryReportKeys.list(listParams), () =>
@@ -157,6 +160,15 @@ export function SummaryReportWorkspace() {
             setTab(next);
             setPage(1);
           }}
+          scope={scope}
+          onScopeChange={(next) => {
+            setScope(next);
+            // Tab của hai ngăn khác nhau - đổi ngăn thì về "Tất cả" cho chắc.
+            setTab("ALL");
+            setPickedId(null);
+            setPage(1);
+          }}
+          incomingPending={stats.data?.incomingPending ?? 0}
           page={meta?.page ?? page}
           total={meta?.total ?? 0}
           totalPages={meta?.totalPages ?? 1}
@@ -208,6 +220,7 @@ export function SummaryReportWorkspace() {
           <SummaryReportPanel
             detail={detail.data}
             loading={detail.isValidating}
+            role={scope === "incoming" ? "REVIEWER" : "OWNER"}
             onChanged={refreshAll}
             onDeleted={async () => {
               setPickedId(null);

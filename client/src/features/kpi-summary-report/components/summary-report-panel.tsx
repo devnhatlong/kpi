@@ -20,6 +20,8 @@ import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -32,8 +34,10 @@ import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-level
 import { useAxisTemplates } from "@/features/personal-kpi/use-axis-templates";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import {
+  approveSummaryReport,
   deleteSummaryReport,
   recallSummaryReport,
+  returnSummaryReport,
   removeSummaryManualItem,
   removeSummaryReportItems,
   sendSummaryReport,
@@ -49,11 +53,13 @@ import {
   type ReportEntry,
 } from "@/features/kpi-summary-report/report-entries";
 import {
+  canDecideSummaryReport,
   canEditSummaryReport,
   periodLabel,
   SUMMARY_REPORT_STATUS_LABEL,
   summaryReportStatusBadgeClass,
   type SummaryReportDetail,
+  type SummaryReportRole,
 } from "@/features/kpi-summary-report/types";
 import { formatScoreNumber } from "@/features/personal-kpi/board-cell";
 import { SendRecipientDialog } from "@/features/personal-kpi/components/send-recipient-dialog";
@@ -141,6 +147,8 @@ function LogRow({
 type SummaryReportPanelProps = {
   detail: SummaryReportDetail;
   loading: boolean;
+  /** Đang xem bản mình lập hay bản cấp dưới trình lên. */
+  role: SummaryReportRole;
   /** Nạp lại chi tiết + danh sách sau mỗi thay đổi. */
   onChanged: () => void | Promise<void>;
   /** Báo cáo vừa bị xoá - cột trái phải bỏ chọn nó đi. */
@@ -157,6 +165,7 @@ type SummaryReportPanelProps = {
 export function SummaryReportPanel({
   detail,
   loading,
+  role,
   onChanged,
   onDeleted,
 }: SummaryReportPanelProps) {
@@ -165,11 +174,15 @@ export function SummaryReportPanel({
   const [manualOpen, setManualOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [returnReason, setReturnReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const report = detail.report;
-  const editable = canEditSummaryReport(report.status);
+  const editable = canEditSummaryReport(report.status, role);
+  const reviewing = role === "REVIEWER";
+  const decidable = reviewing && canDecideSummaryReport(report.status);
 
   const scoreGroupById = useScoreGroupMap();
   const qualityLevelById = useQualityLevelMap();
@@ -253,6 +266,39 @@ export function SummaryReportPanel({
     }
   };
 
+  const doApprove = async () => {
+    setBusy(true);
+    try {
+      await approveSummaryReport(report._id);
+      toast.success("Đã duyệt báo cáo tổng hợp.");
+      await onChanged();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không duyệt được báo cáo."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doReturn = async () => {
+    const reason = returnReason.trim();
+    if (!reason) {
+      toast.error("Lý do trả lại là bắt buộc.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await returnSummaryReport(report._id, reason);
+      toast.success("Đã trả lại báo cáo cho người lập.");
+      setReturnOpen(false);
+      setReturnReason("");
+      await onChanged();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không trả lại được báo cáo."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const doDelete = async () => {
     setBusy(true);
     try {
@@ -316,10 +362,19 @@ export function SummaryReportPanel({
                 </span>
               </div>
               {report.status === "SENT" && report.sentToName ? (
-                <p className={cn("text-xs", kpiTone.success.text)}>
+                <p className={cn("text-xs", kpiTone.warning.text)}>
                   Đã trình {report.sentToName}
                   {report.sentAt
                     ? ` lúc ${formatServerHm(report.sentAt)} ${formatYmd(serverYmd(report.sentAt))}`
+                    : ""}
+                  {" · đang chờ duyệt"}
+                </p>
+              ) : null}
+              {report.status === "APPROVED" ? (
+                <p className={cn("text-xs", kpiTone.success.text)}>
+                  {report.decidedByName || "Cấp trên"} đã duyệt
+                  {report.decidedAt
+                    ? ` lúc ${formatServerHm(report.decidedAt)} ${formatYmd(serverYmd(report.decidedAt))}`
                     : ""}
                 </p>
               ) : null}
@@ -336,7 +391,30 @@ export function SummaryReportPanel({
                 <Download className="size-4" />
                 {exporting ? "Đang xuất..." : "Xuất Excel"}
               </Button>
-              {editable ? (
+              {/* Cấp trên đang giữ bản trình: duyệt hoặc trả lại. Người lập:
+                  trình đi, hoặc thu hồi bản đang nằm ở trên. */}
+              {decidable ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-rose-300 bg-background text-rose-600 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900 dark:text-rose-400"
+                    disabled={busy}
+                    onClick={() => setReturnOpen(true)}
+                  >
+                    <Undo2 className="size-4" />
+                    Trả lại
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void doApprove()}
+                  >
+                    <CircleCheck className="size-4" />
+                    Duyệt báo cáo
+                  </Button>
+                </>
+              ) : reviewing ? null : editable ? (
                 <>
                   <Button
                     type="button"
@@ -355,10 +433,12 @@ export function SummaryReportPanel({
                     onClick={() => setSendOpen(true)}
                   >
                     <Send className="size-4" />
-                    Gửi lên cấp trên
+                    {report.status === "RETURNED"
+                      ? "Trình lại cấp trên"
+                      : "Gửi lên cấp trên"}
                   </Button>
                 </>
-              ) : (
+              ) : report.status === "SENT" ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -368,9 +448,49 @@ export function SummaryReportPanel({
                   <Undo2 className="size-4" />
                   Thu hồi để sửa
                 </Button>
-              )}
+              ) : null}
             </div>
           </div>
+
+          {/* Bị trả lại thì lý do phải nằm ngay đầu báo cáo, không bắt người
+              lập đi lục nhật ký mới biết phải sửa gì. */}
+          {report.status === "RETURNED" && report.returnReason ? (
+            <div
+              className={cn(
+                "flex items-start gap-2 rounded-lg border p-2.5 text-xs",
+                kpiTone.danger.soft,
+              )}
+            >
+              <Undo2 className="mt-0.5 size-4 shrink-0" />
+              <span>
+                <span className="font-medium">
+                  {report.decidedByName || "Cấp trên"} trả lại
+                  {report.decidedAt
+                    ? ` lúc ${formatServerHm(report.decidedAt)} ${formatYmd(serverYmd(report.decidedAt))}`
+                    : ""}
+                  :{" "}
+                </span>
+                {report.returnReason}
+              </span>
+            </div>
+          ) : null}
+
+          {reviewing && report.sentNote ? (
+            <div
+              className={cn(
+                "flex items-start gap-2 rounded-lg border p-2.5 text-xs",
+                kpiTone.info.soft,
+              )}
+            >
+              <Send className="mt-0.5 size-4 shrink-0" />
+              <span>
+                <span className="font-medium">
+                  Lời trình của {report.ownerName || "cấp dưới"}:{" "}
+                </span>
+                {report.sentNote}
+              </span>
+            </div>
+          ) : null}
 
           {detail.missingCount > 0 ? (
             <div
@@ -526,6 +646,58 @@ export function SummaryReportPanel({
           doSend({ recipientId: payload.recipientId, note: payload.note })
         }
       />
+
+      <Dialog
+        open={returnOpen}
+        onOpenChange={(open) => {
+          if (!busy) setReturnOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Trả lại báo cáo</DialogTitle>
+            <DialogDescription>
+              Báo cáo quay về chỗ {report.ownerName || "người lập"} ở trạng thái
+              &quot;Bị trả lại&quot;. Lý do hiện ngay đầu báo cáo và trong nhật
+              ký.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="summary-return-reason">
+              Lý do trả lại <span className="text-destructive">*</span>
+            </Label>
+            <Textarea
+              id="summary-return-reason"
+              className="min-h-[88px]"
+              placeholder="Thiếu nhiệm vụ nào, sai số ở đâu..."
+              value={returnReason}
+              maxLength={1000}
+              disabled={busy}
+              onChange={(event) => setReturnReason(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-background"
+              onClick={() => setReturnOpen(false)}
+              disabled={busy}
+            >
+              Huỷ
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void doReturn()}
+              disabled={busy || !returnReason.trim()}
+            >
+              <Undo2 className="size-4" />
+              {busy ? "Đang gửi..." : "Trả lại"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={deleteOpen}

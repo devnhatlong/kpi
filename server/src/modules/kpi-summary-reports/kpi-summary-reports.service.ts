@@ -32,6 +32,7 @@ import {
   KpiSummaryLogType,
   KpiSummaryReport,
   KpiSummaryReportDocument,
+  KpiSummaryReportStatus,
 } from './schemas/kpi-summary-report.schema';
 
 /** Trần số dòng của kho nhiệm vụ, khớp bảng tổng để hai màn hình cùng nhịp. */
@@ -154,7 +155,15 @@ export class KpiSummaryReportsService {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.max(1, query.limit ?? 10);
 
-    const filter: Record<string, unknown> = { ownerId: actor.id };
+    /*
+      Hai ngăn tách bạch: báo cáo TÔI lập, và báo cáo CẤP DƯỚI TRÌNH LÊN tôi.
+      Trộn chung một danh sách thì người dùng không biết bản nào mình phải soạn
+      tiếp, bản nào đang chờ mình quyết.
+    */
+    const filter: Record<string, unknown> =
+      query.scope === 'incoming'
+        ? { sentToId: actor.id }
+        : { ownerId: actor.id };
     if (query.status) filter.status = this.statusFilter(query.status);
     if (query.q?.trim()) {
       const escaped = query.q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -182,24 +191,36 @@ export class KpiSummaryReportsService {
     );
   }
 
-  /** Đếm cho dòng "N báo cáo · M đã gửi" trên đầu trang. */
+  /** Đếm cho dòng "N báo cáo · M đã gửi" và cho huy hiệu hộp thư đến. */
   async stats(userId: string) {
     const actor = await this.resolveScope(userId);
-    const [total, draft] = await Promise.all([
+    const [total, draft, incoming, incomingPending] = await Promise.all([
       this.reportModel.countDocuments({ ownerId: actor.id }),
       this.reportModel.countDocuments({ ownerId: actor.id, status: 'DRAFT' }),
+      this.reportModel.countDocuments({ sentToId: actor.id }),
+      // Chỉ bản đang chờ mình quyết mới đáng gắn số lên menu.
+      this.reportModel.countDocuments({
+        sentToId: actor.id,
+        status: 'SENT',
+      }),
     ]);
 
     return {
       message: 'OK',
-      data: { total, draft, sent: total - draft },
+      data: {
+        total,
+        draft,
+        sent: total - draft,
+        incoming,
+        incomingPending,
+      },
     };
   }
 
   /** Chi tiết: thông tin báo cáo + các nhiệm vụ đã gom theo trục. */
   async findOne(userId: string, id: string) {
     const actor = await this.resolveScope(userId);
-    const report = await this.requireOwned(actor, id);
+    const report = await this.requireVisible(actor, id);
 
     const rows = await this.itemModel
       .find({ _id: { $in: report.itemIds } })
@@ -230,7 +251,7 @@ export class KpiSummaryReportsService {
 
   async update(userId: string, id: string, dto: UpdateSummaryReportDto) {
     const actor = await this.resolveScope(userId);
-    const report = await this.requireDraft(actor, id);
+    const report = await this.requireEditable(actor, id);
     const changes: string[] = [];
 
     if (dto.title !== undefined) {
@@ -277,7 +298,7 @@ export class KpiSummaryReportsService {
   /** Nhặt thêm nhiệm vụ vào báo cáo đang soạn, bỏ qua dòng đã có sẵn. */
   async addItems(userId: string, id: string, dto: ChangeSummaryItemsDto) {
     const actor = await this.resolveScope(userId);
-    const report = await this.requireDraft(actor, id);
+    const report = await this.requireEditable(actor, id);
 
     const existing = new Set(report.itemIds.map((item) => String(item)));
     const incoming = await this.requireEligibleItems(actor, dto.itemIds);
@@ -310,7 +331,7 @@ export class KpiSummaryReportsService {
 
   async removeItems(userId: string, id: string, dto: ChangeSummaryItemsDto) {
     const actor = await this.resolveScope(userId);
-    const report = await this.requireDraft(actor, id);
+    const report = await this.requireEditable(actor, id);
 
     const drop = new Set(dto.itemIds.map((item) => String(item)));
     const next = report.itemIds.filter((item) => !drop.has(String(item)));
@@ -350,7 +371,7 @@ export class KpiSummaryReportsService {
     dto: CreateSummaryManualItemDto,
   ) {
     const actor = await this.resolveScope(userId);
-    const report = await this.requireDraft(actor, id);
+    const report = await this.requireEditable(actor, id);
 
     const title = dto.title?.trim() ?? '';
     if (!title) throw new BadRequestException('Tên nhiệm vụ là bắt buộc.');
@@ -388,7 +409,7 @@ export class KpiSummaryReportsService {
 
   async removeManualItem(userId: string, id: string, manualId: string) {
     const actor = await this.resolveScope(userId);
-    const report = await this.requireDraft(actor, id);
+    const report = await this.requireEditable(actor, id);
 
     const target = this.requireObjectId(manualId, 'Nhiệm vụ tự nhập');
     const before = report.manualItems.length;
@@ -426,7 +447,17 @@ export class KpiSummaryReportsService {
    */
   async send(userId: string, id: string, dto: SendSummaryReportDto) {
     const actor = await this.resolveScope(userId);
-    const report = await this.requireDraft(actor, id);
+    // Chỉ NGƯỜI LẬP trình bản của mình. Cấp trên muốn báo cáo tiếp lên trên
+    // thì tự lập bản tổng hợp của cấp mình, không đẩy tiếp bản của cấp dưới.
+    const report = await this.requireOwned(actor, id);
+    const status = this.readStatus(report);
+    if (status !== 'DRAFT' && status !== 'RETURNED') {
+      throw new BadRequestException(
+        status === 'APPROVED'
+          ? 'Báo cáo đã được duyệt - không trình lại.'
+          : 'Báo cáo đang ở chỗ cấp trên - thu hồi trước khi trình lại.',
+      );
+    }
 
     if (!report.itemIds.length && !report.manualItems.length) {
       throw new BadRequestException(
@@ -444,6 +475,8 @@ export class KpiSummaryReportsService {
     report.sentToName = recipient.name;
     report.sentNote = dto.note?.trim() ?? '';
     report.sentAt = new Date();
+    // Trình lại sau khi sửa thì lý do trả lại cũ hết hiệu lực.
+    report.returnReason = '';
     this.pushLog(
       report,
       actor,
@@ -463,8 +496,14 @@ export class KpiSummaryReportsService {
     const actor = await this.resolveScope(userId);
     const report = await this.requireOwned(actor, id);
 
-    if (report.status === 'DRAFT') {
+    const status = this.readStatus(report);
+    if (status === 'DRAFT' || status === 'RETURNED') {
       throw new BadRequestException('Báo cáo đang soạn, chưa trình đi đâu cả.');
+    }
+    if (status === 'APPROVED') {
+      throw new BadRequestException(
+        'Cấp trên đã duyệt báo cáo này - không thu hồi được nữa.',
+      );
     }
 
     const sentTo = report.sentToName;
@@ -486,9 +525,75 @@ export class KpiSummaryReportsService {
     };
   }
 
+  // ===================================================== cấp trên quyết
+
+  /**
+   * Cấp trên duyệt bản trình - điểm dừng của chuỗi.
+   *
+   * Duyệt xong khoá luôn cả hai phía: người lập không sửa hay thu hồi nữa, cấp
+   * trên cũng thôi. Muốn tổng hợp tiếp lên cấp cao hơn thì lập báo cáo của cấp
+   * mình, không đẩy tiếp bản của cấp dưới.
+   */
+  async approve(userId: string, id: string, note?: string) {
+    const actor = await this.resolveScope(userId);
+    const report = await this.requireIncoming(actor, id);
+    const now = new Date();
+
+    report.status = 'APPROVED';
+    report.returnReason = '';
+    report.decidedById = actor.id;
+    report.decidedByName = actor.name;
+    report.decidedAt = now;
+    const comment = note?.trim() ?? '';
+    this.pushLog(
+      report,
+      actor,
+      'APPROVE',
+      comment ? `Duyệt báo cáo - ${comment}` : 'Duyệt báo cáo',
+    );
+    await report.save();
+
+    return {
+      message: 'Đã duyệt báo cáo tổng hợp.',
+      data: this.toReportSummary(report),
+    };
+  }
+
+  /**
+   * Cấp trên trả lại kèm lý do - bắt buộc nêu lý do, giống trả lại nhiệm vụ.
+   * Báo cáo về tay người lập ở trạng thái RETURNED để sửa rồi trình lại.
+   */
+  async returnBack(userId: string, id: string, reason: string) {
+    const actor = await this.resolveScope(userId);
+    const report = await this.requireIncoming(actor, id);
+    const text = reason?.trim() ?? '';
+    if (!text) {
+      throw new BadRequestException('Lý do trả lại là bắt buộc.');
+    }
+
+    const now = new Date();
+    report.status = 'RETURNED';
+    report.returnReason = text;
+    report.decidedById = actor.id;
+    report.decidedByName = actor.name;
+    report.decidedAt = now;
+    /*
+      Giữ nguyên `sentToId`: bản đã trả lại vẫn nằm trong hộp thư của cấp trên
+      để tra lại mình đã trả cái gì, vì sao. Nó hết quyền sửa / quyết là do
+      trạng thái RETURNED, không phải do biến mất khỏi danh sách.
+    */
+    this.pushLog(report, actor, 'RETURN', `Trả lại - ${text}`);
+    await report.save();
+
+    return {
+      message: 'Đã trả lại báo cáo cho người lập.',
+      data: this.toReportSummary(report),
+    };
+  }
+
   async remove(userId: string, id: string) {
     const actor = await this.resolveScope(userId);
-    const report = await this.requireDraft(actor, id);
+    const report = await this.requireEditable(actor, id);
     await report.deleteOne();
     return { message: 'Đã xoá báo cáo tổng hợp.', data: { id } };
   }
@@ -707,6 +812,19 @@ export class KpiSummaryReportsService {
     }
   }
 
+  /**
+   * Báo cáo mà tôi được xem: bản tôi lập, hoặc bản cấp dưới đã trình lên tôi.
+   * Người ngoài hai vai đó thì coi như không tồn tại.
+   */
+  private async requireVisible(actor: ActorScope, id: string) {
+    const report = await this.reportModel.findOne({
+      _id: this.requireObjectId(id, 'Báo cáo'),
+      $or: [{ ownerId: actor.id }, { sentToId: actor.id }],
+    });
+    if (!report) throw new NotFoundException('Không tìm thấy báo cáo tổng hợp.');
+    return report;
+  }
+
   private async requireOwned(actor: ActorScope, id: string) {
     const report = await this.reportModel.findOne({
       _id: this.requireObjectId(id, 'Báo cáo'),
@@ -716,11 +834,47 @@ export class KpiSummaryReportsService {
     return report;
   }
 
-  private async requireDraft(actor: ActorScope, id: string) {
-    const report = await this.requireOwned(actor, id);
-    if (this.readStatus(report) !== 'DRAFT') {
+  /**
+   * Ai được sửa nội dung báo cáo lúc này.
+   *
+   * - Người lập: khi báo cáo còn đang soạn hoặc vừa bị trả lại.
+   * - Cấp trên đang giữ bản trình: sửa thẳng rồi duyệt, giống hệt cách chỉ huy
+   *   sửa nhiệm vụ của cán bộ trước khi chốt - trả đi trả lại chỉ để bỏ một
+   *   dòng thừa thì quá tốn thời gian của cả hai bên.
+   * - Đã duyệt là khoá, không ai sửa nữa.
+   */
+  private async requireEditable(actor: ActorScope, id: string) {
+    const report = await this.requireVisible(actor, id);
+    const status = this.readStatus(report);
+    const mine = String(report.ownerId) === String(actor.id);
+    const holding =
+      report.sentToId && String(report.sentToId) === String(actor.id);
+
+    if (mine && (status === 'DRAFT' || status === 'RETURNED')) return report;
+    if (holding && status === 'SENT') return report;
+
+    if (status === 'APPROVED') {
+      throw new BadRequestException('Báo cáo đã được duyệt - không sửa nữa.');
+    }
+    throw new BadRequestException(
+      mine
+        ? 'Báo cáo đang ở chỗ cấp trên - thu hồi trước khi sửa.'
+        : 'Báo cáo không nằm ở chỗ bạn.',
+    );
+  }
+
+  /** Bản trình đang nằm ở chỗ tôi chờ quyết - căn cứ để duyệt / trả lại. */
+  private async requireIncoming(actor: ActorScope, id: string) {
+    const report = await this.reportModel.findOne({
+      _id: this.requireObjectId(id, 'Báo cáo'),
+      sentToId: actor.id,
+    });
+    if (!report) {
+      throw new NotFoundException('Không tìm thấy báo cáo nào trình lên bạn.');
+    }
+    if (this.readStatus(report) !== 'SENT') {
       throw new BadRequestException(
-        'Báo cáo đã trình cấp trên - thu hồi trước khi sửa.',
+        'Báo cáo này không còn chờ bạn quyết - có thể đã duyệt, đã trả lại hoặc bị thu hồi.',
       );
     }
     return report;
@@ -730,13 +884,20 @@ export class KpiSummaryReportsService {
    * Trạng thái để đối chiếu. Bản ghi cũ còn 'FINALIZED' của thời "chốt báo
    * cáo": coi như đã trình, vì cả hai đều là trạng thái khoá nội dung.
    */
-  private readStatus(report: KpiSummaryReportDocument) {
-    return report.status === 'DRAFT' ? 'DRAFT' : 'SENT';
+  private readStatus(report: KpiSummaryReportDocument): KpiSummaryReportStatus {
+    if (report.status === 'DRAFT') return 'DRAFT';
+    if (report.status === 'RETURNED') return 'RETURNED';
+    if (report.status === 'APPROVED') return 'APPROVED';
+    return 'SENT';
   }
 
   /** Lọc theo trạng thái có tính tới bản ghi cũ mang 'FINALIZED'. */
   private statusFilter(status: string) {
-    return status === 'DRAFT' ? 'DRAFT' : { $ne: 'DRAFT' };
+    if (status === 'SENT') {
+      // 'FINALIZED' của bản cũ cũng là "đã trình, đang chờ quyết".
+      return { $nin: ['DRAFT', 'RETURNED', 'APPROVED'] };
+    }
+    return status;
   }
 
   private toReportSummary(report: KpiSummaryReportDocument) {
@@ -775,6 +936,9 @@ export class KpiSummaryReportsService {
       sentToName: report.sentToName ?? '',
       sentNote: report.sentNote ?? '',
       sentAt: report.sentAt,
+      returnReason: report.returnReason ?? '',
+      decidedByName: report.decidedByName ?? '',
+      decidedAt: report.decidedAt,
       createdAt: report.createdAt,
       updatedAt: report.updatedAt,
     };

@@ -24,11 +24,31 @@ import { formatYmd, serverYmd } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
 export type ReportTab = "ALL" | SummaryReportStatus;
+export type ReportScope = "mine" | "incoming";
 
-const TABS: Array<{ value: ReportTab; label: string }> = [
+/*
+  Hai ngăn: bản mình lập và bản cấp dưới trình lên. Mỗi ngăn có bộ tab riêng vì
+  trạng thái đáng quan tâm khác hẳn nhau - bên mình là "soạn tiếp / bị trả lại",
+  bên nhận là "chờ mình quyết".
+*/
+const SCOPES: Array<{ value: ReportScope; label: string }> = [
+  { value: "mine", label: "Tôi lập" },
+  { value: "incoming", label: "Cấp dưới trình" },
+];
+
+const MINE_TABS: Array<{ value: ReportTab; label: string }> = [
   { value: "ALL", label: "Tất cả" },
   { value: "DRAFT", label: "Đang soạn" },
-  { value: "SENT", label: "Đã gửi" },
+  { value: "SENT", label: "Chờ duyệt" },
+  { value: "RETURNED", label: "Bị trả lại" },
+  { value: "APPROVED", label: "Đã duyệt" },
+];
+
+const INCOMING_TABS: Array<{ value: ReportTab; label: string }> = [
+  { value: "ALL", label: "Tất cả" },
+  { value: "SENT", label: "Chờ tôi duyệt" },
+  { value: "APPROVED", label: "Đã duyệt" },
+  { value: "RETURNED", label: "Đã trả lại" },
 ];
 
 type SummaryReportListPanelProps = {
@@ -40,6 +60,10 @@ type SummaryReportListPanelProps = {
   onQChange: (value: string) => void;
   tab: ReportTab;
   onTabChange: (value: ReportTab) => void;
+  scope: ReportScope;
+  onScopeChange: (value: ReportScope) => void;
+  /** Số bản đang chờ tôi quyết - gắn lên nhãn ngăn "Cấp dưới trình". */
+  incomingPending: number;
   page: number;
   total: number;
   totalPages: number;
@@ -65,6 +89,9 @@ export function SummaryReportListPanel({
   onQChange,
   tab,
   onTabChange,
+  scope,
+  onScopeChange,
+  incomingPending,
   page,
   total,
   totalPages,
@@ -76,6 +103,31 @@ export function SummaryReportListPanel({
         <CardTitle className="text-base">Danh sách báo cáo</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        <SegmentedTabs
+          items={SCOPES.map((item) => ({
+            value: item.value,
+            label:
+              item.value === "incoming" && incomingPending > 0 ? (
+                <span className="flex items-center gap-1.5">
+                  {item.label}
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 text-xs font-medium tabular-nums",
+                      kpiTone.warning.soft,
+                    )}
+                  >
+                    {incomingPending}
+                  </span>
+                </span>
+              ) : (
+                item.label
+              ),
+          }))}
+          value={scope}
+          onChange={onScopeChange}
+          ariaLabel="Báo cáo tôi lập hay cấp dưới trình lên"
+        />
+
         <div className="relative">
           <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -87,7 +139,7 @@ export function SummaryReportListPanel({
         </div>
 
         <SegmentedTabs
-          items={TABS}
+          items={scope === "incoming" ? INCOMING_TABS : MINE_TABS}
           value={tab}
           onChange={onTabChange}
           ariaLabel="Lọc báo cáo theo trạng thái"
@@ -106,8 +158,9 @@ export function SummaryReportListPanel({
               <FileSpreadsheet className="size-8 text-muted-foreground" />
               <p className="text-sm font-medium">Chưa có báo cáo nào</p>
               <p className="max-w-[220px] text-xs text-muted-foreground">
-                Bấm &quot;Tạo báo cáo tổng hợp&quot; để gom việc đã hoàn thành
-                thành một bản trình.
+                {scope === "incoming"
+                  ? "Chưa có cấp dưới nào trình báo cáo tổng hợp lên bạn."
+                  : "Bấm Tạo báo cáo tổng hợp để gom việc đã hoàn thành thành một bản trình."}
               </p>
             </div>
           ) : null}
@@ -140,8 +193,11 @@ export function SummaryReportListPanel({
                   </Badge>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {report.scopeName || "Chưa đặt phạm vi"} ·{" "}
-                  {createdLabel(report.createdAt)}
+                  {/* Bản cấp dưới trình lên thì thứ cần biết trước là AI trình. */}
+                  {scope === "incoming"
+                    ? report.ownerName || "Chưa rõ người lập"
+                    : report.scopeName || "Chưa đặt phạm vi"}{" "}
+                  · {createdLabel(report.createdAt)}
                 </p>
                 <Badge
                   variant="secondary"

@@ -37,6 +37,7 @@ export const summaryReportKeys = {
     [
       "kpi-summary-reports",
       "list",
+      params.scope ?? "mine",
       params.page ?? 1,
       params.limit ?? 10,
       params.status ?? "",
@@ -80,6 +81,7 @@ export async function fetchSummaryReports(params: SummaryReportListQuery) {
         limit: params.limit,
         q: params.q,
         status: params.status || undefined,
+        scope: params.scope,
       }),
     }),
   );
@@ -175,6 +177,20 @@ export async function sendSummaryReport(
 ) {
   return unwrapData(
     api.post<ApiResponse<SummaryReport>>(`${BASE}/${id}/send`, input),
+  );
+}
+
+/** Cấp trên duyệt bản trình - điểm dừng của chuỗi. */
+export async function approveSummaryReport(id: string, note?: string) {
+  return unwrapData(
+    api.post<ApiResponse<SummaryReport>>(`${BASE}/${id}/approve`, { note }),
+  );
+}
+
+/** Cấp trên trả lại kèm lý do - báo cáo về tay người lập để sửa. */
+export async function returnSummaryReport(id: string, reason: string) {
+  return unwrapData(
+    api.post<ApiResponse<SummaryReport>>(`${BASE}/${id}/return`, { reason }),
   );
 }
 
