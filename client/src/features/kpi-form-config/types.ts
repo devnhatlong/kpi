@@ -766,6 +766,255 @@ export function createDefaultTemplateDraft(): {
   };
 }
 
+/**
+ * Một mục trong "Thư viện trường" - bấm hoặc kéo vào canvas là ra một cột mới.
+ *
+ * Preset KHÔNG đẻ ra hành vi mới: mỗi mục chỉ là một cặp (ánh xạ, kiểu dữ liệu)
+ * đã có sẵn, đặt tên theo cách người cấu hình gọi nó trong biểu mẫu. Muốn thêm
+ * mục thì phải có ánh xạ tương ứng ở FORM_COLUMN_SEMANTICS trước.
+ */
+export type FieldPreset = {
+  id: string;
+  label: string;
+  hint: string;
+  semanticKey: FormColumnSemantic;
+  dataType: FormColumnDataType;
+  width: number;
+  /**
+   * Khoá cố định cho cột không ánh xạ - dựng lại mẫu vẫn khớp dữ liệu đã nhập.
+   * Bỏ trống thì sinh khoá ngẫu nhiên như cột tự do bình thường.
+   */
+  key?: string;
+  /** Tiêu đề gợi ý sẵn, người cấu hình sửa lại được. */
+  title: string;
+};
+
+export const FIELD_PRESET_GROUPS: Array<{
+  kind: SemanticKind;
+  items: FieldPreset[];
+}> = [
+  {
+    kind: "free",
+    items: [
+      {
+        id: "short_text",
+        label: "Văn bản ngắn",
+        hint: "Ô gõ chữ một dòng",
+        title: "Nội dung",
+        semanticKey: "custom",
+        dataType: "text",
+        width: 200,
+      },
+      {
+        id: "number",
+        label: "Điểm chuẩn",
+        hint: "Ô nhập số, cộng được ở dòng tổng",
+        title: "Điểm chuẩn",
+        key: "standard_score",
+        semanticKey: "custom",
+        dataType: "number",
+        width: 110,
+      },
+      {
+        id: "percent",
+        label: "Tỷ lệ hoàn thành",
+        hint: "Ô nhập số phần trăm",
+        title: "Tỷ lệ hoàn thành",
+        semanticKey: "custom",
+        dataType: "number",
+        width: 120,
+      },
+      {
+        id: "date",
+        label: "Ngày hoàn thành",
+        hint: "Ô chọn ngày",
+        title: "Thời hạn hoàn thành",
+        key: "deadline",
+        semanticKey: "custom",
+        dataType: "date",
+        width: 140,
+      },
+      {
+        id: "boolean",
+        label: "Ô tích Đạt / Không đạt",
+        hint: "Ô tích hai trạng thái",
+        title: "Đạt",
+        semanticKey: "custom",
+        dataType: "boolean",
+        width: 90,
+      },
+      {
+        id: "file",
+        label: "Tài liệu kiểm chứng",
+        hint: "Ô đính kèm tệp",
+        title: "Tài liệu kiểm chứng",
+        key: "evidence_files",
+        semanticKey: "custom",
+        dataType: "file",
+        width: 200,
+      },
+    ],
+  },
+  {
+    kind: "catalog",
+    items: [
+      {
+        id: "work_content",
+        label: "Nội dung công việc",
+        hint: "Dropdown danh mục Nội dung công việc",
+        title: "Nội dung công việc",
+        semanticKey: "work_content",
+        dataType: "select",
+        width: 220,
+      },
+      {
+        id: "work_task",
+        label: "Nhiệm vụ",
+        hint: "Dropdown nhiệm vụ của nội dung đang khai",
+        title: "Nhiệm vụ",
+        semanticKey: "work_task",
+        dataType: "select",
+        width: 200,
+      },
+      {
+        id: "score_group",
+        label: "Nhóm điểm",
+        hint: "Dropdown danh mục Nhóm điểm",
+        title: "Nhóm điểm",
+        semanticKey: "score_group",
+        dataType: "select",
+        width: 140,
+      },
+      {
+        id: "quality_level",
+        label: "Chất lượng thực hiện",
+        hint: "Dropdown mức 100 / 75 / 50 / 25 / 0%",
+        title: "Chất lượng thực hiện",
+        semanticKey: "quality_level",
+        dataType: "select",
+        width: 160,
+      },
+      {
+        id: "criterion",
+        label: "Tiêu chí chấm điểm",
+        hint: "Dropdown danh mục Tiêu chí chung",
+        title: "Tiêu chí / Nội dung",
+        semanticKey: "criterion",
+        dataType: "select",
+        width: 240,
+      },
+    ],
+  },
+  {
+    kind: "content",
+    items: [
+      {
+        id: "work_content_note",
+        label: "Ghi chú nội dung công việc",
+        hint: "Chữ admin khai sẵn ở danh mục",
+        title: "Ghi chú",
+        semanticKey: "work_content_note",
+        dataType: "text",
+        width: 180,
+      },
+      {
+        id: "criterion_note",
+        label: "Ghi chú tiêu chí",
+        hint: "Chữ admin khai sẵn ở tiêu chí",
+        title: "Ghi chú",
+        semanticKey: "criterion_note",
+        dataType: "text",
+        width: 180,
+      },
+    ],
+  },
+  {
+    kind: "auto",
+    items: [
+      {
+        id: "stt",
+        label: "STT",
+        hint: "Hệ thống tự đánh số dòng",
+        title: "STT",
+        semanticKey: "stt",
+        dataType: "auto_increment",
+        width: 60,
+      },
+      {
+        id: "criterion_max_score",
+        label: "Điểm tối đa tiêu chí",
+        hint: "Số lấy từ tiêu chí đang chọn",
+        title: "Điểm tối đa",
+        semanticKey: "criterion_max_score",
+        dataType: "number",
+        width: 110,
+      },
+    ],
+  },
+];
+
+/** Cột mới dựng từ một mục thư viện trường. */
+export function columnFromPreset(preset: FieldPreset): FormTemplateColumn {
+  return {
+    id: localId("col"),
+    key: preset.key ?? (preset.semanticKey === "custom"
+      ? localId("field")
+      : preset.semanticKey),
+    title: preset.title,
+    headerPath: [],
+    width: preset.width,
+    visible: true,
+    dataType: preset.dataType,
+    semanticKey: preset.semanticKey,
+    required: false,
+    rangeFromColumnKey: null,
+    autoValue: null,
+  };
+}
+
+export const REPORT_TEMPLATE_STATUSES = ["draft", "applied"] as const;
+export type ReportTemplateStatus = (typeof REPORT_TEMPLATE_STATUSES)[number];
+
+export const REPORT_TEMPLATE_STATUS_LABEL: Record<
+  ReportTemplateStatus,
+  string
+> = {
+  draft: "Đang cấu hình",
+  applied: "Đã áp dụng",
+};
+
+/**
+ * Mẫu báo cáo của một năm - bản ghép các khối nội dung thành biểu mẫu thật.
+ * Bộ cột của từng trục nằm ở FormTemplate; ở đây chỉ khai năm nay dùng khối nào.
+ */
+export type ReportTemplate = {
+  _id: string;
+  id?: string;
+  code: string;
+  name: string;
+  description?: string;
+  year: number;
+  includeCriteria: boolean;
+  /** Theo thứ tự khối B.1, B.2… trên báo cáo. */
+  axisIds: Array<AxisRef | string>;
+  status: ReportTemplateStatus;
+  /** Giờ server lúc áp dụng; null = chưa áp dụng lần nào. */
+  appliedAt?: string | null;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+export type ReportTemplateInput = {
+  code?: string;
+  name: string;
+  description?: string;
+  year?: number;
+  includeCriteria?: boolean;
+  axisIds: string[];
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
 export type ListQueryParams = {
   page?: number;
   limit?: number;

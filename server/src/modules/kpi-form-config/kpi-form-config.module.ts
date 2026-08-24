@@ -21,6 +21,10 @@ import {
   FormTemplateVersion,
   FormTemplateVersionSchema,
 } from './schemas/form-template-version.schema';
+import {
+  ReportTemplate,
+  ReportTemplateSchema,
+} from './schemas/report-template.schema';
 import { WorkContentsController } from './work-contents.controller';
 import { WorkContentsService } from './work-contents.service';
 import { WorkTasksController } from './work-tasks.controller';
@@ -35,6 +39,8 @@ import { QualityLevelsController } from './quality-levels.controller';
 import { QualityLevelsService } from './quality-levels.service';
 import { CriteriaController } from './criteria.controller';
 import { CriteriaService } from './criteria.service';
+import { ReportTemplatesController } from './report-templates.controller';
+import { ReportTemplatesService } from './report-templates.service';
 import {
   QualityLevel,
   QualityLevelSchema,
@@ -51,6 +57,7 @@ import {
       { name: FormTemplateVersion.name, schema: FormTemplateVersionSchema },
       { name: QualityLevel.name, schema: QualityLevelSchema },
       { name: Criterion.name, schema: CriterionSchema },
+      { name: ReportTemplate.name, schema: ReportTemplateSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),
@@ -63,6 +70,7 @@ import {
     FormTemplatesController,
     QualityLevelsController,
     CriteriaController,
+    ReportTemplatesController,
   ],
   providers: [
     WorkContentsService,
@@ -72,6 +80,7 @@ import {
     FormTemplatesService,
     QualityLevelsService,
     CriteriaService,
+    ReportTemplatesService,
   ],
   exports: [
     WorkContentsService,
@@ -81,6 +90,7 @@ import {
     FormTemplatesService,
     QualityLevelsService,
     CriteriaService,
+    ReportTemplatesService,
   ],
 })
 export class KpiFormConfigModule {}

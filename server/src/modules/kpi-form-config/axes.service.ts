@@ -15,6 +15,10 @@ import {
   FormTemplate,
   FormTemplateDocument,
 } from './schemas/form-template.schema';
+import {
+  ReportTemplate,
+  ReportTemplateDocument,
+} from './schemas/report-template.schema';
 
 @Injectable()
 export class AxesService {
@@ -25,6 +29,8 @@ export class AxesService {
     private readonly workContentModel: Model<WorkContentDocument>,
     @InjectModel(FormTemplate.name)
     private readonly formTemplateModel: Model<FormTemplateDocument>,
+    @InjectModel(ReportTemplate.name)
+    private readonly reportTemplateModel: Model<ReportTemplateDocument>,
   ) {}
 
   async create(dto: CreateAxisDto) {
@@ -104,8 +110,23 @@ export class AxesService {
         'Không thể xoá trục đang được dùng ở nội dung công việc.',
       );
     }
-    // Gỡ khỏi mẫu bảng để không còn tham chiếu treo.
+    // Trục nằm trong mẫu báo cáo ĐANG áp dụng thì chặn hẳn: gỡ ngầm là bảng
+    // chấm của cả năm mất một khối mà không ai được báo.
+    const applied = await this.reportTemplateModel.findOne({
+      axisIds: item._id,
+      status: 'applied',
+    });
+    if (applied) {
+      throw new BadRequestException(
+        `Trục đang nằm trong mẫu báo cáo "${applied.name}" đã áp dụng. Bỏ trục khỏi mẫu đó trước.`,
+      );
+    }
+    // Gỡ khỏi mẫu bảng và các mẫu báo cáo nháp để không còn tham chiếu treo.
     await this.formTemplateModel.updateMany(
+      { axisIds: item._id },
+      { $pull: { axisIds: item._id } },
+    );
+    await this.reportTemplateModel.updateMany(
       { axisIds: item._id },
       { $pull: { axisIds: item._id } },
     );

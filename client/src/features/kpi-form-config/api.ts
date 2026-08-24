@@ -17,6 +17,8 @@ import type {
   PaginatedResult,
   QualityLevel,
   QualityLevelInput,
+  ReportTemplate,
+  ReportTemplateInput,
   ScoreGroup,
   ScoreGroupInput,
   WorkContent,
@@ -397,4 +399,86 @@ export function updateFormTemplate(
 
 export async function deleteFormTemplate(id: string) {
   await api.delete(`/kpi-form-config/form-templates/${id}`);
+}
+
+export const reportTemplateKeys = {
+  all: ["report-templates"] as const,
+  /** Năm do server quyết khi không truyền - khoá cache dùng chuỗi rỗng. */
+  current: (year?: number) => ["report-template-current", year ?? ""] as const,
+};
+
+export async function fetchReportTemplatesPage(
+  params: ListQueryParams,
+): Promise<PaginatedResult<ReportTemplate>> {
+  return unwrapPaginated(
+    api.get<ApiResponse<ReportTemplate[]>>(
+      "/kpi-form-config/report-templates/all",
+      { params: buildListQuery(params) },
+    ),
+  );
+}
+
+export async function fetchReportTemplatesAll() {
+  const result = await fetchReportTemplatesPage({ all: true });
+  return result.data.filter((item) => item.isActive);
+}
+
+/**
+ * Năm đang cấu hình kèm mẫu của năm đó.
+ * `template` null = năm đó chưa có mẫu nào; chưa áp dụng bản nào thì server trả
+ * bản nháp mới nhất để màn cấu hình mở lại đúng chỗ đang dở.
+ */
+export type CurrentReportContext = {
+  year: number;
+  template: ReportTemplate | null;
+};
+
+/**
+ * Bỏ trống `year` để SERVER chốt năm - không suy năm từ giờ máy trạm, vì máy
+ * sang năm sớm hoặc muộn là cả màn cấu hình trỏ nhầm năm.
+ */
+export async function fetchCurrentReportContext(
+  year?: number,
+): Promise<CurrentReportContext> {
+  const data = await unwrapData(
+    api.get<ApiResponse<CurrentReportContext>>(
+      "/kpi-form-config/report-templates/current",
+      { params: year ? { year } : undefined },
+    ),
+  );
+  return { year: data.year, template: data.template ?? null };
+}
+
+export function createReportTemplate(input: ReportTemplateInput) {
+  return unwrapData(
+    api.post<ApiResponse<ReportTemplate>>(
+      "/kpi-form-config/report-templates",
+      input,
+    ),
+  );
+}
+
+export function updateReportTemplate(
+  id: string,
+  input: Partial<ReportTemplateInput>,
+) {
+  return unwrapData(
+    api.patch<ApiResponse<ReportTemplate>>(
+      `/kpi-form-config/report-templates/${id}`,
+      input,
+    ),
+  );
+}
+
+/** Chốt mẫu cho năm của nó - các bản khác cùng năm tự lùi về nháp. */
+export function applyReportTemplate(id: string) {
+  return unwrapData(
+    api.post<ApiResponse<ReportTemplate>>(
+      `/kpi-form-config/report-templates/${id}/apply`,
+    ),
+  );
+}
+
+export async function deleteReportTemplate(id: string) {
+  await api.delete(`/kpi-form-config/report-templates/${id}`);
 }

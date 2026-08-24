@@ -47,12 +47,20 @@ import { useListPagination } from "@/hooks/use-list-pagination";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
 
+type CriteriaViewProps = {
+  /**
+   * Nhúng trong hộp thoại của màn cấu hình biểu mẫu - bỏ tiêu đề trang, vì
+   * hộp thoại đã có tiêu đề riêng, hai dòng tiêu đề chồng nhau đọc rất rối.
+   */
+  embedded?: boolean;
+};
+
 /**
  * Danh mục tiêu chí chấm điểm chung - từng dòng của bảng "Danh mục điểm tiêu
- * chí chung". Danh mục phẳng, không thuộc trục nào; bộ cột của bảng chấm cấu
- * hình bên Mẫu bảng KPI y như của một trục.
+ * chí chung". Danh mục phẳng, không thuộc trục nào; bộ cột của bảng chấm dựng
+ * ở màn Cấu hình biểu mẫu báo cáo y như của một trục.
  */
-export function CriteriaView() {
+export function CriteriaView({ embedded = false }: CriteriaViewProps = {}) {
   const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
     useListPagination();
   const listParams = { page, limit, q: debouncedQuery };
@@ -97,13 +105,17 @@ export function CriteriaView() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">
-            Tiêu chí chấm điểm
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Danh mục điểm tiêu chí chung - mỗi dòng là một tiêu chí kèm điểm tối
-            đa, dùng chung cho mọi đơn vị được chấm.
-          </p>
+          {embedded ? null : (
+            <>
+              <h1 className="font-display text-2xl font-semibold tracking-tight">
+                Tiêu chí chấm điểm
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Danh mục điểm tiêu chí chung - mỗi dòng là một tiêu chí kèm điểm
+                tối đa, dùng chung cho mọi đơn vị được chấm.
+              </p>
+            </>
+          )}
         </div>
         <Button
           onClick={() => {

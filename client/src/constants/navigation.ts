@@ -8,7 +8,6 @@ import {
   Inbox,
   KeyRound,
   Layers,
-  ListChecks,
   ListTree,
   Network,
   Settings,
@@ -114,9 +113,14 @@ export const NAV_ITEMS: NavItem[] = [
     permissions: [PERM.KPI_MANAGE],
     children: [
       {
-        title: "Trục",
-        href: "/kpi/form-config/axes",
-        icon: Layers,
+        /*
+          Một cửa cho cả ba việc từng nằm rời: khai trục, dựng bộ cột của trục,
+          và khai tiêu chí chung. Ba thứ đó chỉ có nghĩa khi ghép lại thành mẫu
+          báo cáo của năm, nên tách ba trang chỉ bắt người cấu hình đi vòng.
+        */
+        title: "Cấu hình biểu mẫu",
+        href: "/kpi/form-config",
+        icon: Table2,
       },
       {
         title: "Nội dung công việc",
@@ -132,17 +136,6 @@ export const NAV_ITEMS: NavItem[] = [
         title: "Nhóm điểm",
         href: "/kpi/form-config/score-groups",
         icon: Gauge,
-      },
-      {
-        // Danh mục phẳng, không thuộc trục nào - bảng chấm chung cho mọi đơn vị.
-        title: "Tiêu chí chấm điểm",
-        href: "/kpi/form-config/criteria",
-        icon: ListChecks,
-      },
-      {
-        title: "Mẫu bảng KPI",
-        href: "/kpi/form-config/form-templates",
-        icon: Table2,
       },
     ],
   },
