@@ -1009,6 +1009,17 @@ export type DepartmentRef = {
   name: string;
 };
 
+/**
+ * Hai phần lớn của biểu mẫu báo cáo, đúng như bản Excel đang dùng:
+ *   A. DANH MỤC ĐIỂM TIÊU CHÍ CHUNG   - một bảng duy nhất
+ *   B. DANH MỤC NHIỆM VỤ CÔNG TÁC     - bọc các trục, đánh số 1., 2., 3.…
+ *
+ * Trục KHÔNG đứng ngang hàng với A: nó là mục con trong phần B, nên số thứ tự
+ * của trục đếm riêng trong B chứ không nối tiếp chữ cái phần.
+ */
+export const REPORT_SECTION_A_TITLE = "Danh mục điểm tiêu chí chung";
+export const REPORT_SECTION_B_TITLE = "Danh mục nhiệm vụ công tác";
+
 export const REPORT_TEMPLATE_STATUSES = ["draft", "applied"] as const;
 export type ReportTemplateStatus = (typeof REPORT_TEMPLATE_STATUSES)[number];
 

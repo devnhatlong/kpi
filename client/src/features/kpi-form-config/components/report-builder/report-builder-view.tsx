@@ -80,6 +80,7 @@ import {
   createDefaultTemplateDraft,
   entityId,
   REPORT_SCOPE_TYPE_LABEL,
+  REPORT_SECTION_A_TITLE,
   type Axis,
   type FormTemplate,
   type FormTemplateInput,
@@ -295,10 +296,21 @@ export function ReportBuilderView({ templateId }: { templateId: string }) {
   const blockLabel = !target
     ? ""
     : target.kind === "criteria"
-      ? "Danh mục điểm tiêu chí chung"
-      : targetAxis
-        ? `Trục ${targetAxisIndex + 1} · ${targetAxis.name}`
-        : "Trục đã xoá";
+      ? REPORT_SECTION_A_TITLE
+      : (targetAxis?.name ?? "Trục đã xoá");
+
+  /*
+    Khối này nằm ở đâu trong bản in: phần A, hay mục thứ mấy của phần B. Trục
+    chưa tick vào mẫu thì chưa có số - nói thẳng ra, vì dựng form cho một trục
+    không nằm trong mẫu là việc hợp lệ nhưng dễ tưởng nhầm là đã ghép rồi.
+  */
+  const blockSection = !target
+    ? ""
+    : target.kind === "criteria"
+      ? "Phần A"
+      : orderedPicked.includes(target.axisId)
+        ? `Phần B · mục ${orderedPicked.indexOf(target.axisId) + 1}`
+        : "Chưa ghép vào mẫu";
 
   /** Số đơn vị / cấp đã chọn - đủ để nhận ra phạm vi mà không phải mở hộp thoại. */
   const scopeCount =
@@ -574,9 +586,21 @@ export function ReportBuilderView({ templateId }: { templateId: string }) {
       {target && draft ? (
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-display text-lg font-semibold tracking-tight">
-              Form {blockLabel}
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-display text-lg font-semibold tracking-tight">
+                Form {blockLabel}
+              </h2>
+              <Badge
+                variant="outline"
+                className={
+                  blockSection === "Chưa ghép vào mẫu"
+                    ? "font-normal text-muted-foreground"
+                    : "font-normal"
+                }
+              >
+                {blockSection}
+              </Badge>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               {target.kind === "criteria" ? (
                 <Button

@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import type { DesignerTarget } from "@/features/kpi-form-config/components/report-builder/form-draft";
 import {
   entityId,
+  REPORT_SECTION_A_TITLE,
+  REPORT_SECTION_B_TITLE,
   REPORT_TEMPLATE_STATUS_LABEL,
   type Axis,
   type FormTemplate,
@@ -145,108 +147,145 @@ export function TemplateComposer({
             </p>
           </div>
           <span className="text-xs text-muted-foreground">
-            {blockCount} khối nội dung
+            {blockCount} bảng trong báo cáo
           </span>
         </div>
 
-        {/* Khối chung - không thuộc trục nào, nên đứng riêng ở đầu danh sách. */}
-        <div
-          className={cn(
-            "flex flex-wrap items-center gap-3 rounded-lg border-l-4 px-3 py-3 transition-colors",
-            includeCriteria
-              ? "border-l-emerald-500 bg-emerald-500/5"
-              : "border-l-transparent bg-muted/40",
-            criteriaActive && "ring-1 ring-primary/40",
-          )}
-        >
-          <Checkbox
-            id="block-criteria"
-            checked={includeCriteria}
-            onCheckedChange={(checked) => onToggleCriteria(checked === true)}
-            aria-label="Đưa bảng tiêu chí chung vào mẫu"
-          />
-          <span className="grid size-7 shrink-0 place-items-center rounded-md bg-emerald-500/15 text-xs font-bold text-emerald-700 dark:text-emerald-400">
-            A
-          </span>
-          <div className="min-w-40 flex-1">
-            <Label htmlFor="block-criteria" className="text-sm font-semibold">
-              Danh mục điểm tiêu chí chung
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              {criteriaCount} tiêu chí ·{" "}
-              {criteriaTemplate
-                ? `${criteriaTemplate.columns?.length ?? 0} trường`
-                : "chưa dựng form"}{" "}
-              · tối đa {criteriaMaxScore} điểm
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onConfigure({ kind: "criteria" })}
-            className="inline-flex shrink-0 items-center gap-0.5 text-sm font-medium text-primary hover:underline"
+        {/* PHẦN A - một bảng duy nhất, nên tiêu đề phần cũng chính là khối. */}
+        <section className="overflow-hidden rounded-xl border">
+          <div
+            className={cn(
+              "flex flex-wrap items-center gap-3 border-l-4 px-3 py-3 transition-colors",
+              includeCriteria
+                ? "border-l-emerald-500 bg-emerald-500/5"
+                : "border-l-transparent bg-muted/40",
+              criteriaActive && "ring-1 ring-inset ring-primary/40",
+            )}
           >
-            Cấu hình
-            <ChevronRight className="size-4" />
-          </button>
-        </div>
+            <Checkbox
+              id="block-criteria"
+              checked={includeCriteria}
+              onCheckedChange={(checked) => onToggleCriteria(checked === true)}
+              aria-label="Đưa bảng tiêu chí chung vào mẫu"
+            />
+            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-emerald-500/15 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+              A
+            </span>
+            <div className="min-w-40 flex-1">
+              <Label htmlFor="block-criteria" className="text-sm font-semibold">
+                {REPORT_SECTION_A_TITLE}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {criteriaCount} tiêu chí ·{" "}
+                {criteriaTemplate
+                  ? `${criteriaTemplate.columns?.length ?? 0} trường`
+                  : "chưa dựng form"}{" "}
+                · tối đa {criteriaMaxScore} điểm
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onConfigure({ kind: "criteria" })}
+              className="inline-flex shrink-0 items-center gap-0.5 text-sm font-medium text-primary hover:underline"
+            >
+              Cấu hình
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        </section>
 
-        {axes.length === 0 ? (
-          <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
-            Chưa có trục nào để ghép vào mẫu.
-          </p>
-        ) : (
-          axes.map((axis, index) => {
-            const id = entityId(axis);
-            const checked = picked.has(id);
-            const template = templateByAxis.get(id) ?? null;
-            const active =
-              target?.kind === "axis" && target.axisId === id;
-            return (
-              <div
-                key={id}
-                className={cn(
-                  "flex flex-wrap items-center gap-3 rounded-lg border-l-4 px-3 py-3 transition-colors",
-                  checked
-                    ? "border-l-primary bg-primary/5"
-                    : "border-l-transparent bg-muted/40",
-                  active && "ring-1 ring-primary/40",
-                )}
-              >
-                <Checkbox
-                  id={`block-${id}`}
-                  checked={checked}
-                  onCheckedChange={(value) => onToggleAxis(id, value === true)}
-                  aria-label={`Đưa trục ${axis.name} vào mẫu`}
-                />
-                <div className="min-w-40 flex-1">
-                  <Label
-                    htmlFor={`block-${id}`}
-                    className="text-sm font-semibold"
+        {/* PHẦN B - bọc các trục. Trục là mục con 1., 2., 3.… trong phần này,
+            không phải khối ngang hàng với A. */}
+        <section className="overflow-hidden rounded-xl border">
+          <header className="flex flex-wrap items-center gap-3 border-b bg-muted/40 px-3 py-2.5">
+            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary/15 text-xs font-bold text-primary">
+              B
+            </span>
+            <div className="min-w-40 flex-1">
+              <p className="text-sm font-semibold">{REPORT_SECTION_B_TITLE}</p>
+              <p className="text-xs text-muted-foreground">
+                {pickedAxes.length} trục đang dùng · tối đa {axisScore} điểm
+              </p>
+            </div>
+          </header>
+
+          <div className="space-y-2 p-2">
+            {axes.length === 0 ? (
+              <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">
+                Chưa có trục nào để ghép vào mẫu.
+              </p>
+            ) : (
+              axes.map((axis) => {
+                const id = entityId(axis);
+                const checked = picked.has(id);
+                const template = templateByAxis.get(id) ?? null;
+                const active = target?.kind === "axis" && target.axisId === id;
+                /*
+                  Số thứ tự đếm trong PHẦN B và chỉ đếm trục đang chọn - bỏ tick
+                  trục 2 thì trục 3 phải lên số 2, đúng như bảng in ra. Trục
+                  không chọn thì không mang số nào cả.
+                */
+                const order = checked
+                  ? pickedAxisIds.indexOf(id) + 1
+                  : null;
+                return (
+                  <div
+                    key={id}
+                    className={cn(
+                      "flex flex-wrap items-center gap-3 rounded-lg border-l-4 px-3 py-3 transition-colors",
+                      checked
+                        ? "border-l-primary bg-primary/5"
+                        : "border-l-transparent bg-muted/40",
+                      active && "ring-1 ring-inset ring-primary/40",
+                    )}
                   >
-                    B.{index + 1}. {axis.name}
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    {axis.description?.trim() || axis.code} ·{" "}
-                    {template
-                      ? `${template.columns?.length ?? 0} trường`
-                      : "chưa dựng form"}
-                  </p>
-                </div>
-                <Badge variant="outline" className="shrink-0 font-normal">
-                  Tối đa {axis.maxScore} điểm
-                </Badge>
-                <button
-                  type="button"
-                  onClick={() => onConfigure({ kind: "axis", axisId: id })}
-                  className="inline-flex shrink-0 items-center gap-0.5 text-sm font-medium text-primary hover:underline"
-                >
-                  Thiết lập
-                  <ChevronRight className="size-4" />
-                </button>
-              </div>
-            );
-          })
-        )}
+                    <Checkbox
+                      id={`block-${id}`}
+                      checked={checked}
+                      onCheckedChange={(value) =>
+                        onToggleAxis(id, value === true)
+                      }
+                      aria-label={`Đưa trục ${axis.name} vào mẫu`}
+                    />
+                    <span
+                      className={cn(
+                        "w-6 shrink-0 text-center text-sm font-semibold tabular-nums",
+                        checked ? "text-primary" : "text-muted-foreground/50",
+                      )}
+                    >
+                      {order ?? "–"}
+                    </span>
+                    <div className="min-w-40 flex-1">
+                      <Label
+                        htmlFor={`block-${id}`}
+                        className="text-sm font-semibold"
+                      >
+                        {axis.name}
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        {axis.description?.trim() || axis.code} ·{" "}
+                        {template
+                          ? `${template.columns?.length ?? 0} trường`
+                          : "chưa dựng form"}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="shrink-0 font-normal">
+                      Tối đa {axis.maxScore} điểm
+                    </Badge>
+                    <button
+                      type="button"
+                      onClick={() => onConfigure({ kind: "axis", axisId: id })}
+                      className="inline-flex shrink-0 items-center gap-0.5 text-sm font-medium text-primary hover:underline"
+                    >
+                      Thiết lập
+                      <ChevronRight className="size-4" />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
       </div>
     </section>
   );
