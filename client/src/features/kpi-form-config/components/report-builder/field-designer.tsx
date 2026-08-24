@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   CalendarDays,
-  ChevronRight,
   GripVertical,
   Hash,
   ListChecks,
@@ -77,7 +76,6 @@ type FieldDesignerProps = {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onColumnsChange: (columns: FormTemplateColumn[]) => void;
-  onOpenRules: () => void;
   /** Điền sẵn bộ cột mặc định - chỉ hiện khi canvas còn trống. */
   onFillDefault: () => void;
 };
@@ -97,7 +95,6 @@ export function FieldDesigner({
   selectedId,
   onSelect,
   onColumnsChange,
-  onOpenRules,
   onFillDefault,
 }: FieldDesignerProps) {
   const [drag, setDrag] = useState<DragItem | null>(null);
@@ -270,14 +267,7 @@ export function FieldDesigner({
             <MousePointerClick className="size-3.5" />
             Kéo tay cầm để sắp xếp thứ tự hiển thị
           </span>
-          <button
-            type="button"
-            onClick={onOpenRules}
-            className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
-          >
-            Quy tắc tính điểm
-            <ChevronRight className="size-3.5" />
-          </button>
+          <span>{columns.length} trường</span>
         </div>
 
         <div

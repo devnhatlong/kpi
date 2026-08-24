@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Building2,
+  Calculator,
   Eye,
   LayoutGrid,
   ListChecks,
@@ -55,6 +56,7 @@ import { FieldDesigner } from "@/features/kpi-form-config/components/report-buil
 import {
   draftFingerprint,
   draftFromTemplate,
+  footerScoringLabel,
   sameTarget,
   sanitizeDraft,
   targetKey,
@@ -62,10 +64,7 @@ import {
   type FormDraft,
 } from "@/features/kpi-form-config/components/report-builder/form-draft";
 import { HeaderStructureDialog } from "@/features/kpi-form-config/components/report-builder/header-structure-dialog";
-import {
-  LibraryRail,
-  scoringLabel,
-} from "@/features/kpi-form-config/components/report-builder/library-rail";
+import { LibraryRail } from "@/features/kpi-form-config/components/report-builder/library-rail";
 import { ReportPreviewDialog } from "@/features/kpi-form-config/components/report-builder/report-preview-dialog";
 import {
   scopeFingerprint,
@@ -87,6 +86,7 @@ import {
   type ReportTemplateStatus,
 } from "@/features/kpi-form-config/types";
 import { getApiErrorMessage } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 
 const LIST_HREF = "/kpi/form-config";
 
@@ -281,12 +281,6 @@ export function ReportBuilderView({ templateId }: { templateId: string }) {
     ) !== report.savedFp;
   const draftDirty = !!draft && draftFingerprint(draft) !== draftSavedFp;
   const dirty = reportDirty || draftDirty;
-
-  const currentTemplate = target
-    ? target.kind === "criteria"
-      ? criteriaTemplate
-      : (templateByAxis.get(target.axisId) ?? null)
-    : null;
 
   const targetAxisIndex =
     target?.kind === "axis"
@@ -622,6 +616,17 @@ export function ReportBuilderView({ templateId }: { templateId: string }) {
                 <LayoutGrid className="size-4" />
                 Xem cấu trúc trường
               </Button>
+              {/* Công thức quy điểm là thứ phải đặt cho MỌI khối, nên đứng
+                  ngang hàng nút chứ không nấp dưới một link chữ nhỏ. */}
+              <Button
+                type="button"
+                size="sm"
+                variant={draft.footer.enabled ? "ghost" : "outline"}
+                onClick={() => setRulesOpen(true)}
+              >
+                <Calculator className="size-4" />
+                Quy tắc tính điểm
+              </Button>
               <Button
                 type="button"
                 size="sm"
@@ -635,17 +640,47 @@ export function ReportBuilderView({ templateId }: { templateId: string }) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-l-4 border-l-primary/60 bg-muted/40 px-4 py-2.5 text-sm">
-            <p>
-              <span className="font-medium">{scoringLabel(currentTemplate)}</span>
+          {/* Dải này đọc theo BẢN NHÁP đang sửa, không theo mẫu đã lưu - đổi
+              quy tắc xong phải thấy nó đổi ngay, không thì tưởng chưa ăn. */}
+          <div
+            className={cn(
+              "flex flex-wrap items-center justify-between gap-2 rounded-xl border-l-4 px-4 py-2.5 text-sm",
+              draft.footer.enabled
+                ? "border-l-primary/60 bg-muted/40"
+                : "border-l-amber-500 bg-amber-500/5",
+            )}
+          >
+            <p className="min-w-0">
+              <span className="font-medium">
+                {footerScoringLabel(draft.footer)}
+              </span>
               {" · tối đa "}
               {target.kind === "axis"
                 ? (targetAxis?.maxScore ?? 0)
                 : criteriaMaxScore}{" "}
-              điểm. Form của khối này DÙNG CHUNG cho mọi mẫu báo cáo có chứa nó -
-              sửa ở đây là các mẫu khác đổi theo.
+              điểm.{" "}
+              {draft.footer.enabled ? (
+                <>
+                  Form của khối này DÙNG CHUNG cho mọi mẫu báo cáo có chứa nó -
+                  sửa ở đây là các mẫu khác đổi theo.
+                </>
+              ) : (
+                <>
+                  Bảng của khối này sẽ không có ba dòng &quot;Tổng từng
+                  cột&quot;, &quot;Tổng điểm trục&quot;, &quot;Điểm quy
+                  đổi&quot; - mở{" "}
+                  <button
+                    type="button"
+                    onClick={() => setRulesOpen(true)}
+                    className="font-medium text-primary underline underline-offset-2"
+                  >
+                    Quy tắc tính điểm
+                  </button>{" "}
+                  để bật.
+                </>
+              )}
             </p>
-            <Badge variant="outline" className="font-normal">
+            <Badge variant="outline" className="shrink-0 font-normal">
               {draft.columns.length} trường đang dùng
             </Badge>
           </div>
@@ -669,7 +704,6 @@ export function ReportBuilderView({ templateId }: { templateId: string }) {
               onColumnsChange={(columns) =>
                 setDraft((prev) => (prev ? { ...prev, columns } : prev))
               }
-              onOpenRules={() => setRulesOpen(true)}
               onFillDefault={() => {
                 const seed = createDefaultTemplateDraft();
                 setDraft((prev) =>

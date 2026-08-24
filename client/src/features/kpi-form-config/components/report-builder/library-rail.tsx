@@ -4,12 +4,12 @@ import { Pencil, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
+  footerScoringLabel,
   sameTarget,
   type DesignerTarget,
 } from "@/features/kpi-form-config/components/report-builder/form-draft";
 import {
   entityId,
-  footerMode,
   REPORT_SECTION_A_TITLE,
   REPORT_SECTION_B_TITLE,
   type Axis,
@@ -20,10 +20,7 @@ import { cn } from "@/lib/utils";
 /** Cách quy ra điểm của một khối, viết gọn đủ đọc trong một dòng thư viện. */
 export function scoringLabel(template: FormTemplate | null): string {
   if (!template) return "Chưa dựng form";
-  if (!template.footer?.enabled) return "Không tính điểm tự động";
-  return footerMode(template.footer) === "sum"
-    ? "Cộng dồn điểm các mục"
-    : "Tính theo tỉ lệ hoàn thành";
+  return footerScoringLabel(template.footer);
 }
 
 /** Chữ cái phần, dùng chung kiểu với panel ghép khối ở giữa. */

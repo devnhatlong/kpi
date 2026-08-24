@@ -70,6 +70,22 @@ export function draftFromTemplate(
 }
 
 /**
+ * Cách quy ra điểm của một bộ cột, viết gọn đủ đọc trong một dòng.
+ *
+ * Nhận thẳng `footer` chứ không nhận cả mẫu, để màn cấu hình đọc được BẢN NHÁP
+ * đang sửa - đọc theo mẫu đã lưu thì đổi quy tắc xong dòng mô tả vẫn đứng yên,
+ * người cấu hình tưởng thao tác không ăn.
+ */
+export function footerScoringLabel(
+  footer?: FormTemplateFooter | null,
+): string {
+  if (!footer?.enabled) return "Chưa bật công thức tính điểm";
+  return footerMode(footer) === "sum"
+    ? "Cộng dồn điểm các mục"
+    : "Tính theo tỉ lệ hoàn thành";
+}
+
+/**
  * Bản nháp đã dọn các tham chiếu treo, dùng lúc dựng payload gửi server.
  *
  * Xoá một trường thì các trường khác vẫn có thể còn trỏ vào nó - cột tự tính
