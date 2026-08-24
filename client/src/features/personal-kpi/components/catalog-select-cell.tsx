@@ -4,6 +4,8 @@ import useSWR from "swr";
 
 import { SearchableSelect } from "@/components/common/searchable-select";
 import {
+  criterionKeys,
+  fetchCriteriaAll,
   fetchQualityLevelsAll,
   fetchScoreGroupsAll,
   fetchWorkTasksAll,
@@ -47,6 +49,7 @@ export function CatalogSelectCell({
 }: CatalogSelectCellProps) {
   const isScoreGroup = catalog === "score_group";
   const isWorkTask = catalog === "work_task";
+  const isCriterion = catalog === "criterion";
 
   const { data: scoreGroups } = useSWR(
     isScoreGroup ? scoreGroupKeys.all : null,
@@ -62,7 +65,16 @@ export function CatalogSelectCell({
       : null,
     () => fetchWorkTasksAll(workContentId),
   );
+  const { data: criteria } = useSWR(
+    isCriterion ? criterionKeys.all : null,
+    fetchCriteriaAll,
+  );
 
+  /*
+    Nhánh theo từng danh mục, KHÔNG để danh mục lạ rơi vào nhánh cuối: trước đây
+    nhánh cuối mặc định là Chất lượng thực hiện, thêm danh mục mới vào là ô đó
+    lặng lẽ bày sai danh sách. Danh mục chưa có nhánh thì trả rỗng.
+  */
   const options = isWorkTask
     ? (workTasks ?? []).map((item) => ({
         value: entityId(item),
@@ -75,11 +87,19 @@ export function CatalogSelectCell({
           label: item.name,
           keywords: `${item.code} ${item.minScore}-${item.maxScore}`,
         }))
-      : (qualityLevels ?? []).map((item) => ({
-          value: entityId(item),
-          label: item.name,
-          keywords: `${item.code} ${item.percent}`,
-        }));
+      : isCriterion
+        ? (criteria ?? []).map((item) => ({
+            value: entityId(item),
+            label: item.name,
+            keywords: `${item.code} ${item.maxScore}`,
+          }))
+        : catalog === "quality_level"
+          ? (qualityLevels ?? []).map((item) => ({
+              value: entityId(item),
+              label: item.name,
+              keywords: `${item.code} ${item.percent}`,
+            }))
+          : [];
 
   return (
     <SearchableSelect

@@ -227,6 +227,12 @@ export const FORM_COLUMN_SEMANTICS = [
   "work_content_note",
   "score_group",
   "quality_level",
+  /** Chọn từ danh mục Tiêu chí - cột "Tiêu chí / Nội dung" của bảng chấm. */
+  "criterion",
+  /** Ghi chú admin khai sẵn ở tiêu chí đang chọn. */
+  "criterion_note",
+  /** Điểm tối đa admin khai sẵn ở tiêu chí đang chọn - không ai gõ tay. */
+  "criterion_max_score",
 ] as const;
 
 export type FormColumnSemantic = (typeof FORM_COLUMN_SEMANTICS)[number];
@@ -236,9 +242,12 @@ export const FORM_COLUMN_SEMANTIC_LABEL: Record<FormColumnSemantic, string> = {
   stt: "STT",
   work_content: "Nội dung công việc",
   work_task: "Nhiệm vụ (chọn từ danh mục)",
-  work_content_note: "Ghi chú",
+  work_content_note: "Ghi chú (nội dung công việc)",
   score_group: "Nhóm điểm",
   quality_level: "Chất lượng thực hiện",
+  criterion: "Tiêu chí (chọn từ danh mục)",
+  criterion_note: "Ghi chú (tiêu chí)",
+  criterion_max_score: "Điểm tối đa (tiêu chí)",
 };
 
 /**
@@ -247,6 +256,7 @@ export const FORM_COLUMN_SEMANTIC_LABEL: Record<FormColumnSemantic, string> = {
  */
 export const CONTENT_TEXT_SEMANTICS: FormColumnSemantic[] = [
   "work_content_note",
+  "criterion_note",
 ];
 
 export function isContentTextSemantic(semanticKey: FormColumnSemantic) {
@@ -255,7 +265,11 @@ export function isContentTextSemantic(semanticKey: FormColumnSemantic) {
 
 /** Danh mục mà một cột lấy giá trị. */
 export type ColumnCatalog =
-  "work_content" | "work_task" | "score_group" | "quality_level";
+  | "work_content"
+  | "work_task"
+  | "score_group"
+  | "quality_level"
+  | "criterion";
 
 /**
  * Ý nghĩa cột quyết định danh mục nguồn - khai một lần ở đây, cả màn cấu hình
@@ -268,6 +282,7 @@ export const SEMANTIC_CATALOG: Partial<
   work_task: "work_task",
   score_group: "score_group",
   quality_level: "quality_level",
+  criterion: "criterion",
 };
 
 export const CATALOG_LABEL: Record<ColumnCatalog, string> = {
@@ -275,6 +290,7 @@ export const CATALOG_LABEL: Record<ColumnCatalog, string> = {
   work_task: "Nhiệm vụ",
   score_group: "Nhóm điểm",
   quality_level: "Chất lượng thực hiện",
+  criterion: "Tiêu chí chấm điểm",
 };
 
 export function catalogOfSemantic(
@@ -295,7 +311,7 @@ export type SemanticKind = "free" | "catalog" | "content" | "system" | "auto";
 export const SEMANTIC_KIND_LABEL: Record<SemanticKind, string> = {
   free: "Nhập tự do",
   catalog: "Chọn từ danh mục",
-  content: "Admin khai sẵn ở Nội dung công việc",
+  content: "Admin khai sẵn ở danh mục",
   system: "Trường hệ thống (nhập tay)",
   auto: "Hệ thống tự điền",
 };
@@ -304,12 +320,17 @@ export const SEMANTIC_KIND_HINT: Record<SemanticKind, string> = {
   free: "Giá trị chỉ hiển thị lại trên báo cáo, không dùng để chấm hay thống kê.",
   catalog: "Người nhập chọn trong danh mục, không gõ được giá trị lạ.",
   content:
-    "Chữ khai một lần ở Danh mục › Nội dung công việc rồi in ra mọi bảng; cán bộ chỉ đọc, không gõ lại.",
+    "Chữ khai một lần ở danh mục (Nội dung công việc / Tiêu chí) rồi in ra mọi bảng; người nhập chỉ đọc, không gõ lại.",
   system: "Người nhập tự gõ, giá trị vào đúng trường để chấm và tổng hợp.",
   auto: "Không cần nhập.",
 };
 
-const AUTO_SEMANTICS: FormColumnSemantic[] = ["stt"];
+/*
+  Cột hệ thống tự điền. "Điểm tối đa (tiêu chí)" nằm đây chứ không nằm nhóm
+  "Admin khai sẵn": cùng là giá trị lấy từ danh mục, nhưng nó là SỐ - phải giữ
+  kiểu số thì dòng Tổng điểm cuối bảng mới cộng được.
+*/
+const AUTO_SEMANTICS: FormColumnSemantic[] = ["stt", "criterion_max_score"];
 
 export function kindOfSemantic(semanticKey: FormColumnSemantic): SemanticKind {
   if (semanticKey === "custom") return "free";
@@ -349,6 +370,9 @@ export const SEMANTIC_DATA_TYPE: Partial<
   work_content_note: "text",
   score_group: "select",
   quality_level: "select",
+  criterion: "select",
+  criterion_note: "text",
+  criterion_max_score: "number",
 };
 
 const INPUT_DATA_TYPES: FormColumnDataType[] = [
@@ -369,6 +393,8 @@ export function allowedDataTypes(
   semanticKey: FormColumnSemantic,
 ): FormColumnDataType[] {
   if (semanticKey === "stt") return ["auto_increment"];
+  // Điểm tối đa chép từ tiêu chí - đổi sang kiểu khác là dòng Tổng điểm hết cộng.
+  if (semanticKey === "criterion_max_score") return ["number"];
   // Nhiệm vụ / Ghi chú là đoạn chữ admin đã khai - không có kiểu nào khác.
   if (isContentTextSemantic(semanticKey)) return ["text"];
   // Đổi cột danh mục sang ô nhập tay là mất ràng buộc với danh mục, người nhập
@@ -414,7 +440,9 @@ export type FormTemplateColumn = {
   semanticKey: FormColumnSemantic;
   required: boolean;
   /**
-   * Khoá cột Nhóm điểm quyết định dải điểm hợp lệ cho cột này.
+   * Khoá cột quyết định dải điểm hợp lệ cho cột này - trỏ tới cột Nhóm điểm
+   * (lấy dải min-max của nhóm) hoặc cột Điểm tối đa (tiêu chí) (điểm phải nằm
+   * trong 0 - điểm tối đa của tiêu chí ở cùng dòng).
    * Chỉ đặt được cho cột kiểu số; null = không giới hạn.
    */
   rangeFromColumnKey?: string | null;
@@ -427,6 +455,23 @@ export function scoreGroupColumns(
   columns: FormTemplateColumn[],
 ): FormTemplateColumn[] {
   return columns.filter((column) => column.semanticKey === "score_group");
+}
+
+/**
+ * Cột có thể làm trần cho một cột điểm.
+ *
+ * Hai nguồn, cùng một ý "điểm nhập không được vượt mức đã định":
+ * - Nhóm điểm: điểm phải nằm trong dải min-max của nhóm được chọn;
+ * - Điểm tối đa (tiêu chí): điểm đạt phải ≤ điểm tối đa của tiêu chí cùng dòng.
+ */
+export function rangeSourceColumns(
+  columns: FormTemplateColumn[],
+): FormTemplateColumn[] {
+  return columns.filter(
+    (column) =>
+      column.semanticKey === "score_group" ||
+      column.semanticKey === "criterion_max_score",
+  );
 }
 
 /** Các cột Chất lượng thực hiện - nguồn phần trăm cho cột tự tính. */

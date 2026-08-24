@@ -47,6 +47,7 @@ export function cellText(
     case "score_group":
     case "quality_level":
     case "work_task":
+    case "criterion":
       return row.catalogValues?.[column.key]?.name ?? "";
     case "stt":
       return "";

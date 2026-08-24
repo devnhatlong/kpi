@@ -2484,8 +2484,38 @@ export class PersonalKpiService {
       const template = byId.get(String(item.formTemplateId ?? ''));
       if (!template) continue;
 
+      const columnByKey = new Map(
+        template.columns.map((column) => [column.key, column]),
+      );
+
       for (const column of template.columns) {
         if (!column.visible || !column.rangeFromColumnKey) continue;
+
+        /*
+          Trần lấy từ cột Điểm tối đa của tiêu chí ở CÙNG DÒNG: điểm đạt không
+          được vượt điểm tối đa. Chưa chọn tiêu chí thì chưa có trần để so, để
+          yên - bắt lỗi lúc đó là bắt người ta nhập ngược thứ tự.
+        */
+        const source = columnByKey.get(column.rangeFromColumnKey);
+        if (source?.semanticKey === 'criterion_max_score') {
+          const raw = item.fieldValues?.[column.key];
+          if (raw === undefined || raw === null || String(raw).trim() === '') {
+            continue;
+          }
+          const score = Number(raw);
+          if (!Number.isFinite(score)) {
+            problems.push(`dòng ${index + 1} - "${column.title}" không phải số`);
+            continue;
+          }
+          const ceiling = Number(item.fieldValues?.[column.rangeFromColumnKey]);
+          if (!Number.isFinite(ceiling)) continue;
+          if (score < 0 || score > ceiling) {
+            problems.push(
+              `dòng ${index + 1} - "${column.title}" = ${score}, phải trong khoảng 0 - ${ceiling} của "${source.title}"`,
+            );
+          }
+          continue;
+        }
 
         const groupId = item.catalogValues?.[column.rangeFromColumnKey]?.id;
         const group = groupId ? groupById.get(groupId) : null;

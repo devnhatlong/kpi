@@ -77,7 +77,7 @@ import {
   localId,
   plainNumberColumns,
   qualityLevelColumns,
-  scoreGroupColumns,
+  rangeSourceColumns,
   SEMANTIC_DATA_TYPE,
   SEMANTIC_KIND_HINT,
   SEMANTIC_KIND_LABEL,
@@ -292,8 +292,11 @@ export function FormTemplateBuilderSheet({
     [columns, headerGroups],
   );
 
-  /** Cột Nhóm điểm trong mẫu - nguồn giới hạn cho các cột điểm. */
-  const scoreColumns = useMemo(() => scoreGroupColumns(columns), [columns]);
+  /**
+   * Cột làm trần cho các cột điểm: Nhóm điểm (dải min-max) hoặc Điểm tối đa
+   * (tiêu chí) - dùng cho bảng tiêu chí, "điểm đạt" không được vượt "điểm tối đa".
+   */
+  const scoreColumns = useMemo(() => rangeSourceColumns(columns), [columns]);
 
   /** Hai nguồn của cột tự tính: phần trăm lấy ở đâu, điểm gốc lấy ở đâu. */
   const qualityColumns = useMemo(() => qualityLevelColumns(columns), [columns]);
@@ -899,8 +902,9 @@ export function FormTemplateBuilderSheet({
                               </p>
                             ) : null}
 
-                            {/* Cột điểm ăn theo dải của nhóm điểm nào - phải
-                                chỉ đích danh vì mẫu có thể có nhiều cột nhóm điểm. */}
+                            {/* Cột điểm ăn theo trần của cột nào - phải chỉ
+                                đích danh vì mẫu có thể có nhiều cột nhóm điểm
+                                hoặc nhiều cột điểm tối đa. */}
                             {column.dataType === "number" &&
                               scoreColumns.length > 0 ? (
                               <Select

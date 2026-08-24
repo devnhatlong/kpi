@@ -42,6 +42,12 @@ export const FORM_COLUMN_SEMANTICS = [
   'score_group',
   /** Chọn từ danh mục Chất lượng thực hiện (100/75/50/25/0%). */
   'quality_level',
+  /** Chọn từ danh mục Tiêu chí - cột "Tiêu chí / Nội dung" của bảng chấm. */
+  'criterion',
+  /** Ghi chú admin khai sẵn ở tiêu chí đang chọn. */
+  'criterion_note',
+  /** Điểm tối đa admin khai sẵn ở tiêu chí đang chọn - không ai gõ tay. */
+  'criterion_max_score',
 ] as const;
 
 export type FormColumnSemantic = (typeof FORM_COLUMN_SEMANTICS)[number];
@@ -54,13 +60,18 @@ export type FormColumnSemantic = (typeof FORM_COLUMN_SEMANTICS)[number];
 export const SEMANTIC_CATALOG: Partial<
   Record<
     FormColumnSemantic,
-    'work_content' | 'work_task' | 'score_group' | 'quality_level'
+    | 'work_content'
+    | 'work_task'
+    | 'score_group'
+    | 'quality_level'
+    | 'criterion'
   >
 > = {
   work_content: 'work_content',
   work_task: 'work_task',
   score_group: 'score_group',
   quality_level: 'quality_level',
+  criterion: 'criterion',
 };
 
 export function catalogOfSemantic(semanticKey: FormColumnSemantic) {

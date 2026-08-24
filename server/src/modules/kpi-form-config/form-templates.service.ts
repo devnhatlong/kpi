@@ -454,23 +454,33 @@ export class FormTemplatesService {
       };
     });
 
-    // Kiểm ràng buộc dải điểm sau khi có đủ cột, vì cột được trỏ tới có thể
-    // đứng sau cột trỏ đi.
-    const scoreGroupKeys = new Set(
+    /*
+      Kiểm ràng buộc dải điểm sau khi có đủ cột, vì cột được trỏ tới có thể
+      đứng sau cột trỏ đi.
+
+      Hai nguồn trần điểm, cùng một ý "điểm nhập không vượt mức đã định": cột
+      Nhóm điểm cho dải min-max, cột Điểm tối đa (tiêu chí) cho trần của chính
+      dòng đó - dùng cho bảng tiêu chí, nơi mỗi tiêu chí một điểm tối đa riêng.
+    */
+    const rangeSourceKeys = new Set(
       normalized
-        .filter((column) => column.semanticKey === 'score_group')
+        .filter(
+          (column) =>
+            column.semanticKey === 'score_group' ||
+            column.semanticKey === 'criterion_max_score',
+        )
         .map((column) => column.key),
     );
     for (const column of normalized) {
       if (!column.rangeFromColumnKey) continue;
       if (column.dataType !== 'number') {
         throw new BadRequestException(
-          `Cột "${column.title}" không phải kiểu số nên không giới hạn theo nhóm điểm được.`,
+          `Cột "${column.title}" không phải kiểu số nên không giới hạn điểm được.`,
         );
       }
-      if (!scoreGroupKeys.has(column.rangeFromColumnKey)) {
+      if (!rangeSourceKeys.has(column.rangeFromColumnKey)) {
         throw new BadRequestException(
-          `Cột "${column.title}" giới hạn theo một cột Nhóm điểm không tồn tại trong mẫu.`,
+          `Cột "${column.title}" giới hạn theo một cột Nhóm điểm / Điểm tối đa không tồn tại trong mẫu.`,
         );
       }
     }
