@@ -1,17 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import {
-  ChevronRight,
-  FilePlus2,
-  Pencil,
-  Plus,
-  Search,
-  Sparkles,
-  Table2,
-  Trash2,
-} from "lucide-react";
-import useSWR, { mutate as globalMutate } from "swr";
+import { ListChecks, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import useSWR from "swr";
 import { toast } from "sonner";
 
 import {
@@ -27,13 +18,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -49,62 +33,63 @@ import {
   inactiveBadgeClass,
 } from "@/features/organization/badge-styles";
 import {
-  deleteFormTemplate,
-  fetchFormTemplatesPage,
+  criterionKeys,
+  deleteCriterion,
+  fetchCriteriaPage,
+  fetchCriteriaSummary,
+  fetchFormTemplateForCriteria,
   formTemplateKeys,
 } from "@/features/kpi-form-config/api";
-import { FormTemplateBuilderSheet } from "@/features/kpi-form-config/components/form-template-builder-sheet";
-import type { AxisRef, FormTemplate } from "@/features/kpi-form-config/types";
+import { CriterionFormDialog } from "@/features/kpi-form-config/components/criterion-form-dialog";
+import type { Criterion } from "@/features/kpi-form-config/types";
 import { entityId } from "@/features/kpi-form-config/types";
 import { useListPagination } from "@/hooks/use-list-pagination";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
 
-function axisLabel(axis: AxisRef | string) {
-  return typeof axis === "string" ? axis : `${axis.code} · ${axis.name}`;
-}
-
-export function FormTemplatesView() {
+/**
+ * Danh mục tiêu chí chấm điểm chung - từng dòng của bảng "Danh mục điểm tiêu
+ * chí chung". Danh mục phẳng, không thuộc trục nào; bộ cột của bảng chấm cấu
+ * hình bên Mẫu bảng KPI y như của một trục.
+ */
+export function CriteriaView() {
   const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
     useListPagination();
   const listParams = { page, limit, q: debouncedQuery };
   const { data, isLoading, mutate } = useSWR(
-    formTemplateKeys.list(listParams),
-    () => fetchFormTemplatesPage(listParams),
+    criterionKeys.list(listParams),
+    () => fetchCriteriaPage(listParams),
+  );
+  /*
+    Tổng điểm lấy từ server chứ không cộng trang đang xem: mở trang 2 mà thấy
+    tổng tụt xuống thì con số đó vô nghĩa.
+  */
+  const summary = useSWR(criterionKeys.summary, fetchCriteriaSummary);
+  /* Nhắc admin bảng chấm đang lấy bộ cột ở đâu - hoặc chưa có mẫu nào. */
+  const template = useSWR(
+    formTemplateKeys.forCriteria,
+    fetchFormTemplateForCriteria,
   );
 
   const items = data?.data ?? [];
   const meta = data?.meta ?? emptyPaginationMeta(limit);
-  const [builderOpen, setBuilderOpen] = useState(false);
-  const [startOpen, setStartOpen] = useState(false);
-  const [startBlank, setStartBlank] = useState(false);
-  const [edit, setEdit] = useState<FormTemplate | null>(null);
-  const [deleting, setDeleting] = useState<FormTemplate | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [edit, setEdit] = useState<Criterion | null>(null);
+  const [deleting, setDeleting] = useState<Criterion | null>(null);
 
-  /** Form nhập nhiệm vụ cache mẫu theo trục - sửa mẫu xong phải xoá cache đó. */
   const refresh = async () => {
-    await mutate();
-    await globalMutate(
-      (key) => Array.isArray(key) && key[0] === "form-template-by-axis",
-    );
-  };
-
-  const startCreate = (blank: boolean) => {
-    setEdit(null);
-    setStartBlank(blank);
-    setStartOpen(false);
-    setBuilderOpen(true);
+    await Promise.all([mutate(), summary.mutate()]);
   };
 
   const confirmDelete = async () => {
     if (!deleting) return;
     try {
-      await deleteFormTemplate(entityId(deleting));
-      toast.success("Đã xoá mẫu bảng.");
+      await deleteCriterion(entityId(deleting));
+      toast.success("Đã xoá tiêu chí.");
       setDeleting(null);
       await refresh();
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Không xoá được mẫu bảng."));
+      toast.error(getApiErrorMessage(error, "Không xoá được tiêu chí."));
     }
   };
 
@@ -113,40 +98,65 @@ export function FormTemplatesView() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h1 className="font-display text-2xl font-semibold tracking-tight">
-            Mẫu bảng KPI
+            Tiêu chí chấm điểm
           </h1>
           <p className="text-sm text-muted-foreground">
-            Dựng header bảng riêng rồi gán cho trục. Khi nhập nhiệm vụ, chọn
-            trục nào sẽ hiện đúng header của mẫu đó.
+            Danh mục điểm tiêu chí chung - mỗi dòng là một tiêu chí kèm điểm tối
+            đa, dùng chung cho mọi đơn vị được chấm.
           </p>
         </div>
-        <Button onClick={() => setStartOpen(true)}>
+        <Button
+          onClick={() => {
+            setEdit(null);
+            setFormOpen(true);
+          }}
+        >
           <Plus className="h-4 w-4" />
-          Tạo mẫu bảng
+          Thêm tiêu chí
         </Button>
       </div>
 
       <Card>
         <CardContent className="space-y-4 pt-4">
-          <div className="relative max-w-sm">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-8"
-              placeholder="Tìm theo mã hoặc tên..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-8"
+                placeholder="Tìm theo mã hoặc nội dung..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <Badge variant="outline" className="font-normal">
+                {summary.data?.activeCount ?? 0} tiêu chí đang dùng · Tổng điểm{" "}
+                <span className="ml-1 font-semibold">
+                  {summary.data?.totalMaxScore ?? 0}
+                </span>
+              </Badge>
+              {/* Chưa gán mẫu thì bảng chấm không biết in cột nào - nói ngay ở
+                  đây thay vì để admin tự mò sang mục Mẫu bảng KPI. */}
+              <Badge
+                variant="outline"
+                className={template.data ? "font-normal" : inactiveBadgeClass}
+              >
+                {template.data
+                  ? `Mẫu bảng: ${template.data.name}`
+                  : "Chưa gán mẫu bảng"}
+              </Badge>
+            </div>
           </div>
 
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-14">STT</TableHead>
+                  <TableHead className="w-14">TT</TableHead>
                   <TableHead className="w-[120px]">Mã</TableHead>
-                  <TableHead>Tên mẫu</TableHead>
-                  <TableHead className="w-[90px]">Số cột</TableHead>
-                  <TableHead className="min-w-[220px]">Trục áp dụng</TableHead>
+                  <TableHead>Tiêu chí / Nội dung</TableHead>
+                  <TableHead className="w-[110px]">Điểm tối đa</TableHead>
+                  <TableHead className="w-[100px]">Thứ tự</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
                   <TableHead className="w-[100px] text-right">
                     Thao tác
@@ -170,8 +180,8 @@ export function FormTemplatesView() {
                       className="h-24 text-center text-muted-foreground"
                     >
                       <div className="inline-flex flex-col items-center gap-2">
-                        <Table2 className="h-8 w-8 opacity-40" />
-                        <span>Chưa có mẫu bảng nào.</span>
+                        <ListChecks className="h-8 w-8 opacity-40" />
+                        <span>Chưa có tiêu chí nào.</span>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -188,40 +198,24 @@ export function FormTemplatesView() {
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">{item.name}</div>
-                        {item.description ? (
+                        {item.note ? (
                           <div className="text-xs text-muted-foreground line-clamp-2">
-                            {item.description}
+                            {item.note}
                           </div>
                         ) : null}
                       </TableCell>
-                      <TableCell>{item.columns?.length ?? 0}</TableCell>
                       <TableCell>
-                        {/* Mẫu của bảng tiêu chí không gán trục nào - không có
-                            thẻ này thì cột hiện "Chưa gán trục", đọc ra thành
-                            mẫu bỏ quên. */}
-                        {item.axisIds?.length || item.forCriteria ? (
-                          <div className="flex flex-wrap gap-1">
-                            {item.forCriteria ? (
-                              <Badge variant="outline" className="font-normal">
-                                Bảng tiêu chí
-                              </Badge>
-                            ) : null}
-                            {(item.axisIds ?? []).map((axis) => (
-                              <Badge
-                                key={entityId(axis)}
-                                variant="outline"
-                                className="font-normal"
-                              >
-                                {axisLabel(axis)}
-                              </Badge>
-                            ))}
-                          </div>
+                        {/* Chưa đặt điểm thì dòng đó không góp gì vào tổng -
+                            nói thẳng thay vì hiện số 0 như đã khai xong. */}
+                        {item.maxScore ? (
+                          <span className="font-medium">{item.maxScore}</span>
                         ) : (
                           <span className="text-xs text-muted-foreground">
-                            Chưa gán trục
+                            Chưa đặt
                           </span>
                         )}
                       </TableCell>
+                      <TableCell>{item.sortOrder}</TableCell>
                       <TableCell>
                         {item.isActive ? (
                           <Badge variant="outline" className={activeBadgeClass}>
@@ -243,7 +237,7 @@ export function FormTemplatesView() {
                             variant="ghost"
                             onClick={() => {
                               setEdit(item);
-                              setBuilderOpen(true);
+                              setFormOpen(true);
                             }}
                             aria-label="Sửa"
                           >
@@ -277,63 +271,11 @@ export function FormTemplatesView() {
         </CardContent>
       </Card>
 
-      <Dialog open={startOpen} onOpenChange={setStartOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Bắt đầu mẫu bảng mới thế nào?</DialogTitle>
-            <DialogDescription>
-              Chọn xong vẫn sửa thoải mái - thêm, xoá, đổi thứ tự cột.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-3 py-2">
-            <button
-              type="button"
-              onClick={() => startCreate(false)}
-              className="flex items-start gap-3 rounded-lg border p-4 text-left transition-colors hover:border-primary hover:bg-accent"
-            >
-              <Sparkles className="mt-0.5 size-5 shrink-0 text-primary" />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium">
-                  Điền sẵn bộ cột mặc định
-                </span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  13 cột đang dùng: STT, Nội dung công việc, Nhiệm vụ, Thời hạn,
-                  Sản phẩm, Điểm chuẩn, Đơn vị thực hiện, nhóm Kết quả theo dõi,
-                  Đề nghị khác, Tài liệu kiểm chứng. Sửa lại cho hợp trục là
-                  xong.
-                </span>
-              </span>
-              <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => startCreate(true)}
-              className="flex items-start gap-3 rounded-lg border p-4 text-left transition-colors hover:border-primary hover:bg-accent"
-            >
-              <FilePlus2 className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium">
-                  Bảng trắng - tự dựng từ đầu
-                </span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  Không cột nào, không nhóm header nào. Hợp khi bảng của trục
-                  khác hẳn bảng mặc định.
-                </span>
-              </span>
-              <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <FormTemplateBuilderSheet
-        open={builderOpen}
-        onOpenChange={setBuilderOpen}
+      <CriterionFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
         edit={edit}
-        startBlank={startBlank}
-        onSuccess={() => void refresh()}
+        onSuccess={refresh}
       />
 
       <AlertDialog
@@ -342,14 +284,13 @@ export function FormTemplatesView() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xoá mẫu bảng?</AlertDialogTitle>
+            <AlertDialogTitle>Xoá tiêu chí?</AlertDialogTitle>
             <AlertDialogDescription>
               Bạn sắp xoá{" "}
               <span className="font-medium text-foreground">
                 {deleting?.code} - {deleting?.name}
               </span>
-              . Các trục đang dùng mẫu này sẽ quay về bảng mặc định. Thao tác
-              này không thể hoàn tác.
+              . Thao tác này không thể hoàn tác.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

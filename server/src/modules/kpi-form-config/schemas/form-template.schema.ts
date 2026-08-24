@@ -276,6 +276,16 @@ export class FormTemplate {
   @Prop({ type: [{ type: Types.ObjectId, ref: Axis.name }], default: [], index: true })
   axisIds!: Types.ObjectId[];
 
+  /**
+   * Mẫu này là bộ cột của bảng "Danh mục điểm tiêu chí chung".
+   *
+   * Bảng tiêu chí là danh mục phẳng, không có trục để gán, nên chỗ móc bộ cột
+   * là một cờ ở đây - vẫn đúng luật "một bảng đúng một mẫu đang hoạt động" như
+   * trục, chỉ khác là bảng tiêu chí chỉ có một.
+   */
+  @Prop({ default: false, index: true })
+  forCriteria!: boolean;
+
   @Prop({ default: 0, min: 0 })
   sortOrder!: number;
 

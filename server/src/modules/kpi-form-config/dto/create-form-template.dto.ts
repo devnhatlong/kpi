@@ -174,6 +174,11 @@ export class CreateFormTemplateDto {
   @IsMongoId({ each: true, message: 'Trục không hợp lệ.' })
   axisIds?: string[];
 
+  @BooleanNotRequired('Dùng làm bộ cột cho bảng tiêu chí chung', {
+    example: false,
+  })
+  forCriteria?: boolean;
+
   @NumberNotRequired('Thứ tự hiển thị', { example: 0 })
   sortOrder?: number;
 

@@ -86,6 +86,8 @@ export class FormTemplatesService {
     const columns = this.normalizeColumns(dto.columns ?? [], headerGroups);
     const footer = this.normalizeFooter(dto.footer, columns);
     const axisIds = await this.resolveAxisIds(dto.axisIds ?? [], null);
+    const forCriteria = dto.forCriteria ?? false;
+    if (forCriteria) await this.ensureSingleCriteriaTemplate(null);
 
     const data = await this.formTemplateModel.create({
       code,
@@ -95,6 +97,7 @@ export class FormTemplatesService {
       headerGroups,
       footer,
       axisIds,
+      forCriteria,
       sortOrder: dto.sortOrder ?? 0,
       isActive: dto.isActive ?? true,
     });
@@ -142,6 +145,15 @@ export class FormTemplatesService {
     const item = await this.requireById(id);
     await item.populate(AXIS_POPULATE);
     return item;
+  }
+
+  /** Mẫu đang áp dụng cho bảng tiêu chí chung - chỉ có đúng một. */
+  async findForCriteria() {
+    const data = await this.formTemplateModel
+      .findOne({ forCriteria: true, isActive: true })
+      .populate(AXIS_POPULATE);
+    // Chưa gán mẫu nào -> client hiện bảng tiêu chí với bộ cột mặc định.
+    return { data };
   }
 
   /** Mẫu đang áp dụng cho một trục - dùng khi render form nhập nhiệm vụ. */
@@ -206,6 +218,12 @@ export class FormTemplatesService {
 
     if (dto.axisIds !== undefined) {
       item.axisIds = await this.resolveAxisIds(dto.axisIds, item.id as string);
+    }
+    if (dto.forCriteria !== undefined) {
+      if (dto.forCriteria) {
+        await this.ensureSingleCriteriaTemplate(item.id as string);
+      }
+      item.forCriteria = dto.forCriteria;
     }
 
     await item.save();
@@ -297,6 +315,25 @@ export class FormTemplatesService {
   private async ensureUniqueCode(code: string) {
     if (await this.formTemplateModel.exists({ code })) {
       throw new BadRequestException('Mã mẫu bảng đã tồn tại.');
+    }
+  }
+
+  /**
+   * Bảng tiêu chí chỉ có MỘT, nên cũng chỉ được đúng một mẫu đang hoạt động
+   * nhận vai đó - hai mẫu cùng nhận thì không biết in bảng theo mẫu nào.
+   */
+  private async ensureSingleCriteriaTemplate(excludeId: string | null) {
+    const filter: Record<string, unknown> = {
+      forCriteria: true,
+      isActive: true,
+    };
+    if (excludeId) filter._id = { $ne: new Types.ObjectId(excludeId) };
+
+    const conflict = await this.formTemplateModel.findOne(filter);
+    if (conflict) {
+      throw new BadRequestException(
+        `Bảng tiêu chí đang dùng mẫu "${conflict.name}". Bỏ gán ở mẫu đó trước.`,
+      );
     }
   }
 

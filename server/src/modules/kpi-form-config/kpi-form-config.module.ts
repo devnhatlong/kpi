@@ -7,6 +7,7 @@ import {
   WorkContentSchema,
 } from './schemas/work-content.schema';
 import { WorkTask, WorkTaskSchema } from './schemas/work-task.schema';
+import { Criterion, CriterionSchema } from './schemas/criterion.schema';
 import { Axis, AxisSchema } from './schemas/axis.schema';
 import {
   ScoreGroup,
@@ -32,6 +33,8 @@ import { FormTemplatesController } from './form-templates.controller';
 import { FormTemplatesService } from './form-templates.service';
 import { QualityLevelsController } from './quality-levels.controller';
 import { QualityLevelsService } from './quality-levels.service';
+import { CriteriaController } from './criteria.controller';
+import { CriteriaService } from './criteria.service';
 import {
   QualityLevel,
   QualityLevelSchema,
@@ -47,6 +50,7 @@ import {
       { name: FormTemplate.name, schema: FormTemplateSchema },
       { name: FormTemplateVersion.name, schema: FormTemplateVersionSchema },
       { name: QualityLevel.name, schema: QualityLevelSchema },
+      { name: Criterion.name, schema: CriterionSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),
@@ -58,6 +62,7 @@ import {
     ScoreGroupsController,
     FormTemplatesController,
     QualityLevelsController,
+    CriteriaController,
   ],
   providers: [
     WorkContentsService,
@@ -66,6 +71,7 @@ import {
     ScoreGroupsService,
     FormTemplatesService,
     QualityLevelsService,
+    CriteriaService,
   ],
   exports: [
     WorkContentsService,
@@ -74,6 +80,7 @@ import {
     ScoreGroupsService,
     FormTemplatesService,
     QualityLevelsService,
+    CriteriaService,
   ],
 })
 export class KpiFormConfigModule {}

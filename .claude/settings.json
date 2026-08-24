@@ -135,7 +135,9 @@
       "Bash(requireEditable)",
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/caad15fc-814e-4380-9fc0-1d820a211084/scratchpad/sheetname-check.js\")",
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/caad15fc-814e-4380-9fc0-1d820a211084/scratchpad/layout-check.js\")",
-      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/caad15fc-814e-4380-9fc0-1d820a211084/scratchpad/merge-check.js\")"
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/caad15fc-814e-4380-9fc0-1d820a211084/scratchpad/merge-check.js\")",
+      "Bash(git checkout *)",
+      "Bash(grep -n \"setAxisIds\\\\|axisIds,$\\\\|Áp dụng cho trục\" client/src/features/kpi-form-config/components/form-template-builder-sheet.tsx)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

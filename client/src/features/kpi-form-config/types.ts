@@ -63,6 +63,39 @@ export type WorkContentInput = {
   isActive?: boolean;
 };
 
+/**
+ * Tiêu chí chấm điểm chung - một dòng của bảng "Danh mục điểm tiêu chí chung".
+ * Danh mục phẳng: không thuộc trục nào, admin khai sẵn cả câu chữ lẫn điểm tối
+ * đa, người chấm chỉ điền kết quả.
+ */
+export type Criterion = {
+  _id: string;
+  id?: string;
+  code: string;
+  name: string;
+  /** Cột "Ghi chú" của bảng tiêu chí - admin khai sẵn. */
+  note?: string;
+  /** Cột "Điểm tối đa" của dòng. */
+  maxScore: number;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+export type CriterionInput = {
+  code?: string;
+  name: string;
+  note?: string;
+  maxScore?: number;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+/** Dòng "Tổng điểm" cuối bảng - tính trên mọi tiêu chí đang hoạt động. */
+export type CriteriaSummary = {
+  activeCount: number;
+  totalMaxScore: number;
+};
+
 /** Nhiệm vụ khai sẵn theo nội dung công việc - form nhập chỉ chọn, không gõ. */
 export type WorkTask = {
   _id: string;
@@ -212,7 +245,9 @@ export const FORM_COLUMN_SEMANTIC_LABEL: Record<FormColumnSemantic, string> = {
  * Cột đọc thẳng từ danh mục Nội dung công việc, cán bộ không nhập.
  * Không lưu theo từng nhiệm vụ: sửa danh mục là mọi bảng đã nhập đổi theo.
  */
-export const CONTENT_TEXT_SEMANTICS: FormColumnSemantic[] = ["work_content_note"];
+export const CONTENT_TEXT_SEMANTICS: FormColumnSemantic[] = [
+  "work_content_note",
+];
 
 export function isContentTextSemantic(semanticKey: FormColumnSemantic) {
   return CONTENT_TEXT_SEMANTICS.includes(semanticKey);
@@ -573,6 +608,8 @@ export type FormTemplate = {
   headerGroups: FormHeaderGroup[];
   footer?: FormTemplateFooter;
   axisIds: Array<AxisRef | string>;
+  /** Mẫu này là bộ cột của bảng tiêu chí chung - chỉ một mẫu được nhận vai. */
+  forCriteria?: boolean;
   sortOrder: number;
   isActive: boolean;
 };
@@ -585,6 +622,7 @@ export type FormTemplateInput = {
   headerGroups: FormHeaderGroup[];
   footer?: FormTemplateFooter;
   axisIds: string[];
+  forCriteria?: boolean;
   sortOrder?: number;
   isActive?: boolean;
 };

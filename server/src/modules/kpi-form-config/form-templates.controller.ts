@@ -47,6 +47,13 @@ export class FormTemplatesController {
     return this.formTemplatesService.findByAxis(axisId);
   }
 
+  @ApiOperation({ summary: 'Mẫu bảng đang áp dụng cho bảng tiêu chí chung' })
+  @Permissions(Permission.TASK_VIEW)
+  @Get('for-criteria')
+  findForCriteria() {
+    return this.formTemplatesService.findForCriteria();
+  }
+
   @ApiOperation({ summary: 'Chi tiết mẫu bảng KPI' })
   @Permissions(Permission.TASK_VIEW)
   @Get(':id')

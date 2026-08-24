@@ -239,6 +239,8 @@ export function FormTemplateBuilderSheet({
   const [sortOrder, setSortOrder] = useState("0");
   const [isActive, setIsActive] = useState(true);
   const [axisIds, setAxisIds] = useState<string[]>([]);
+  /* Mẫu này là bộ cột của bảng tiêu chí chung - vai riêng, không phải trục. */
+  const [forCriteria, setForCriteria] = useState(false);
   const [headerGroups, setHeaderGroups] = useState<FormHeaderGroup[]>([]);
   const [columns, setColumns] = useState<FormTemplateColumn[]>([]);
   const [footer, setFooter] = useState<FormTemplateFooter>(
@@ -256,6 +258,7 @@ export function FormTemplateBuilderSheet({
       setSortOrder(String(edit.sortOrder ?? 0));
       setIsActive(edit.isActive);
       setAxisIds((edit.axisIds ?? []).map((axis) => entityId(axis)));
+      setForCriteria(edit.forCriteria ?? false);
       setHeaderGroups(edit.headerGroups ?? []);
       setColumns(edit.columns ?? []);
       setFooter(edit.footer ?? EMPTY_FORM_TEMPLATE_FOOTER);
@@ -273,6 +276,7 @@ export function FormTemplateBuilderSheet({
       setSortOrder("0");
       setIsActive(true);
       setAxisIds([]);
+      setForCriteria(false);
       setHeaderGroups(draft.headerGroups);
       setColumns(draft.columns);
       setFooter(draft.footer);
@@ -508,6 +512,7 @@ export function FormTemplateBuilderSheet({
       headerGroups,
       footer: liveFooter,
       axisIds,
+      forCriteria,
       sortOrder: sortOrderNum,
       isActive,
     };
@@ -596,6 +601,29 @@ export function FormTemplateBuilderSheet({
                 mẫu nào sẽ dùng bảng mặc định.
               </p>
             </div>
+
+            {/*
+              Bảng tiêu chí chung không thuộc trục nào nên không có ô tích trong
+              danh sách dưới - nó là một vai riêng, và cũng chỉ một mẫu được
+              nhận vai đó.
+            */}
+            <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
+              <div className="min-w-0 space-y-0.5">
+                <Label htmlFor="tpl-for-criteria" className="text-sm">
+                  Dùng cho bảng tiêu chí chung
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Bộ cột của bảng &quot;Danh mục điểm tiêu chí chung&quot; - các
+                  dòng khai ở mục Tiêu chí chấm điểm.
+                </p>
+              </div>
+              <Switch
+                id="tpl-for-criteria"
+                checked={forCriteria}
+                onCheckedChange={setForCriteria}
+              />
+            </div>
+
             {axes.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Chưa có trục nào. Tạo trục trước ở mục Trục.

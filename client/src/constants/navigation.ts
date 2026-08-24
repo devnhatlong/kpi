@@ -8,6 +8,7 @@ import {
   Inbox,
   KeyRound,
   Layers,
+  ListChecks,
   ListTree,
   Network,
   Settings,
@@ -131,6 +132,12 @@ export const NAV_ITEMS: NavItem[] = [
         title: "Nhóm điểm",
         href: "/kpi/form-config/score-groups",
         icon: Gauge,
+      },
+      {
+        // Danh mục phẳng, không thuộc trục nào - bảng chấm chung cho mọi đơn vị.
+        title: "Tiêu chí chấm điểm",
+        href: "/kpi/form-config/criteria",
+        icon: ListChecks,
       },
       {
         title: "Mẫu bảng KPI",

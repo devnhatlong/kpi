@@ -8,6 +8,9 @@ import type { ApiResponse } from "@/features/auth/types";
 import type {
   Axis,
   AxisInput,
+  CriteriaSummary,
+  Criterion,
+  CriterionInput,
   FormTemplate,
   FormTemplateInput,
   ListQueryParams,
@@ -63,6 +66,57 @@ export function updateAxis(id: string, input: Partial<AxisInput>) {
 
 export async function deleteAxis(id: string) {
   await api.delete(`/kpi-form-config/axes/${id}`);
+}
+
+export const criterionKeys = {
+  all: ["criteria"] as const,
+  list: (params: ListQueryParams) =>
+    [
+      "criteria",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+    ] as const,
+  summary: ["criteria", "summary"] as const,
+};
+
+export async function fetchCriteriaPage(
+  params: ListQueryParams,
+): Promise<PaginatedResult<Criterion>> {
+  return unwrapPaginated(
+    api.get<ApiResponse<Criterion[]>>("/kpi-form-config/criteria/all", {
+      params: buildListQuery(params),
+    }),
+  );
+}
+
+export async function fetchCriteriaAll() {
+  const result = await fetchCriteriaPage({ all: true });
+  return result.data.filter((item) => item.isActive);
+}
+
+/** Số tiêu chí đang hoạt động và tổng điểm tối đa của chúng. */
+export function fetchCriteriaSummary() {
+  return unwrapData(
+    api.get<ApiResponse<CriteriaSummary>>("/kpi-form-config/criteria/summary"),
+  );
+}
+
+export function createCriterion(input: CriterionInput) {
+  return unwrapData(
+    api.post<ApiResponse<Criterion>>("/kpi-form-config/criteria", input),
+  );
+}
+
+export function updateCriterion(id: string, input: Partial<CriterionInput>) {
+  return unwrapData(
+    api.patch<ApiResponse<Criterion>>(`/kpi-form-config/criteria/${id}`, input),
+  );
+}
+
+export async function deleteCriterion(id: string) {
+  await api.delete(`/kpi-form-config/criteria/${id}`);
 }
 
 export const workContentKeys = {
@@ -276,6 +330,7 @@ export const formTemplateKeys = {
       params.all ?? false,
     ] as const,
   byAxis: (axisId: string) => ["form-template-by-axis", axisId] as const,
+  forCriteria: ["form-template-for-criteria"] as const,
 };
 
 export async function fetchFormTemplatesPage(
@@ -304,6 +359,16 @@ export async function fetchFormTemplateByAxis(
   const data = await unwrapData(
     api.get<ApiResponse<FormTemplate | null>>(
       `/kpi-form-config/form-templates/by-axis/${axisId}`,
+    ),
+  );
+  return data ?? null;
+}
+
+/** Mẫu của bảng tiêu chí chung - null nghĩa là chưa gán mẫu nào. */
+export async function fetchFormTemplateForCriteria(): Promise<FormTemplate | null> {
+  const data = await unwrapData(
+    api.get<ApiResponse<FormTemplate | null>>(
+      "/kpi-form-config/form-templates/for-criteria",
     ),
   );
   return data ?? null;
