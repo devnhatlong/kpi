@@ -663,7 +663,10 @@ export function PersonalTaskDrawer({
                                       : "Trục chưa gán mẫu bảng nên chưa nhập được"
                                   }
                                   className={cn(
-                                    "flex w-full items-start gap-2 rounded-lg border bg-card px-2.5 py-1.5 text-left transition-colors",
+                                    // Huy hiệu và dấu + căn giữa theo chiều cao
+                                    // cả thẻ, không bám mép trên: nội dung một
+                                    // dòng hay hai dòng thì chúng vẫn nằm giữa.
+                                    "flex w-full items-center gap-2 rounded-lg border bg-card px-2.5 py-1.5 text-left transition-colors",
                                     "hover:border-primary/40 hover:bg-primary/5",
                                     "disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-border disabled:hover:bg-card",
                                     count > 0 && "border-primary/50 bg-primary/5",
@@ -682,12 +685,12 @@ export function PersonalTaskDrawer({
                                   {count > 0 ? (
                                     <Badge
                                       variant="secondary"
-                                      className="mt-0.5 shrink-0 border-transparent bg-primary/10 px-1.5 text-xs text-primary tabular-nums"
+                                      className="shrink-0 border-transparent bg-primary/10 px-1.5 text-xs text-primary tabular-nums"
                                     >
                                       {count}
                                     </Badge>
                                   ) : null}
-                                  <Plus className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                                  <Plus className="size-4 shrink-0 text-muted-foreground" />
                                 </button>
                               );
                             })
