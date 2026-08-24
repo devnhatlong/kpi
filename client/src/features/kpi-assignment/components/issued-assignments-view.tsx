@@ -53,6 +53,8 @@ import {
   type AssignmentStatus,
   type KpiAssignment,
 } from "@/features/kpi-assignment/types";
+import { NoReportTemplateNotice } from "@/features/kpi-form-config/components/no-report-template-notice";
+import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
 import { useListPagination } from "@/hooks/use-list-pagination";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
@@ -63,6 +65,9 @@ export function IssuedAssignmentsView() {
   const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
     useListPagination();
   const [status, setStatus] = useState<AssignmentStatus | typeof ALL>(ALL);
+  /* Đơn vị có mẫu báo cáo áp dụng không - chưa có thì không giao được nhiệm vụ
+     nào, vì không có trục để dựng khối. Dùng chung khoá SWR với form giao. */
+  const { hasTemplate: canAssign } = useScopedAxes();
 
   const listQuery = {
     page,
@@ -129,11 +134,18 @@ export function IssuedAssignmentsView() {
             lên thì duyệt hoặc trả lại tại đây.
           </p>
         </div>
-        <Button onClick={() => setAssignOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Giao nhiệm vụ
-        </Button>
+        {/* Chưa có mẫu báo cáo áp dụng thì không có trục nào để dựng khối -
+            giấu nút thay vì mở ra một drawer chỉ để báo là không giao được. */}
+        {canAssign ? (
+          <Button onClick={() => setAssignOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Giao nhiệm vụ
+          </Button>
+        ) : null}
       </div>
+
+      {/* Giấu nút mà không nói lý do thì người dùng tưởng mất quyền. */}
+      {!canAssign ? <NoReportTemplateNotice action="giao nhiệm vụ" /> : null}
 
       <Card>
         <CardContent className="space-y-4 pt-4">

@@ -668,18 +668,15 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
               {alreadySent ? "Gửi tiếp" : "Gửi báo cáo"} ({sendableItems.length}
               )
             </Button>
-            <Button
-              onClick={openCreate}
-              disabled={loadingScope || !canEnter}
-              title={
-                canEnter
-                  ? undefined
-                  : "Đơn vị chưa được gán mẫu báo cáo nào"
-              }
-            >
-              <Plus className="h-4 w-4" />
-              Nhập báo cáo ngày
-            </Button>
+            {/* Chưa có mẫu thì GIẤU hẳn, không làm mờ: nút mờ vẫn là một lời
+                mời bấm, bấm xong lại chẳng có gì xảy ra. Lý do nằm ở màn chặn
+                ngay bên dưới, không cần nhắc lại bằng một nút chết. */}
+            {canEnter ? (
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4" />
+                Nhập báo cáo ngày
+              </Button>
+            ) : null}
           </div>
         </CardContent>
       </Card>

@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, ClipboardList, Inbox, Info, Plus, Search } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ClipboardList,
+  Inbox,
+  Info,
+  Plus,
+  Search,
+} from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 
@@ -154,6 +162,16 @@ export function PersonalTaskDrawer({
   const [axisTab, setAxisTab] = useState("");
   /** Khoá của các nội dung đang thu gọn - giữ ở đây để gấp được cả loạt. */
   const [collapsedKeys, setCollapsedKeys] = useState<string[]>([]);
+  /** Trục đang gấp ở THƯ VIỆN bên trái - khác với collapsedKeys của thẻ nhập. */
+  const [collapsedAxes, setCollapsedAxes] = useState<Set<string>>(new Set());
+
+  const toggleAxisGroup = (axisId: string) =>
+    setCollapsedAxes((prev) => {
+      const next = new Set(prev);
+      if (next.has(axisId)) next.delete(axisId);
+      else next.add(axisId);
+      return next;
+    });
 
   const isEdit = !!edit;
   /** Sửa vì bị trả lại - phải nhắc gửi lại, không thì nhiệm vụ nằm im ở nháp. */
@@ -576,62 +594,107 @@ export function PersonalTaskDrawer({
                       : "Chưa có nội dung công việc nào được cấu hình."}
                   </p>
                 ) : (
-                  libraryGroups.map((group) => (
-                    <div key={group.axisId} className="space-y-1.5">
-                      <p className="px-1 text-xs font-semibold text-muted-foreground">
-                        Trục {group.order} · {group.axis.name}
-                        {!group.hasTemplate ? (
-                          <span className="ml-1 font-normal text-amber-600 dark:text-amber-500">
-                            (chưa gán mẫu bảng)
-                          </span>
-                        ) : null}
-                      </p>
-
-                      {group.contents.map((content) => {
-                        const contentId = entityId(content);
-                        const count = taskCountByContent.get(contentId) ?? 0;
-                        return (
-                          <button
-                            key={contentId}
-                            type="button"
-                            onClick={() => pickContent(group.axisId, contentId)}
-                            disabled={saving || !group.hasTemplate}
-                            title={
-                              group.hasTemplate
-                                ? "Thêm vào phiếu nhập"
-                                : "Trục chưa gán mẫu bảng nên chưa nhập được"
-                            }
+                  libraryGroups.map((group) => {
+                    // Đang tìm kiếm thì mở hết: gấp lại là giấu mất kết quả.
+                    const open = !!search.trim() || !collapsedAxes.has(group.axisId);
+                    const pickedInGroup = group.contents.reduce(
+                      (sum, item) =>
+                        sum + (taskCountByContent.get(entityId(item)) ?? 0),
+                      0,
+                    );
+                    return (
+                      <div key={group.axisId} className="space-y-1.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleAxisGroup(group.axisId)}
+                          disabled={!!search.trim()}
+                          aria-expanded={open}
+                          className="flex w-full items-center gap-1 rounded-md px-1 py-1 text-left text-xs font-semibold text-muted-foreground hover:bg-accent/50 disabled:hover:bg-transparent"
+                        >
+                          <ChevronDown
                             className={cn(
-                              "flex w-full items-center gap-2 rounded-lg border bg-card px-2.5 py-2 text-left transition-colors",
-                              "hover:border-primary/40 hover:bg-primary/5",
-                              "disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-border disabled:hover:bg-card",
-                              count > 0 && "border-primary/50 bg-primary/5",
+                              "size-3.5 shrink-0 transition-transform",
+                              open ? "" : "-rotate-90",
                             )}
-                          >
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm">
-                                {content.name}
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {group.order}. {group.axis.name}
+                            {!group.hasTemplate ? (
+                              <span className="ml-1 font-normal text-amber-600 dark:text-amber-500">
+                                (chưa gán mẫu bảng)
                               </span>
-                              {content.description ? (
-                                <span className="block truncate text-xs text-muted-foreground">
-                                  {content.description}
-                                </span>
-                              ) : null}
-                            </span>
-                            {count > 0 ? (
-                              <Badge
-                                variant="secondary"
-                                className="shrink-0 border-transparent bg-primary/10 px-1.5 text-xs text-primary tabular-nums"
-                              >
-                                {count}
-                              </Badge>
                             ) : null}
-                            <Plus className="size-4 shrink-0 text-muted-foreground" />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ))
+                          </span>
+                          {/* Gấp lại vẫn phải thấy nhóm đó đang nhập mấy việc. */}
+                          {!open && pickedInGroup > 0 ? (
+                            <Badge
+                              variant="secondary"
+                              className="shrink-0 border-transparent bg-primary/10 px-1.5 text-[11px] text-primary tabular-nums"
+                            >
+                              {pickedInGroup}
+                            </Badge>
+                          ) : null}
+                          <span className="shrink-0 font-normal tabular-nums opacity-60">
+                            {group.contents.length}
+                          </span>
+                        </button>
+
+                        {open
+                          ? group.contents.map((content) => {
+                              const contentId = entityId(content);
+                              const count =
+                                taskCountByContent.get(contentId) ?? 0;
+                              return (
+                                <button
+                                  key={contentId}
+                                  type="button"
+                                  onClick={() =>
+                                    pickContent(group.axisId, contentId)
+                                  }
+                                  disabled={saving || !group.hasTemplate}
+                                  /* Nội dung công tác là câu dài; hiện hai dòng
+                                     đã đủ đọc phần lớn, còn lại tra ở tooltip
+                                     thay vì kéo rộng cả cột thư viện. */
+                                  title={
+                                    group.hasTemplate
+                                      ? [content.name, content.description]
+                                          .filter(Boolean)
+                                          .join("\n")
+                                      : "Trục chưa gán mẫu bảng nên chưa nhập được"
+                                  }
+                                  className={cn(
+                                    "flex w-full items-start gap-2 rounded-lg border bg-card px-2.5 py-1.5 text-left transition-colors",
+                                    "hover:border-primary/40 hover:bg-primary/5",
+                                    "disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-border disabled:hover:bg-card",
+                                    count > 0 && "border-primary/50 bg-primary/5",
+                                  )}
+                                >
+                                  <span className="min-w-0 flex-1">
+                                    <span className="line-clamp-2 text-[13px] leading-snug">
+                                      {content.name}
+                                    </span>
+                                    {content.description ? (
+                                      <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                                        {content.description}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                  {count > 0 ? (
+                                    <Badge
+                                      variant="secondary"
+                                      className="mt-0.5 shrink-0 border-transparent bg-primary/10 px-1.5 text-xs text-primary tabular-nums"
+                                    >
+                                      {count}
+                                    </Badge>
+                                  ) : null}
+                                  <Plus className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                                </button>
+                              );
+                            })
+                          : null}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </aside>
