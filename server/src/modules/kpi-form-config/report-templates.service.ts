@@ -7,15 +7,41 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 import { buildPaginatedResponse } from '@/common/utils/pagination.util';
+import {
+  Department,
+  DepartmentDocument,
+} from '@/modules/departments/schemas/department.schema';
+import {
+  DepartmentLevel,
+  DepartmentLevelDocument,
+} from '@/modules/department-levels/schemas/department-level.schema';
+import { User, UserDocument } from '@/modules/users/schemas/user.schema';
 import { CreateReportTemplateDto } from './dto/create-report-template.dto';
 import { UpdateReportTemplateDto } from './dto/update-report-template.dto';
 import {
   ReportTemplate,
   ReportTemplateDocument,
+  type ReportScopeType,
 } from './schemas/report-template.schema';
 import { Axis, AxisDocument } from './schemas/axis.schema';
 
-const AXIS_POPULATE = { path: 'axisIds', select: 'code name maxScore' };
+const AXIS_POPULATE = {
+  path: 'axisIds',
+  select: 'code name description maxScore sortOrder isActive',
+};
+const SCOPE_POPULATE = [
+  { path: 'levelIds', select: 'code name rank' },
+  { path: 'departmentIds', select: 'code name' },
+];
+const POPULATE_ALL = [AXIS_POPULATE, ...SCOPE_POPULATE];
+
+/** Đơn vị khớp mẫu qua đường nào - để màn nhập nói rõ đang dùng mẫu của ai. */
+export type ReportScopeSource =
+  | 'department'
+  | 'level'
+  | 'all'
+  /** Không mẫu nào phủ đơn vị này - rơi về toàn bộ trục đang hoạt động. */
+  | 'fallback';
 
 @Injectable()
 export class ReportTemplatesService {
@@ -24,6 +50,12 @@ export class ReportTemplatesService {
     private readonly reportTemplateModel: Model<ReportTemplateDocument>,
     @InjectModel(Axis.name)
     private readonly axisModel: Model<AxisDocument>,
+    @InjectModel(Department.name)
+    private readonly departmentModel: Model<DepartmentDocument>,
+    @InjectModel(DepartmentLevel.name)
+    private readonly levelModel: Model<DepartmentLevelDocument>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
   ) {}
 
   async create(dto: CreateReportTemplateDto) {
@@ -32,6 +64,12 @@ export class ReportTemplatesService {
       : await this.nextCode();
     await this.ensureUniqueCode(code);
 
+    const scope = await this.resolveScope(
+      dto.scopeType ?? 'all',
+      dto.levelIds ?? [],
+      dto.departmentIds ?? [],
+    );
+
     const data = await this.reportTemplateModel.create({
       code,
       name: dto.name.trim(),
@@ -39,6 +77,8 @@ export class ReportTemplatesService {
       year: this.resolveYear(dto.year),
       includeCriteria: dto.includeCriteria ?? true,
       axisIds: await this.resolveAxisIds(dto.axisIds ?? []),
+      ...scope,
+      includeDescendants: dto.includeDescendants ?? true,
       // Mẫu mới luôn ở trạng thái đang cấu hình - áp dụng là một hành động
       // riêng, có kiểm tra riêng (xem `apply`).
       status: 'draft',
@@ -47,7 +87,7 @@ export class ReportTemplatesService {
       isActive: dto.isActive ?? true,
     });
 
-    await data.populate(AXIS_POPULATE);
+    await data.populate(POPULATE_ALL);
     return { message: 'Tạo mẫu báo cáo thành công.', data };
   }
 
@@ -65,7 +105,7 @@ export class ReportTemplatesService {
       const data = await this.reportTemplateModel
         .find(filter)
         .sort(sort)
-        .populate(AXIS_POPULATE);
+        .populate(POPULATE_ALL);
       return buildPaginatedResponse(data, data.length, 1, data.length || 1);
     }
 
@@ -79,41 +119,128 @@ export class ReportTemplatesService {
         .sort(sort)
         .skip(skip)
         .limit(limit)
-        .populate(AXIS_POPULATE),
+        .populate(POPULATE_ALL),
       this.reportTemplateModel.countDocuments(filter),
     ]);
 
     return buildPaginatedResponse(data, total, page, limit);
   }
 
-  /**
-   * Mẫu đang áp dụng của một năm - dùng khi dựng báo cáo thật.
-   *
-   * Chưa áp dụng bản nào thì trả bản nháp mới nhất của năm để màn cấu hình mở
-   * lại đúng chỗ đang dở, thay vì mở ra một mẫu trắng.
-   *
-   * Trả kèm `year` đã chốt: năm đó do SERVER quyết khi client không khai, và
-   * client không được suy lại từ giờ máy nó - máy trạm sang năm sớm/muộn là cả
-   * màn cấu hình trỏ nhầm năm.
-   */
-  async findCurrent(year?: number) {
-    const target = this.resolveYear(year);
-    const applied = await this.reportTemplateModel
-      .findOne({ year: target, status: 'applied', isActive: true })
-      .populate(AXIS_POPULATE);
-    if (applied) return { data: { year: target, template: applied } };
-
-    const draft = await this.reportTemplateModel
-      .findOne({ year: target, isActive: true })
-      .sort({ updatedAt: -1 })
-      .populate(AXIS_POPULATE);
-    return { data: { year: target, template: draft } };
-  }
-
   async findOne(id: string) {
     const item = await this.requireById(id);
-    await item.populate(AXIS_POPULATE);
+    await item.populate(POPULATE_ALL);
     return item;
+  }
+
+  /**
+   * Mẫu áp dụng cho đơn vị của người đang đăng nhập.
+   *
+   * Đơn vị lấy từ hồ sơ người dùng chứ không nhận từ client: để client tự khai
+   * đơn vị thì ai cũng đọc được mẫu của đơn vị khác chỉ bằng cách đổi tham số.
+   * Muốn xem mẫu của đơn vị khác thì đi qua `resolveForDepartment`, và đường đó
+   * gác bằng quyền cấu hình.
+   */
+  async resolveForUser(uid: string, year?: number) {
+    const user = await this.userModel.findById(uid).select('departmentId');
+    return this.resolveForDepartment(
+      user?.departmentId ? String(user.departmentId) : null,
+      year,
+    );
+  }
+
+  /**
+   * Mẫu áp dụng cho một đơn vị, theo thứ tự ưu tiên
+   * `by_department` > `by_level` > `all`.
+   *
+   * Không mẫu nào phủ đơn vị thì trả TOÀN BỘ trục đang hoạt động kèm cờ
+   * `source = 'fallback'`, chứ không trả rỗng: hệ thống đang chạy có dữ liệu
+   * trước khi có khái niệm mẫu báo cáo, trả rỗng là khoá luôn màn nhập của mọi
+   * đơn vị chưa kịp gán mẫu. Màn nhập đọc cờ này để nói rõ đang ở tình trạng nào.
+   */
+  async resolveForDepartment(departmentId: string | null, year?: number) {
+    const target = this.resolveYear(year);
+    const applied = await this.reportTemplateModel
+      .find({ year: target, status: 'applied', isActive: true })
+      .populate(POPULATE_ALL);
+
+    let picked: ReportTemplateDocument | null = null;
+    let source: ReportScopeSource = 'fallback';
+
+    const department =
+      departmentId && Types.ObjectId.isValid(departmentId)
+        ? await this.departmentModel
+            .findById(departmentId)
+            .select('levelId ancestors')
+        : null;
+
+    if (department) {
+      /*
+        Điểm sâu dần từ gốc xuống chính đơn vị: mẫu gán ở nút gần đơn vị nhất
+        thắng. Tick cả Tỉnh lẫn Phòng thì Phòng thắng - đúng nghĩa "ngoại lệ
+        của một nhánh con".
+      */
+      const chainScore = new Map<string, number>();
+      (department.ancestors ?? []).forEach((id, index) => {
+        chainScore.set(String(id), index);
+      });
+      const selfKey = String(department._id);
+      chainScore.set(selfKey, (department.ancestors ?? []).length);
+
+      let bestScore = -1;
+      for (const template of applied) {
+        if (template.scopeType !== 'by_department') continue;
+        for (const dept of template.departmentIds ?? []) {
+          const key = String((dept as { _id?: unknown })._id ?? dept);
+          const score = chainScore.get(key);
+          if (score === undefined) continue;
+          // Nút cha chỉ tính khi mẫu cho phép cấp dưới dùng theo.
+          if (key !== selfKey && !template.includeDescendants) continue;
+          if (score > bestScore) {
+            bestScore = score;
+            picked = template;
+          }
+        }
+      }
+      if (picked) source = 'department';
+
+      if (!picked && department.levelId) {
+        const levelKey = String(department.levelId);
+        picked =
+          applied.find(
+            (template) =>
+              template.scopeType === 'by_level' &&
+              (template.levelIds ?? []).some(
+                (level) =>
+                  String((level as { _id?: unknown })._id ?? level) === levelKey,
+              ),
+          ) ?? null;
+        if (picked) source = 'level';
+      }
+    }
+
+    if (!picked) {
+      picked = applied.find((template) => template.scopeType === 'all') ?? null;
+      if (picked) source = 'all';
+    }
+
+    const axes = picked
+      ? (picked.axisIds as unknown as AxisDocument[]).filter(
+          (axis) => axis?.isActive !== false,
+        )
+      : await this.axisModel
+          .find({ isActive: true })
+          .sort({ sortOrder: 1, name: 1 });
+
+    return {
+      data: {
+        year: target,
+        departmentId: departmentId ?? null,
+        source,
+        template: picked,
+        includeCriteria: picked ? picked.includeCriteria : true,
+        axes,
+      },
+    };
   }
 
   async update(id: string, dto: UpdateReportTemplateDto) {
@@ -133,32 +260,58 @@ export class ReportTemplatesService {
     if (dto.axisIds !== undefined) {
       item.axisIds = await this.resolveAxisIds(dto.axisIds);
     }
+    if (dto.includeDescendants !== undefined) {
+      item.includeDescendants = dto.includeDescendants;
+    }
+
+    const scopeTouched =
+      dto.scopeType !== undefined ||
+      dto.levelIds !== undefined ||
+      dto.departmentIds !== undefined;
+    if (scopeTouched) {
+      const scope = await this.resolveScope(
+        dto.scopeType ?? item.scopeType,
+        dto.levelIds ?? item.levelIds.map(String),
+        dto.departmentIds ?? item.departmentIds.map(String),
+      );
+      item.scopeType = scope.scopeType;
+      item.levelIds = scope.levelIds;
+      item.departmentIds = scope.departmentIds;
+    }
+
     if (dto.sortOrder !== undefined) item.sortOrder = dto.sortOrder;
     if (dto.isActive !== undefined) item.isActive = dto.isActive;
 
     /*
-      Sửa thành phần của mẫu ĐANG áp dụng thì đưa nó về nháp: bảng chấm của cả
-      năm đang bám theo bản này, đổi khối nội dung mà vẫn để nguyên nhãn "đã áp
-      dụng" thì không ai biết bản đang chấm khác bản đang xem. Áp dụng lại là
-      một cú bấm tường minh.
+      Sửa thành phần hoặc phạm vi của mẫu ĐANG áp dụng thì đưa nó về nháp: bảng
+      chấm của các đơn vị đang bám theo bản này, đổi mà vẫn để nguyên nhãn "đã
+      áp dụng" thì không ai biết bản đang chấm khác bản đang xem. Áp dụng lại là
+      một cú bấm tường minh, và lúc đó mới soi lại chồng lấn phạm vi.
     */
     if (
       item.status === 'applied' &&
       (dto.axisIds !== undefined ||
         dto.includeCriteria !== undefined ||
-        dto.year !== undefined)
+        dto.year !== undefined ||
+        dto.includeDescendants !== undefined ||
+        scopeTouched)
     ) {
       item.status = 'draft';
       item.appliedAt = null;
     }
 
     await item.save();
-    await item.populate(AXIS_POPULATE);
+    await item.populate(POPULATE_ALL);
     return { message: 'Cập nhật mẫu báo cáo thành công.', data: item };
   }
 
   /**
-   * Áp dụng mẫu cho năm của nó - các bản khác cùng năm lùi về nháp.
+   * Áp dụng mẫu cho năm của nó.
+   *
+   * Một năm có thể có NHIỀU mẫu áp dụng song song - một mẫu chung, vài mẫu
+   * riêng cho cấp hoặc cho đơn vị - vì thứ tự ưu tiên đã quyết định được đơn vị
+   * nào dùng mẫu nào. Chỉ chặn khi hai mẫu chồng nhau ở CÙNG một mức, lúc đó
+   * mới thật sự không biết chọn bản nào.
    *
    * Mốc thời gian lấy từ server chứ không nhận của client: máy trạm lệch giờ là
    * mốc áp dụng của cả năm lệch theo.
@@ -176,18 +329,12 @@ export class ReportTemplatesService {
         'Mẫu chưa có khối nội dung nào - chọn ít nhất một trục hoặc bật bảng tiêu chí chung.',
       );
     }
-
-    // Một năm chỉ một mẫu đang áp dụng, nếu không thì lúc chấm không biết lấy
-    // bản nào. Hạ bản cũ ngay trong lượt này thay vì bắt admin đi tắt tay.
-    await this.reportTemplateModel.updateMany(
-      { year: item.year, status: 'applied', _id: { $ne: item._id } },
-      { $set: { status: 'draft', appliedAt: null } },
-    );
+    await this.ensureScopeFree(item);
 
     item.status = 'applied';
     item.appliedAt = new Date();
     await item.save();
-    await item.populate(AXIS_POPULATE);
+    await item.populate(POPULATE_ALL);
 
     return {
       message: `Đã áp dụng mẫu báo cáo cho năm ${item.year}.`,
@@ -195,15 +342,106 @@ export class ReportTemplatesService {
     };
   }
 
+  /** Gỡ áp dụng - mẫu quay về nháp, các đơn vị rơi về mẫu ở mức rộng hơn. */
+  async unapply(id: string) {
+    const item = await this.requireById(id);
+    item.status = 'draft';
+    item.appliedAt = null;
+    await item.save();
+    await item.populate(POPULATE_ALL);
+    return { message: 'Đã gỡ áp dụng mẫu báo cáo.', data: item };
+  }
+
   async remove(id: string) {
     const item = await this.requireById(id);
     if (item.status === 'applied') {
       throw new BadRequestException(
-        'Không xoá được mẫu đang áp dụng - áp dụng mẫu khác cho năm này trước.',
+        'Không xoá được mẫu đang áp dụng - gỡ áp dụng trước.',
       );
     }
     await item.deleteOne();
     return { message: 'Xoá mẫu báo cáo thành công.' };
+  }
+
+  /** Hai mẫu cùng năm phủ cùng một phạm vi thì không biết chọn bản nào. */
+  private async ensureScopeFree(item: ReportTemplateDocument) {
+    const base: Record<string, unknown> = {
+      year: item.year,
+      status: 'applied',
+      _id: { $ne: item._id },
+    };
+
+    const conflict =
+      item.scopeType === 'all'
+        ? await this.reportTemplateModel.findOne({ ...base, scopeType: 'all' })
+        : item.scopeType === 'by_level'
+          ? await this.reportTemplateModel.findOne({
+              ...base,
+              scopeType: 'by_level',
+              levelIds: { $in: item.levelIds },
+            })
+          : await this.reportTemplateModel.findOne({
+              ...base,
+              scopeType: 'by_department',
+              departmentIds: { $in: item.departmentIds },
+            });
+
+    if (conflict) {
+      throw new BadRequestException(
+        `Năm ${item.year} đã có mẫu "${conflict.name}" áp dụng cho cùng phạm vi này. Gỡ áp dụng mẫu đó trước.`,
+      );
+    }
+  }
+
+  /** Chuẩn hoá phạm vi: kiểu nào thì chỉ giữ danh sách của kiểu đó. */
+  private async resolveScope(
+    scopeType: ReportScopeType,
+    levelIds: string[],
+    departmentIds: string[],
+  ): Promise<{
+    scopeType: ReportScopeType;
+    levelIds: Types.ObjectId[];
+    departmentIds: Types.ObjectId[];
+  }> {
+    if (scopeType === 'all') {
+      return { scopeType, levelIds: [], departmentIds: [] };
+    }
+
+    if (scopeType === 'by_level') {
+      const ids = this.uniqueObjectIds(levelIds);
+      if (!ids.length) {
+        throw new BadRequestException('Chọn ít nhất một cấp đơn vị.');
+      }
+      const found = await this.levelModel.countDocuments({ _id: { $in: ids } });
+      if (found !== ids.length) {
+        throw new BadRequestException('Có cấp đơn vị không tồn tại.');
+      }
+      return { scopeType, levelIds: ids, departmentIds: [] };
+    }
+
+    const ids = this.uniqueObjectIds(departmentIds);
+    if (!ids.length) {
+      throw new BadRequestException('Chọn ít nhất một đơn vị.');
+    }
+    const found = await this.departmentModel.countDocuments({
+      _id: { $in: ids },
+    });
+    if (found !== ids.length) {
+      throw new BadRequestException('Có đơn vị không tồn tại.');
+    }
+    return { scopeType, levelIds: [], departmentIds: ids };
+  }
+
+  private uniqueObjectIds(values: string[]): Types.ObjectId[] {
+    const unique = [...new Set(values.map((value) => value.trim()))].filter(
+      Boolean,
+    );
+    for (const value of unique) {
+      if (!Types.ObjectId.isValid(value)) {
+        throw new BadRequestException('Giá trị phạm vi không hợp lệ.');
+      }
+    }
+    return unique.map((value) => new Types.ObjectId(value));
   }
 
   /** Bỏ trống thì lấy năm của SERVER, không nhận năm suy từ giờ máy client. */
@@ -235,12 +473,9 @@ export class ReportTemplatesService {
    * B.1, B.2… trên báo cáo, sort lại là đổi luôn cách đánh số của mẫu.
    */
   private async resolveAxisIds(axisIds: string[]) {
-    const unique = [...new Set(axisIds.map((value) => value.trim()))].filter(
-      Boolean,
-    );
-    if (!unique.length) return [];
+    const objectIds = this.uniqueObjectIds(axisIds);
+    if (!objectIds.length) return [];
 
-    const objectIds = unique.map((value) => new Types.ObjectId(value));
     const found = await this.axisModel.countDocuments({
       _id: { $in: objectIds },
     });

@@ -50,10 +50,10 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  fetchAxesAll,
   fetchScoreGroupsAll,
   fetchWorkContentsAll,
 } from "@/features/kpi-form-config/api";
+import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
 import { formatScoreGroupRange } from "@/features/kpi-form-config/score-group.constants";
 import { entityId } from "@/features/kpi-form-config/types";
 import type { WorkContent } from "@/features/kpi-form-config/types";
@@ -196,7 +196,14 @@ export function AssignTaskDrawer({
   const [pasteText, setPasteText] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const { data: axes = [] } = useSWR(open ? ["axes", "assign"] : null, fetchAxesAll);
+  /*
+    Trục lấy theo mẫu báo cáo của ĐƠN VỊ NGƯỜI GIAO, không phải mọi trục.
+    Đơn vị nhận nằm dưới đơn vị giao trong cây, mà mẫu mặc định cho cấp dưới
+    thừa kế của cấp trên, nên hai bên gần như luôn cùng một mẫu. Chọn theo người
+    giao vì một lần giao có thể nhắm nhiều đơn vị nhận cùng lúc - lấy theo bên
+    nhận thì không có "một" danh sách trục để dựng form.
+  */
+  const { axes } = useScopedAxes({ enabled: open });
   const { data: workContents = [] } = useSWR(
     open ? ["work-contents", "assign"] : null,
     fetchWorkContentsAll,

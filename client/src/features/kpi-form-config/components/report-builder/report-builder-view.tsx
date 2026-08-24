@@ -1,7 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
+  ArrowLeft,
+  Building2,
   Eye,
   LayoutGrid,
   ListChecks,
@@ -25,15 +28,21 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   applyReportTemplate,
   axisKeys,
   createFormTemplate,
-  createReportTemplate,
   criterionKeys,
   fetchAxesAll,
   fetchCriteriaSummary,
-  fetchCurrentReportContext,
   fetchFormTemplatesAll,
+  fetchReportTemplate,
   formTemplateKeys,
   reportTemplateKeys,
   updateFormTemplate,
@@ -58,11 +67,19 @@ import {
   scoringLabel,
 } from "@/features/kpi-form-config/components/report-builder/library-rail";
 import { ReportPreviewDialog } from "@/features/kpi-form-config/components/report-builder/report-preview-dialog";
+import {
+  scopeFingerprint,
+  scopeFromTemplate,
+  scopeIsComplete,
+  type ScopeDraft,
+} from "@/features/kpi-form-config/components/report-builder/report-scope";
+import { ScopePicker } from "@/features/kpi-form-config/components/report-builder/scope-picker";
 import { ScoringRulesDialog } from "@/features/kpi-form-config/components/report-builder/scoring-rules-dialog";
 import { TemplateComposer } from "@/features/kpi-form-config/components/report-builder/template-composer";
 import {
   createDefaultTemplateDraft,
   entityId,
+  REPORT_SCOPE_TYPE_LABEL,
   type Axis,
   type FormTemplate,
   type FormTemplateInput,
@@ -70,9 +87,10 @@ import {
 } from "@/features/kpi-form-config/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 
-/** Bản mẫu báo cáo đang sửa trên màn - phần khác với bản đã lưu là `savedFp`. */
+const LIST_HREF = "/kpi/form-config";
+
+/** Bản mẫu báo cáo đang sửa trên màn - khác bản đã lưu thì `savedFp` lệch. */
 type ReportDraft = {
-  id: string | null;
   name: string;
   status: ReportTemplateStatus;
   includeCriteria: boolean;
@@ -81,6 +99,7 @@ type ReportDraft = {
    * luôn suy từ thứ tự trục trong thư viện, nên so sánh thì sắp lại cho ổn định.
    */
   picked: string[];
+  scope: ScopeDraft;
   savedFp: string;
 };
 
@@ -88,27 +107,35 @@ function reportFingerprint(
   name: string,
   includeCriteria: boolean,
   picked: string[],
+  scope: ScopeDraft,
 ): string {
-  return JSON.stringify([name.trim(), includeCriteria, [...picked].sort()]);
+  return JSON.stringify([
+    name.trim(),
+    includeCriteria,
+    [...picked].sort(),
+    scopeFingerprint(scope),
+  ]);
 }
 
-/** Nạp lại mọi cache đang đọc bộ cột - form nhập nhiệm vụ cache theo trục. */
-async function refreshTemplateCaches() {
+/** Nạp lại mọi cache đang đọc bộ cột hoặc phạm vi - màn nhập cache theo trục. */
+async function refreshDownstreamCaches() {
   await globalMutate(
     (key) =>
       Array.isArray(key) &&
       (key[0] === "form-template-by-axis" ||
-        key[0] === "form-template-for-criteria"),
+        key[0] === "form-template-for-criteria" ||
+        key[0] === "report-scope-mine" ||
+        key[0] === "report-scope-department"),
   );
 }
 
-export function ReportBuilderView() {
+export function ReportBuilderView({ templateId }: { templateId: string }) {
+  const reportSwr = useSWR(reportTemplateKeys.detail(templateId), () =>
+    fetchReportTemplate(templateId),
+  );
   const axesSwr = useSWR(axisKeys.all, fetchAxesAll);
   const templatesSwr = useSWR(formTemplateKeys.all, fetchFormTemplatesAll);
   const criteriaSwr = useSWR(criterionKeys.summary, fetchCriteriaSummary);
-  const contextSwr = useSWR(reportTemplateKeys.current(), () =>
-    fetchCurrentReportContext(),
-  );
 
   const axes = useMemo(() => axesSwr.data ?? [], [axesSwr.data]);
   const templates = useMemo(() => templatesSwr.data ?? [], [templatesSwr.data]);
@@ -132,6 +159,7 @@ export function ReportBuilderView() {
   const criteriaMaxScore = criteriaSwr.data?.totalMaxScore ?? 0;
 
   const [report, setReport] = useState<ReportDraft | null>(null);
+  const [loadedReportId, setLoadedReportId] = useState<string | null>(null);
   const [target, setTarget] = useState<DesignerTarget | null>(null);
   const [draft, setDraft] = useState<FormDraft | null>(null);
   const [draftSavedFp, setDraftSavedFp] = useState("");
@@ -144,31 +172,33 @@ export function ReportBuilderView() {
   const [structureOpen, setStructureOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [scopeOpen, setScopeOpen] = useState(false);
   const [pendingTarget, setPendingTarget] = useState<DesignerTarget | null>(
     null,
   );
   const [saving, setSaving] = useState(false);
 
-  const context = contextSwr.data;
+  const source = reportSwr.data;
 
   /*
     Nạp bản nháp ngay trong lượt render đầu có đủ dữ liệu, không qua effect:
-    effect chạy sau khi đã vẽ xong, nên màn sẽ chớp một nhịp với mẫu rỗng rồi
-    mới nhảy sang mẫu thật.
+    effect chạy sau khi đã vẽ xong nên màn sẽ chớp một nhịp với mẫu rỗng.
+    Bám theo id để mở mẫu khác là nạp lại, không giữ bản nháp của mẫu trước.
   */
-  if (!report && context && !axesSwr.isLoading) {
-    const template = context.template;
-    const name = template?.name ?? `Mẫu báo cáo KPI năm ${context.year}`;
-    const includeCriteria = template?.includeCriteria ?? true;
-    const picked = (template?.axisIds ?? []).map(entityId);
+  if (source && !axesSwr.isLoading && loadedReportId !== entityId(source)) {
+    const name = source.name;
+    const includeCriteria = source.includeCriteria ?? true;
+    const picked = (source.axisIds ?? []).map(entityId);
+    const scope = scopeFromTemplate(source);
 
+    setLoadedReportId(entityId(source));
     setReport({
-      id: template ? entityId(template) : null,
       name,
-      status: template?.status ?? "draft",
+      status: source.status ?? "draft",
       includeCriteria,
       picked,
-      savedFp: reportFingerprint(name, includeCriteria, picked),
+      scope,
+      savedFp: reportFingerprint(name, includeCriteria, picked, scope),
     });
 
     // Mở sẵn khối đầu tiên - vào trang là thấy ngay một form thật.
@@ -179,12 +209,13 @@ export function ReportBuilderView() {
         ? { kind: "criteria" }
         : { kind: "axis", axisId: firstAxis },
     );
+    setLoadedTarget(null);
   }
 
   /*
-    Nạp bộ cột khi ĐỔI khối. Bám theo `loadedTarget` chứ không phải mỗi lần
-    danh sách mẫu revalidate - nếu không thì mỗi lượt cache làm mới là xoá sạch
-    thay đổi đang gõ dở trên canvas.
+    Nạp bộ cột khi ĐỔI khối. Bám theo `loadedTarget` chứ không phải mỗi lần danh
+    sách mẫu revalidate - nếu không thì mỗi lượt cache làm mới là xoá sạch thay
+    đổi đang gõ dở trên canvas.
   */
   if (target && !templatesSwr.isLoading && targetKey(target) !== loadedTarget) {
     const currentTemplate =
@@ -208,16 +239,32 @@ export function ReportBuilderView() {
     setSelectedFieldId(next.columns[0]?.id ?? null);
   }
 
-  if (!report || !context) {
+  if (reportSwr.error) {
     return (
-      <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />
-        Đang tải cấu hình biểu mẫu...
+      <div className="space-y-3 rounded-xl border border-dashed p-10 text-center">
+        <p className="text-sm text-muted-foreground">
+          {getApiErrorMessage(reportSwr.error, "Không mở được mẫu báo cáo này.")}
+        </p>
+        <Button asChild variant="outline">
+          <Link href={LIST_HREF}>
+            <ArrowLeft className="size-4" />
+            Về danh sách mẫu báo cáo
+          </Link>
+        </Button>
       </div>
     );
   }
 
-  const year = context.year;
+  if (!report || !source) {
+    return (
+      <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        Đang tải mẫu báo cáo...
+      </div>
+    );
+  }
+
+  const year = source.year;
   const axisIds = axes.map(entityId);
   const pickedSet = new Set(report.picked);
   /** Thứ tự khối B.1, B.2… bám theo thứ tự trục trong thư viện. */
@@ -225,8 +272,12 @@ export function ReportBuilderView() {
   const pickedAxes = axes.filter((axis) => pickedSet.has(entityId(axis)));
 
   const reportDirty =
-    reportFingerprint(report.name, report.includeCriteria, report.picked) !==
-    report.savedFp;
+    reportFingerprint(
+      report.name,
+      report.includeCriteria,
+      report.picked,
+      report.scope,
+    ) !== report.savedFp;
   const draftDirty = !!draft && draftFingerprint(draft) !== draftSavedFp;
   const dirty = reportDirty || draftDirty;
 
@@ -248,6 +299,14 @@ export function ReportBuilderView() {
       : targetAxis
         ? `Trục ${targetAxisIndex + 1} · ${targetAxis.name}`
         : "Trục đã xoá";
+
+  /** Số đơn vị / cấp đã chọn - đủ để nhận ra phạm vi mà không phải mở hộp thoại. */
+  const scopeCount =
+    report.scope.scopeType === "by_level"
+      ? report.scope.levelIds.length
+      : report.scope.scopeType === "by_department"
+        ? report.scope.departmentIds.length
+        : 0;
 
   const patchReport = (patch: Partial<ReportDraft>) =>
     setReport((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -290,7 +349,7 @@ export function ReportBuilderView() {
     try {
       await saveDraft();
       await templatesSwr.mutate();
-      await refreshTemplateCaches();
+      await refreshDownstreamCaches();
       toast.success(`Đã lưu form · ${blockLabel}.`);
     } catch (error) {
       toast.error(
@@ -313,34 +372,42 @@ export function ReportBuilderView() {
       );
       return;
     }
+    if (!scopeIsComplete(report.scope)) {
+      toast.error(
+        report.scope.scopeType === "by_level"
+          ? "Phạm vi áp dụng: chọn ít nhất một cấp đơn vị."
+          : "Phạm vi áp dụng: chọn ít nhất một đơn vị.",
+      );
+      return;
+    }
 
     setSaving(true);
     try {
       if (draftDirty) await saveDraft();
 
-      const payload = {
+      const saved = await updateReportTemplate(templateId, {
         name: report.name.trim(),
-        year,
         includeCriteria: report.includeCriteria,
         axisIds: orderedPicked,
-      };
-      const saved = report.id
-        ? await updateReportTemplate(report.id, payload)
-        : await createReportTemplate(payload);
+        scopeType: report.scope.scopeType,
+        levelIds: report.scope.levelIds,
+        departmentIds: report.scope.departmentIds,
+        includeDescendants: report.scope.includeDescendants,
+      });
       const applied = await applyReportTemplate(entityId(saved));
 
       patchReport({
-        id: entityId(applied),
         status: applied.status,
         savedFp: reportFingerprint(
           report.name,
           report.includeCriteria,
           report.picked,
+          report.scope,
         ),
       });
 
-      await Promise.all([templatesSwr.mutate(), contextSwr.mutate()]);
-      await refreshTemplateCaches();
+      await Promise.all([templatesSwr.mutate(), reportSwr.mutate()]);
+      await refreshDownstreamCaches();
       toast.success(`Đã lưu và áp dụng mẫu báo cáo cho năm ${year}.`);
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không lưu được mẫu báo cáo."));
@@ -365,7 +432,7 @@ export function ReportBuilderView() {
     try {
       await saveDraft();
       await templatesSwr.mutate();
-      await refreshTemplateCaches();
+      await refreshDownstreamCaches();
       setTarget(pendingTarget);
       setPendingTarget(null);
       toast.success("Đã lưu form trước khi chuyển khối.");
@@ -386,19 +453,40 @@ export function ReportBuilderView() {
             <LayoutGrid className="size-5" />
           </span>
           <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Quản lý KPI · Quản trị biểu mẫu
-            </p>
+            <Link
+              href={LIST_HREF}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="size-3.5" />
+              Mẫu báo cáo KPI
+            </Link>
             <h1 className="font-display text-2xl font-semibold tracking-tight">
-              Cấu hình biểu mẫu báo cáo
+              {report.name || "Mẫu báo cáo"}
             </h1>
-            <p className="text-sm text-muted-foreground">
-              Tạo form tiêu chí chung và từng trục riêng biệt, sau đó ghép các
-              trục thành mẫu báo cáo sử dụng thực tế.
-            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="outline" className="font-mono">
+                {source.code}
+              </Badge>
+              <Badge variant="outline" className="font-normal">
+                Năm {year}
+              </Badge>
+              <Badge variant="outline" className="font-normal">
+                <Building2 className="size-3.5" />
+                {REPORT_SCOPE_TYPE_LABEL[report.scope.scopeType]}
+                {scopeCount ? ` · ${scopeCount}` : ""}
+              </Badge>
+            </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setScopeOpen(true)}
+          >
+            <Building2 className="size-4" />
+            Phạm vi áp dụng
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -427,8 +515,8 @@ export function ReportBuilderView() {
             </p>
             <p className="text-xs text-muted-foreground">
               Tiêu chí chung luôn đứng ở khối A; chỉ các trục được chọn mới xuất
-              hiện trong khối B. Lưu cấu hình để áp dụng cho mẫu báo cáo năm{" "}
-              {year}.
+              hiện trong khối B. Lưu cấu hình để áp dụng cho các đơn vị trong
+              phạm vi, năm {year}.
             </p>
           </div>
         </div>
@@ -530,8 +618,8 @@ export function ReportBuilderView() {
               {target.kind === "axis"
                 ? (targetAxis?.maxScore ?? 0)
                 : criteriaMaxScore}{" "}
-              điểm. Thiết kế trường ở dưới chỉ áp dụng cho khối này, không ảnh
-              hưởng các khối khác.
+              điểm. Form của khối này DÙNG CHUNG cho mọi mẫu báo cáo có chứa nó -
+              sửa ở đây là các mẫu khác đổi theo.
             </p>
             <Badge variant="outline" className="font-normal">
               {draft.columns.length} trường đang dùng
@@ -591,6 +679,23 @@ export function ReportBuilderView() {
           </div>
         </section>
       ) : null}
+
+      <Dialog open={scopeOpen} onOpenChange={setScopeOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Phạm vi áp dụng</DialogTitle>
+            <DialogDescription>
+              Đơn vị nào dùng mẫu này khi nhập KPI năm {year}. Thay đổi có hiệu
+              lực sau khi bấm &quot;Lưu &amp; áp dụng mẫu&quot;.
+            </DialogDescription>
+          </DialogHeader>
+          <ScopePicker
+            value={report.scope}
+            onChange={(scope) => patchReport({ scope })}
+            enabled={scopeOpen}
+          />
+        </DialogContent>
+      </Dialog>
 
       <AxisFormDialog
         open={axisDialogOpen}

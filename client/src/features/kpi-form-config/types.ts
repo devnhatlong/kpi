@@ -972,6 +972,43 @@ export function columnFromPreset(preset: FieldPreset): FormTemplateColumn {
   };
 }
 
+/**
+ * Phạm vi đơn vị áp dụng mẫu. Thứ tự ưu tiên khi một đơn vị khớp nhiều mẫu:
+ * `by_department` > `by_level` > `all` - mẫu riêng của đơn vị đè mẫu của cấp,
+ * mẫu của cấp đè mẫu dùng chung. Nhờ vậy một năm có nhiều mẫu áp dụng song song
+ * mà vẫn xác định được đơn vị nào dùng bản nào.
+ */
+export const REPORT_SCOPE_TYPES = ["all", "by_level", "by_department"] as const;
+export type ReportScopeType = (typeof REPORT_SCOPE_TYPES)[number];
+
+export const REPORT_SCOPE_TYPE_LABEL: Record<ReportScopeType, string> = {
+  all: "Toàn hệ thống",
+  by_level: "Theo cấp đơn vị",
+  by_department: "Đơn vị chỉ định",
+};
+
+export const REPORT_SCOPE_TYPE_HINT: Record<ReportScopeType, string> = {
+  all: "Mọi đơn vị chưa có mẫu riêng đều dùng bản này.",
+  by_level: "Áp cho mọi đơn vị thuộc các cấp đã chọn (Phòng, Xã, Đội…).",
+  by_department:
+    "Áp đúng các đơn vị đã chọn; bật thừa kế thì cấp dưới của chúng dùng theo.",
+};
+
+/** Cấp đơn vị đã populate trong mẫu báo cáo. */
+export type DepartmentLevelRef = {
+  _id: string;
+  code: string;
+  name: string;
+  rank?: number;
+};
+
+/** Đơn vị đã populate trong mẫu báo cáo. */
+export type DepartmentRef = {
+  _id: string;
+  code: string;
+  name: string;
+};
+
 export const REPORT_TEMPLATE_STATUSES = ["draft", "applied"] as const;
 export type ReportTemplateStatus = (typeof REPORT_TEMPLATE_STATUSES)[number];
 
@@ -997,6 +1034,13 @@ export type ReportTemplate = {
   includeCriteria: boolean;
   /** Theo thứ tự khối B.1, B.2… trên báo cáo. */
   axisIds: Array<AxisRef | string>;
+  scopeType: ReportScopeType;
+  /** Chỉ dùng khi scopeType = by_level. */
+  levelIds: Array<DepartmentLevelRef | string>;
+  /** Chỉ dùng khi scopeType = by_department. */
+  departmentIds: Array<DepartmentRef | string>;
+  /** Đơn vị con cháu dùng theo mẫu của đơn vị cha. */
+  includeDescendants: boolean;
   status: ReportTemplateStatus;
   /** Giờ server lúc áp dụng; null = chưa áp dụng lần nào. */
   appliedAt?: string | null;
@@ -1011,8 +1055,33 @@ export type ReportTemplateInput = {
   year?: number;
   includeCriteria?: boolean;
   axisIds: string[];
+  scopeType?: ReportScopeType;
+  levelIds?: string[];
+  departmentIds?: string[];
+  includeDescendants?: boolean;
   sortOrder?: number;
   isActive?: boolean;
+};
+
+/** Đơn vị khớp mẫu qua đường nào - màn nhập đọc để nói rõ đang dùng mẫu của ai. */
+export type ReportScopeSource = "department" | "level" | "all" | "fallback";
+
+export const REPORT_SCOPE_SOURCE_LABEL: Record<ReportScopeSource, string> = {
+  department: "mẫu riêng của đơn vị",
+  level: "mẫu của cấp đơn vị",
+  all: "mẫu dùng chung",
+  fallback: "chưa gán mẫu",
+};
+
+/** Kết quả tra mẫu áp dụng cho một đơn vị. */
+export type ResolvedReportScope = {
+  year: number;
+  departmentId: string | null;
+  source: ReportScopeSource;
+  /** null = chưa mẫu nào phủ đơn vị này; `axes` khi đó là toàn bộ trục. */
+  template: ReportTemplate | null;
+  includeCriteria: boolean;
+  axes: Axis[];
 };
 
 export type ListQueryParams = {

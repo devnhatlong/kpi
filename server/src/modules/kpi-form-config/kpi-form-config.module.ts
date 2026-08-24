@@ -25,6 +25,15 @@ import {
   ReportTemplate,
   ReportTemplateSchema,
 } from './schemas/report-template.schema';
+import {
+  Department,
+  DepartmentSchema,
+} from '../departments/schemas/department.schema';
+import {
+  DepartmentLevel,
+  DepartmentLevelSchema,
+} from '../department-levels/schemas/department-level.schema';
+import { User, UserSchema } from '../users/schemas/user.schema';
 import { WorkContentsController } from './work-contents.controller';
 import { WorkContentsService } from './work-contents.service';
 import { WorkTasksController } from './work-tasks.controller';
@@ -58,6 +67,11 @@ import {
       { name: QualityLevel.name, schema: QualityLevelSchema },
       { name: Criterion.name, schema: CriterionSchema },
       { name: ReportTemplate.name, schema: ReportTemplateSchema },
+      // Mẫu báo cáo phải soi cây đơn vị và hồ sơ người dùng để biết đơn vị nào
+      // dùng mẫu nào - đăng ký model tại chỗ như personal-kpi vẫn làm.
+      { name: Department.name, schema: DepartmentSchema },
+      { name: DepartmentLevel.name, schema: DepartmentLevelSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),

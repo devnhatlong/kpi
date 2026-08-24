@@ -17,12 +17,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  fetchAxesAll,
-  fetchWorkContentsAll,
-} from "@/features/kpi-form-config/api";
+import { fetchWorkContentsAll } from "@/features/kpi-form-config/api";
 import type { Axis, WorkContent } from "@/features/kpi-form-config/types";
 import { entityId } from "@/features/kpi-form-config/types";
+import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import {
   createPersonalKpiBatch,
@@ -120,14 +118,21 @@ export function PersonalTaskDrawer({
   notice,
   onSaved,
 }: PersonalTaskDrawerProps) {
+  /*
+    Chỉ các trục thuộc mẫu báo cáo đang áp dụng cho đơn vị của cán bộ - không
+    phải mọi trục trong hệ thống. Trục của nhiệm vụ đang sửa luôn được giữ lại
+    kể cả khi nó đã bị loại khỏi mẫu, nếu không thì mở ra sửa là mất trục.
+  */
   const {
-    data: axes = [],
+    axes,
     isLoading: loadingAxes,
     error: axesError,
-  } = useSWR(
-    open ? ["axes", "all", "personal-task-drawer"] : null,
-    fetchAxesAll,
-  );
+    source: scopeSource,
+    templateName: scopeTemplateName,
+  } = useScopedAxes({
+    enabled: open,
+    ensureAxisIds: edit?.axisId ? [edit.axisId] : undefined,
+  });
   const {
     data: workContents = [],
     isLoading: loadingContents,
@@ -516,6 +521,26 @@ export function PersonalTaskDrawer({
           <div className="flex items-start gap-2 border-b bg-amber-500/5 px-5 py-2.5 text-sm">
             <Info className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500" />
             <p className="text-muted-foreground">{notice}</p>
+          </div>
+        ) : null}
+
+        {/* Đơn vị chưa được gán mẫu thì thư viện đang hiện MỌI trục - nói thẳng
+            ra, đừng để cán bộ tưởng đó là danh mục đã được duyệt cho mình. */}
+        {!loadingAxes && scopeSource === "fallback" ? (
+          <div className="flex items-start gap-2 border-b bg-amber-500/5 px-5 py-2.5 text-sm">
+            <Info className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500" />
+            <p className="text-muted-foreground">
+              Đơn vị của bạn chưa được gán mẫu báo cáo nào, nên đang hiện toàn
+              bộ trục trong hệ thống. Báo quản trị cấu hình ở mục{" "}
+              <b className="text-foreground">Cấu hình biểu mẫu</b>.
+            </p>
+          </div>
+        ) : null}
+
+        {!loadingAxes && scopeSource !== "fallback" && scopeTemplateName ? (
+          <div className="border-b px-5 py-2 text-xs text-muted-foreground">
+            Biểu mẫu đang áp dụng:{" "}
+            <b className="text-foreground">{scopeTemplateName}</b>
           </div>
         ) : null}
 

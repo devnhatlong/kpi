@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Plus } from "lucide-react";
-import useSWR from "swr";
 import { toast } from "sonner";
 
 import { SearchableSelect } from "@/components/common/searchable-select";
@@ -18,8 +17,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { fetchAxesAll } from "@/features/kpi-form-config/api";
 import { entityId } from "@/features/kpi-form-config/types";
+import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
 import {
   addSummaryManualItem,
   updateSummaryManualItem,
@@ -61,10 +60,14 @@ export function ManualEntryDialog({
   const [score, setScore] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const { data: axes = [] } = useSWR(
-    ["axes", "all", "kpi-summary"],
-    fetchAxesAll,
-  );
+  /*
+    Trục theo mẫu báo cáo của đơn vị người lập. Dòng đang sửa giữ nguyên trục cũ
+    kể cả khi trục đó đã rời mẫu - báo cáo đã lập không được đổi trục ngầm.
+  */
+  const { axes } = useScopedAxes({
+    enabled: open,
+    ensureAxisIds: item?.axisId ? [item.axisId] : undefined,
+  });
 
   /*
     Mở lên là nạp lại theo dòng đang sửa (hoặc form trắng khi thêm mới), dọn

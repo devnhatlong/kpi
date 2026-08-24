@@ -5,6 +5,20 @@ import { Axis } from './axis.schema';
 export type ReportTemplateDocument = HydratedDocument<ReportTemplate>;
 
 /**
+ * Phạm vi đơn vị áp dụng mẫu.
+ * - `all`          : mọi đơn vị trong hệ thống.
+ * - `by_level`     : mọi đơn vị thuộc các cấp đã chọn (Phòng, Xã, Đội…).
+ * - `by_department`: đúng các đơn vị đã chọn (và cấp dưới của chúng nếu bật
+ *                    `includeDescendants`).
+ *
+ * THỨ TỰ ƯU TIÊN khi một đơn vị khớp nhiều mẫu: `by_department` > `by_level` >
+ * `all` - mẫu riêng của đơn vị đè mẫu của cấp, mẫu của cấp đè mẫu dùng chung.
+ * Nhờ vậy một năm vẫn có thể có nhiều mẫu áp dụng song song mà không mập mờ.
+ */
+export const REPORT_SCOPE_TYPES = ['all', 'by_level', 'by_department'] as const;
+export type ReportScopeType = (typeof REPORT_SCOPE_TYPES)[number];
+
+/**
  * Trạng thái của một mẫu báo cáo.
  * - `draft`  : đang cấu hình, chưa ai chấm theo bản này.
  * - `applied`: đã áp dụng - mỗi năm chỉ đúng MỘT bản mang trạng thái này.
@@ -50,6 +64,40 @@ export class ReportTemplate {
     index: true,
   })
   axisIds!: Types.ObjectId[];
+
+  @Prop({
+    type: String,
+    enum: REPORT_SCOPE_TYPES,
+    default: 'all',
+    index: true,
+  })
+  scopeType!: ReportScopeType;
+
+  /** Các cấp đơn vị áp dụng - chỉ dùng khi `scopeType = by_level`. */
+  @Prop({
+    type: [{ type: Types.ObjectId, ref: 'DepartmentLevel' }],
+    default: [],
+    index: true,
+  })
+  levelIds!: Types.ObjectId[];
+
+  /** Các đơn vị áp dụng - chỉ dùng khi `scopeType = by_department`. */
+  @Prop({
+    type: [{ type: Types.ObjectId, ref: 'Department' }],
+    default: [],
+    index: true,
+  })
+  departmentIds!: Types.ObjectId[];
+
+  /**
+   * Đơn vị con cháu có dùng theo mẫu của đơn vị cha không.
+   *
+   * Bật là mặc định vì cây đơn vị thường sâu (Tỉnh > Phòng > Đội): tick Phòng
+   * rồi phải tick lại từng Đội thì năm nào cũng sót. Tắt khi muốn mẫu chỉ áp
+   * đúng đơn vị đã chọn, cấp dưới rơi về mẫu của cấp hoặc mẫu chung.
+   */
+  @Prop({ default: true })
+  includeDescendants!: boolean;
 
   @Prop({
     type: String,

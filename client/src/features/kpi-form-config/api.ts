@@ -19,6 +19,7 @@ import type {
   QualityLevelInput,
   ReportTemplate,
   ReportTemplateInput,
+  ResolvedReportScope,
   ScoreGroup,
   ScoreGroupInput,
   WorkContent,
@@ -403,8 +404,19 @@ export async function deleteFormTemplate(id: string) {
 
 export const reportTemplateKeys = {
   all: ["report-templates"] as const,
+  list: (params: ListQueryParams) =>
+    [
+      "report-templates",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+    ] as const,
+  detail: (id: string) => ["report-template", id] as const,
   /** Năm do server quyết khi không truyền - khoá cache dùng chuỗi rỗng. */
-  current: (year?: number) => ["report-template-current", year ?? ""] as const,
+  mine: (year?: number) => ["report-scope-mine", year ?? ""] as const,
+  forDepartment: (departmentId: string, year?: number) =>
+    ["report-scope-department", departmentId, year ?? ""] as const,
 };
 
 export async function fetchReportTemplatesPage(
@@ -423,30 +435,43 @@ export async function fetchReportTemplatesAll() {
   return result.data.filter((item) => item.isActive);
 }
 
-/**
- * Năm đang cấu hình kèm mẫu của năm đó.
- * `template` null = năm đó chưa có mẫu nào; chưa áp dụng bản nào thì server trả
- * bản nháp mới nhất để màn cấu hình mở lại đúng chỗ đang dở.
- */
-export type CurrentReportContext = {
-  year: number;
-  template: ReportTemplate | null;
-};
+export function fetchReportTemplate(id: string) {
+  return unwrapData(
+    api.get<ApiResponse<ReportTemplate>>(
+      `/kpi-form-config/report-templates/${id}`,
+    ),
+  );
+}
 
 /**
- * Bỏ trống `year` để SERVER chốt năm - không suy năm từ giờ máy trạm, vì máy
- * sang năm sớm hoặc muộn là cả màn cấu hình trỏ nhầm năm.
+ * Mẫu áp dụng cho đơn vị của CHÍNH người đang đăng nhập.
+ *
+ * Không truyền đơn vị lên: server đọc từ hồ sơ người dùng. Để client tự khai
+ * thì ai cũng xem được mẫu của đơn vị khác chỉ bằng cách đổi tham số.
+ *
+ * Bỏ trống `year` để SERVER chốt năm - máy trạm sang năm sớm hoặc muộn là cả
+ * màn nhập trỏ nhầm năm.
  */
-export async function fetchCurrentReportContext(
-  year?: number,
-): Promise<CurrentReportContext> {
-  const data = await unwrapData(
-    api.get<ApiResponse<CurrentReportContext>>(
-      "/kpi-form-config/report-templates/current",
+export function fetchMyReportScope(year?: number) {
+  return unwrapData(
+    api.get<ApiResponse<ResolvedReportScope>>(
+      "/kpi-form-config/report-templates/mine",
       { params: year ? { year } : undefined },
     ),
   );
-  return { year: data.year, template: data.template ?? null };
+}
+
+/** Mẫu áp dụng cho một đơn vị bất kỳ - dành cho màn cấu hình đối chiếu. */
+export function fetchReportScopeForDepartment(
+  departmentId: string,
+  year?: number,
+) {
+  return unwrapData(
+    api.get<ApiResponse<ResolvedReportScope>>(
+      `/kpi-form-config/report-templates/resolve/${departmentId}`,
+      { params: year ? { year } : undefined },
+    ),
+  );
 }
 
 export function createReportTemplate(input: ReportTemplateInput) {
@@ -470,11 +495,23 @@ export function updateReportTemplate(
   );
 }
 
-/** Chốt mẫu cho năm của nó - các bản khác cùng năm tự lùi về nháp. */
+/**
+ * Chốt mẫu cho năm của nó. Một năm vẫn có thể có nhiều mẫu áp dụng song song
+ * (một mẫu chung, vài mẫu riêng); server chỉ chặn khi hai mẫu phủ cùng phạm vi.
+ */
 export function applyReportTemplate(id: string) {
   return unwrapData(
     api.post<ApiResponse<ReportTemplate>>(
       `/kpi-form-config/report-templates/${id}/apply`,
+    ),
+  );
+}
+
+/** Gỡ áp dụng - đơn vị rơi về mẫu ở mức rộng hơn. */
+export function unapplyReportTemplate(id: string) {
+  return unwrapData(
+    api.post<ApiResponse<ReportTemplate>>(
+      `/kpi-form-config/report-templates/${id}/unapply`,
     ),
   );
 }

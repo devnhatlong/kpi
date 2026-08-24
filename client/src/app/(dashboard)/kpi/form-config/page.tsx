@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 
-import { ReportBuilderView } from "@/features/kpi-form-config/components/report-builder/report-builder-view";
+import { ReportTemplatesView } from "@/features/kpi-form-config/components/report-builder/report-templates-view";
 
 export const metadata: Metadata = {
-  title: "Cấu hình biểu mẫu báo cáo",
+  title: "Mẫu báo cáo KPI",
 };
 
-export default function ReportFormConfigPage() {
-  return <ReportBuilderView />;
+export default function ReportTemplatesPage() {
+  return <ReportTemplatesView />;
 }

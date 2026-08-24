@@ -118,7 +118,7 @@ export const NAV_ITEMS: NavItem[] = [
           và khai tiêu chí chung. Ba thứ đó chỉ có nghĩa khi ghép lại thành mẫu
           báo cáo của năm, nên tách ba trang chỉ bắt người cấu hình đi vòng.
         */
-        title: "Cấu hình biểu mẫu",
+        title: "Mẫu báo cáo KPI",
         href: "/kpi/form-config",
         icon: Table2,
       },

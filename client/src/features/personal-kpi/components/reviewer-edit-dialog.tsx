@@ -17,11 +17,9 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  fetchAxesAll,
-  fetchWorkContentsAll,
-} from "@/features/kpi-form-config/api";
+import { fetchWorkContentsAll } from "@/features/kpi-form-config/api";
 import { entityId } from "@/features/kpi-form-config/types";
+import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
 import { reviewerEditPersonalKpi } from "@/features/personal-kpi/api";
 import { TaskFieldsGrid } from "@/features/personal-kpi/components/task-fields-grid";
 import { kpiTone } from "@/features/personal-kpi/status-styles";
@@ -69,10 +67,15 @@ export function ReviewerEditDialog({
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const { data: axes = [] } = useSWR(
-    ["axes", "all", "reviewer-edit"],
-    fetchAxesAll,
-  );
+  /*
+    Trục theo mẫu báo cáo áp dụng cho đơn vị của chỉ huy. Trục của nhiệm vụ
+    đang sửa luôn giữ lại: cán bộ có thể đã khai ở trục sau đó bị loại khỏi
+    mẫu, bỏ nó khỏi dropdown là lưu lại thành đổi trục ngoài ý muốn.
+  */
+  const { axes } = useScopedAxes({
+    enabled: open,
+    ensureAxisIds: item?.axisId ? [item.axisId] : undefined,
+  });
   const { data: contents = [] } = useSWR(
     ["work-contents", "all", "reviewer-edit"],
     fetchWorkContentsAll,

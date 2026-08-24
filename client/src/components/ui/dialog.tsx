@@ -38,7 +38,21 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-lg",
+        /*
+          w-[calc(100%-2rem)] chứ không phải w-full: phần tử fixed lấy 100% theo
+          viewport KỂ CẢ thanh cuộn dọc, nên hộp thoại đúng bằng max-w vẫn thò
+          ra ngoài vùng nhìn thấy trên màn hẹp - nội dung bên phải bị cắt mất.
+          Chừa 1rem mỗi bên là luôn còn lề.
+
+          min-w-0 để con của grid co lại được: mặc định grid item có
+          min-width:auto nên một khối con rộng là đẻ ra thanh cuộn ngang.
+
+          Chiều cao và cuộn dọc để từng hộp thoại tự khai (max-h-[90vh]
+          overflow-y-auto): đặt overflow ở đây sẽ đè overflow-hidden của những
+          hộp thoại tự dựng khung cuộn bên trong - Tailwind sinh overflow-y-*
+          sau overflow-*, nên base thắng dù class của chúng viết sau.
+        */
+        "fixed left-[50%] top-[50%] z-50 grid w-[calc(100%-2rem)] min-w-0 max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-lg",
         className,
       )}
       onOpenAutoFocus={(event) => {

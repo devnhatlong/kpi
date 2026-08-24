@@ -11,13 +11,21 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
-import { Permissions } from '@/common/decorators';
+import { CurrentUser, Permissions } from '@/common/decorators';
 import { Permission } from '@/common/enums/permission.enum';
 import { PermissionsGuard } from '@/common/guards/permissions.guard';
+import type { JwtPayloadUser } from '@/common/interfaces';
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import { ReportTemplatesService } from './report-templates.service';
 import { CreateReportTemplateDto } from './dto/create-report-template.dto';
 import { UpdateReportTemplateDto } from './dto/update-report-template.dto';
+
+/** Năm gửi lên dạng chuỗi; sai định dạng thì bỏ qua để server tự chốt năm. */
+function parseYear(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
 
 @ApiTags('KPI Form Config')
 @ApiBearerAuth()
@@ -42,19 +50,37 @@ export class ReportTemplatesController {
     return this.reportTemplatesService.findAll(query);
   }
 
-  /* Đặt trên ':id' - để dưới thì 'current' bị bắt làm id rồi trả 404. */
-  @ApiOperation({ summary: 'Mẫu báo cáo đang áp dụng của một năm' })
-  @ApiQuery({
-    name: 'year',
-    required: false,
-    description: 'Bỏ trống = năm hiện tại theo giờ server',
+  /*
+    Các route chữ cố định phải đứng TRÊN ':id' - để dưới thì 'mine' và 'resolve'
+    bị bắt làm id rồi trả 404.
+  */
+  @ApiOperation({
+    summary: 'Mẫu báo cáo áp dụng cho đơn vị của người đang đăng nhập',
   })
+  @ApiQuery({ name: 'year', required: false })
   @Permissions(Permission.TASK_VIEW)
-  @Get('current')
-  findCurrent(@Query('year') year?: string) {
-    const parsed = year ? Number(year) : undefined;
-    return this.reportTemplatesService.findCurrent(
-      Number.isFinite(parsed) ? parsed : undefined,
+  @Get('mine')
+  resolveMine(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query('year') year?: string,
+  ) {
+    return this.reportTemplatesService.resolveForUser(
+      user.uid,
+      parseYear(year),
+    );
+  }
+
+  @ApiOperation({ summary: 'Mẫu báo cáo áp dụng cho một đơn vị bất kỳ' })
+  @ApiQuery({ name: 'year', required: false })
+  @Permissions(Permission.KPI_MANAGE)
+  @Get('resolve/:departmentId')
+  resolveForDepartment(
+    @Param('departmentId') departmentId: string,
+    @Query('year') year?: string,
+  ) {
+    return this.reportTemplatesService.resolveForDepartment(
+      departmentId,
+      parseYear(year),
     );
   }
 
@@ -77,6 +103,13 @@ export class ReportTemplatesController {
   @Post(':id/apply')
   apply(@Param('id') id: string) {
     return this.reportTemplatesService.apply(id);
+  }
+
+  @ApiOperation({ summary: 'Gỡ áp dụng mẫu báo cáo' })
+  @Permissions(Permission.KPI_MANAGE)
+  @Post(':id/unapply')
+  unapply(@Param('id') id: string) {
+    return this.reportTemplatesService.unapply(id);
   }
 
   @ApiOperation({ summary: 'Xoá mẫu báo cáo' })
