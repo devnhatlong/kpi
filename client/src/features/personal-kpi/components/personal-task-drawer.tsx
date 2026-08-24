@@ -18,6 +18,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { fetchWorkContentsAll } from "@/features/kpi-form-config/api";
+import { NoReportTemplateNotice } from "@/features/kpi-form-config/components/no-report-template-notice";
 import type { Axis, WorkContent } from "@/features/kpi-form-config/types";
 import { entityId } from "@/features/kpi-form-config/types";
 import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
@@ -127,7 +128,7 @@ export function PersonalTaskDrawer({
     axes,
     isLoading: loadingAxes,
     error: axesError,
-    source: scopeSource,
+    hasTemplate,
     templateName: scopeTemplateName,
   } = useScopedAxes({
     enabled: open,
@@ -524,26 +525,27 @@ export function PersonalTaskDrawer({
           </div>
         ) : null}
 
-        {/* Đơn vị chưa được gán mẫu thì thư viện đang hiện MỌI trục - nói thẳng
-            ra, đừng để cán bộ tưởng đó là danh mục đã được duyệt cho mình. */}
-        {!loadingAxes && scopeSource === "fallback" ? (
-          <div className="flex items-start gap-2 border-b bg-amber-500/5 px-5 py-2.5 text-sm">
-            <Info className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500" />
-            <p className="text-muted-foreground">
-              Đơn vị của bạn chưa được gán mẫu báo cáo nào, nên đang hiện toàn
-              bộ trục trong hệ thống. Báo quản trị cấu hình ở mục{" "}
-              <b className="text-foreground">Cấu hình biểu mẫu</b>.
-            </p>
-          </div>
-        ) : null}
-
-        {!loadingAxes && scopeSource !== "fallback" && scopeTemplateName ? (
+        {!loadingAxes && hasTemplate && scopeTemplateName ? (
           <div className="border-b px-5 py-2 text-xs text-muted-foreground">
             Biểu mẫu đang áp dụng:{" "}
             <b className="text-foreground">{scopeTemplateName}</b>
           </div>
         ) : null}
 
+        {/*
+          Đơn vị chưa có mẫu áp dụng thì KHOÁ hẳn màn nhập, không rơi về danh
+          mục trục mặc định: khai vào cấu trúc chưa ai duyệt thì số liệu không
+          quy về mẫu nào để chấm. Sửa nhiệm vụ cũ vẫn cho qua - bản ghi đã tồn
+          tại, chặn lại chỉ làm kẹt việc đang dở.
+        */}
+        {!loadingAxes && !hasTemplate && !isEdit ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-6">
+            <NoReportTemplateNotice
+              action="nhập nhiệm vụ"
+              className="w-full max-w-xl"
+            />
+          </div>
+        ) : (
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {!isEdit ? (
             <aside className="flex w-[290px] shrink-0 flex-col border-r bg-muted/20 xl:w-[340px]">
@@ -765,6 +767,7 @@ export function PersonalTaskDrawer({
             )}
           </div>
         </div>
+        )}
 
         <SheetFooter className="flex-col gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-1.5">

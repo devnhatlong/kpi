@@ -152,10 +152,10 @@ export class ReportTemplatesService {
    * Mẫu áp dụng cho một đơn vị, theo thứ tự ưu tiên
    * `by_department` > `by_level` > `all`.
    *
-   * Không mẫu nào phủ đơn vị thì trả TOÀN BỘ trục đang hoạt động kèm cờ
-   * `source = 'fallback'`, chứ không trả rỗng: hệ thống đang chạy có dữ liệu
-   * trước khi có khái niệm mẫu báo cáo, trả rỗng là khoá luôn màn nhập của mọi
-   * đơn vị chưa kịp gán mẫu. Màn nhập đọc cờ này để nói rõ đang ở tình trạng nào.
+   * Không mẫu nào phủ đơn vị thì trả RỖNG kèm cờ `source = 'fallback'` - đơn vị
+   * đó không có biểu mẫu nào để nhập, và màn nhập phải khoá lại chứ không được
+   * tự bày ra mọi trục trong hệ thống. Bày ra thì cán bộ khai vào một cấu trúc
+   * chưa ai duyệt, và số liệu đó không quy về mẫu nào để chấm được.
    */
   async resolveForDepartment(departmentId: string | null, year?: number) {
     const target = this.resolveYear(year);
@@ -223,13 +223,13 @@ export class ReportTemplatesService {
       if (picked) source = 'all';
     }
 
+    // Trục đã tắt vẫn nằm trong mẫu cũ - lọc ra để màn nhập không bày trục
+    // không còn dùng, nhưng KHÔNG gỡ khỏi mẫu: bản ghi cũ vẫn trỏ vào nó.
     const axes = picked
       ? (picked.axisIds as unknown as AxisDocument[]).filter(
           (axis) => axis?.isActive !== false,
         )
-      : await this.axisModel
-          .find({ isActive: true })
-          .sort({ sortOrder: 1, name: 1 });
+      : [];
 
     return {
       data: {
@@ -237,7 +237,7 @@ export class ReportTemplatesService {
         departmentId: departmentId ?? null,
         source,
         template: picked,
-        includeCriteria: picked ? picked.includeCriteria : true,
+        includeCriteria: picked ? picked.includeCriteria : false,
         axes,
       },
     };

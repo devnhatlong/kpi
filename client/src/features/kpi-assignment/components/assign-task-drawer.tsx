@@ -53,6 +53,7 @@ import {
   fetchScoreGroupsAll,
   fetchWorkContentsAll,
 } from "@/features/kpi-form-config/api";
+import { NoReportTemplateNotice } from "@/features/kpi-form-config/components/no-report-template-notice";
 import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
 import { formatScoreGroupRange } from "@/features/kpi-form-config/score-group.constants";
 import { entityId } from "@/features/kpi-form-config/types";
@@ -203,7 +204,11 @@ export function AssignTaskDrawer({
     giao vì một lần giao có thể nhắm nhiều đơn vị nhận cùng lúc - lấy theo bên
     nhận thì không có "một" danh sách trục để dựng form.
   */
-  const { axes } = useScopedAxes({ enabled: open });
+  const {
+    axes,
+    hasTemplate: canAssign,
+    isLoading: loadingScope,
+  } = useScopedAxes({ enabled: open });
   const { data: workContents = [] } = useSWR(
     open ? ["work-contents", "assign"] : null,
     fetchWorkContentsAll,
@@ -555,6 +560,14 @@ export function AssignTaskDrawer({
         </SheetHeader>
 
         <div className="flex-1 space-y-4 overflow-auto px-1 py-4">
+          {/*
+            Không có mẫu áp dụng thì không có trục nào để dựng khối - khoá hẳn
+            thay vì bày ra form rỗng rồi báo lỗi lúc lưu.
+          */}
+          {!loadingScope && !canAssign ? (
+            <NoReportTemplateNotice action="giao nhiệm vụ" />
+          ) : (
+          <>
           <p className="flex items-start gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
             <Info className="mt-0.5 size-4 shrink-0 text-primary" />
             Dán từ Excel sẽ tự gom nhiệm vụ vào đúng trục và nội dung tương ứng.
@@ -996,6 +1009,8 @@ export function AssignTaskDrawer({
               Thêm trục
             </Button>
           ) : null}
+          </>
+          )}
         </div>
 
         <SheetFooter className="flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">

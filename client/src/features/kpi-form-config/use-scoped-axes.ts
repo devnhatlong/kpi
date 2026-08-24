@@ -19,6 +19,11 @@ export type ScopedAxes = {
   /** Trục của mẫu áp dụng cho đơn vị mình, theo đúng thứ tự khối trên báo cáo. */
   axes: Axis[];
   source: ReportScopeSource;
+  /**
+   * Đơn vị có mẫu báo cáo để nhập không. false = chưa mẫu nào phủ đơn vị này,
+   * màn nhập phải khoá lại chứ không được bày ra danh mục trục mặc định.
+   */
+  hasTemplate: boolean;
   /** Tên mẫu đang áp dụng; rỗng khi chưa mẫu nào phủ đơn vị. */
   templateName: string;
   includeCriteria: boolean;
@@ -39,10 +44,10 @@ type UseScopedAxesOptions = {
 /**
  * Trục mà đơn vị của người đang đăng nhập được dùng, theo mẫu báo cáo áp dụng.
  *
- * Chưa mẫu nào phủ đơn vị thì server trả toàn bộ trục đang hoạt động kèm
- * `source = 'fallback'` - hệ thống có dữ liệu từ trước khi có mẫu báo cáo, khoá
- * màn nhập lại vì chưa ai kịp gán mẫu thì hại hơn là lợi. Màn nhập nên đọc cờ
- * này để nói rõ đang ở tình trạng nào.
+ * Chưa mẫu nào phủ đơn vị thì `hasTemplate = false` và `axes` rỗng - màn nhập
+ * phải khoá lại và chỉ đường sang mục Mẫu báo cáo, KHÔNG được rơi về danh mục
+ * trục mặc định: khai vào một cấu trúc chưa ai duyệt thì số liệu đó không quy
+ * về mẫu nào để chấm được.
  */
 export function useScopedAxes(options: UseScopedAxesOptions = {}): ScopedAxes {
   const { enabled = true, ensureAxisIds } = options;
@@ -77,8 +82,11 @@ export function useScopedAxes(options: UseScopedAxesOptions = {}): ScopedAxes {
     return {
       axes: extra.length ? [...base, ...extra] : base,
       source: data?.source ?? "fallback",
+      // Chưa tải xong thì chưa kết luận là không có mẫu - để màn nhập không
+      // chớp qua màn hình "đơn vị chưa có biểu mẫu" rồi mới hiện form.
+      hasTemplate: data ? data.source !== "fallback" : true,
       templateName: data?.template?.name ?? "",
-      includeCriteria: data?.includeCriteria ?? true,
+      includeCriteria: data?.includeCriteria ?? false,
       isLoading: enabled && isLoading,
       error,
     };

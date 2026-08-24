@@ -40,7 +40,9 @@ import {
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/features/auth/auth-provider";
+import { NoReportTemplateNotice } from "@/features/kpi-form-config/components/no-report-template-notice";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
+import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
 import {
   deletePersonalKpi,
   fetchMyPersonalKpi,
@@ -187,6 +189,11 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     useListPagination();
   const [tab, setTab] = useState<TabValue>("ALL");
   const [groupMode, setGroupMode] = useState<GroupMode>("TASK");
+  /*
+    Đơn vị có mẫu báo cáo áp dụng không - chưa có thì không nhập được nhiệm vụ
+    nào. Dùng chung khoá SWR với form nhập nên không tốn thêm lượt gọi.
+  */
+  const { hasTemplate: canEnter, isLoading: loadingScope } = useScopedAxes();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [edit, setEdit] = useState<PersonalKpiItem | null>(null);
   /** Nhiệm vụ đang mở ô cập nhật tiến độ hằng ngày. */
@@ -453,6 +460,14 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   ]);
 
   const openCreate = () => {
+    // Chốt chặn thật nằm ở form nhập và ở server; đây chỉ để không mở ra một
+    // drawer chỉ để báo là không nhập được.
+    if (!canEnter) {
+      toast.error(
+        "Đơn vị chưa được gán mẫu báo cáo nào - chưa nhập nhiệm vụ được.",
+      );
+      return;
+    }
     setEdit(null);
     setDrawerOpen(true);
   };
@@ -653,7 +668,15 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
               {alreadySent ? "Gửi tiếp" : "Gửi báo cáo"} ({sendableItems.length}
               )
             </Button>
-            <Button onClick={openCreate}>
+            <Button
+              onClick={openCreate}
+              disabled={loadingScope || !canEnter}
+              title={
+                canEnter
+                  ? undefined
+                  : "Đơn vị chưa được gán mẫu báo cáo nào"
+              }
+            >
               <Plus className="h-4 w-4" />
               Nhập báo cáo ngày
             </Button>
@@ -661,7 +684,11 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
         </CardContent>
       </Card>
 
-      {reminder ? (
+      {/* Chưa có mẫu thì lời nhắc "hôm nay chưa nhập nhiệm vụ nào" là sai chỗ -
+          vấn đề không nằm ở cán bộ. Thay bằng đúng nguyên nhân và người xử lý. */}
+      {!loadingScope && !canEnter ? (
+        <NoReportTemplateNotice action="nhập báo cáo" />
+      ) : reminder ? (
         <div
           className={cn(
             "flex flex-wrap items-center gap-3 rounded-lg border p-3 text-sm",
