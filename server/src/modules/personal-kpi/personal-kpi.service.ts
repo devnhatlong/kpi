@@ -41,6 +41,7 @@ import {
   ReviewPersonalKpiDto,
   ReviewerEditPersonalKpiDto,
   ScorePersonalKpiDto,
+  SavePersonalCriteriaSheetDto,
   SubmitPersonalKpiDto,
   UpdatePersonalKpiDto,
   UpdatePersonalKpiProgressDto,
@@ -80,9 +81,18 @@ import {
   QualityLevelDocument,
 } from '@/modules/kpi-form-config/schemas/quality-level.schema';
 import {
+  Criterion,
+  CriterionDocument,
+} from '@/modules/kpi-form-config/schemas/criterion.schema';
+import {
   PersonalKpiSubmission,
   PersonalKpiSubmissionDocument,
 } from './schemas/personal-kpi-submission.schema';
+import {
+  PersonalKpiCriteriaSheet,
+  PersonalKpiCriteriaSheetDocument,
+  type PersonalKpiCriterionRow,
+} from './schemas/personal-kpi-criteria-sheet.schema';
 import { isYmd, serverDateYmd, shiftYmd } from './personal-kpi.time';
 
 /** Cán bộ chỉ sửa/gửi được nhiệm vụ ở hai trạng thái này. */
@@ -134,6 +144,10 @@ export class PersonalKpiService {
     private readonly scoreGroupModel: Model<ScoreGroupDocument>,
     @InjectModel(QualityLevel.name)
     private readonly qualityLevelModel: Model<QualityLevelDocument>,
+    @InjectModel(Criterion.name)
+    private readonly criterionModel: Model<CriterionDocument>,
+    @InjectModel(PersonalKpiCriteriaSheet.name)
+    private readonly criteriaSheetModel: Model<PersonalKpiCriteriaSheetDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
     @InjectModel(Department.name)
@@ -2804,6 +2818,186 @@ export class PersonalKpiService {
         ? new Types.ObjectId(String(recipient.departmentId))
         : null,
     };
+  }
+
+  // ================================================ khối A - báo cáo cá nhân
+
+  /**
+   * Bảng khối A của một ngày, ghép danh mục tiêu chí ĐANG HOẠT ĐỘNG với những
+   * gì cán bộ đã chấm.
+   *
+   * Ghép chứ không trả thẳng bản đã lưu: tiêu chí mới thêm vào danh mục phải
+   * hiện ra để chấm, tiêu chí đã ngừng thì không bày nữa - nhưng điểm cũ vẫn
+   * nằm nguyên trong bản ghi, không xoá đi.
+   */
+  async getCriteriaSheet(userId: string, reportDate?: string) {
+    const actor = await this.requireActor(userId);
+    const date = this.resolveReportDate(reportDate);
+
+    const [criteria, sheet] = await Promise.all([
+      this.criterionModel
+        .find({ isActive: true })
+        .sort({ sortOrder: 1, name: 1 }),
+      this.criteriaSheetModel.findOne({ ownerId: actor.id, reportDate: date }),
+    ]);
+
+    const saved = new Map(
+      (sheet?.rows ?? []).map((row) => [String(row.criterionId), row]),
+    );
+
+    return {
+      message: 'OK',
+      data: {
+        reportDate: date,
+        rows: criteria.map((criterion) => {
+          const row = saved.get(String(criterion._id));
+          return {
+            criterionId: String(criterion._id),
+            criterionName: criterion.name,
+            /** Ghi chú admin khai sẵn ở danh mục - cột criterion_note đọc nó. */
+            criterionNote: criterion.note ?? '',
+            maxScore: criterion.maxScore ?? 0,
+            fieldValues: row?.fieldValues ?? {},
+            catalogValues: row?.catalogValues ?? {},
+          };
+        }),
+      },
+    };
+  }
+
+  /** Lưu cả bảng khối A của một ngày - ghi đè nguyên bộ. */
+  async saveCriteriaSheet(
+    userId: string,
+    dto: SavePersonalCriteriaSheetDto,
+  ) {
+    const actor = await this.requireActor(userId);
+    const date = this.resolveReportDate(dto.reportDate);
+
+    const ids = [...new Set(dto.rows.map((row) => row.criterionId))].map(
+      (value) => this.requireObjectId(value, 'Tiêu chí'),
+    );
+    const criteria = await this.criterionModel
+      .find({ _id: { $in: ids } })
+      .select('name maxScore');
+    const byId = new Map(criteria.map((row) => [String(row._id), row]));
+    if (byId.size !== ids.length) {
+      throw new BadRequestException('Có tiêu chí không tồn tại.');
+    }
+
+    /*
+      Bảng A do mẫu `forCriteria` quyết định có cột gì, nên luật kiểm cũng phải
+      đọc từ mẫu: cột số nào khai `rangeFromColumnKey` trỏ vào cột Điểm tối đa
+      (tiêu chí) thì giá trị phải nằm trong 0 - điểm tối đa của CHÍNH dòng đó.
+    */
+    const template = await this.formTemplateModel.findOne({
+      forCriteria: true,
+      isActive: true,
+    });
+    const columns = template?.columns ?? [];
+    const known = new Set(columns.map((column) => column.key));
+    const maxScoreKeys = new Set(
+      columns
+        .filter((column) => column.semanticKey === 'criterion_max_score')
+        .map((column) => column.key),
+    );
+    const cappedKeys = new Map(
+      columns
+        .filter(
+          (column) =>
+            column.dataType === 'number' &&
+            column.rangeFromColumnKey &&
+            maxScoreKeys.has(column.rangeFromColumnKey),
+        )
+        .map((column) => [column.key, column.title]),
+    );
+
+    const seen = new Set<string>();
+    const rows = dto.rows.map((row) => {
+      const criterion = byId.get(row.criterionId)!;
+      if (seen.has(row.criterionId)) {
+        throw new BadRequestException(
+          `Tiêu chí "${criterion.name}" bị chấm hai lần.`,
+        );
+      }
+      seen.add(row.criterionId);
+
+      const max = criterion.maxScore ?? 0;
+      // Chỉ giữ ô của cột đang có trong mẫu - cột đã bỏ thì không nhận thêm giá
+      // trị mới, nhưng dữ liệu cũ trong bản ghi vẫn còn nguyên.
+      const fieldValues: Record<string, string | number | boolean> = {};
+      for (const [key, value] of Object.entries(row.fieldValues ?? {})) {
+        if (!known.has(key)) continue;
+        if (cappedKeys.has(key)) {
+          const numeric = Number(value);
+          if (value !== '' && value !== null && Number.isFinite(numeric)) {
+            if (numeric < 0 || numeric > max) {
+              throw new BadRequestException(
+                `"${criterion.name}" · ${cappedKeys.get(key)}: điểm phải nằm trong khoảng 0 - ${max}.`,
+              );
+            }
+          }
+        }
+        fieldValues[key] = value as string | number | boolean;
+      }
+
+      const catalogValues: Record<string, { id: string; name: string }> = {};
+      for (const [key, value] of Object.entries(row.catalogValues ?? {})) {
+        if (!known.has(key) || !value?.id) continue;
+        catalogValues[key] = { id: String(value.id), name: String(value.name) };
+      }
+
+      return {
+        criterionId: criterion._id as Types.ObjectId,
+        criterionName: criterion.name,
+        maxScore: max,
+        fieldValues,
+        catalogValues,
+      };
+    });
+
+    await this.criteriaSheetModel.updateOne(
+      { ownerId: actor.id, reportDate: date },
+      {
+        $set: { rows, ownerDepartmentId: actor.departmentId },
+        $setOnInsert: { ownerId: actor.id, reportDate: date },
+      },
+      { upsert: true },
+    );
+
+    return {
+      message: 'Đã lưu bảng tiêu chí chung.',
+      data: { reportDate: date, rowCount: rows.length },
+    };
+  }
+
+  /**
+   * Bản tự chấm MỚI NHẤT trong kỳ của từng cán bộ - báo cáo tổng hợp nạp sẵn
+   * số này rồi chỉ huy sửa đè.
+   *
+   * Lấy bản mới nhất chứ không cộng trung bình các ngày: mỗi ngày một bản là
+   * cán bộ chấm lại toàn bộ 6 tiêu chí, nên bản sau luôn là đánh giá thay thế
+   * bản trước, không phải một phần của tổng.
+   */
+  async latestCriteriaSheets(
+    ownerIds: Types.ObjectId[],
+    fromDate: string,
+    toDate: string,
+  ) {
+    if (!ownerIds.length) return new Map<string, PersonalKpiCriterionRow[]>();
+
+    const sheets = await this.criteriaSheetModel
+      .find({
+        ownerId: { $in: ownerIds },
+        ...(fromDate && toDate
+          ? { reportDate: { $gte: fromDate, $lte: toDate } }
+          : {}),
+      })
+      .sort({ reportDate: 1 });
+
+    // Sắp tăng dần rồi ghi đè: bản cuối cùng ghi vào map là bản mới nhất.
+    const latest = new Map<string, PersonalKpiCriterionRow[]>();
+    for (const sheet of sheets) latest.set(String(sheet.ownerId), sheet.rows);
+    return latest;
   }
 
   private async requireActor(userId: string): Promise<ActorInfo> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -27,8 +27,13 @@ import {
 } from "@/components/ui/sheet";
 import { fetchWorkContentsAll } from "@/features/kpi-form-config/api";
 import { NoReportTemplateNotice } from "@/features/kpi-form-config/components/no-report-template-notice";
+import { PersonalCriteriaPanel } from "@/features/personal-kpi/components/personal-criteria-panel";
 import type { Axis, WorkContent } from "@/features/kpi-form-config/types";
-import { entityId } from "@/features/kpi-form-config/types";
+import {
+  entityId,
+  REPORT_SECTION_A_TITLE,
+  REPORT_SECTION_B_TITLE,
+} from "@/features/kpi-form-config/types";
 import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import {
@@ -51,6 +56,9 @@ import {
 } from "@/features/personal-kpi/types";
 import { useAxisTemplates } from "@/features/personal-kpi/use-axis-templates";
 import { getApiErrorMessage } from "@/lib/api-client";
+
+/** Giá trị tab của khối A - không trùng được với id trục nào. */
+const CRITERIA_TAB = "__criteria__";
 import { cn } from "@/lib/utils";
 
 function workContentAxisId(item: WorkContent): string {
@@ -137,6 +145,7 @@ export function PersonalTaskDrawer({
     isLoading: loadingAxes,
     error: axesError,
     hasTemplate,
+    includeCriteria,
     templateName: scopeTemplateName,
   } = useScopedAxes({
     enabled: open,
@@ -158,8 +167,14 @@ export function PersonalTaskDrawer({
   const [saving, setSaving] = useState(false);
   /** Nội dung vừa bấm ở thư viện - cuộn tới thẻ nhập của nó. */
   const [focusKey, setFocusKey] = useState<string | null>(null);
-  /** Trục đang mở ở cột phải; rỗng = lấy trục đầu tiên có nội dung. */
+  /** Khối đang mở ở cột phải; rỗng = lấy khối đầu tiên có nội dung. */
   const [axisTab, setAxisTab] = useState("");
+  /**
+   * Hàm lưu bảng khối A do chính panel đăng ký. Giữ ở ref chứ không nhấc state
+   * của bảng lên đây: drawer chỉ cần biết "lưu hộ tôi", không cần biết bảng
+   * đang có gì.
+   */
+  const criteriaSaveRef = useRef<null | (() => Promise<void>)>(null);
   /** Khoá của các nội dung đang thu gọn - giữ ở đây để gấp được cả loạt. */
   const [collapsedKeys, setCollapsedKeys] = useState<string[]>([]);
   /** Trục đang gấp ở THƯ VIỆN bên trái - khác với collapsedKeys của thẻ nhập. */
@@ -323,6 +338,16 @@ export function PersonalTaskDrawer({
     "";
   const activeGroup = axisGroups.find((group) => group.axisId === activeAxisId);
 
+  /*
+    Khối A chỉ hiện khi mẫu báo cáo của đơn vị có bật nó. Sửa một nhiệm vụ cũ
+    thì không bày: lúc đó drawer chỉ nói về đúng nhiệm vụ đang mở.
+  */
+  const showCriteria = includeCriteria && !isEdit;
+  const activeTab =
+    showCriteria && (axisTab === CRITERIA_TAB || !activeAxisId)
+      ? CRITERIA_TAB
+      : activeAxisId;
+
   /** Bấm nội dung đã chọn rồi = thêm một việc nữa cho nội dung đó. */
   const pickContent = (axisId: string, workContentId: string) => {
     // Nhảy sang tab của trục vừa bấm, nếu không thì thẻ vừa thêm nằm ở tab khác.
@@ -405,7 +430,9 @@ export function PersonalTaskDrawer({
   };
 
   const submit = async () => {
-    if (entries.length === 0) {
+    // Chưa chọn nội dung nào vẫn lưu được nếu đang chấm khối A - chấm tiêu chí
+    // chung là một việc độc lập, không cần có nhiệm vụ nào trước.
+    if (entries.length === 0 && !criteriaSaveRef.current) {
       toast.error("Chọn ít nhất một nội dung công tác ở cột bên trái.");
       return;
     }
@@ -469,6 +496,17 @@ export function PersonalTaskDrawer({
 
     setSaving(true);
     try {
+      // Khối A lưu trước: nó là bảng riêng, hỏng thì không nên để nhiệm vụ đã
+      // lưu xong rồi mới báo lỗi.
+      await criteriaSaveRef.current?.();
+
+      if (!payloads.length) {
+        toast.success("Đã lưu bảng tiêu chí chung.");
+        await onSaved();
+        onOpenChange(false);
+        return;
+      }
+
       if (edit) {
         await updatePersonalKpi(edit.id, payloads[0]!);
         // Sửa xong là nhiệm vụ quay về chỗ mình, phải gửi lại mới lên cấp trên.
@@ -704,7 +742,9 @@ export function PersonalTaskDrawer({
           ) : null}
 
           <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
-            {entries.length === 0 ? (
+            {/* Chưa chọn nội dung nào mà mẫu có khối A thì vẫn phải vào được
+                tab A - chấm tiêu chí chung không cần có nhiệm vụ nào trước. */}
+            {entries.length === 0 && !showCriteria ? (
               <div className="flex h-full flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-muted/10 p-10 text-center">
                 <ClipboardList
                   className="size-9 text-muted-foreground/45"
@@ -724,25 +764,79 @@ export function PersonalTaskDrawer({
                   của trục khác mới tới thẻ mình đang gõ.
                 */}
                 <SegmentedTabs
-                  ariaLabel="Chọn trục đang nhập"
-                  value={activeAxisId}
+                  ariaLabel="Chọn khối đang nhập"
+                  value={activeTab}
                   onChange={setAxisTab}
                   className="w-fit"
-                  items={axisGroups.map((group) => ({
-                    value: group.axisId,
-                    title: group.axis?.name,
-                    label: (
-                      <span className="flex items-center gap-1.5">
-                        Trục {group.order}
-                        <span className="rounded-full bg-primary/10 px-1.5 text-xs font-medium text-primary tabular-nums">
-                          {group.taskCount}
+                  items={[
+                    // Khối A đứng đầu, đúng thứ tự bản in: A rồi mới tới B.
+                    ...(showCriteria
+                      ? [
+                          {
+                            value: CRITERIA_TAB,
+                            title: "Danh mục điểm tiêu chí chung",
+                            label: (
+                              <span className="flex items-center gap-1.5">
+                                <span className="rounded bg-emerald-500/15 px-1 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                                  A
+                                </span>
+                                Tiêu chí chung
+                              </span>
+                            ),
+                          },
+                        ]
+                      : []),
+                    ...axisGroups.map((group) => ({
+                      value: group.axisId,
+                      title: group.axis?.name,
+                      label: (
+                        <span className="flex items-center gap-1.5">
+                          Trục {group.order}
+                          <span className="rounded-full bg-primary/10 px-1.5 text-xs font-medium text-primary tabular-nums">
+                            {group.taskCount}
+                          </span>
                         </span>
-                      </span>
-                    ),
-                  }))}
+                      ),
+                    })),
+                  ]}
                 />
 
-                {activeGroup ? (
+                {/*
+                  Tên phần thay cho một cái khung bọc: tab là điều khiển phẳng,
+                  lồng nhóm vào trong nó chỉ thêm viền mà không thêm thông tin.
+                  Chỉ hiện khi mẫu có khối A - không có A thì gắn nhãn "B" cho
+                  mọi thứ là nhiễu.
+                */}
+                {showCriteria ? (
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {activeTab === CRITERIA_TAB
+                      ? `A · ${REPORT_SECTION_A_TITLE}`
+                      : `B · ${REPORT_SECTION_B_TITLE}`}
+                  </p>
+                ) : null}
+
+                {/*
+                  Ẩn bằng CSS chứ KHÔNG tháo khỏi cây: tháo ra là mất sạch bảng
+                  đang gõ dở khi chuyển sang tab trục, và hàm lưu cũng bị gỡ nên
+                  "Lưu nháp" bỏ quên khối A. Nhiệm vụ giữ được state vì `entries`
+                  nằm ở drawer, còn bảng A giữ state trong chính panel.
+                */}
+                {showCriteria ? (
+                  <div
+                    className={activeTab === CRITERIA_TAB ? undefined : "hidden"}
+                  >
+                    <PersonalCriteriaPanel
+                      reportDate={reportDate}
+                      enabled
+                      disabled={saving}
+                      onRegisterSave={(fn) => {
+                        criteriaSaveRef.current = fn;
+                      }}
+                    />
+                  </div>
+                ) : null}
+
+                {activeGroup && activeTab !== CRITERIA_TAB ? (
                   <div key={activeGroup.axisId} className="space-y-2.5">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
                       <span className="min-w-0 truncate text-sm font-semibold">

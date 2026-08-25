@@ -104,6 +104,28 @@ export type SummaryReportLog = {
   at: string;
 };
 
+/**
+ * Ai đang được chấm khối A.
+ * `DEPARTMENT` là bộ điểm CỦA BÁO CÁO - chỉ bộ này cộng vào tổng điểm. `USER`
+ * là bộ điểm cá nhân của từng cán bộ, để riêng.
+ */
+export type CriterionSubjectType = "DEPARTMENT" | "USER";
+
+/** Một ô chấm của "A. Danh mục điểm tiêu chí chung". */
+export type SummaryCriterionScore = {
+  subjectType: CriterionSubjectType;
+  /** null khi chấm cho chính đơn vị của báo cáo. */
+  subjectId: string | null;
+  subjectName: string;
+  criterionId: string;
+  /** Chụp lại lúc chấm - sửa danh mục sau này không đổi bản đã trình. */
+  criterionName: string;
+  maxScore: number;
+  /** Giá trị các ô theo khoá cột của mẫu `forCriteria`. */
+  fieldValues: Record<string, string | number | boolean>;
+  catalogValues: Record<string, { id: string; name: string }>;
+};
+
 export type SummaryReport = {
   _id: string;
   title: string;
@@ -119,6 +141,8 @@ export type SummaryReport = {
   /** Số nhiệm vụ lấy từ KPI - chưa tính nhiệm vụ tự nhập. */
   itemCount: number;
   manualItems: SummaryManualItem[];
+  /** Khối A - rỗng khi mẫu không bật khối này hoặc chưa ai chấm. */
+  criteriaScores: SummaryCriterionScore[];
   /** Danh sách báo cáo không kèm nhật ký cho nhẹ; chi tiết mới có. */
   logs: SummaryReportLog[];
   sentToId: string | null;
@@ -143,6 +167,18 @@ export type SummaryReportDetail = {
   rowCount: number;
   /** Nhiệm vụ đã lưu trong báo cáo nhưng không còn trong hệ thống. */
   missingCount: number;
+  /**
+   * Điểm khối A do CHÍNH cán bộ tự chấm ở báo cáo cá nhân - bản mới nhất trong
+   * kỳ. Chỉ để nạp sẵn và đối chiếu; số chốt vẫn là `report.criteriaScores`.
+   */
+  selfCriteriaScores: Array<{
+    subjectId: string;
+    criterionId: string;
+    criterionName: string;
+    maxScore: number;
+    fieldValues: Record<string, string | number | boolean>;
+    catalogValues: Record<string, { id: string; name: string }>;
+  }>;
 };
 
 /** Đếm cho dòng "N báo cáo · M đã gửi" trên đầu trang. */

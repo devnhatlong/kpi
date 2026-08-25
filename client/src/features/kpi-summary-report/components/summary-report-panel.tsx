@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import useSWR from "swr";
 import {
   Building2,
   CircleCheck,
@@ -42,6 +43,10 @@ import {
 } from "@/components/ui/dialog";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
 import { useAxisTemplates } from "@/features/personal-kpi/use-axis-templates";
+import {
+  fetchFormTemplateForCriteria,
+  formTemplateKeys,
+} from "@/features/kpi-form-config/api";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import {
   approveSummaryReport,
@@ -54,6 +59,7 @@ import {
 } from "@/features/kpi-summary-report/api";
 import { ManualEntryDialog } from "@/features/kpi-summary-report/components/manual-entry-dialog";
 import { mapPersonalKpiFromApi } from "@/features/personal-kpi/api";
+import { CriteriaScoreSection } from "@/features/kpi-summary-report/components/criteria-score-section";
 import { ProgressUpdateDialog } from "@/features/personal-kpi/components/progress-update-dialog";
 import { ReviewerEditDialog } from "@/features/personal-kpi/components/reviewer-edit-dialog";
 import { PickCompletedDialog } from "@/features/kpi-summary-report/components/pick-completed-dialog";
@@ -212,6 +218,12 @@ export function SummaryReportPanel({
 
   const scoreGroupById = useScoreGroupMap();
   const qualityLevelById = useQualityLevelMap();
+  /* Cùng khoá SWR với khối A bên dưới nên không tốn thêm lượt gọi. */
+  const criteriaTemplate = useSWR(
+    formTemplateKeys.forCriteria,
+    fetchFormTemplateForCriteria,
+    { revalidateOnFocus: false },
+  );
   /*
     Nhiệm vụ khoá bộ cột theo phiên bản mẫu lúc gửi, nhưng CÔNG THỨC tính điểm
     thì lấy theo mẫu đang áp dụng của trục - admin sửa công thức xong phải thấy
@@ -229,6 +241,51 @@ export function SummaryReportPanel({
       ),
     [detail.axes, report.manualItems, scoreGroupById, qualityLevelById, byAxis],
   );
+
+  /*
+    Cán bộ có mặt trong báo cáo - đối tượng chấm của khối A ở mức cá nhân.
+    Chỉ lấy từ dòng KPI thật: dòng tự nhập chỉ có tên gõ tay, không có tài khoản
+    để gắn điểm vào, mà server thì bắt buộc phải là người có nhiệm vụ trong báo
+    cáo.
+  */
+  const reportPeople = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const entry of content.entries) {
+      // `ownerId` có thể là chuỗi hoặc object đã populate, tuỳ endpoint.
+      const raw = entry.row?.ownerId;
+      const id = typeof raw === "string" ? raw : (raw?._id ?? "");
+      if (!id) continue;
+      if (!byId.has(id)) byId.set(id, entry.ownerName);
+    }
+    return [...byId].map(([id, name]) => ({ id, name: name || "Không rõ tên" }));
+  }, [content.entries]);
+
+  /*
+    Điểm khối A của BÁO CÁO chỉ tính bộ của đơn vị. Bộ của từng cán bộ là đánh
+    giá cá nhân - cộng cả vào đây thì 30 điểm nhân lên theo số người.
+  */
+  const criteriaScore = useMemo(() => {
+    /*
+      Cột nào ra điểm của khối A là do CÔNG THỨC của mẫu `forCriteria` khai, y
+      như mỗi trục. Mẫu chưa bật công thức thì khối A không góp điểm nào - đúng
+      hơn là tự đoán một cột số bất kỳ rồi cộng nhầm.
+    */
+    const footer = criteriaTemplate.data?.footer;
+    const keys = footer?.enabled ? footer.ratioColumnKeys : [];
+    if (!keys.length) return 0;
+    return (report.criteriaScores ?? [])
+      .filter((row) => row.subjectType === "DEPARTMENT")
+      .reduce(
+        (sum, row) =>
+          sum +
+          keys.reduce((inner: number, key: string) => {
+            const raw = String(row.fieldValues?.[key] ?? "").trim();
+            const value = Number(raw.replace(",", "."));
+            return inner + (raw && Number.isFinite(value) ? value : 0);
+          }, 0),
+        0,
+      );
+  }, [report.criteriaScores, criteriaTemplate.data]);
 
   const groups = useMemo(() => {
     if (view === "department") return groupByDepartment(content.entries);
@@ -632,11 +689,13 @@ export function SummaryReportPanel({
         />
         <StatCard
           label="Tổng điểm đã chốt"
-          value={formatScoreNumber(content.stats.totalScore)}
+          value={formatScoreNumber(content.stats.totalScore + criteriaScore)}
           hint={
-            content.stats.manualScore
-              ? `Gồm ${formatScoreNumber(content.stats.manualScore)} điểm việc tự nhập`
-              : `Điểm quy đổi của ${content.stats.axisCount} trục`
+            criteriaScore
+              ? `Gồm ${formatScoreNumber(criteriaScore)} điểm khối A`
+              : content.stats.manualScore
+                ? `Gồm ${formatScoreNumber(content.stats.manualScore)} điểm việc tự nhập`
+                : `Điểm quy đổi của ${content.stats.axisCount} trục`
           }
           icon={Trophy}
           tone={kpiTone.warning}
@@ -648,6 +707,15 @@ export function SummaryReportPanel({
           tone={kpiTone.neutral}
         />
       </div>
+
+      {/* Khối A đứng TRƯỚC bảng nhiệm vụ, đúng thứ tự bản in: A rồi mới tới B. */}
+      <CriteriaScoreSection
+        report={report}
+        people={reportPeople}
+        selfScores={detail.selfCriteriaScores ?? []}
+        editable={canEditNow}
+        onSaved={onChanged}
+      />
 
       <Card>
         <CardContent className="space-y-3 p-4">

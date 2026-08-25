@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -25,6 +26,7 @@ import {
   ReviewPersonalKpiDto,
   ReviewerEditPersonalKpiDto,
   ScorePersonalKpiDto,
+  SavePersonalCriteriaSheetDto,
   SubmitPersonalKpiDto,
   UpdatePersonalKpiDto,
   UpdatePersonalKpiProgressDto,
@@ -150,6 +152,33 @@ export class PersonalKpiController {
     @Body() dto: ForwardPersonalKpiDto,
   ) {
     return this.personalKpiService.forward(user.uid, dto);
+  }
+
+  /*
+    Khối A của báo cáo cá nhân. PHẢI đứng trên mọi route có ':id' - Nest khớp
+    theo thứ tự khai báo, để dưới thì 'criteria' bị @Get(':id') bắt làm id
+    nhiệm vụ và trả lỗi "không tìm thấy".
+  */
+  @ApiOperation({
+    summary: 'Bảng khối A của một ngày - danh mục tiêu chí kèm điểm đã chấm',
+  })
+  @Permissions(Permission.EVALUATION_SELF)
+  @Get('criteria')
+  getCriteriaSheet(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query('reportDate') reportDate?: string,
+  ) {
+    return this.personalKpiService.getCriteriaSheet(user.uid, reportDate);
+  }
+
+  @ApiOperation({ summary: 'Lưu bảng khối A của một ngày' })
+  @Permissions(Permission.EVALUATION_SELF)
+  @Put('criteria')
+  saveCriteriaSheet(
+    @CurrentUser() user: JwtPayloadUser,
+    @Body() dto: SavePersonalCriteriaSheetDto,
+  ) {
+    return this.personalKpiService.saveCriteriaSheet(user.uid, dto);
   }
 
   @ApiOperation({ summary: 'Cấp trên sửa nội dung nhiệm vụ (có lưu vết)' })

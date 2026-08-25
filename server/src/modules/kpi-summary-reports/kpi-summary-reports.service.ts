@@ -12,6 +12,14 @@ import {
   DepartmentDocument,
 } from '@/modules/departments/schemas/department.schema';
 import { Axis, AxisDocument } from '@/modules/kpi-form-config/schemas/axis.schema';
+import {
+  Criterion,
+  CriterionDocument,
+} from '@/modules/kpi-form-config/schemas/criterion.schema';
+import {
+  FormTemplate,
+  FormTemplateDocument,
+} from '@/modules/kpi-form-config/schemas/form-template.schema';
 import { PersonalKpiService } from '@/modules/personal-kpi/personal-kpi.service';
 import { isYmd } from '@/modules/personal-kpi/personal-kpi.time';
 import {
@@ -23,6 +31,7 @@ import {
   ChangeSummaryItemsDto,
   CreateSummaryManualItemDto,
   CreateSummaryReportDto,
+  SaveSummaryCriteriaDto,
   SendSummaryReportDto,
   SummaryCandidatesQueryDto,
   SummaryReportListQueryDto,
@@ -65,6 +74,10 @@ export class KpiSummaryReportsService {
     private readonly departmentModel: Model<DepartmentDocument>,
     @InjectModel(Axis.name)
     private readonly axisModel: Model<AxisDocument>,
+    @InjectModel(Criterion.name)
+    private readonly criterionModel: Model<CriterionDocument>,
+    @InjectModel(FormTemplate.name)
+    private readonly formTemplateModel: Model<FormTemplateDocument>,
     private readonly personalKpiService: PersonalKpiService,
   ) {}
 
@@ -245,6 +258,32 @@ export class KpiSummaryReportsService {
     // nói thẳng ra thay vì âm thầm hiển thị ít hơn con số đã lưu.
     const missingCount = report.itemIds.length - rows.length;
 
+    /*
+      Điểm khối A do CÁN BỘ tự chấm, lấy bản mới nhất trong kỳ. Trả kèm chứ
+      không trộn thẳng vào `criteriaScores`: chỉ huy phải phân biệt được đâu là
+      số cán bộ khai và đâu là số mình đã sửa đè.
+    */
+    const ownerIds = [
+      ...new Set(rows.map((row) => String(row.ownerId?._id ?? row.ownerId))),
+    ]
+      .filter((value) => Types.ObjectId.isValid(value))
+      .map((value) => new Types.ObjectId(value));
+    const selfSheets = await this.personalKpiService.latestCriteriaSheets(
+      ownerIds,
+      report.fromDate,
+      report.toDate,
+    );
+    const selfCriteriaScores = [...selfSheets].flatMap(([ownerId, sheetRows]) =>
+      sheetRows.map((row) => ({
+        subjectId: ownerId,
+        criterionId: String(row.criterionId),
+        criterionName: row.criterionName ?? '',
+        maxScore: row.maxScore ?? 0,
+        fieldValues: row.fieldValues ?? {},
+        catalogValues: row.catalogValues ?? {},
+      })),
+    );
+
     return {
       message: 'OK',
       data: {
@@ -252,6 +291,7 @@ export class KpiSummaryReportsService {
         axes,
         rowCount: rows.length,
         missingCount,
+        selfCriteriaScores,
       },
     };
   }
@@ -496,6 +536,165 @@ export class KpiSummaryReportsService {
 
     return {
       message: 'Đã bỏ nhiệm vụ tự nhập.',
+      data: this.toReportSummary(report),
+    };
+  }
+
+  // ======================================================= khối A - tiêu chí
+
+  /**
+   * Lưu bảng chấm "A. Danh mục điểm tiêu chí chung" của báo cáo.
+   *
+   * Ghi đè cả bộ. Tên tiêu chí và điểm tối đa chụp lại từ danh mục TẠI ĐÂY chứ
+   * không để client gửi lên: client gửi thì sửa được điểm tối đa của một dòng
+   * mà không ai biết, và bản đã trình phải đứng yên kể cả khi danh mục đổi.
+   */
+  async saveCriteriaScores(
+    userId: string,
+    id: string,
+    dto: SaveSummaryCriteriaDto,
+  ) {
+    const actor = await this.resolveScope(userId);
+    const report = await this.requireEditable(actor, id);
+
+    const criterionIds = [
+      ...new Set(dto.scores.map((row) => row.criterionId)),
+    ].map((value) => this.requireObjectId(value, 'Tiêu chí'));
+    const criteria = await this.criterionModel
+      .find({ _id: { $in: criterionIds } })
+      .select('name maxScore');
+    const byId = new Map(
+      criteria.map((row) => [String(row._id), row]),
+    );
+    if (byId.size !== criterionIds.length) {
+      throw new BadRequestException('Có tiêu chí không tồn tại.');
+    }
+
+    /*
+      Cán bộ được chấm phải có mặt trong báo cáo. Không kiểm thì bảng chấm biến
+      thành một cửa sau để ghi điểm cho người ngoài phạm vi báo cáo.
+    */
+    const ownerIds = new Set(
+      (
+        await this.itemModel
+          .find({ _id: { $in: report.itemIds } })
+          .select('ownerId')
+      ).map((row) => String(row.ownerId)),
+    );
+
+    /*
+      Bảng A do mẫu `forCriteria` quyết định có cột gì, nên luật kiểm đọc từ
+      mẫu: cột số khai `rangeFromColumnKey` trỏ vào cột Điểm tối đa (tiêu chí)
+      thì phải nằm trong 0 - điểm tối đa của CHÍNH dòng đó.
+    */
+    const template = await this.formTemplateModel.findOne({
+      forCriteria: true,
+      isActive: true,
+    });
+    const columns = template?.columns ?? [];
+    const known = new Set(columns.map((column) => column.key));
+    const maxScoreKeys = new Set(
+      columns
+        .filter((column) => column.semanticKey === 'criterion_max_score')
+        .map((column) => column.key),
+    );
+    const cappedKeys = new Map(
+      columns
+        .filter(
+          (column) =>
+            column.dataType === 'number' &&
+            column.rangeFromColumnKey &&
+            maxScoreKeys.has(column.rangeFromColumnKey),
+        )
+        .map((column) => [column.key, column.title]),
+    );
+
+    const seen = new Set<string>();
+    const scores = dto.scores.map((row) => {
+      const criterion = byId.get(row.criterionId)!;
+      const subjectId =
+        row.subjectType === 'USER'
+          ? this.requireObjectId(row.subjectId ?? '', 'Cán bộ được chấm')
+          : null;
+
+      if (row.subjectType === 'USER' && !ownerIds.has(String(subjectId))) {
+        throw new BadRequestException(
+          'Chỉ chấm được cho cán bộ có nhiệm vụ trong báo cáo này.',
+        );
+      }
+
+      // Một (đối tượng, tiêu chí) chỉ được một dòng - hai dòng thì cộng điểm
+      // hai lần mà nhìn bảng không thấy gì bất thường.
+      const key = `${row.subjectType}:${String(subjectId)}:${row.criterionId}`;
+      if (seen.has(key)) {
+        throw new BadRequestException(
+          `Tiêu chí "${criterion.name}" bị chấm hai lần cho cùng một đối tượng.`,
+        );
+      }
+      seen.add(key);
+
+      const max = criterion.maxScore ?? 0;
+      const fieldValues: Record<string, string | number | boolean> = {};
+      for (const [key, value] of Object.entries(row.fieldValues ?? {})) {
+        if (!known.has(key)) continue;
+        if (cappedKeys.has(key)) {
+          const numeric = Number(value);
+          if (value !== '' && value !== null && Number.isFinite(numeric)) {
+            if (numeric < 0 || numeric > max) {
+              throw new BadRequestException(
+                `"${criterion.name}" · ${cappedKeys.get(key)}: điểm phải nằm trong khoảng 0 - ${max}.`,
+              );
+            }
+          }
+        }
+        fieldValues[key] = value as string | number | boolean;
+      }
+
+      const catalogValues: Record<string, { id: string; name: string }> = {};
+      for (const [key, value] of Object.entries(row.catalogValues ?? {})) {
+        if (!known.has(key) || !value?.id) continue;
+        catalogValues[key] = { id: String(value.id), name: String(value.name) };
+      }
+
+      return {
+        subjectType: row.subjectType,
+        subjectId,
+        subjectName: '',
+        criterionId: criterion._id as Types.ObjectId,
+        criterionName: criterion.name,
+        maxScore: max,
+        fieldValues,
+        catalogValues,
+      };
+    });
+
+    // Tên cán bộ chép sẵn để đọc lại báo cáo không phải populate thêm lượt nào.
+    const userIds = scores
+      .filter((row) => row.subjectType === 'USER' && row.subjectId)
+      .map((row) => row.subjectId as Types.ObjectId);
+    if (userIds.length) {
+      const users = await this.userModel
+        .find({ _id: { $in: userIds } })
+        .select('fullName username');
+      const nameById = new Map(
+        users.map((row) => [String(row._id), row.fullName ?? row.username]),
+      );
+      for (const row of scores) {
+        if (row.subjectType === 'USER' && row.subjectId) {
+          row.subjectName = nameById.get(String(row.subjectId)) ?? '';
+        }
+      }
+    }
+    for (const row of scores) {
+      if (row.subjectType === 'DEPARTMENT') row.subjectName = report.scopeName;
+    }
+
+    report.criteriaScores = scores;
+    this.pushLog(report, actor, 'UPDATE', 'Chấm lại bảng tiêu chí chung');
+    await report.save();
+
+    return {
+      message: 'Đã lưu bảng tiêu chí chung.',
       data: this.toReportSummary(report),
     };
   }
@@ -990,6 +1189,16 @@ export class KpiSummaryReportsService {
         departmentName: item.departmentName ?? '',
         score: item.score ?? null,
         createdAt: item.createdAt,
+      })),
+      criteriaScores: (report.criteriaScores ?? []).map((row) => ({
+        subjectType: row.subjectType,
+        subjectId: row.subjectId ? String(row.subjectId) : null,
+        subjectName: row.subjectName ?? '',
+        criterionId: String(row.criterionId),
+        criterionName: row.criterionName ?? '',
+        maxScore: row.maxScore ?? 0,
+        fieldValues: row.fieldValues ?? {},
+        catalogValues: row.catalogValues ?? {},
       })),
       logs: (report.logs ?? []).map((log) => ({
         type: log.type,

@@ -21,6 +21,7 @@ import {
   DecideSummaryReportDto,
   CreateSummaryManualItemDto,
   CreateSummaryReportDto,
+  SaveSummaryCriteriaDto,
   SendSummaryReportDto,
   SummaryCandidatesQueryDto,
   SummaryReportListQueryDto,
@@ -140,6 +141,18 @@ export class KpiSummaryReportsController {
     @Param('manualId') manualId: string,
   ) {
     return this.service.removeManualItem(user.uid, id, manualId);
+  }
+
+  @ApiOperation({
+    summary: 'Lưu bảng chấm khối A - danh mục điểm tiêu chí chung',
+  })
+  @Patch(':id/criteria')
+  saveCriteriaScores(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: SaveSummaryCriteriaDto,
+  ) {
+    return this.service.saveCriteriaScores(user.uid, id, dto);
   }
 
   @ApiOperation({ summary: 'Trình báo cáo tổng hợp lên cấp trên' })

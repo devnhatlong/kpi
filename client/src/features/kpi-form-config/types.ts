@@ -1020,6 +1020,29 @@ export type DepartmentRef = {
 export const REPORT_SECTION_A_TITLE = "Danh mục điểm tiêu chí chung";
 export const REPORT_SECTION_B_TITLE = "Danh mục nhiệm vụ công tác";
 
+/**
+ * Điểm đạt của một dòng khối A có hợp lệ không - trả câu lỗi, hoặc null.
+ *
+ * Nhận CHUỖI thô đang gõ chứ không nhận số: ô để trống nghĩa là chưa chấm, khác
+ * hẳn 0 điểm, mà số thì không diễn tả được "chưa chấm". Server chặn cùng một
+ * luật; đây là để báo ngay lúc gõ thay vì đợi tới lúc lưu.
+ *
+ * KHÔNG tự cắt về trần: đang gõ "54" thì ký tự "5" hợp lệ, cắt ngay là người
+ * dùng không gõ nổi số có hai chữ số. Cứ để gõ, và bôi đỏ.
+ */
+export function criterionScoreError(
+  raw: string,
+  maxScore: number,
+): string | null {
+  const text = raw.trim();
+  if (!text) return null;
+  const value = Number(text.replace(",", "."));
+  if (!Number.isFinite(value)) return "Điểm phải là một con số.";
+  if (value < 0) return "Điểm không được âm.";
+  if (value > maxScore) return `Vượt điểm tối đa (${maxScore}).`;
+  return null;
+}
+
 export const REPORT_TEMPLATE_STATUSES = ["draft", "applied"] as const;
 export type ReportTemplateStatus = (typeof REPORT_TEMPLATE_STATUSES)[number];
 

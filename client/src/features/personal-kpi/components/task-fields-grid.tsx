@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useRef, type ComponentProps } from "react";
-
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,6 +22,7 @@ import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-level
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import { formatScoreNumber } from "@/features/personal-kpi/board-cell";
 import { AttachmentCell } from "@/features/personal-kpi/components/attachment-cell";
+import { AutoGrowTextarea } from "@/features/personal-kpi/components/auto-grow-textarea";
 import { CatalogSelectCell } from "@/features/personal-kpi/components/catalog-select-cell";
 import {
   cellInputProps,
@@ -65,44 +64,6 @@ const controlClass = "h-8 min-h-8 px-2 text-sm";
 /** Ô chỉ đọc (nhóm điểm, ô tự tính) - viền nét đứt cho khác ô nhập được. */
 const readOnlyClass =
   "flex items-center overflow-hidden rounded-md border border-dashed bg-muted/40";
-
-/**
- * Ô chữ tự cao dần theo nội dung, quá 4 dòng thì cuộn trong ô.
- *
- * Cột "Nhiệm vụ", "Ghi chú"... hay dài mà ô một dòng thì gõ tới đâu chữ trôi
- * khỏi tầm nhìn tới đó, không đọc lại được thứ vừa viết.
- */
-function AutoGrowTextarea({
-  className,
-  value,
-  ...props
-}: ComponentProps<"textarea">) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    // Hạ về auto trước rồi mới đo, không thì xoá chữ ô vẫn giữ chiều cao cũ.
-    node.style.height = "auto";
-    const borders = node.offsetHeight - node.clientHeight;
-    node.style.height = `${node.scrollHeight + borders}px`;
-  }, [value]);
-
-  return (
-    <textarea
-      ref={ref}
-      rows={1}
-      value={value}
-      className={cn(
-        // min-h-8 cho bằng chiều cao ô một dòng của các cột khác; max-h-24 là
-        // trần ~4 dòng, quá thì cuộn trong ô chứ không đẩy cả hàng dài ra.
-        "flex min-h-8 max-h-24 w-full resize-none overflow-y-auto rounded-md border border-input bg-transparent px-2 py-1 text-sm leading-5 shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
 
 type TaskFieldsGridProps = {
   /** Bộ cột của mẫu bảng gán cho trục. */

@@ -408,3 +408,38 @@ export class PersonalKpiStatisticsQueryDto {
   @IsMongoId()
   axisId?: string;
 }
+
+/**
+ * Một dòng chấm khối A của báo cáo cá nhân.
+ * Ô nào có gì là do mẫu `forCriteria` quyết định, nên chỉ nhận hai túi giá trị
+ * theo khoá cột chứ không khai trường cứng.
+ */
+export class PersonalCriterionRowDto {
+  @ApiProperty()
+  @IsMongoId()
+  criterionId!: string;
+
+  @ApiPropertyOptional({ description: 'Giá trị các cột, key = khoá cột' })
+  @IsOptional()
+  @IsObject()
+  fieldValues?: Record<string, string | number | boolean>;
+
+  @ApiPropertyOptional({ description: 'Cột lấy từ danh mục, key = khoá cột' })
+  @IsOptional()
+  @IsObject()
+  catalogValues?: Record<string, { id: string; name: string }>;
+}
+
+/** Lưu cả bảng khối A của một ngày - server ghi đè nguyên bộ. */
+export class SavePersonalCriteriaSheetDto {
+  @ApiPropertyOptional({ description: 'YYYY-MM-DD; bỏ trống = hôm nay' })
+  @IsOptional()
+  @IsString()
+  reportDate?: string;
+
+  @ApiProperty({ type: [PersonalCriterionRowDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PersonalCriterionRowDto)
+  rows!: PersonalCriterionRowDto[];
+}

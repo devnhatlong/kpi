@@ -162,6 +162,25 @@ export async function addSummaryManualItem(
   );
 }
 
+/** Ô chấm gửi lên - tên tiêu chí và điểm tối đa do server chụp lại, không gửi. */
+export type SummaryCriterionScoreInput = {
+  subjectType: "DEPARTMENT" | "USER";
+  subjectId?: string | null;
+  criterionId: string;
+  fieldValues?: Record<string, string | number | boolean>;
+  catalogValues?: Record<string, { id: string; name: string }>;
+};
+
+/** Lưu cả bảng khối A một lượt - server ghi đè nguyên bộ. */
+export async function saveSummaryCriteriaScores(
+  id: string,
+  scores: SummaryCriterionScoreInput[],
+) {
+  return unwrapData(
+    api.patch<ApiResponse<SummaryReport>>(`${BASE}/${id}/criteria`, { scores }),
+  );
+}
+
 /** Sửa một dòng tự nhập - chỉ đụng dữ liệu trong báo cáo. */
 export async function updateSummaryManualItem(
   id: string,

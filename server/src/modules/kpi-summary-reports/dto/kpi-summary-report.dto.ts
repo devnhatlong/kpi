@@ -8,14 +8,20 @@ import {
   IsInt,
   IsMongoId,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
-import { KPI_SUMMARY_REPORT_STATUSES } from '../schemas/kpi-summary-report.schema';
+import {
+  KPI_CRITERION_SUBJECT_TYPES,
+  KPI_SUMMARY_REPORT_STATUSES,
+  type KpiCriterionSubjectType,
+} from '../schemas/kpi-summary-report.schema';
 
 /** Kho nhiệm vụ đã hoàn thành để nhặt vào báo cáo tổng hợp. */
 export class SummaryCandidatesQueryDto {
@@ -256,4 +262,47 @@ export class SummaryReportListQueryDto {
   @IsOptional()
   @IsString()
   q?: string;
+}
+
+/** Một ô chấm của khối A. */
+export class SummaryCriterionScoreDto {
+  @ApiProperty({ enum: KPI_CRITERION_SUBJECT_TYPES })
+  @IsIn([...KPI_CRITERION_SUBJECT_TYPES])
+  subjectType!: KpiCriterionSubjectType;
+
+  @ApiPropertyOptional({
+    description: 'Bỏ trống khi chấm cho chính đơn vị của báo cáo',
+  })
+  @IsOptional()
+  @IsMongoId()
+  subjectId?: string | null;
+
+  @ApiProperty()
+  @IsMongoId()
+  criterionId!: string;
+
+  @ApiPropertyOptional({ description: 'Giá trị các cột, key = khoá cột' })
+  @IsOptional()
+  @IsObject()
+  fieldValues?: Record<string, string | number | boolean>;
+
+  @ApiPropertyOptional({ description: 'Cột lấy từ danh mục, key = khoá cột' })
+  @IsOptional()
+  @IsObject()
+  catalogValues?: Record<string, { id: string; name: string }>;
+}
+
+/**
+ * Lưu cả bảng khối A một lượt.
+ *
+ * Thay nguyên bộ chứ không vá từng ô: bảng chấm luôn gửi lên trọn vẹn, mà so
+ * từng ô để biết ô nào vừa đổi thì tốn công hơn là ghi đè - muốn tra lại đã có
+ * nhật ký riêng của báo cáo.
+ */
+export class SaveSummaryCriteriaDto {
+  @ApiProperty({ type: [SummaryCriterionScoreDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SummaryCriterionScoreDto)
+  scores!: SummaryCriterionScoreDto[];
 }

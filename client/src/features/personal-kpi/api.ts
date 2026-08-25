@@ -426,6 +426,55 @@ export type PersonalKpiProgressInput = {
   results?: Record<string, string>;
 };
 
+/**
+ * Một dòng khối A trong báo cáo cá nhân - tiêu chí (bất biến) ghép với giá trị
+ * các ô. Ô nào có gì là do mẫu `forCriteria` quyết định, nên giá trị nằm trong
+ * hai túi theo khoá cột chứ không có trường cứng.
+ */
+export type PersonalCriterionRow = {
+  criterionId: string;
+  criterionName: string;
+  /** Ghi chú admin khai sẵn ở danh mục tiêu chí - cán bộ chỉ đọc. */
+  criterionNote: string;
+  maxScore: number;
+  fieldValues: Record<string, string | number | boolean>;
+  catalogValues: Record<string, { id: string; name: string }>;
+};
+
+export type PersonalCriteriaSheet = {
+  reportDate: string;
+  rows: PersonalCriterionRow[];
+};
+
+export const personalCriteriaKeys = {
+  sheet: (reportDate: string) => ["personal-criteria", reportDate] as const,
+};
+
+/** Bảng khối A của một ngày; bỏ trống ngày thì server lấy hôm nay của nó. */
+export function fetchPersonalCriteriaSheet(reportDate?: string) {
+  return unwrapData(
+    api.get<ApiResponse<PersonalCriteriaSheet>>("/personal-kpi/criteria", {
+      params: reportDate ? { reportDate } : undefined,
+    }),
+  );
+}
+
+export function savePersonalCriteriaSheet(input: {
+  reportDate?: string;
+  rows: Array<{
+    criterionId: string;
+    fieldValues?: Record<string, string | number | boolean>;
+    catalogValues?: Record<string, { id: string; name: string }>;
+  }>;
+}) {
+  return unwrapData(
+    api.put<ApiResponse<{ reportDate: string; rowCount: number }>>(
+      "/personal-kpi/criteria",
+      input,
+    ),
+  );
+}
+
 export async function updatePersonalKpiProgress(
   id: string,
   input: PersonalKpiProgressInput,

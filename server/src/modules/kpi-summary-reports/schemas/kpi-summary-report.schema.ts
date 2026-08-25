@@ -87,6 +87,66 @@ export class KpiSummaryManualItem {
 export const KpiSummaryManualItemSchema =
   SchemaFactory.createForClass(KpiSummaryManualItem);
 
+/**
+ * Ai đang được chấm khối A.
+ * - `DEPARTMENT`: chính đơn vị mà báo cáo nói thay - đây là bộ điểm CỦA BÁO CÁO.
+ * - `USER`: một cán bộ có nhiệm vụ trong báo cáo - bộ điểm cá nhân, không cộng
+ *   vào điểm của đơn vị.
+ */
+export const KPI_CRITERION_SUBJECT_TYPES = ['DEPARTMENT', 'USER'] as const;
+export type KpiCriterionSubjectType =
+  (typeof KPI_CRITERION_SUBJECT_TYPES)[number];
+
+/**
+ * Một ô chấm của "A. Danh mục điểm tiêu chí chung".
+ *
+ * Tên tiêu chí và điểm tối đa CHỤP LẠI tại thời điểm chấm chứ không đọc live từ
+ * danh mục: sửa danh mục sang năm là mọi báo cáo đã trình đổi theo, người ký
+ * nhìn lại thấy khác bản mình ký. Cùng lý do với việc mẫu bảng giữ theo phiên
+ * bản.
+ */
+@Schema({ _id: false, timestamps: false })
+export class KpiSummaryCriterionScore {
+  @Prop({
+    type: String,
+    enum: KPI_CRITERION_SUBJECT_TYPES,
+    required: true,
+  })
+  subjectType!: KpiCriterionSubjectType;
+
+  /** null khi chấm cho chính đơn vị phạm vi báo cáo. */
+  @Prop({ type: Types.ObjectId, default: null })
+  subjectId!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '', maxlength: 200 })
+  subjectName!: string;
+
+  @Prop({ type: Types.ObjectId, required: true })
+  criterionId!: Types.ObjectId;
+
+  @Prop({ trim: true, default: '', maxlength: 500 })
+  criterionName!: string;
+
+  @Prop({ default: 0, min: 0 })
+  maxScore!: number;
+
+  /**
+   * Giá trị các ô theo KHOÁ CỘT của mẫu `forCriteria` - bảng A do admin thiết
+   * kế cột nên không có trường cứng nào đoán trước được. Cùng cách lưu với
+   * `fieldValues` của nhiệm vụ.
+   */
+  @Prop({ type: Object, default: {} })
+  fieldValues!: Record<string, string | number | boolean>;
+
+  /** Giá trị các cột lấy từ danh mục, key = khoá cột. */
+  @Prop({ type: Object, default: {} })
+  catalogValues!: Record<string, { id: string; name: string }>;
+}
+
+export const KpiSummaryCriterionScoreSchema = SchemaFactory.createForClass(
+  KpiSummaryCriterionScore,
+);
+
 @Schema({ _id: false, timestamps: false })
 export class KpiSummaryReportLog {
   @Prop({ type: String, enum: KPI_SUMMARY_LOG_TYPES, required: true })
@@ -169,6 +229,16 @@ export class KpiSummaryReport {
 
   @Prop({ type: [KpiSummaryManualItemSchema], default: [] })
   manualItems!: KpiSummaryManualItem[];
+
+  /**
+   * Khối A - điểm 6 tiêu chí chung, cho đơn vị và cho từng cán bộ.
+   *
+   * Nằm ở báo cáo chứ không ở nhiệm vụ: tiêu chí chung chấm MỘT LẦN cho cả kỳ,
+   * không phải mỗi ngày mỗi việc. Rỗng = mẫu báo cáo không bật khối A, hoặc
+   * người lập chưa chấm.
+   */
+  @Prop({ type: [KpiSummaryCriterionScoreSchema], default: [] })
+  criteriaScores!: KpiSummaryCriterionScore[];
 
   @Prop({ type: [KpiSummaryReportLogSchema], default: [] })
   logs!: KpiSummaryReportLog[];

@@ -7,6 +7,14 @@ import {
   DepartmentSchema,
 } from '../departments/schemas/department.schema';
 import { Axis, AxisSchema } from '../kpi-form-config/schemas/axis.schema';
+import {
+  Criterion,
+  CriterionSchema,
+} from '../kpi-form-config/schemas/criterion.schema';
+import {
+  FormTemplate,
+  FormTemplateSchema,
+} from '../kpi-form-config/schemas/form-template.schema';
 import { PersonalKpiModule } from '../personal-kpi/personal-kpi.module';
 import {
   PersonalKpiItem,
@@ -30,6 +38,10 @@ import {
       { name: Department.name, schema: DepartmentSchema },
       // Nhiệm vụ tự nhập chọn trục từ danh mục, nên cần model Trục ở đây.
       { name: Axis.name, schema: AxisSchema },
+      // Khối A chụp lại tên và điểm tối đa của tiêu chí lúc chấm, và đọc mẫu
+      // `forCriteria` để biết bảng có những cột nào mà kiểm.
+      { name: Criterion.name, schema: CriterionSchema },
+      { name: FormTemplate.name, schema: FormTemplateSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),

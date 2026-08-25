@@ -31,6 +31,12 @@ type CatalogSelectCellProps = {
    * nội dung ra cho người ta tự dò còn tệ hơn.
    */
   workContentId?: string;
+  /**
+   * Trả kèm NHÃN của mục vừa chọn. Dùng cho bảng cần chụp lại tên tại thời
+   * điểm chọn (khối A), thay vì chỉ giữ id rồi tra lại danh mục về sau - danh
+   * mục sửa tên là bản đã trình đổi theo.
+   */
+  onPick?: (value: string, label: string) => void;
   /** Ghi đè kích thước ô - màn nhập cần ô gọn hơn ô trong bảng. */
   triggerClassName?: string;
 };
@@ -45,6 +51,7 @@ export function CatalogSelectCell({
   onValueChange,
   disabled = false,
   workContentId,
+  onPick,
   triggerClassName,
 }: CatalogSelectCellProps) {
   const isScoreGroup = catalog === "score_group";
@@ -104,7 +111,13 @@ export function CatalogSelectCell({
   return (
     <SearchableSelect
       value={value}
-      onValueChange={onValueChange}
+      onValueChange={(next) => {
+        onValueChange(next);
+        onPick?.(
+          next,
+          options.find((option) => option.value === next)?.label ?? "",
+        );
+      }}
       options={options}
       disabled={disabled}
       placeholder={CATALOG_LABEL[catalog]}

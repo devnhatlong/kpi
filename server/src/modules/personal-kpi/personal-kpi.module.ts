@@ -40,6 +40,14 @@ import {
   PersonalKpiSubmission,
   PersonalKpiSubmissionSchema,
 } from './schemas/personal-kpi-submission.schema';
+import {
+  PersonalKpiCriteriaSheet,
+  PersonalKpiCriteriaSheetSchema,
+} from './schemas/personal-kpi-criteria-sheet.schema';
+import {
+  Criterion,
+  CriterionSchema,
+} from '../kpi-form-config/schemas/criterion.schema';
 
 @Module({
   imports: [
@@ -54,6 +62,12 @@ import {
       { name: QualityLevel.name, schema: QualityLevelSchema },
       { name: User.name, schema: UserSchema },
       { name: Department.name, schema: DepartmentSchema },
+      // Khối A của báo cáo cá nhân: danh mục tiêu chí + bảng cán bộ tự chấm.
+      { name: Criterion.name, schema: CriterionSchema },
+      {
+        name: PersonalKpiCriteriaSheet.name,
+        schema: PersonalKpiCriteriaSheetSchema,
+      },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),
