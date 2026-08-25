@@ -110,11 +110,101 @@ type DayTaskTableProps = {
    * có nó thì việc hôm nay và việc tuần trước nằm lẫn nhau, không phân biệt nổi.
    */
   showReportDate?: boolean;
+  /**
+   * Số hiệu khối B của từng trục, theo mẫu báo cáo đang áp dụng. Có thì cột
+   * Biểu mẫu hiện "B1 · Trục 1" để đối chiếu thẳng với bản in; không có thì chỉ
+   * hiện tên trục.
+   */
+  axisOrderById?: Map<string, number>;
   onUpdateProgress: (item: PersonalKpiItem) => void;
   onEditDetail: (item: PersonalKpiItem) => void;
   onSend: (item: PersonalKpiItem) => void;
   onDelete: (item: PersonalKpiItem) => void;
 };
+
+/**
+ * Ô "Kết quả KPI" - tự đổi cách bày theo MẪU của chính dòng đó.
+ *
+ * Trục chấm theo tỉ lệ hiện hai thanh Tiến độ / Chất lượng; trục chấm theo mục
+ * hiện Đạt / Không đạt kèm điểm. Trước đây hai kiểu này là hai bộ cột khác
+ * nhau, chọn theo cả bảng - nên danh sách trộn nhiều trục thì kiểu nào cũng sai
+ * với một nửa số dòng.
+ */
+function KpiResultCell({ row }: { row: DayTaskRow }) {
+  const { summary, result } = row;
+
+  // Trục chấm theo mục: không có phần trăm nào để bày, chỉ có đạt hay không.
+  if (!summary.tracksProgress && !summary.tracksQuality) {
+    return (
+      <div className="space-y-0.5">
+        {!result.declared ? (
+          <span className="text-xs text-muted-foreground">
+            Chưa khai kết quả
+          </span>
+        ) : (
+          <Badge
+            variant="secondary"
+            className={cn(
+              "font-normal",
+              result.failed ? kpiTone.danger.soft : kpiTone.success.soft,
+            )}
+          >
+            {result.failed ? "Không đạt" : "Đạt"}
+          </Badge>
+        )}
+        <div
+          className="text-xs text-muted-foreground tabular-nums"
+          title={
+            result.score !== null &&
+            result.selfScore !== null &&
+            result.selfScore !== result.score
+              ? `Chỉ huy chấm lại - bạn tự chấm ${result.selfScore}`
+              : undefined
+          }
+        >
+          {result.score === null ? "Chưa có điểm" : `${result.score} điểm`}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {summary.tracksProgress ? (
+        <div className="flex items-center gap-2">
+          <span className="w-14 shrink-0 text-[11px] text-muted-foreground">
+            Tiến độ
+          </span>
+          <div className="min-w-0 flex-1">
+            <PercentCell
+              percent={summary.progressPercent}
+              change={summary.reviewChanges.find(
+                (entry) => entry.field === "progress",
+              )}
+            />
+          </div>
+        </div>
+      ) : null}
+      {/* Chất lượng đứng riêng vì tiến độ 100% mà chất lượng 75% là chuyện
+          bình thường - hai con số không thay nhau được. */}
+      {summary.tracksQuality ? (
+        <div className="flex items-center gap-2">
+          <span className="w-14 shrink-0 text-[11px] text-muted-foreground">
+            Chất lượng
+          </span>
+          <div className="min-w-0 flex-1">
+            <PercentCell
+              percent={summary.qualityPercent}
+              change={summary.reviewChanges.find(
+                (entry) => entry.field === "quality",
+              )}
+            />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * Bảng nhiệm vụ - dùng chung cho cả xem phẳng lẫn xem theo nhóm.
@@ -132,18 +222,20 @@ export function DayTaskTable({
   actingId,
   hideHeader = false,
   showReportDate = false,
+  axisOrderById,
   onUpdateProgress,
   onEditDetail,
   onSend,
   onDelete,
 }: DayTaskTableProps) {
-  const resultOnly =
-    rows.length > 0 && rows.every((row) => !row.summary.tracksProgress);
-  // Mẫu của trục chấm theo mục thường không có cột hạn - có dòng nào khai hạn
-  // thì mới giữ cột lại.
-  const showDeadline =
-    !resultOnly || rows.some((row) => Boolean(row.summary.deadline));
-  const columnCount = resultOnly ? (showDeadline ? 8 : 7) : 9;
+  /*
+    Cột hạn giữ lại khi còn dòng nào khai hạn hoặc theo dõi tiến độ - danh sách
+    toàn trục chấm theo mục thì cột này rỗng trơn.
+  */
+  const showDeadline = rows.some(
+    (row) => Boolean(row.summary.deadline) || row.summary.tracksProgress,
+  );
+  const columnCount = showDeadline ? 8 : 7;
 
   return (
     <Table>
@@ -151,24 +243,16 @@ export function DayTaskTable({
         <TableHeader>
           <TableRow>
             <TableHead className="min-w-[280px]">Nhiệm vụ</TableHead>
-            <TableHead className="w-[80px]">Trục</TableHead>
-            {resultOnly ? (
-              <>
-                <TableHead className="w-[150px]">Kết quả</TableHead>
-                <TableHead className="w-[100px] text-right">Điểm</TableHead>
-              </>
-            ) : (
-              <>
-                <TableHead className="w-[160px]">Tiến độ nhiệm vụ</TableHead>
-                <TableHead className="w-[160px]">Chất lượng nhiệm vụ</TableHead>
-              </>
-            )}
+            <TableHead className="w-[110px]">Biểu mẫu</TableHead>
+            {/* MỘT cột kết quả, tự đổi cách bày theo mẫu của từng dòng. Hai cột
+                cố định Tiến độ / Chất lượng chỉ đúng với trục chấm theo tỉ lệ;
+                danh sách trộn nhiều trục thì dòng của trục Đạt/Không đạt ghi
+                "Không theo dõi %" hai lần mà chẳng nói được kết quả ra sao. */}
+            <TableHead className="w-[190px]">Kết quả KPI</TableHead>
             {showDeadline ? (
               <TableHead className="w-[150px]">{deadlineHeader}</TableHead>
             ) : null}
-            {resultOnly ? null : (
-              <TableHead className="w-[170px]">Tình trạng thực hiện</TableHead>
-            )}
+            <TableHead className="w-[170px]">Tình trạng thực hiện</TableHead>
             <TableHead className="w-[130px]">Trạng thái duyệt</TableHead>
             <TableHead className="w-[160px]">Cấp trên theo dõi</TableHead>
             <TableHead className="w-[170px] text-right">Thao tác</TableHead>
@@ -225,80 +309,25 @@ export function DayTaskTable({
                   <Badge
                     variant="secondary"
                     className={cn(
-                      "max-w-full truncate font-normal",
+                      "max-w-full gap-1 truncate font-normal",
                       kpiTone.info.soft,
                     )}
+                    title={item.axisName}
                   >
-                    {item.axisName}
+                    {/* Số hiệu khối (B1, B2…) để đối chiếu thẳng với bản in;
+                        không truyền thứ tự thì chỉ hiện tên trục. */}
+                    {axisOrderById?.get(item.axisId) ? (
+                      <span className="font-semibold">
+                        B{axisOrderById.get(item.axisId)}
+                      </span>
+                    ) : null}
+                    <span className="truncate">{item.axisName}</span>
                   </Badge>
                 </TableCell>
 
-                {resultOnly ? (
-                  <>
-                    {/* Trục chấm theo mục: chỉ có Đạt / Không đạt và điểm. */}
-                    <TableCell className="align-middle">
-                      {!row.result.declared ? (
-                        <span className="text-xs text-muted-foreground">
-                          Chưa khai kết quả
-                        </span>
-                      ) : (
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            "font-normal",
-                            row.result.failed
-                              ? kpiTone.danger.soft
-                              : kpiTone.success.soft,
-                          )}
-                        >
-                          {row.result.failed ? "Không đạt" : "Đạt"}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell
-                      className="text-right align-middle text-sm font-medium tabular-nums"
-                      title={
-                        row.result.score !== null &&
-                        row.result.selfScore !== null &&
-                        row.result.selfScore !== row.result.score
-                          ? `Chỉ huy chấm lại - bạn tự chấm ${row.result.selfScore}`
-                          : undefined
-                      }
-                    >
-                      {row.result.score === null ? (
-                        <span className="text-muted-foreground">-</span>
-                      ) : (
-                        row.result.score
-                      )}
-                    </TableCell>
-                  </>
-                ) : (
-                  <>
-                    {/* Tiến độ (nhóm B) - căn cứ cho tình trạng thực hiện. */}
-                    <TableCell className="align-middle">
-                      <PercentCell
-                        percent={summary.progressPercent}
-                        notTracked={!summary.tracksProgress}
-                        change={summary.reviewChanges.find(
-                          (entry) => entry.field === "progress",
-                        )}
-                      />
-                    </TableCell>
-
-                    {/* Chất lượng (nhóm C) - đứng riêng vì tiến độ 100% mà chất
-                        lượng 75% là chuyện bình thường, hai con số không thay
-                        nhau. */}
-                    <TableCell className="align-middle">
-                      <PercentCell
-                        percent={summary.qualityPercent}
-                        notTracked={!summary.tracksQuality}
-                        change={summary.reviewChanges.find(
-                          (entry) => entry.field === "quality",
-                        )}
-                      />
-                    </TableCell>
-                  </>
-                )}
+                <TableCell className="align-middle">
+                  <KpiResultCell row={row} />
+                </TableCell>
 
                 {showDeadline ? (
                   <TableCell className="align-middle">
@@ -310,30 +339,28 @@ export function DayTaskTable({
                 ) : null}
 
                 {/* Việc chạy tới đâu - theo KPI tiến độ và hạn. */}
-                {resultOnly ? null : (
-                  <TableCell className="align-middle">
-                    <div className="flex flex-wrap gap-1">
-                      <WorkStateBadge work={work} />
-                      {health ? (
-                        <Badge
-                          variant="secondary"
-                          className={cn("font-normal", health.className)}
-                        >
-                          {health.label}
-                        </Badge>
-                      ) : null}
-                      {isSilent(row) ? (
-                        <Badge
-                          variant="secondary"
-                          className={cn("font-normal", kpiTone.warning.soft)}
-                          title="Lâu rồi chưa cập nhật tiến độ"
-                        >
-                          Im lặng {row.silence} ngày
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                )}
+                <TableCell className="align-middle">
+                  <div className="flex flex-wrap gap-1">
+                    <WorkStateBadge work={work} />
+                    {health ? (
+                      <Badge
+                        variant="secondary"
+                        className={cn("font-normal", health.className)}
+                      >
+                        {health.label}
+                      </Badge>
+                    ) : null}
+                    {isSilent(row) ? (
+                      <Badge
+                        variant="secondary"
+                        className={cn("font-normal", kpiTone.warning.soft)}
+                        title="Lâu rồi chưa cập nhật tiến độ"
+                      >
+                        Im lặng {row.silence} ngày
+                      </Badge>
+                    ) : null}
+                  </div>
+                </TableCell>
 
                 {/* Việc đang ở chặng nào của luồng duyệt. */}
                 <TableCell className="align-middle">

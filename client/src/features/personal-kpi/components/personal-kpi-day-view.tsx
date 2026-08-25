@@ -41,6 +41,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/features/auth/auth-provider";
 import { NoReportTemplateNotice } from "@/features/kpi-form-config/components/no-report-template-notice";
+import { entityId } from "@/features/kpi-form-config/types";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
 import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
 import {
@@ -193,7 +194,11 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     Đơn vị có mẫu báo cáo áp dụng không - chưa có thì không nhập được nhiệm vụ
     nào. Dùng chung khoá SWR với form nhập nên không tốn thêm lượt gọi.
   */
-  const { hasTemplate: canEnter, isLoading: loadingScope } = useScopedAxes();
+  const {
+    axes: scopedAxes,
+    hasTemplate: canEnter,
+    isLoading: loadingScope,
+  } = useScopedAxes();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [edit, setEdit] = useState<PersonalKpiItem | null>(null);
   /** Nhiệm vụ đang mở ô cập nhật tiến độ hằng ngày. */
@@ -552,9 +557,19 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     }
   };
 
+  /*
+    Số hiệu khối B của từng trục, theo đúng thứ tự của mẫu báo cáo đang áp dụng
+    cho đơn vị - để cột Biểu mẫu đối chiếu thẳng được với bản in.
+  */
+  const axisOrderById = useMemo(
+    () => new Map(scopedAxes.map((axis, index) => [entityId(axis), index + 1])),
+    [scopedAxes],
+  );
+
   const tableProps = {
     deadlineHeader,
     actingId,
+    axisOrderById,
     // Xem một ngày thì khỏi nhắc lại ngày ở từng dòng.
     showReportDate: fromDate !== toDate,
     onUpdateProgress: openProgress,

@@ -62,7 +62,9 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import type { ResolvedTemplate } from "@/features/kpi-form-config/form-template-utils";
+import { entityId } from "@/features/kpi-form-config/types";
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
+import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
 import {
   fetchPersonalKpiBoard,
   mapPersonalKpiFromApi,
@@ -276,6 +278,12 @@ type TrackingTableProps = {
   rows: TrackingRow[];
   /** Dòng đang chờ thao tác chạy xong - khoá nút của riêng dòng đó. */
   busyId: string | null;
+  /**
+   * Số hiệu khối B của từng trục theo mẫu báo cáo của NGƯỜI XEM. Trục ngoài
+   * mẫu đó không có số - cấp dưới có thể đang dùng mẫu khác, gán số theo mẫu
+   * của mình sẽ chỉ sai chỗ.
+   */
+  axisOrderById?: Map<string, number>;
   onDetail: (row: TrackingRow) => void;
   onEdit: (row: TrackingRow) => void;
   onComplete: (row: TrackingRow) => void;
@@ -283,54 +291,159 @@ type TrackingTableProps = {
 };
 
 /**
- * Bảng nhiệm vụ - dùng lại cho cả xem phẳng lẫn từng nhóm thu gọn được.
+ * Ô "Kết quả KPI" - tự đổi cách bày theo MẪU của chính dòng đó.
  *
- * Nhóm nào toàn nhiệm vụ của trục chấm theo mục (trục 2) thì đổi hẳn bộ cột:
- * trục kiểu đó không có tiến độ, không có chất lượng %, nên bày mấy cột ấy chỉ
- * để ghi "Không theo dõi %" ba lần một dòng. Thay bằng Kết quả và Điểm - đúng
- * hai thứ chỉ huy cần nhìn để quyết.
+ * Trục chấm theo tỉ lệ hiện thanh Tiến độ và số Chất lượng; trục chấm theo mục
+ * hiện Đạt / Không đạt kèm điểm. Trước đây hai kiểu này là hai bộ cột chọn theo
+ * cả bảng, nên danh sách trộn nhiều trục thì dòng của trục chấm theo mục ghi
+ * "Không theo dõi %" tới ba lần mà không nói được kết quả ra sao.
  */
+function TrackingResultCell({ row }: { row: TrackingRow }) {
+  const { summary, result } = row;
+
+  if (!summary.tracksProgress && !summary.tracksQuality) {
+    return (
+      <div className="space-y-0.5">
+        {!result.declared ? (
+          <span className="text-xs text-muted-foreground">
+            Chưa khai kết quả
+          </span>
+        ) : (
+          <Badge
+            variant="secondary"
+            className={cn(
+              "font-normal",
+              result.failed ? kpiTone.danger.soft : kpiTone.success.soft,
+            )}
+          >
+            {result.failed ? "Không đạt" : "Đạt"}
+          </Badge>
+        )}
+        <div
+          className="text-xs text-muted-foreground tabular-nums"
+          title={
+            result.score !== null &&
+            result.selfScore !== null &&
+            result.selfScore !== result.score
+              ? `Chỉ huy chấm lại - cán bộ tự chấm ${result.selfScore}`
+              : undefined
+          }
+        >
+          {result.score === null ? "Chưa có điểm" : `${result.score} điểm`}
+        </div>
+        <div className="whitespace-nowrap text-xs text-muted-foreground">
+          {lastTouchedLabel(row)}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {summary.tracksProgress ? (
+        <div className="flex items-center gap-2">
+          <span className="w-14 shrink-0 text-[11px] text-muted-foreground">
+            Tiến độ
+          </span>
+          {summary.progressPercent === null ? (
+            <span className="text-sm text-muted-foreground">-</span>
+          ) : (
+            <>
+              <ProgressBar
+                percent={summary.progressPercent}
+                className="min-w-0 flex-1"
+              />
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                {summary.progressPercent}%
+              </span>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {/* Cùng một cách bày với Tiến độ: hai con số nằm cạnh nhau mà một bên có
+          thanh, một bên chỉ có chữ thì đọc ra thành hai loại số khác nhau. */}
+      {summary.tracksQuality ? (
+        <div className="flex items-center gap-2">
+          <span className="w-14 shrink-0 text-[11px] text-muted-foreground">
+            Chất lượng
+          </span>
+          {summary.qualityPercent === null ? (
+            <span className="text-sm text-muted-foreground">-</span>
+          ) : (
+            <>
+              <ProgressBar
+                percent={summary.qualityPercent}
+                className="min-w-0 flex-1"
+              />
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                {summary.qualityPercent}%
+              </span>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {/*
+        Chỉ huy đã chấm khác cán bộ thì nói rõ số cũ ngay tại ô. Gọi theo TÊN
+        NHÓM CỘT ("KPI tiến độ (B)") chứ không gọi tên cột: mẫu thật đặt hai cột
+        trùng tên "Thực tế hoàn thành %" nên nói tên cột thì không biết là tiến
+        độ hay chất lượng.
+      */}
+      {summary.reviewChanges.map((change) => (
+        <p
+          key={change.field}
+          className={cn(
+            "whitespace-nowrap text-xs tabular-nums",
+            change.to < change.from ? kpiTone.danger.text : kpiTone.success.text,
+          )}
+          title={`${change.groupTitle ? `${change.groupTitle} · ` : ""}${change.title}: cán bộ tự chấm ${change.from}%, chỉ huy chốt ${change.to}%`}
+        >
+          {change.to < change.from ? "▼" : "▲"}{" "}
+          {change.groupTitle || change.title}: tự chấm {change.from}%
+        </p>
+      ))}
+
+      <div className="whitespace-nowrap text-xs text-muted-foreground">
+        {lastTouchedLabel(row)}
+      </div>
+    </div>
+  );
+}
+
+/** Bảng nhiệm vụ - dùng lại cho cả xem phẳng lẫn từng nhóm thu gọn được. */
 function TrackingTable({
   rows,
   busyId,
+  axisOrderById,
   onDetail,
   onEdit,
   onComplete,
   onReturn,
 }: TrackingTableProps) {
-  const resultOnly =
-    rows.length > 0 && rows.every((row) => !row.summary.tracksProgress);
-  // Mẫu của trục chấm theo mục thường không có cột hạn - có dòng nào khai hạn
-  // thì mới giữ cột lại.
-  const showDeadline =
-    !resultOnly || rows.some((row) => Boolean(row.summary.deadline));
+  /*
+    Cột hạn giữ lại khi còn dòng nào khai hạn hoặc theo dõi tiến độ - danh sách
+    toàn trục chấm theo mục thì cột này rỗng trơn.
+  */
+  const showDeadline = rows.some(
+    (row) => Boolean(row.summary.deadline) || row.summary.tracksProgress,
+  );
 
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead className="w-[180px]">Cán bộ</TableHead>
-          <TableHead className="w-[360px]">Trục · Nhiệm vụ</TableHead>
-          {resultOnly ? (
-            <>
-              <TableHead className="w-[150px]">Kết quả</TableHead>
-              <TableHead className="w-[110px] text-right">Điểm</TableHead>
-            </>
-          ) : (
-            <TableHead className="w-[190px] whitespace-nowrap">
-              Tiến độ
-            </TableHead>
-          )}
+          <TableHead className="w-[340px]">Biểu mẫu · Nhiệm vụ</TableHead>
+          {/* MỘT cột kết quả, tự đổi theo mẫu của từng dòng. Ba cột cố định
+              Tiến độ / Chất lượng / Kết quả chỉ đúng với một loại trục; danh
+              sách trộn nhiều trục thì loại nào cũng sai với một nửa số dòng. */}
+          <TableHead className="w-[230px]">Kết quả KPI</TableHead>
           {showDeadline ? (
             <TableHead className="w-[140px]">Hạn</TableHead>
           ) : null}
           <TableHead className="w-[130px]">Trạng thái duyệt</TableHead>
-          {resultOnly ? null : (
-            <>
-              <TableHead className="w-[110px]">Chất lượng</TableHead>
-              <TableHead className="w-[160px]">Tình trạng thực hiện</TableHead>
-            </>
-          )}
+          <TableHead className="w-[160px]">Tình trạng thực hiện</TableHead>
           <TableHead className="w-[210px] text-right">Thao tác</TableHead>
         </TableRow>
       </TableHeader>
@@ -371,8 +484,15 @@ function TrackingTable({
                 <div>
                   <Badge
                     variant="secondary"
-                    className={cn("font-normal", kpiTone.info.soft)}
+                    className={cn("gap-1 font-normal", kpiTone.info.soft)}
                   >
+                    {/* Số hiệu khối B để đối chiếu thẳng với bản in; trục ngoài
+                        mẫu của người xem thì chỉ hiện tên. */}
+                    {axisOrderById?.get(row.item.axisId) ? (
+                      <span className="font-semibold">
+                        B{axisOrderById.get(row.item.axisId)}
+                      </span>
+                    ) : null}
                     {row.item.axisName}
                   </Badge>
                 </div>
@@ -384,95 +504,9 @@ function TrackingTable({
                 </div>
               </TableCell>
 
-              {resultOnly ? (
-                <>
-                  <TableCell className="align-middle">
-                    {!row.result.declared ? (
-                      <span className="text-xs text-muted-foreground">
-                        Chưa khai kết quả
-                      </span>
-                    ) : (
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          "font-normal",
-                          row.result.failed
-                            ? kpiTone.danger.soft
-                            : kpiTone.success.soft,
-                        )}
-                      >
-                        {row.result.failed ? "Không đạt" : "Đạt"}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell
-                    className="text-right align-middle text-sm font-medium tabular-nums"
-                    title={
-                      row.result.score !== null &&
-                      row.result.selfScore !== null &&
-                      row.result.selfScore !== row.result.score
-                        ? `Chỉ huy chấm lại - cán bộ tự chấm ${row.result.selfScore}`
-                        : undefined
-                    }
-                  >
-                    {row.result.score === null ? (
-                      <span className="text-muted-foreground">-</span>
-                    ) : (
-                      row.result.score
-                    )}
-                  </TableCell>
-                </>
-              ) : (
-                <TableCell className="align-middle">
-                  {/* Trục có mẫu KPI không chấm theo % thì nói thẳng, đừng để ô
-                    trống rồi bị đọc thành "cán bộ chưa nhập". */}
-                  {!row.summary.tracksProgress ? (
-                    <span
-                      className="text-xs text-muted-foreground"
-                      title="Mẫu KPI của trục này không có cột tiến độ - chốt hoàn thành theo thẩm định của chỉ huy"
-                    >
-                      Không theo dõi %
-                    </span>
-                  ) : row.summary.progressPercent === null ? (
-                    <span className="text-sm text-muted-foreground">-</span>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <ProgressBar
-                        percent={row.summary.progressPercent}
-                        className="flex-1"
-                      />
-                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                        {row.summary.progressPercent}%
-                      </span>
-                    </div>
-                  )}
-                  {/*
-                    Chỉ huy đã chấm khác cán bộ thì nói rõ số cũ ngay tại ô.
-                    Gọi theo TÊN NHÓM CỘT ("KPI tiến độ (B)") chứ không gọi tên
-                    cột: mẫu thật đặt hai cột trùng tên "Thực tế hoàn thành %"
-                    nên nói tên cột thì không biết là tiến độ hay chất lượng.
-                  */}
-                  {row.summary.reviewChanges.map((change) => (
-                    <p
-                      key={change.field}
-                      className={cn(
-                        "mt-0.5 whitespace-nowrap text-xs tabular-nums",
-                        change.to < change.from
-                          ? kpiTone.danger.text
-                          : kpiTone.success.text,
-                      )}
-                      title={`${change.groupTitle ? `${change.groupTitle} · ` : ""}${change.title}: cán bộ tự chấm ${change.from}%, chỉ huy chốt ${change.to}%`}
-                    >
-                      {change.to < change.from ? "▼" : "▲"}{" "}
-                      {change.groupTitle || change.title}: tự chấm {change.from}
-                      %
-                    </p>
-                  ))}
-                  <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
-                    {lastTouchedLabel(row)}
-                  </div>
-                </TableCell>
-              )}
+              <TableCell className="align-middle">
+                <TrackingResultCell row={row} />
+              </TableCell>
 
               {showDeadline ? (
                 <TableCell className="whitespace-nowrap align-middle">
@@ -506,50 +540,34 @@ function TrackingTable({
                 ) : null}
               </TableCell>
 
-              {resultOnly ? null : (
-                <>
-                  <TableCell className="align-middle text-sm tabular-nums">
-                    {!row.summary.tracksQuality ? (
-                      <span className="text-xs text-muted-foreground">
-                        Không theo dõi %
-                      </span>
-                    ) : row.summary.qualityPercent === null ? (
-                      <span className="text-muted-foreground">-</span>
-                    ) : (
-                      `${row.summary.qualityPercent}%`
-                    )}
-                  </TableCell>
-
-                  <TableCell className="align-middle">
-                    <div className="flex flex-wrap gap-1">
-                      <WorkStateBadge work={row.work} />
-                      {isOverdue(row) ? (
-                        <Badge
-                          variant="secondary"
-                          className={cn("font-normal", kpiTone.danger.soft)}
-                        >
-                          Trễ hạn
-                        </Badge>
-                      ) : isDueSoon(row) ? (
-                        <Badge
-                          variant="secondary"
-                          className={cn("font-normal", kpiTone.warning.soft)}
-                        >
-                          Sắp đến hạn
-                        </Badge>
-                      ) : null}
-                      {isSilent(row) ? (
-                        <Badge
-                          variant="secondary"
-                          className={cn("font-normal", kpiTone.warning.soft)}
-                        >
-                          Im lặng {row.silence} ngày
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                </>
-              )}
+              <TableCell className="align-middle">
+                <div className="flex flex-wrap gap-1">
+                  <WorkStateBadge work={row.work} />
+                  {isOverdue(row) ? (
+                    <Badge
+                      variant="secondary"
+                      className={cn("font-normal", kpiTone.danger.soft)}
+                    >
+                      Trễ hạn
+                    </Badge>
+                  ) : isDueSoon(row) ? (
+                    <Badge
+                      variant="secondary"
+                      className={cn("font-normal", kpiTone.warning.soft)}
+                    >
+                      Sắp đến hạn
+                    </Badge>
+                  ) : null}
+                  {isSilent(row) ? (
+                    <Badge
+                      variant="secondary"
+                      className={cn("font-normal", kpiTone.warning.soft)}
+                    >
+                      Im lặng {row.silence} ngày
+                    </Badge>
+                  ) : null}
+                </div>
+              </TableCell>
 
               {/*
                 Một nút mở chi tiết, phần quyết định gom vào menu "..." - bày cả
@@ -654,6 +672,17 @@ export function PersonalKpiTrackingView() {
   const [returnRow, setReturnRow] = useState<TrackingRow | null>(null);
   const [returnReason, setReturnReason] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  /*
+    Số hiệu khối B theo mẫu báo cáo áp dụng cho ĐƠN VỊ CỦA NGƯỜI XEM. Cấp dưới
+    có thể đang dùng mẫu khác, nên trục nào không nằm trong mẫu này thì không
+    gán số - thà thiếu số còn hơn gán một số chỉ đúng ở bảng của mình.
+  */
+  const { axes: scopedAxes } = useScopedAxes();
+  const axisOrderById = useMemo(
+    () => new Map(scopedAxes.map((axis, index) => [entityId(axis), index + 1])),
+    [scopedAxes],
+  );
 
   const { ready } = useServerTime();
   const todayYmd = serverYmd();
@@ -991,6 +1020,7 @@ export function PersonalKpiTrackingView() {
                   <TrackingTable
                     rows={group.rows}
                     busyId={busyId}
+                    axisOrderById={axisOrderById}
                     onDetail={(row) => {
                       setDetailId(row.item.id);
                       setDetailOpen(true);
