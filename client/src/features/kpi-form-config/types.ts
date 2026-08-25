@@ -606,6 +606,20 @@ export function footerMode(footer?: FormTemplateFooter | null): FormFooterMode {
 }
 
 /**
+ * Cách quy ra điểm của một bộ cột, viết gọn đủ đọc trong một dòng.
+ *
+ * Nhận thẳng `footer` chứ không nhận cả mẫu, để màn cấu hình đọc được BẢN NHÁP
+ * đang sửa - đọc theo mẫu đã lưu thì đổi quy tắc xong dòng mô tả vẫn đứng yên,
+ * người cấu hình tưởng thao tác không ăn.
+ */
+export function footerScoringLabel(footer?: FormTemplateFooter | null): string {
+  if (!footer?.enabled) return "Chưa bật công thức tính điểm";
+  return footerMode(footer) === "sum"
+    ? "Cộng dồn điểm các mục"
+    : "Tính theo tỉ lệ hoàn thành";
+}
+
+/**
  * Cột gán được vào công thức, kèm con số mà cột đó đóng góp.
  *
  * Không phải cứ `dataType = number` mới cộng được: cột Điểm chuẩn là dropdown

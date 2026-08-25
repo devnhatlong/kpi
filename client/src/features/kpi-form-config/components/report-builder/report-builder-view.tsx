@@ -56,7 +56,6 @@ import { FieldDesigner } from "@/features/kpi-form-config/components/report-buil
 import {
   draftFingerprint,
   draftFromTemplate,
-  footerScoringLabel,
   sameTarget,
   sanitizeDraft,
   targetKey,
@@ -78,6 +77,7 @@ import { TemplateComposer } from "@/features/kpi-form-config/components/report-b
 import {
   createDefaultTemplateDraft,
   entityId,
+  footerScoringLabel,
   REPORT_SCOPE_TYPE_LABEL,
   REPORT_SECTION_A_TITLE,
   type Axis,

@@ -4,12 +4,12 @@ import { Pencil, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-  footerScoringLabel,
   sameTarget,
   type DesignerTarget,
 } from "@/features/kpi-form-config/components/report-builder/form-draft";
 import {
   entityId,
+  footerScoringLabel,
   REPORT_SECTION_A_TITLE,
   REPORT_SECTION_B_TITLE,
   type Axis,

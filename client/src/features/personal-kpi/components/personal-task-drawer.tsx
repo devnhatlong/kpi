@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
+  ChevronRight,
   ClipboardList,
   Inbox,
   Info,
@@ -13,7 +14,6 @@ import {
 import useSWR from "swr";
 import { toast } from "sonner";
 
-import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,14 +25,25 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { fetchWorkContentsAll } from "@/features/kpi-form-config/api";
+import {
+  criterionKeys,
+  fetchCriteriaSummary,
+  fetchFormTemplateForCriteria,
+  fetchWorkContentsAll,
+  formTemplateKeys,
+} from "@/features/kpi-form-config/api";
 import { NoReportTemplateNotice } from "@/features/kpi-form-config/components/no-report-template-notice";
+import {
+  fetchPersonalCriteriaSheet,
+  personalCriteriaKeys,
+} from "@/features/personal-kpi/api";
 import { PersonalCriteriaPanel } from "@/features/personal-kpi/components/personal-criteria-panel";
 import type { Axis, WorkContent } from "@/features/kpi-form-config/types";
 import {
   entityId,
+  footerMode,
+  footerScoringLabel,
   REPORT_SECTION_A_TITLE,
-  REPORT_SECTION_B_TITLE,
 } from "@/features/kpi-form-config/types";
 import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
@@ -159,6 +170,41 @@ export function PersonalTaskDrawer({
     open ? ["work-contents", "all", "personal-task-drawer"] : null,
     fetchWorkContentsAll,
   );
+  /* Số tiêu chí và trần điểm của khối A - hiện ở cột cấu trúc bên trái. */
+  const { data: criteriaSummary } = useSWR(
+    open ? criterionKeys.summary : null,
+    fetchCriteriaSummary,
+    { revalidateOnFocus: false },
+  );
+  const criteriaCount = criteriaSummary?.activeCount ?? 0;
+  const criteriaMaxScore = criteriaSummary?.totalMaxScore ?? 0;
+
+  /*
+    Bảng A ĐÃ LƯU có gì chưa - dùng cho chấm trạng thái ở cột cấu trúc. Dùng
+    chung khoá SWR với panel nên không tốn thêm lượt gọi. Cố tình đọc bản đã lưu
+    chứ không phải thứ đang gõ dở: chấm này nói "đã có dữ liệu", mà cái đang gõ
+    thì chưa chắc còn sau khi đóng drawer.
+  */
+  const { data: criteriaSheet } = useSWR(
+    open && includeCriteria
+      ? personalCriteriaKeys.sheet(reportDate ?? "today")
+      : null,
+    () => fetchPersonalCriteriaSheet(reportDate),
+    { revalidateOnFocus: false },
+  );
+  /* Mẫu của khối A - cần công thức của nó để nói cách quy ra điểm. */
+  const { data: criteriaTemplate } = useSWR(
+    open && includeCriteria ? formTemplateKeys.forCriteria : null,
+    fetchFormTemplateForCriteria,
+    { revalidateOnFocus: false },
+  );
+  const criteriaFilled = (criteriaSheet?.rows ?? []).some(
+    (row) =>
+      Object.values(row.fieldValues ?? {}).some(
+        (value) => value !== "" && value !== false && value !== null,
+      ) || Object.keys(row.catalogValues ?? {}).length > 0,
+  );
+
   const templates = useAxisTemplates(open);
   const scoreGroupById = useScoreGroupMap(open);
 
@@ -179,6 +225,8 @@ export function PersonalTaskDrawer({
   const [collapsedKeys, setCollapsedKeys] = useState<string[]>([]);
   /** Trục đang gấp ở THƯ VIỆN bên trái - khác với collapsedKeys của thẻ nhập. */
   const [collapsedAxes, setCollapsedAxes] = useState<Set<string>>(new Set());
+  /** Mở dòng giải thích cách quy ra điểm của khối đang nhập. */
+  const [ruleOpen, setRuleOpen] = useState(false);
 
   const toggleAxisGroup = (axisId: string) =>
     setCollapsedAxes((prev) => {
@@ -347,6 +395,56 @@ export function PersonalTaskDrawer({
     showCriteria && (axisTab === CRITERIA_TAB || !activeAxisId)
       ? CRITERIA_TAB
       : activeAxisId;
+  const onCriteria = activeTab === CRITERIA_TAB;
+
+  /**
+   * Các khối của báo cáo theo đúng thứ tự bản in - dựng hàng thẻ chọn khối.
+   * `tab` là nhãn ngắn trên thẻ, `label` là câu đầy đủ cho tooltip.
+   *
+   * Nhãn mang sẵn chữ phần (A, B1, B2…) vì hàng thẻ là điều khiển phẳng, không
+   * có khung nào bọc để nói khối nào thuộc phần nào. Mẫu không có khối A thì bỏ
+   * tiền tố "B" đi - không có gì để phân biệt thì gắn nhãn chỉ tổ nhiễu.
+   */
+  const blockProgress = [
+    ...(showCriteria
+      ? [
+        {
+          value: CRITERIA_TAB,
+          tab: `A · ${REPORT_SECTION_A_TITLE}`,
+          label: `Phần A · ${REPORT_SECTION_A_TITLE}`,
+          filled: criteriaFilled,
+        },
+      ]
+      : []),
+    ...axisGroups.map((group) => ({
+      value: group.axisId,
+      tab: showCriteria
+        ? `B${group.order} · ${group.axis?.name ?? ""}`
+        : `${group.order}. ${group.axis?.name ?? ""}`,
+      label: `Trục ${group.order} · ${group.axis?.name ?? ""}`,
+      filled: group.taskCount > 0,
+    })),
+  ];
+
+  /**
+   * Cách quy ra điểm của khối đang mở, đọc từ CÔNG THỨC của mẫu chứ không viết
+   * cứng - admin đổi quy tắc thì câu này đổi theo.
+   */
+  const activeRuleText = (() => {
+    const footer = onCriteria
+      ? criteriaTemplate?.footer
+      : templates.byAxis.get(activeAxisId)?.footer;
+    const max = onCriteria
+      ? criteriaMaxScore
+      : (activeGroup?.axis?.maxScore ?? 0);
+    const label = footerScoringLabel(footer);
+    if (!footer?.enabled) {
+      return `${label}. Khối này không tự quy ra điểm - chỉ huy chấm khi duyệt.`;
+    }
+    return footerMode(footer) === "sum"
+      ? `${label}: cộng điểm các mục đã chấm, chặn ở tối đa ${max} điểm.`
+      : `${label}: chia tổng tử số cho tổng mẫu số rồi nhân với ${max} điểm tối đa của khối.`;
+  })();
 
   /** Bấm nội dung đã chọn rồi = thêm một việc nữa cho nội dung đó. */
   const pickContent = (axisId: string, workContentId: string) => {
@@ -606,14 +704,17 @@ export function PersonalTaskDrawer({
           {!isEdit ? (
             <aside className="flex w-[290px] shrink-0 flex-col border-r bg-muted/20 xl:w-[340px]">
               <div className="space-y-2 border-b px-3 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Thư viện nội dung công tác
-                </p>
+                <div className="space-y-0.5">
+                  <p className="text-sm font-semibold">Cấu trúc báo cáo</p>
+                  <p className="text-xs text-muted-foreground">
+                    Chọn phần hoặc trục để mở đúng biểu mẫu.
+                  </p>
+                </div>
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     className="bg-background pl-8 placeholder:text-muted-foreground/70"
-                    placeholder="Tìm nội dung..."
+                    placeholder="Tìm nội dung, trục..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -621,6 +722,60 @@ export function PersonalTaskDrawer({
               </div>
 
               <div className="min-h-0 flex-1 space-y-4 overflow-auto px-3 py-3">
+                {/* PHẦN A - một bảng duy nhất, nên mục ở đây cũng chính là nó. */}
+                {showCriteria ? (
+                  <div className="space-y-1">
+                    <p className="flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <span className="grid size-4 place-items-center rounded bg-emerald-500/15 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                        A
+                      </span>
+                      Phần tiêu chí chung
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setAxisTab(CRITERIA_TAB)}
+                      className={cn(
+                        "flex w-full cursor-pointer items-center gap-2 rounded-lg border-l-2 px-2.5 py-2 text-left transition-colors",
+                        activeTab === CRITERIA_TAB
+                          ? "border-l-emerald-500 bg-emerald-500/5"
+                          : "border-l-transparent hover:bg-accent/50",
+                      )}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">
+                          Tiêu chí chung
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {criteriaCount} tiêu chí · tối đa {criteriaMaxScore}{" "}
+                          điểm
+                        </span>
+                      </span>
+                      {/* Chấm đầy = bảng A đã lưu có dữ liệu. */}
+                      <span
+                        className={cn(
+                          "size-1.5 shrink-0 rounded-full",
+                          criteriaFilled
+                            ? "bg-emerald-500"
+                            : "bg-muted-foreground/25",
+                        )}
+                        title={
+                          criteriaFilled ? "Đã có dữ liệu" : "Chưa chấm tiêu chí"
+                        }
+                      />
+                    </button>
+                  </div>
+                ) : null}
+
+                {/* PHẦN B - bọc các trục, đúng thứ tự bản in. */}
+                {showCriteria && libraryGroups.length ? (
+                  <p className="flex items-center gap-1.5 px-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span className="grid size-4 place-items-center rounded bg-primary/15 text-[10px] font-bold text-primary">
+                      B
+                    </span>
+                    Nhiệm vụ công tác
+                  </p>
+                ) : null}
+
                 {loading ? (
                   <p className="px-1 text-sm text-muted-foreground">
                     Đang tải danh mục...
@@ -647,7 +802,7 @@ export function PersonalTaskDrawer({
                           onClick={() => toggleAxisGroup(group.axisId)}
                           disabled={!!search.trim()}
                           aria-expanded={open}
-                          className="flex w-full items-center gap-1 rounded-md px-1 py-1 text-left text-xs font-semibold text-muted-foreground hover:bg-accent/50 disabled:hover:bg-transparent"
+                          className="flex w-full cursor-pointer items-center gap-1 rounded-md px-1 py-1 text-left text-xs font-semibold text-muted-foreground hover:bg-accent/50 disabled:cursor-default disabled:hover:bg-transparent"
                         >
                           <ChevronDown
                             className={cn(
@@ -673,8 +828,22 @@ export function PersonalTaskDrawer({
                             </Badge>
                           ) : null}
                           <span className="shrink-0 font-normal tabular-nums opacity-60">
-                            {group.contents.length}
+                            {group.axis.maxScore}đ
                           </span>
+                          {/* Chấm đầy = trục này đã có việc đang nhập. */}
+                          <span
+                            className={cn(
+                              "size-1.5 shrink-0 rounded-full",
+                              pickedInGroup > 0
+                                ? "bg-primary"
+                                : "bg-muted-foreground/25",
+                            )}
+                            title={
+                              pickedInGroup > 0
+                                ? `${pickedInGroup} việc đang nhập`
+                                : "Chưa nhập việc nào"
+                            }
+                          />
                         </button>
 
                         {open
@@ -704,7 +873,7 @@ export function PersonalTaskDrawer({
                                     // Huy hiệu và dấu + căn giữa theo chiều cao
                                     // cả thẻ, không bám mép trên: nội dung một
                                     // dòng hay hai dòng thì chúng vẫn nằm giữa.
-                                    "flex w-full items-center gap-2 rounded-lg border bg-card px-2.5 py-1.5 text-left transition-colors",
+                                    "flex w-full cursor-pointer items-center gap-2 rounded-lg border bg-card px-2.5 py-1.5 text-left transition-colors",
                                     "hover:border-primary/40 hover:bg-primary/5",
                                     "disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:border-border disabled:hover:bg-card",
                                     count > 0 && "border-primary/50 bg-primary/5",
@@ -759,61 +928,90 @@ export function PersonalTaskDrawer({
             ) : (
               <div className="space-y-4">
                 {/*
-                  Trục nằm thành tab ở trên thay vì xếp chồng nhau: nhập một
-                  buổi có thể chạm 3-4 trục, xếp dọc thì phải cuộn qua cả tá thẻ
-                  của trục khác mới tới thẻ mình đang gõ.
+                  Tiêu đề của khối đang mở thay cho thanh tab: điều hướng đã nằm
+                  ở cột cấu trúc bên trái, để thêm một hàng tab nữa là hai chỗ
+                  cùng làm một việc. Chỉ hiện khi mẫu có khối A - không có A thì
+                  gắn nhãn "PHẦN B" cho mọi thứ là nhiễu.
                 */}
-                <SegmentedTabs
-                  ariaLabel="Chọn khối đang nhập"
-                  value={activeTab}
-                  onChange={setAxisTab}
-                  className="w-fit"
-                  items={[
-                    // Khối A đứng đầu, đúng thứ tự bản in: A rồi mới tới B.
-                    ...(showCriteria
-                      ? [
-                          {
-                            value: CRITERIA_TAB,
-                            title: "Danh mục điểm tiêu chí chung",
-                            label: (
-                              <span className="flex items-center gap-1.5">
-                                <span className="rounded bg-emerald-500/15 px-1 text-xs font-bold text-emerald-700 dark:text-emerald-400">
-                                  A
-                                </span>
-                                Tiêu chí chung
-                              </span>
-                            ),
-                          },
-                        ]
-                      : []),
-                    ...axisGroups.map((group) => ({
-                      value: group.axisId,
-                      title: group.axis?.name,
-                      label: (
-                        <span className="flex items-center gap-1.5">
-                          Trục {group.order}
-                          <span className="rounded-full bg-primary/10 px-1.5 text-xs font-medium text-primary tabular-nums">
-                            {group.taskCount}
-                          </span>
-                        </span>
-                      ),
-                    })),
-                  ]}
-                />
-
                 {/*
-                  Tên phần thay cho một cái khung bọc: tab là điều khiển phẳng,
-                  lồng nhóm vào trong nó chỉ thêm viền mà không thêm thông tin.
-                  Chỉ hiện khi mẫu có khối A - không có A thì gắn nhãn "B" cho
-                  mọi thứ là nhiễu.
+                  Mỗi khối một thẻ, mang sẵn nhãn phần (A / B1, B2…) và tình
+                  trạng. Thanh mảnh trước đây gọn hơn nhưng đọc không ra: nhìn
+                  mấy vạch màu thì không biết vạch nào là khối nào.
                 */}
-                {showCriteria ? (
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    {activeTab === CRITERIA_TAB
-                      ? `A · ${REPORT_SECTION_A_TITLE}`
-                      : `B · ${REPORT_SECTION_B_TITLE}`}
-                  </p>
+                {blockProgress.length > 1 ? (
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                    {blockProgress.map((block) => {
+                      const active = block.value === activeTab;
+                      return (
+                        <button
+                          key={block.value}
+                          type="button"
+                          title={block.label}
+                          onClick={() => setAxisTab(block.value)}
+                          className={cn(
+                            "relative cursor-pointer rounded-lg border px-3 pb-2 pt-4 text-left transition-colors",
+                            active
+                              ? "border-primary bg-primary/5"
+                              : "hover:border-primary/40 hover:bg-accent/40",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "absolute right-2 top-1 text-[10px] font-medium",
+                              active
+                                ? "text-primary"
+                                : block.filled
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : "text-muted-foreground/70",
+                            )}
+                          >
+                            {active
+                              ? "Đang nhập"
+                              : block.filled
+                                ? "Đã nhập"
+                                : "Chưa nhập"}
+                          </span>
+                          <span className="block truncate text-sm font-medium">
+                            {block.tab}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 ) : null}
+
+                {/* Nhắc việc phải làm ở khối đang mở, kèm cách quy ra điểm của
+                    chính khối đó - đọc từ công thức của mẫu, không viết cứng. */}
+                <div className="flex flex-wrap items-start justify-between gap-2 rounded-lg border-l-4 border-l-primary bg-primary/5 px-3 py-2.5 text-sm">
+                  <p className="flex min-w-0 items-start gap-2">
+                    <Info className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <span>
+                      <b className="font-medium">Việc cần làm:</b>{" "}
+                      {onCriteria
+                        ? "đánh giá các tiêu chí chung trước khi chuyển sang nhiệm vụ công tác theo trục."
+                        : "chọn nội dung công tác ở cột trái rồi nhập việc cho trục này."}
+                    </span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setRuleOpen((prev) => !prev)}
+                    aria-expanded={ruleOpen}
+                    className="inline-flex shrink-0 cursor-pointer items-center gap-0.5 text-sm font-medium text-primary hover:underline"
+                  >
+                    Quy tắc điểm
+                    <ChevronRight
+                      className={cn(
+                        "size-4 transition-transform",
+                        ruleOpen && "rotate-90",
+                      )}
+                    />
+                  </button>
+                  {ruleOpen ? (
+                    <p className="w-full border-t border-primary/20 pt-2 text-xs text-muted-foreground">
+                      {activeRuleText}
+                    </p>
+                  ) : null}
+                </div>
 
                 {/*
                   Ẩn bằng CSS chứ KHÔNG tháo khỏi cây: tháo ra là mất sạch bảng
@@ -929,7 +1127,7 @@ export function PersonalTaskDrawer({
         </div>
         )}
 
-        <SheetFooter className="flex-col gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <SheetFooter className="flex-col gap-3 border-t p-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-1.5">
             <Badge variant="outline" className="font-normal">
               {axisGroups.length} trục
