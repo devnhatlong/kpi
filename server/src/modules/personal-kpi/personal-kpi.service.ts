@@ -40,9 +40,11 @@ import {
   PersonalKpiStatisticsQueryDto,
   ReviewPersonalKpiDto,
   ReviewerEditPersonalKpiDto,
+  ScorePersonalCriteriaSheetDto,
   ScorePersonalKpiDto,
   SavePersonalCriteriaSheetDto,
   SubmitPersonalKpiDto,
+  UpdatePersonalCriteriaSheetDto,
   UpdatePersonalKpiDto,
   UpdatePersonalKpiProgressDto,
   type PersonalKpiStatScope,
@@ -66,6 +68,7 @@ import {
   PersonalKpiLogType,
   PersonalKpiProgressChange,
   PersonalKpiProgressField,
+  PersonalKpiProgressLog,
   PersonalKpiReviewStatus,
 } from './schemas/personal-kpi-item.schema';
 import {
@@ -93,7 +96,13 @@ import {
   PersonalKpiCriteriaSheetDocument,
   type PersonalKpiCriterionRow,
 } from './schemas/personal-kpi-criteria-sheet.schema';
-import { isYmd, serverDateYmd, shiftYmd } from './personal-kpi.time';
+import {
+  isYearMonth,
+  isYmd,
+  serverDateYmd,
+  serverMonth,
+  shiftYmd,
+} from './personal-kpi.time';
 
 /** Cán bộ chỉ sửa/gửi được nhiệm vụ ở hai trạng thái này. */
 const OWNER_EDITABLE: PersonalKpiReviewStatus[] = ['DRAFT', 'RETURNED'];
@@ -123,6 +132,40 @@ type ActorInfo = {
   id: Types.ObjectId;
   name: string;
   departmentId: Types.ObjectId | null;
+};
+
+/**
+ * Thứ ghi được nhật ký: nhiệm vụ và bảng khối A.
+ *
+ * Khai theo hình dạng thay vì theo document cụ thể để `appendLog` dùng chung
+ * cho cả hai - hai bản sao của cùng một hàm chỉ khác kiểu tham số là chỗ để
+ * hai dòng thời gian trôi lệch nhau về sau.
+ */
+type LoggableDoc = {
+  holderLevel: number;
+  progressLogs?: PersonalKpiProgressLog[];
+  markModified(path: string): void;
+};
+
+/**
+ * Thứ đi được trong chuỗi gửi: nhiệm vụ và bảng khối A.
+ * Duyệt / trả lại / đóng lượt gửi thao tác y hệt nhau trên cả hai nên viết một
+ * lần theo hình dạng, thay vì hai vòng lặp song song rồi sửa lệch nhau.
+ */
+type SubmittableDoc = LoggableDoc & {
+  _id: unknown;
+  reviewStatus: PersonalKpiReviewStatus;
+  ownerId: Types.ObjectId;
+  ownerDepartmentId: Types.ObjectId | null;
+  currentSubmissionId: Types.ObjectId | null;
+  currentRecipientId: Types.ObjectId | null;
+  currentRecipientDepartmentId: Types.ObjectId | null;
+  lastSenderId: Types.ObjectId | null;
+  lastSenderDepartmentId: Types.ObjectId | null;
+  lastDecidedById: Types.ObjectId | null;
+  lastDecidedAt: Date | null;
+  returnReason: string;
+  save(): Promise<unknown>;
 };
 
 @Injectable()
@@ -965,7 +1008,14 @@ export class PersonalKpiService {
     }
 
     const items = await this.itemModel.find(filter);
-    if (!items.length) {
+    /*
+      Bảng khối A chốt theo THÁNG: gửi kèm báo cáo của ngày nào trong tháng cũng
+      được, và cả tháng chỉ có một bảng để gửi.
+    */
+    const sheets = dto.includeCriteria
+      ? [await this.requireSendableCriteriaSheet(actor.id, serverMonth(date))]
+      : [];
+    if (!items.length && !sheets.length) {
       throw new BadRequestException(
         'Không có nhiệm vụ nháp hoặc bị trả lại nào để gửi trong ngày này.',
       );
@@ -977,6 +1027,7 @@ export class PersonalKpiService {
     }
     // Chốt mẫu bảng ở lần gửi đầu tiên để báo cáo không méo khi mẫu bị sửa.
     await this.stampTemplates(items);
+    await this.stampCriteriaTemplates(sheets);
     await this.assertWorkContentScoreGroups(items);
     // Tính lại theo đúng mẫu vừa chốt, rồi mới kiểm - nếu không sẽ kiểm trên
     // con số client gửi chứ không phải con số hệ thống sẽ lưu.
@@ -992,48 +1043,142 @@ export class PersonalKpiService {
       note,
       reportDate: date,
       items,
+      sheets,
       sourceSubmissionIds: [],
-      message: (count) =>
-        `Đã gửi ${count} nhiệm vụ tới ${target.name}.`,
+      message: (count, sheetCount) => {
+        const parts = [count ? `${count} nhiệm vụ` : '', sheetCount ? 'bảng khối A' : '']
+          .filter(Boolean)
+          .join(' và ');
+        return `Đã gửi ${parts} tới ${target.name}.`;
+      },
     });
   }
 
-  /** Cấp trên gửi tiếp các nhiệm vụ đang giữ lên cấp cao hơn. */
+  /**
+   * Bảng khối A của ngày, đã kiểm là gửi được.
+   *
+   * Bảng đã nằm ở tay cấp trên thì KHÔNG gửi lại - đúng luật của nhiệm vụ
+   * (`holderLevel: 0` + trạng thái cán bộ còn sửa được). Muốn đổi số thì dùng
+   * đường cập nhật, hoặc chờ bị trả lại.
+   */
+  private async requireSendableCriteriaSheet(
+    ownerId: Types.ObjectId,
+    periodMonth: string,
+  ) {
+    const sheet = await this.criteriaSheetModel.findOne({
+      ownerId,
+      periodMonth,
+    });
+    if (!sheet) {
+      throw new BadRequestException(
+        'Chưa có bảng khối A của tháng này để gửi - lưu nháp bảng trước.',
+      );
+    }
+    if (!OWNER_EDITABLE.includes(sheet.reviewStatus)) {
+      throw new BadRequestException(
+        sheet.reviewStatus === 'COMPLETED'
+          ? 'Bảng khối A của tháng này đã chốt - không gửi lại nữa.'
+          : 'Bảng khối A của tháng này đã gửi lên trên rồi.',
+      );
+    }
+    const filled = sheet.rows.some(
+      (row) =>
+        Object.values(row.fieldValues ?? {}).some(
+          (value) => String(value ?? '').trim() !== '',
+        ) || Object.keys(row.catalogValues ?? {}).length > 0,
+    );
+    if (!filled) {
+      throw new BadRequestException(
+        'Bảng khối A chưa chấm ô nào - không gửi bảng trống.',
+      );
+    }
+    return sheet;
+  }
+
+  /** Chốt mẫu `forCriteria` cho các bảng khối A chưa từng gửi. */
+  private async stampCriteriaTemplates(
+    sheets: PersonalKpiCriteriaSheetDocument[],
+  ) {
+    const pending = sheets.filter((sheet) => !sheet.formTemplateId);
+    if (!pending.length) return;
+
+    const template = await this.formTemplateModel.findOne({
+      forCriteria: true,
+      isActive: true,
+    });
+    if (!template) {
+      throw new BadRequestException(
+        'Khối A chưa được gán mẫu bảng nên chưa gửi được. Cấu hình tại Cấu hình form KPI › Mẫu bảng KPI.',
+      );
+    }
+    for (const sheet of pending) {
+      sheet.formTemplateId = template._id as Types.ObjectId;
+      sheet.formTemplateVersion = template.version ?? 1;
+    }
+  }
+
+  /** Cấp trên gửi tiếp các nhiệm vụ / bảng khối A đang giữ lên cấp cao hơn. */
   async forward(userId: string, dto: ForwardPersonalKpiDto) {
     const actor = await this.requireActor(userId);
     const target = await this.requireValidRecipient(userId, dto.recipientId);
     const note = this.requireNote(dto.note);
 
-    const ids = dto.itemIds.map((id) => this.requireObjectId(id, 'Nhiệm vụ'));
+    const ids = (dto.itemIds ?? []).map((id) =>
+      this.requireObjectId(id, 'Nhiệm vụ'),
+    );
+    const sheetIds = (dto.criteriaSheetIds ?? []).map((id) =>
+      this.requireObjectId(id, 'Bảng khối A'),
+    );
+    if (!ids.length && !sheetIds.length) {
+      throw new BadRequestException('Chưa tích dòng nào để gửi lên.');
+    }
 
     // Chuyển lên trên CHÍNH LÀ hành động duyệt - nhận cả việc đang chờ duyệt,
     // không bắt bấm "Duyệt" trước rồi mới được gửi. Việc đã chốt hoàn thành thì
     // không nằm trong danh sách này nữa.
-    const items = await this.itemModel.find({
-      _id: { $in: ids },
+    const forwardable: PersonalKpiReviewStatus[] = [
+      'PENDING',
+      'APPROVED',
+      'RETURNED',
+    ];
+    const holding = {
       currentRecipientId: actor.id,
       holderLevel: { $gte: 1 },
-      reviewStatus: { $in: ['PENDING', 'APPROVED', 'RETURNED'] },
-    });
+      reviewStatus: { $in: forwardable },
+    };
+    const [items, sheets] = await Promise.all([
+      ids.length
+        ? this.itemModel.find({ _id: { $in: ids }, ...holding })
+        : Promise.resolve([]),
+      sheetIds.length
+        ? this.criteriaSheetModel.find({ _id: { $in: sheetIds }, ...holding })
+        : Promise.resolve([]),
+    ]);
 
-    if (!items.length) {
+    if (!items.length && !sheets.length) {
       throw new BadRequestException(
-        'Không có nhiệm vụ nào chuyển lên được - việc đã chốt hoàn thành thì không gửi nữa.',
+        'Không có dòng nào chuyển lên được - việc đã chốt hoàn thành thì không gửi nữa.',
       );
     }
-    if (items.length !== ids.length) {
+    if (items.length !== ids.length || sheets.length !== sheetIds.length) {
       throw new BadRequestException(
-        'Một số nhiệm vụ không nằm ở chỗ bạn hoặc đã chốt hoàn thành.',
+        'Một số dòng không nằm ở chỗ bạn hoặc đã chốt hoàn thành.',
       );
     }
 
-    // Mỗi nhiệm vụ đi lên đúng một bậc so với vị trí hiện tại của nó.
-    const levels = new Set(items.map((item) => item.holderLevel));
+    // Mỗi dòng đi lên đúng một bậc so với vị trí hiện tại của nó.
+    const moving: SubmittableDoc[] = [...items, ...sheets];
+    const levels = new Set(moving.map((doc) => doc.holderLevel));
     if (levels.size > 1) {
       throw new BadRequestException(
-        'Các nhiệm vụ đang ở khác cấp nhau - gửi từng nhóm một.',
+        'Các dòng đang ở khác cấp nhau - gửi từng nhóm một.',
       );
     }
+    /*
+      Chỉ NHIỆM VỤ mới phải cùng một ngày báo cáo. Bảng khối A chốt theo tháng,
+      không có ngày báo cáo của riêng nó - nó đi kèm lượt gửi của ngày nào thì
+      mang ngày đó, nên không tham gia phép kiểm này.
+    */
     const dates = new Set(items.map((item) => item.reportDate));
     if (dates.size > 1) {
       throw new BadRequestException(
@@ -1041,26 +1186,47 @@ export class PersonalKpiService {
       );
     }
 
-    const currentLevel = items[0]!.holderLevel;
+    const currentLevel = moving[0]!.holderLevel;
     const sourceSubmissionIds = [
       ...new Set(
-        items
-          .map((item) => item.currentSubmissionId)
+        moving
+          .map((doc) => doc.currentSubmissionId)
           .filter((id): id is Types.ObjectId => Boolean(id))
           .map((id) => String(id)),
       ),
     ].map((id) => new Types.ObjectId(id));
+
+    /*
+      Ngày của lượt gửi lấy theo nhiệm vụ. Lượt chỉ có bảng khối A thì bảng
+      không mang ngày nào - dùng ngày lượt gửi TRƯỚC của chính nó để lượt mới
+      vẫn nằm đúng chỗ trong hộp đến, chứ không nhảy sang hôm nay.
+    */
+    const forwardDate =
+      items[0]?.reportDate ??
+      (await this.submissionModel
+        .findOne({ criteriaSheetIds: { $in: sheetIds } })
+        .sort({ createdAt: -1 })
+        .select('reportDate'))?.reportDate ??
+      serverDateYmd();
 
     return this.createSubmission({
       level: currentLevel + 1,
       sender: actor,
       target,
       note,
-      reportDate: items[0]!.reportDate,
+      reportDate: forwardDate,
       items,
+      sheets,
       sourceSubmissionIds,
-      message: (count) =>
-        `Đã gửi ${count} nhiệm vụ lên ${target.name}.`,
+      message: (count, sheetCount) => {
+        const parts = [
+          count ? `${count} nhiệm vụ` : '',
+          sheetCount ? `${sheetCount} bảng khối A` : '',
+        ]
+          .filter(Boolean)
+          .join(' và ');
+        return `Đã gửi ${parts} lên ${target.name}.`;
+      },
     });
   }
 
@@ -1069,26 +1235,49 @@ export class PersonalKpiService {
   /** Duyệt hoặc trả lại nhiều dòng đã tích trong bảng tổng. */
   async review(userId: string, dto: ReviewPersonalKpiDto) {
     const actor = await this.requireActor(userId);
-    const ids = dto.itemIds.map((id) => this.requireObjectId(id, 'Nhiệm vụ'));
+    const ids = (dto.itemIds ?? []).map((id) =>
+      this.requireObjectId(id, 'Nhiệm vụ'),
+    );
+    const sheetIds = (dto.criteriaSheetIds ?? []).map((id) =>
+      this.requireObjectId(id, 'Bảng khối A'),
+    );
+    if (!ids.length && !sheetIds.length) {
+      throw new BadRequestException('Chưa tích dòng nào để duyệt.');
+    }
 
     // Chốt hoàn thành áp cho việc đã duyệt; duyệt/trả lại áp cho việc đang chờ.
     const allowed: PersonalKpiReviewStatus[] =
       dto.decision === 'COMPLETE' ? ['PENDING', 'APPROVED'] : ['PENDING'];
 
-    const items = await this.itemModel.find({
-      _id: { $in: ids },
+    const holding = {
       currentRecipientId: actor.id,
       reviewStatus: { $in: allowed },
-    });
-    if (!items.length) {
+    };
+    const [items, sheets] = await Promise.all([
+      ids.length
+        ? this.itemModel.find({ _id: { $in: ids }, ...holding })
+        : Promise.resolve([]),
+      sheetIds.length
+        ? this.criteriaSheetModel.find({ _id: { $in: sheetIds }, ...holding })
+        : Promise.resolve([]),
+    ]);
+    if (!items.length && !sheets.length) {
       throw new BadRequestException(
         dto.decision === 'COMPLETE'
-          ? 'Không có nhiệm vụ nào ở chỗ bạn để chốt hoàn thành.'
-          : 'Không có nhiệm vụ nào đang chờ bạn duyệt.',
+          ? 'Không có dòng nào ở chỗ bạn để chốt hoàn thành.'
+          : 'Không có dòng nào đang chờ bạn duyệt.',
       );
     }
 
     const now = new Date();
+    const touched: SubmittableDoc[] = [...items, ...sheets];
+    /** Câu đếm cho thông báo - "3 nhiệm vụ và 1 bảng khối A". */
+    const countText = [
+      items.length ? `${items.length} nhiệm vụ` : '',
+      sheets.length ? `${sheets.length} bảng khối A` : '',
+    ]
+      .filter(Boolean)
+      .join(' và ');
 
     if (dto.decision === 'COMPLETE') {
       /*
@@ -1110,10 +1299,18 @@ export class PersonalKpiService {
         });
         await item.save();
       }
-      await this.closeSubmissionsIfSettled(items);
+      for (const sheet of sheets) {
+        sheet.reviewStatus = 'COMPLETED';
+        sheet.returnReason = '';
+        sheet.lastDecidedById = actor.id;
+        sheet.lastDecidedAt = now;
+        this.appendLog(sheet, { type: 'COMPLETE', actor, at: now });
+        await sheet.save();
+      }
+      await this.closeSubmissionsIfSettled(touched);
       return {
-        message: `Đã chốt hoàn thành ${items.length} nhiệm vụ.`,
-        data: { count: items.length },
+        message: `Đã chốt hoàn thành ${countText}.`,
+        data: { count: items.length, criteriaCount: sheets.length },
       };
     }
 
@@ -1123,26 +1320,26 @@ export class PersonalKpiService {
     }
 
     // Trả lại rơi về đúng người đã gửi lượt đó, không nhảy thẳng xuống cán bộ.
-    for (const item of items) {
-      const backTo = item.lastSenderId ?? item.ownerId;
-      const backDept = item.lastSenderDepartmentId ?? item.ownerDepartmentId;
-      item.reviewStatus = 'RETURNED';
-      item.returnReason = reason;
-      item.lastDecidedById = actor.id;
-      item.lastDecidedAt = now;
-      item.holderLevel = Math.max(0, item.holderLevel - 1);
-      item.currentRecipientId = backTo;
-      item.currentRecipientDepartmentId = backDept;
+    for (const doc of touched) {
+      const backTo = doc.lastSenderId ?? doc.ownerId;
+      const backDept = doc.lastSenderDepartmentId ?? doc.ownerDepartmentId;
+      doc.reviewStatus = 'RETURNED';
+      doc.returnReason = reason;
+      doc.lastDecidedById = actor.id;
+      doc.lastDecidedAt = now;
+      doc.holderLevel = Math.max(0, doc.holderLevel - 1);
+      doc.currentRecipientId = backTo;
+      doc.currentRecipientDepartmentId = backDept;
       // Lý do trả lại lần này ghi vào nhật ký; trường returnReason chỉ giữ lần
       // gần nhất nên không đủ để đọc lại lịch sử.
-      this.appendLog(item, { type: 'RETURN', actor, note: reason, at: now });
-      await item.save();
+      this.appendLog(doc, { type: 'RETURN', actor, note: reason, at: now });
+      await doc.save();
     }
-    await this.closeSubmissionsIfSettled(items);
+    await this.closeSubmissionsIfSettled(touched);
 
     return {
-      message: `Đã trả lại ${items.length} nhiệm vụ.`,
-      data: { count: items.length },
+      message: `Đã trả lại ${countText}.`,
+      data: { count: items.length, criteriaCount: sheets.length },
     };
   }
 
@@ -1377,6 +1574,7 @@ export class PersonalKpiService {
       .populate('lastSenderDepartmentId', 'code name');
 
     const axes = await this.groupRowsByAxis(rows);
+    const criteria = await this.boardCriteria(filter);
 
     // Đếm theo TOÀN BỘ việc đang ở chỗ mình, không theo bộ lọc trạng thái đang
     // xem - để thanh tab luôn nói được còn bao nhiêu việc đã duyệt chờ gửi lên.
@@ -1389,7 +1587,19 @@ export class PersonalKpiService {
       { $match: countFilter },
       { $group: { _id: '$reviewStatus', total: { $sum: 1 } } },
     ]);
+    // Bảng khối A đếm chung vào thanh tab: đếm sót thì tab "Chờ duyệt" hiện 0
+    // trong khi vẫn còn một bảng A nằm đó chờ.
+    const criteriaCountRows = await this.criteriaSheetModel.aggregate<{
+      _id: PersonalKpiReviewStatus;
+      total: number;
+    }>([
+      { $match: this.criteriaBoardFilter(countFilter) },
+      { $group: { _id: '$reviewStatus', total: { $sum: 1 } } },
+    ]);
     const countMap = new Map(countRows.map((row) => [row._id, row.total]));
+    for (const row of criteriaCountRows) {
+      countMap.set(row._id, (countMap.get(row._id) ?? 0) + row.total);
+    }
     const counts = {
       pending: countMap.get('PENDING') ?? 0,
       approved: countMap.get('APPROVED') ?? 0,
@@ -1411,12 +1621,121 @@ export class PersonalKpiService {
       message: 'OK',
       data: {
         axes,
+        criteria,
         counts,
         canForwardUp,
         rowCount: rows.length,
         truncated: rows.length >= BOARD_MAX_ROWS,
       },
     };
+  }
+
+  /**
+   * Bộ lọc bảng tổng, dịch sang thứ bảng khối A hiểu được.
+   *
+   * Bảng khối A không có trục, không có nội dung công việc, và không có ô chữ
+   * để tìm từ khoá - lọc theo mấy thứ đó thì phải giấu khối A đi chứ không phải
+   * trả về bảng rỗng, nếu không người dùng lọc theo trục lại tưởng mất bảng.
+   *
+   * Nó cũng không có NGÀY báo cáo, chỉ có kỳ tháng: lọc ngày phải quy sang lọc
+   * tháng, giữ nguyên thì mọi bộ lọc ngày đều không khớp bảng nào.
+   */
+  private criteriaBoardFilter(filter: Record<string, unknown>) {
+    const {
+      axisId: _axisId,
+      workContentId: _workContentId,
+      $expr: _expr,
+      reportDate,
+      ...rest
+    } = filter;
+
+    if (typeof reportDate === 'string') {
+      return { ...rest, periodMonth: serverMonth(reportDate) };
+    }
+    if (reportDate && typeof reportDate === 'object') {
+      const bounds = reportDate as { $gte?: string; $lte?: string };
+      const periodMonth: Record<string, string> = {};
+      if (bounds.$gte) periodMonth.$gte = serverMonth(bounds.$gte);
+      if (bounds.$lte) periodMonth.$lte = serverMonth(bounds.$lte);
+      return Object.keys(periodMonth).length
+        ? { ...rest, periodMonth }
+        : rest;
+    }
+    return rest;
+  }
+
+  /** Các bảng khối A đang nằm ở chỗ tôi, kèm bộ cột để dựng bảng. */
+  private async boardCriteria(filter: Record<string, unknown>) {
+    // Lọc theo trục hoặc nội dung công việc thì khối A không thuộc phạm vi hỏi.
+    if (filter.axisId || filter.workContentId || filter.$expr) return null;
+
+    const sheets = await this.criteriaSheetModel
+      .find(this.criteriaBoardFilter(filter))
+      .sort({ periodMonth: -1, createdAt: 1 })
+      .limit(BOARD_MAX_ROWS)
+      .populate('ownerId', 'fullName username')
+      .populate('ownerDepartmentId', 'code name')
+      .populate('lastSenderId', 'fullName username')
+      .populate('lastSenderDepartmentId', 'code name');
+    if (!sheets.length) return null;
+
+    /*
+      Tách theo phiên bản mẫu như `groupRowsByAxis` làm với trục: mẫu đổi giữa
+      chừng thì bảng gửi trước vẫn dựng đúng bộ cột của thời điểm gửi.
+    */
+    const blocks = new Map<
+      string,
+      {
+        formTemplateId: string | null;
+        formTemplateVersion: number | null;
+        template: Awaited<ReturnType<typeof this.criteriaTemplateOf>>;
+        sheets: typeof sheets;
+      }
+    >();
+    for (const sheet of sheets) {
+      const key = `${String(sheet.formTemplateId ?? 'live')}:${
+        sheet.formTemplateVersion ?? 'live'
+      }`;
+      let block = blocks.get(key);
+      if (!block) {
+        block = {
+          formTemplateId: sheet.formTemplateId
+            ? String(sheet.formTemplateId)
+            : null,
+          formTemplateVersion: sheet.formTemplateVersion ?? null,
+          template: await this.criteriaTemplateOf(sheet),
+          sheets: [],
+        };
+        blocks.set(key, block);
+      }
+      block.sheets.push(sheet);
+    }
+
+    /*
+      Ghi chú của tiêu chí không nằm trong bản chụp của bảng (nó là chữ mô tả,
+      không phải số để chấm) nhưng chỉ huy cần đọc nó mới biết trừ điểm theo
+      căn cứ nào - trả kèm một bảng tra dùng chung cho mọi khối.
+    */
+    const criterionIds = [
+      ...new Set(
+        sheets.flatMap((sheet) =>
+          sheet.rows.map((row) => String(row.criterionId)),
+        ),
+      ),
+    ].map((id) => new Types.ObjectId(id));
+    const criterionNotes = Object.fromEntries(
+      (
+        await this.criterionModel.find({ _id: { $in: criterionIds } }).select('note')
+      ).map((row) => [String(row._id), row.note ?? '']),
+    );
+
+    return [...blocks.values()].map((block) => ({
+      formTemplateId: block.formTemplateId,
+      formTemplateVersion: block.formTemplateVersion,
+      template: block.template,
+      criterionNotes,
+      sheets: block.sheets,
+    }));
   }
 
   /** Lịch sử một nhiệm vụ: đã đi qua những lượt gửi nào, ai sửa gì. */
@@ -1525,11 +1844,15 @@ export class PersonalKpiService {
     note: string;
     reportDate: string;
     items: PersonalKpiItemDocument[];
+    /** Bảng khối A đi kèm lượt này - rỗng là lượt chỉ có nhiệm vụ. */
+    sheets?: PersonalKpiCriteriaSheetDocument[];
     sourceSubmissionIds: Types.ObjectId[];
-    message: (count: number) => string;
+    message: (count: number, sheetCount: number) => string;
   }) {
     const { level, sender, target, note, reportDate, items } = input;
+    const sheets = input.sheets ?? [];
     const itemIds = items.map((item) => item._id as Types.ObjectId);
+    const sheetIds = sheets.map((sheet) => sheet._id as Types.ObjectId);
     const now = new Date();
 
     const submission = await this.submissionModel.create({
@@ -1542,31 +1865,40 @@ export class PersonalKpiService {
       recipientName: target.name,
       recipientDepartmentId: target.departmentId,
       itemIds,
+      criteriaSheetIds: sheetIds,
       sourceSubmissionIds: input.sourceSubmissionIds,
       note,
       status: 'PENDING' as const,
     });
 
-    await this.itemModel.updateMany(
-      { _id: { $in: itemIds } },
-      {
-        $set: {
-          reviewStatus: 'PENDING',
-          returnReason: '',
-          holderLevel: level,
-          currentRecipientId: target.id,
-          currentRecipientDepartmentId: target.departmentId,
-          currentSubmissionId: submission._id,
-          lastSenderId: sender.id,
-          lastSenderDepartmentId: sender.departmentId,
-          lastSentAt: now,
-          // Cấp trên chuyển lên tức là đã duyệt - ghi lại người quyết định.
-          ...(level > 1
-            ? { lastDecidedById: sender.id, lastDecidedAt: now }
-            : {}),
-        },
-      },
-    );
+    // Bảng khối A đi cùng chuỗi với nhiệm vụ nên nhận đúng bộ trường vị trí -
+    // lệch một trường là bảng tổng của cấp trên không nhìn thấy nó nữa.
+    const move = {
+      reviewStatus: 'PENDING',
+      returnReason: '',
+      holderLevel: level,
+      currentRecipientId: target.id,
+      currentRecipientDepartmentId: target.departmentId,
+      currentSubmissionId: submission._id,
+      lastSenderId: sender.id,
+      lastSenderDepartmentId: sender.departmentId,
+      lastSentAt: now,
+      // Cấp trên chuyển lên tức là đã duyệt - ghi lại người quyết định.
+      ...(level > 1 ? { lastDecidedById: sender.id, lastDecidedAt: now } : {}),
+    };
+
+    if (itemIds.length) {
+      await this.itemModel.updateMany(
+        { _id: { $in: itemIds } },
+        { $set: move },
+      );
+    }
+    if (sheetIds.length) {
+      await this.criteriaSheetModel.updateMany(
+        { _id: { $in: sheetIds } },
+        { $set: move },
+      );
+    }
 
     // Ghi mốc "đã gửi" lên từng nhiệm vụ để dựng được lịch sử gửi duyệt của
     // riêng nó, khỏi phải dò ngược trong toàn bộ các lượt gửi.
@@ -1583,26 +1915,43 @@ export class PersonalKpiService {
       });
       await item.save();
     }
+    for (const sheet of sheets) {
+      // Bảng A không có phần trăm tiến độ - mốc chỉ ghi ai gửi cho ai, lúc nào.
+      this.appendLog(sheet, {
+        type: 'SUBMIT',
+        actor: sender,
+        toName: target.name,
+        note,
+        level,
+        at: now,
+      });
+      await sheet.save();
+    }
 
     return {
-      message: input.message(items.length),
+      message: input.message(items.length, sheets.length),
       data: {
         submissionId: String(submission._id),
         reportDate,
         level,
         sentCount: items.length,
+        criteriaSentCount: sheets.length,
         recipientId: String(target.id),
         recipientName: target.name,
       },
     };
   }
 
-  /** Lượt gửi không còn nhiệm vụ nào chờ duyệt thì đánh dấu đã xử lý xong. */
-  private async closeSubmissionsIfSettled(items: PersonalKpiItemDocument[]) {
+  /**
+   * Lượt gửi không còn thứ gì chờ duyệt thì đánh dấu đã xử lý xong.
+   * Đếm cả nhiệm vụ lẫn bảng khối A: chỉ đếm một loại thì lượt gửi kèm bảng A
+   * bị đóng sớm ngay khi duyệt xong phần nhiệm vụ.
+   */
+  private async closeSubmissionsIfSettled(docs: SubmittableDoc[]) {
     const ids = [
       ...new Set(
-        items
-          .map((item) => item.currentSubmissionId)
+        docs
+          .map((doc) => doc.currentSubmissionId)
           .filter((id): id is Types.ObjectId => Boolean(id))
           .map((id) => String(id)),
       ),
@@ -1610,11 +1959,17 @@ export class PersonalKpiService {
 
     for (const id of ids) {
       const submissionId = new Types.ObjectId(id);
-      const stillPending = await this.itemModel.countDocuments({
-        currentSubmissionId: submissionId,
-        reviewStatus: 'PENDING',
-      });
-      if (stillPending === 0) {
+      const [pendingItems, pendingSheets] = await Promise.all([
+        this.itemModel.countDocuments({
+          currentSubmissionId: submissionId,
+          reviewStatus: 'PENDING',
+        }),
+        this.criteriaSheetModel.countDocuments({
+          currentSubmissionId: submissionId,
+          reviewStatus: 'PENDING',
+        }),
+      ]);
+      if (pendingItems === 0 && pendingSheets === 0) {
         await this.submissionModel.updateOne(
           { _id: submissionId },
           { $set: { status: 'REVIEWED' } },
@@ -1898,14 +2253,14 @@ export class PersonalKpiService {
   }
 
   /**
-   * Thêm một mốc vào nhật ký nhiệm vụ.
+   * Thêm một mốc vào nhật ký của nhiệm vụ hoặc của bảng khối A.
    *
    * Mọi loại mốc (cập nhật, gửi, trả lại, chốt) nằm chung một mảng để màn hình
    * dựng được một dòng thời gian duy nhất - tách bảng riêng cho từng loại thì
    * ghép lại lúc hiển thị vừa tốn truy vấn vừa dễ lệch thứ tự.
    */
   private appendLog(
-    item: PersonalKpiItemDocument,
+    item: LoggableDoc,
     entry: {
       type: PersonalKpiLogType;
       actor: { id: Types.ObjectId; name: string };
@@ -2823,65 +3178,659 @@ export class PersonalKpiService {
   // ================================================ khối A - báo cáo cá nhân
 
   /**
-   * Bảng khối A của một ngày, ghép danh mục tiêu chí ĐANG HOẠT ĐỘNG với những
-   * gì cán bộ đã chấm.
+   * Bảng khối A của một THÁNG, kèm vị trí của nó trong chuỗi gửi duyệt.
    *
-   * Ghép chứ không trả thẳng bản đã lưu: tiêu chí mới thêm vào danh mục phải
-   * hiện ra để chấm, tiêu chí đã ngừng thì không bày nữa - nhưng điểm cũ vẫn
-   * nằm nguyên trong bản ghi, không xoá đi.
+   * Nhận cả YYYY-MM lẫn YYYY-MM-DD: màn nhập luôn đứng ở một ngày cụ thể, bắt
+   * nó tự cắt ra tháng thì chỗ nào quên cắt là tra nhầm sang một kỳ không có.
+   *
+   * Bảng CÒN Ở CHỖ CÁN BỘ thì ghép với danh mục tiêu chí đang hoạt động: tiêu
+   * chí mới thêm phải hiện ra để chấm, tiêu chí đã ngừng thì không bày nữa -
+   * điểm cũ vẫn nằm nguyên trong bản ghi, không xoá đi.
+   *
+   * Bảng ĐÃ GỬI thì vẽ thuần từ bản đã lưu. Ghép tiếp là tiêu chí mới mọc vào
+   * một bảng người ta đã trình lên, và cấp trên duyệt một bảng khác với bảng
+   * cán bộ đã ký.
    */
-  async getCriteriaSheet(userId: string, reportDate?: string) {
+  async getCriteriaSheet(userId: string, period?: string) {
     const actor = await this.requireActor(userId);
-    const date = this.resolveReportDate(reportDate);
+    const periodMonth = this.resolveCriteriaPeriod(period);
 
-    const [criteria, sheet] = await Promise.all([
-      this.criterionModel
-        .find({ isActive: true })
-        .sort({ sortOrder: 1, name: 1 }),
-      this.criteriaSheetModel.findOne({ ownerId: actor.id, reportDate: date }),
-    ]);
-
-    const saved = new Map(
-      (sheet?.rows ?? []).map((row) => [String(row.criterionId), row]),
-    );
+    const sheet = await this.criteriaSheetModel.findOne({
+      ownerId: actor.id,
+      periodMonth,
+    });
 
     return {
       message: 'OK',
       data: {
-        reportDate: date,
-        rows: criteria.map((criterion) => {
-          const row = saved.get(String(criterion._id));
-          return {
-            criterionId: String(criterion._id),
-            criterionName: criterion.name,
-            /** Ghi chú admin khai sẵn ở danh mục - cột criterion_note đọc nó. */
-            criterionNote: criterion.note ?? '',
-            maxScore: criterion.maxScore ?? 0,
-            fieldValues: row?.fieldValues ?? {},
-            catalogValues: row?.catalogValues ?? {},
-          };
-        }),
+        period: periodMonth,
+        ...this.criteriaSheetState(sheet),
+        /*
+          Trả kèm bộ cột thay vì để client tự đi lấy mẫu đang bật: bảng đã gửi
+          phải vẽ theo mẫu ĐÃ KHOÁ của nó. Client đọc mẫu live thì admin đổi
+          cột giữa chừng là màn hình bày một bảng khác với bảng server đang
+          kiểm, và ô của cột lạ bị bỏ im lặng lúc lưu.
+        */
+        template: await this.criteriaTemplateOf(sheet),
+        rows: await this.buildCriteriaRows(sheet),
       },
     };
   }
 
-  /** Lưu cả bảng khối A của một ngày - ghi đè nguyên bộ. */
+  /**
+   * Các bảng khối A của tôi trong một khoảng ngày, mỗi THÁNG một dòng tóm tắt.
+   *
+   * Nhận khoảng NGÀY rồi tự quy ra khoảng tháng: mọi màn hình gọi nó đều đang
+   * lọc theo ngày, bắt chúng tự đổi sang tháng thì chỗ nào quên là mất dòng.
+   * Xem một tuần vắt qua hai tháng thì ra hai bảng, đúng như thực tế.
+   *
+   * Điểm tổng và tiến độ chấm tính sẵn ở server - client không biết cột nào là
+   * cột điểm của mẫu, và mỗi màn tự cộng thì mỗi màn ra một số.
+   */
+  async listCriteriaSheets(
+    userId: string,
+    fromDate?: string,
+    toDate?: string,
+  ) {
+    const actor = await this.requireActor(userId);
+    const range: Record<string, string> = {};
+    if (fromDate) {
+      range.$gte = serverMonth(this.requireYmd(fromDate, 'fromDate'));
+    }
+    if (toDate) range.$lte = serverMonth(this.requireYmd(toDate, 'toDate'));
+
+    const sheets = await this.criteriaSheetModel
+      .find({
+        ownerId: actor.id,
+        ...(Object.keys(range).length ? { periodMonth: range } : {}),
+      })
+      .sort({ periodMonth: -1 })
+      .populate('currentRecipientId', 'fullName username');
+
+    /** Cột điểm của mẫu, tra theo phiên bản - cả tuần thường chung một mẫu. */
+    const columnCache = new Map<string, string[]>();
+    /* Suy kiểu từ chính `criteriaSheetState` để hai chỗ không trôi lệch nhau. */
+    const data: Array<
+      Omit<
+        ReturnType<PersonalKpiService['criteriaSheetState']>,
+        'progressLogs'
+      > & {
+        period: string;
+        totalScore: number;
+        maxScore: number;
+        scoredCount: number;
+        rowCount: number;
+        recipientName: string;
+        updatedAt: Date | null;
+      }
+    > = [];
+
+    for (const sheet of sheets) {
+      const key = `${String(sheet.formTemplateId ?? 'live')}:${
+        sheet.formTemplateVersion ?? 'live'
+      }`;
+      let scoreKeys = columnCache.get(key);
+      if (!scoreKeys) {
+        const columns = (await this.criteriaTemplateOf(sheet))?.columns ?? [];
+        const maxScoreKeys = new Set(
+          columns
+            .filter((column) => column.semanticKey === 'criterion_max_score')
+            .map((column) => column.key),
+        );
+        scoreKeys = columns
+          .filter(
+            (column) =>
+              column.dataType === 'number' &&
+              column.rangeFromColumnKey &&
+              maxScoreKeys.has(column.rangeFromColumnKey),
+          )
+          .map((column) => column.key);
+        columnCache.set(key, scoreKeys);
+      }
+
+      let totalScore = 0;
+      let maxScore = 0;
+      let scoredCount = 0;
+      for (const row of sheet.rows) {
+        maxScore += row.maxScore ?? 0;
+        // Ô nào chỉ huy đã chấm thì lấy số đó - cùng luật với báo cáo tổng hợp.
+        const values = { ...row.fieldValues, ...row.reviewValues };
+        for (const scoreKey of scoreKeys) {
+          const value = this.toNumberOrNull(values[scoreKey]);
+          if (value !== null) totalScore += value;
+        }
+        /*
+          "Đã chấm" tính theo CÓ ĐỘNG VÀO Ô NÀO KHÔNG, không theo riêng ô điểm:
+          tiêu chí tích "Không đảm bảo" và để điểm 0 vẫn là đã đánh giá.
+        */
+        const touched =
+          Object.values(values).some(
+            (value) => value !== '' && value !== false && value !== null,
+          ) || Object.keys(row.catalogValues ?? {}).length > 0;
+        if (touched) scoredCount += 1;
+      }
+
+      const recipient = sheet.currentRecipientId as unknown as {
+        fullName?: string;
+        username?: string;
+      } | null;
+
+      // Nhật ký không đi kèm danh sách: mỗi bảng vài chục mốc, nhân với cả kỳ
+      // là một phản hồi to gấp mấy lần thứ danh sách cần.
+      const { progressLogs: _logs, ...state } = this.criteriaSheetState(sheet);
+
+      data.push({
+        ...state,
+        period: sheet.periodMonth,
+        totalScore,
+        maxScore,
+        scoredCount,
+        rowCount: sheet.rows.length,
+        recipientName: recipient?.fullName?.trim() || recipient?.username || '',
+        updatedAt: sheet.updatedAt ?? null,
+      });
+    }
+
+    return { message: 'OK', data };
+  }
+
+  /** Lưu nháp cả bảng khối A của một THÁNG - ghi đè nguyên bộ, không lưu vết. */
   async saveCriteriaSheet(
     userId: string,
     dto: SavePersonalCriteriaSheetDto,
   ) {
     const actor = await this.requireActor(userId);
-    const date = this.resolveReportDate(dto.reportDate);
+    const periodMonth = this.resolveCriteriaPeriod(dto.period);
 
-    const ids = [...new Set(dto.rows.map((row) => row.criterionId))].map(
-      (value) => this.requireObjectId(value, 'Tiêu chí'),
+    /*
+      Bảng đã gửi thì đường này đóng: ghi đè im lặng một bảng đang nằm ở tay
+      cấp trên là sửa sau lưng người duyệt. Muốn đổi số thì đi đường cập nhật
+      (`updateCriteriaSheet`) - đường đó ghi vết vào nhật ký.
+    */
+    const current = await this.criteriaSheetModel.findOne({
+      ownerId: actor.id,
+      periodMonth,
+    });
+    if (current && !OWNER_EDITABLE.includes(current.reviewStatus)) {
+      throw new BadRequestException(
+        current.reviewStatus === 'COMPLETED'
+          ? 'Bảng khối A của tháng này đã chốt - không sửa được nữa.'
+          : 'Bảng khối A đã gửi lên trên - dùng "Cập nhật" để sửa, mọi thay đổi sẽ được ghi vào nhật ký.',
+      );
+    }
+
+    const rows = this.withPriorReview(
+      await this.buildCriteriaRowValues(dto.rows, current, 'catalog'),
+      current,
     );
+
+    await this.criteriaSheetModel.updateOne(
+      { ownerId: actor.id, periodMonth },
+      {
+        $set: { rows, ownerDepartmentId: actor.departmentId },
+        $setOnInsert: { ownerId: actor.id, periodMonth },
+      },
+      { upsert: true },
+    );
+
+    return {
+      message: 'Đã lưu bảng tiêu chí chung.',
+      data: { period: periodMonth, rowCount: rows.length },
+    };
+  }
+
+  /**
+   * Cán bộ sửa lại bảng khối A ĐÃ GỬI - chạy được cả khi bảng đang ở tay cấp
+   * trên, đổi lại mọi ô đổi giá trị đều vào nhật ký.
+   *
+   * Cùng cặp với `updateProgress` của nhiệm vụ: lưu nháp là ghi đè im lặng khi
+   * còn ở chỗ mình, cập nhật là sửa công khai khi đã trình lên. Chốt hoàn thành
+   * rồi thì khoá hẳn - báo cáo tổng hợp đã lấy số của bảng này để chấm.
+   */
+  async updateCriteriaSheet(
+    userId: string,
+    dto: UpdatePersonalCriteriaSheetDto,
+  ) {
+    const actor = await this.requireActor(userId);
+    const periodMonth = this.resolveCriteriaPeriod(dto.period);
+
+    const sheet = await this.criteriaSheetModel.findOne({
+      ownerId: actor.id,
+      periodMonth,
+    });
+    if (!sheet) {
+      throw new NotFoundException('Chưa có bảng khối A của tháng này.');
+    }
+    if (sheet.reviewStatus === 'COMPLETED') {
+      throw new BadRequestException(
+        'Bảng khối A đã chốt hoàn thành - không cập nhật nữa.',
+      );
+    }
+
+    const columns = (await this.criteriaTemplateOf(sheet))?.columns ?? [];
+    const titleByKey = new Map(
+      columns.map((column) => [column.key, column.title]),
+    );
+    /** Giá trị cũ của từng ô, khoá "<id tiêu chí>:<khoá cột>". */
+    const before = new Map<string, string>();
+    const nameById = new Map<string, string>();
+    for (const row of sheet.rows) {
+      const id = String(row.criterionId);
+      nameById.set(id, row.criterionName ?? '');
+      for (const column of columns) {
+        before.set(
+          `${id}:${column.key}`,
+          this.criteriaCellText(row, column.key),
+        );
+      }
+    }
+
+    /*
+      Bảng đã gửi thì danh sách tiêu chí và trần điểm đứng yên theo bản đã chụp;
+      bảng bị trả lại về nháp thì mở lại theo danh mục hiện hành.
+    */
+    const rows = this.withPriorReview(
+      await this.buildCriteriaRowValues(
+        dto.rows,
+        sheet,
+        OWNER_EDITABLE.includes(sheet.reviewStatus) ? 'catalog' : 'sheet',
+      ),
+      sheet,
+    );
+    sheet.rows = rows;
+    sheet.markModified('rows');
+
+    /*
+      Ghi lại từng ô đã đổi, chỉ giá trị thô - đọc nhật ký là biết hôm đó cán bộ
+      động vào tiêu chí nào, không phải so hai bản chụp. Dùng loại `result` vì
+      ô khối A đúng là ô kết quả: tên cột nằm ở `detail`, kèm tên tiêu chí để
+      phân biệt sáu dòng cùng bộ cột.
+    */
+    const changes: PersonalKpiProgressChange[] = [];
+    for (const row of rows) {
+      const id = String(row.criterionId);
+      for (const column of columns) {
+        const from = before.get(`${id}:${column.key}`) ?? '';
+        const to = this.criteriaCellText(row, column.key);
+        if (from === to) continue;
+        changes.push({
+          field: 'result',
+          from,
+          to,
+          detail: `${nameById.get(id) ?? row.criterionName} · ${
+            titleByKey.get(column.key) ?? column.key
+          }`,
+        });
+      }
+    }
+
+    const now = new Date();
+    sheet.lastProgressAt = now;
+    this.appendLog(sheet, {
+      type: 'PROGRESS',
+      actor,
+      note: dto.note,
+      changes,
+      at: now,
+    });
+    await sheet.save();
+
+    return {
+      message: changes.length
+        ? `Đã cập nhật bảng tiêu chí chung - ${changes.length} ô thay đổi.`
+        : 'Đã cập nhật bảng tiêu chí chung.',
+      data: {
+        period: periodMonth,
+        ...this.criteriaSheetState(sheet),
+        template: await this.criteriaTemplateOf(sheet),
+        rows: await this.buildCriteriaRows(sheet),
+      },
+    };
+  }
+
+  /**
+   * Chỉ huy chấm lại cả bảng khối A rồi chốt hoàn thành.
+   *
+   * Điểm ghi vào `reviewValues` của từng dòng chứ không đè lên ô của cán bộ -
+   * cùng nguyên tắc với `scoreAndComplete` của nhiệm vụ. Chốt áp cho CẢ BẢNG:
+   * bảng A là một lá phiếu đánh giá, duyệt một nửa thì không còn nghĩa gì.
+   */
+  async scoreCriteriaSheet(
+    userId: string,
+    id: string,
+    dto: ScorePersonalCriteriaSheetDto,
+  ) {
+    const actor = await this.requireActor(userId);
+    const sheet = await this.criteriaSheetModel.findOne({
+      _id: this.requireObjectId(id, 'Bảng khối A'),
+      currentRecipientId: actor.id,
+      reviewStatus: { $in: ['PENDING', 'APPROVED'] },
+    });
+    if (!sheet) {
+      throw new NotFoundException(
+        'Không tìm thấy bảng khối A đang chờ bạn chốt.',
+      );
+    }
+
+    const scored = await this.buildCriteriaRowValues(
+      dto.rows.map((row) => ({
+        criterionId: row.criterionId,
+        fieldValues: row.values as Record<string, string | number | boolean>,
+      })),
+      sheet,
+      'sheet',
+    );
+    const byCriterion = new Map(
+      scored.map((row) => [String(row.criterionId), row]),
+    );
+
+    // Chấm đè lên đúng dòng đang có chứ không dựng lại mảng: bảng đã gửi thì
+    // danh sách tiêu chí phải đứng yên, và số cán bộ tự chấm không được đụng tới.
+    for (const row of sheet.rows) {
+      const patch = byCriterion.get(String(row.criterionId));
+      if (!patch) continue;
+      row.reviewValues = patch.fieldValues;
+      row.reviewCatalogValues = patch.catalogValues;
+    }
+    sheet.markModified('rows');
+
+    const now = new Date();
+    sheet.reviewNote = dto.note?.trim() ?? '';
+    sheet.reviewScoredById = actor.id;
+    sheet.reviewScoredByName = actor.name;
+    sheet.reviewScoredAt = now;
+    sheet.reviewStatus = 'COMPLETED';
+    sheet.returnReason = '';
+    sheet.lastDecidedById = actor.id;
+    sheet.lastDecidedAt = now;
+    this.appendLog(sheet, {
+      type: 'COMPLETE',
+      actor,
+      note: sheet.reviewNote,
+      at: now,
+    });
+    await sheet.save();
+    await this.closeSubmissionsIfSettled([sheet]);
+
+    return {
+      message: 'Đã chấm điểm và chốt bảng tiêu chí chung.',
+      data: { id: String(sheet._id) },
+    };
+  }
+
+  /** Lịch sử một bảng khối A: đã đi qua những lượt gửi nào. */
+  async criteriaHistory(userId: string, id: string) {
+    const sheetId = this.requireObjectId(id, 'Bảng khối A');
+    const actor = await this.requireActor(userId);
+
+    const sheet = await this.criteriaSheetModel
+      .findById(sheetId)
+      .populate('ownerId', 'fullName username');
+    if (!sheet) throw new NotFoundException('Không tìm thấy bảng khối A.');
+
+    const submissions = await this.submissionModel
+      .find({ criteriaSheetIds: sheetId })
+      .sort({ level: 1, createdAt: 1 });
+
+    const involved =
+      String(sheet.ownerId?._id ?? sheet.ownerId) === String(actor.id) ||
+      String(sheet.currentRecipientId ?? '') === String(actor.id) ||
+      submissions.some(
+        (row) =>
+          String(row.senderId) === String(actor.id) ||
+          String(row.recipientId) === String(actor.id),
+      );
+    if (!involved) {
+      throw new NotFoundException('Không tìm thấy bảng khối A.');
+    }
+
+    return { message: 'OK', data: { sheet, submissions } };
+  }
+
+  /**
+   * Bản MỚI NHẤT trong kỳ của từng cán bộ - báo cáo tổng hợp nạp sẵn số này.
+   *
+   * Bảng khối A chốt theo THÁNG, nên kỳ báo cáo trải mấy tháng thì lấy bảng của
+   * tháng cuối cùng có trong kỳ, không cộng các tháng lại: mỗi bảng đã là đánh
+   * giá trọn vẹn 30 điểm của tháng đó, cộng vào là nhân điểm lên theo số tháng.
+   *
+   * Bản ĐÃ GỬI luôn thắng bản còn nháp, dù nháp thuộc tháng sau: bảng chưa gửi
+   * là bảng đang chấm dở, không được đè mất bản chỉ huy đã duyệt.
+   *
+   * Nhưng vẫn nhận bản nháp khi cán bộ KHÔNG có bản đã gửi nào trong kỳ - lọc
+   * thẳng tay thì mọi bảng lưu từ trước lúc khối A có chuỗi duyệt (toàn bộ đang
+   * là nháp) biến mất khỏi báo cáo tổng hợp.
+   */
+  async latestCriteriaSheets(
+    ownerIds: Types.ObjectId[],
+    fromDate: string,
+    toDate: string,
+  ) {
+    if (!ownerIds.length) return new Map<string, PersonalKpiCriterionRow[]>();
+
+    const sheets = await this.criteriaSheetModel
+      .find({
+        ownerId: { $in: ownerIds },
+        ...(fromDate && toDate
+          ? {
+              periodMonth: {
+                $gte: serverMonth(fromDate),
+                $lte: serverMonth(toDate),
+              },
+            }
+          : {}),
+      })
+      .sort({ periodMonth: 1, createdAt: 1 });
+
+    // Sắp tăng dần rồi ghi đè: bản cuối cùng ghi vào map là bản mới nhất.
+    const latest = new Map<string, PersonalKpiCriterionRow[]>();
+    const hasSent = new Set<string>();
+    for (const sheet of sheets) {
+      const owner = String(sheet.ownerId);
+      const draft = sheet.reviewStatus === 'DRAFT';
+      if (draft && hasSent.has(owner)) continue;
+      if (!draft) hasSent.add(owner);
+      latest.set(owner, sheet.rows);
+    }
+    return latest;
+  }
+
+  // ------------------------------------------------- khối A - dùng chung
+
+  /**
+   * Mẫu của một bảng khối A: bản đã khoá lúc gửi, chưa gửi thì lấy mẫu đang bật.
+   * Cùng cách làm với `resolveBoardTemplate` của nhiệm vụ.
+   */
+  private async criteriaTemplateOf(sheet?: {
+    formTemplateId?: Types.ObjectId | null;
+    formTemplateVersion?: number | null;
+  } | null) {
+    if (sheet?.formTemplateId && sheet.formTemplateVersion) {
+      const resolved = await this.formTemplatesService.resolveVersion(
+        sheet.formTemplateId,
+        sheet.formTemplateVersion,
+      );
+      if (resolved) return resolved;
+    }
+    const live = await this.formTemplateModel.findOne({
+      forCriteria: true,
+      isActive: true,
+    });
+    if (!live) return null;
+    return {
+      code: live.code,
+      name: live.name,
+      version: live.version ?? 1,
+      columns: live.columns,
+      headerGroups: live.headerGroups,
+      footer: live.footer,
+    };
+  }
+
+  /** Chữ hiện trong nhật ký của một ô - ô chọn danh mục lấy tên đã chép. */
+  private criteriaCellText(row: PersonalKpiCriterionRow, key: string) {
+    const picked = row.catalogValues?.[key];
+    if (picked?.id) return picked.name ?? '';
+    const raw = row.fieldValues?.[key];
+    /*
+      Ô tích lưu boolean. Quy về "1" / rỗng cho khớp cách nhật ký của nhiệm vụ
+      ghi ô tích - để nguyên thì dòng nhật ký hiện chữ "false", và client dịch
+      "1" thành "Có" sẽ không bắt được nó.
+    */
+    if (typeof raw === 'boolean') return raw ? '1' : '';
+    return String(raw ?? '').trim();
+  }
+
+  /**
+   * Các dòng để bày ra màn hình: ghép danh mục khi bảng còn ở chỗ cán bộ, vẽ
+   * thuần bản đã lưu khi bảng đã gửi. Xem `getCriteriaSheet` về lý do.
+   */
+  private async buildCriteriaRows(
+    sheet: PersonalKpiCriteriaSheetDocument | null,
+  ) {
+    const locked = sheet && !OWNER_EDITABLE.includes(sheet.reviewStatus);
+    if (locked) {
+      /*
+        Ghi chú của tiêu chí đọc LIVE từ danh mục, khác tên và điểm tối đa vốn
+        được chụp lại: nó là chữ mô tả admin khai sẵn, không phải số để chấm.
+        Bỏ trống thì cột "Ghi chú" của mọi bảng đã gửi trắng trơn, trong khi bản
+        in có sẵn chữ ở đó.
+      */
+      const notes = new Map(
+        (
+          await this.criterionModel
+            .find({ _id: { $in: sheet.rows.map((row) => row.criterionId) } })
+            .select('note')
+        ).map((row) => [String(row._id), row.note ?? '']),
+      );
+      return sheet.rows.map((row) => ({
+        criterionId: String(row.criterionId),
+        criterionName: row.criterionName ?? '',
+        criterionNote: notes.get(String(row.criterionId)) ?? '',
+        maxScore: row.maxScore ?? 0,
+        fieldValues: row.fieldValues ?? {},
+        catalogValues: row.catalogValues ?? {},
+        reviewValues: row.reviewValues ?? {},
+        reviewCatalogValues: row.reviewCatalogValues ?? {},
+      }));
+    }
+
     const criteria = await this.criterionModel
-      .find({ _id: { $in: ids } })
-      .select('name maxScore');
-    const byId = new Map(criteria.map((row) => [String(row._id), row]));
-    if (byId.size !== ids.length) {
-      throw new BadRequestException('Có tiêu chí không tồn tại.');
+      .find({ isActive: true })
+      .sort({ sortOrder: 1, name: 1 });
+    const saved = new Map(
+      (sheet?.rows ?? []).map((row) => [String(row.criterionId), row]),
+    );
+    return criteria.map((criterion) => {
+      const row = saved.get(String(criterion._id));
+      return {
+        criterionId: String(criterion._id),
+        criterionName: criterion.name,
+        /** Ghi chú admin khai sẵn ở danh mục - cột criterion_note đọc nó. */
+        criterionNote: criterion.note ?? '',
+        maxScore: criterion.maxScore ?? 0,
+        fieldValues: row?.fieldValues ?? {},
+        catalogValues: row?.catalogValues ?? {},
+        reviewValues: row?.reviewValues ?? {},
+        reviewCatalogValues: row?.reviewCatalogValues ?? {},
+      };
+    });
+  }
+
+  /**
+   * Kỳ tháng của bảng khối A, nhận cả YYYY-MM lẫn YYYY-MM-DD.
+   * Chuỗi rác thì báo lỗi chứ không âm thầm rơi về tháng này - rơi về là người
+   * dùng sửa nhầm bảng của tháng khác mà không biết.
+   */
+  private resolveCriteriaPeriod(value?: string) {
+    const raw = value?.trim();
+    if (!raw) return serverMonth();
+    if (!isYearMonth(raw) && !isYmd(raw)) {
+      throw new BadRequestException('Kỳ báo cáo phải là YYYY-MM hoặc YYYY-MM-DD.');
+    }
+    return serverMonth(raw);
+  }
+
+  /** Vị trí của bảng trong chuỗi gửi duyệt - màn nhập khoá / mở theo bộ này. */
+  private criteriaSheetState(sheet: PersonalKpiCriteriaSheetDocument | null) {
+    const status: PersonalKpiReviewStatus = sheet?.reviewStatus ?? 'DRAFT';
+    return {
+      sheetId: sheet ? String(sheet._id) : null,
+      reviewStatus: status,
+      holderLevel: sheet?.holderLevel ?? 0,
+      returnReason: sheet?.returnReason ?? '',
+      lastSentAt: sheet?.lastSentAt ?? null,
+      lastProgressAt: sheet?.lastProgressAt ?? null,
+      reviewNote: sheet?.reviewNote ?? '',
+      reviewScoredByName: sheet?.reviewScoredByName ?? '',
+      reviewScoredAt: sheet?.reviewScoredAt ?? null,
+      progressLogs: sheet?.progressLogs ?? [],
+      /** Còn ở chỗ cán bộ: lưu nháp và gửi được. */
+      canEdit: OWNER_EDITABLE.includes(status),
+      /** Đã gửi nhưng chưa chốt: sửa được qua đường cập nhật, có lưu vết. */
+      canUpdate: Boolean(sheet) && status !== 'COMPLETED',
+    };
+  }
+
+  /**
+   * Lọc và kiểm các ô của một bộ dòng khối A theo mẫu.
+   *
+   * Dùng chung cho cán bộ tự chấm và chỉ huy chấm lại: hai đường ghi vào hai
+   * túi khác nhau nhưng luật cột và trần điểm phải y hệt - tách ra là hai chỗ
+   * kiểm khác nhau trên cùng một bảng.
+   *
+   * Bảng đã gửi đọc mẫu ĐÃ KHOÁ của chính nó; bảng chưa gửi đọc mẫu đang bật.
+   *
+   * `source` nói lấy tên tiêu chí và trần điểm ở đâu: `catalog` cho bảng còn
+   * nháp, `sheet` cho bảng đã gửi.
+   */
+  private async buildCriteriaRowValues(
+    input: Array<{
+      criterionId: string;
+      fieldValues?: Record<string, string | number | boolean>;
+      catalogValues?: Record<string, { id: string; name: string }>;
+    }>,
+    sheet: PersonalKpiCriteriaSheetDocument | null,
+    source: 'catalog' | 'sheet',
+  ) {
+    const ids = [...new Set(input.map((row) => row.criterionId))].map((value) =>
+      this.requireObjectId(value, 'Tiêu chí'),
+    );
+
+    /*
+      Bảng đã gửi chấm theo BẢN ĐÃ CHỤP của chính nó, không tra lại danh mục:
+      tiêu chí bị ngừng hoặc xoá sau khi cán bộ gửi thì bảng vẫn phải chấm được,
+      và trần điểm phải là trần của kỳ đó chứ không phải trần hôm nay.
+    */
+    const byId = new Map<string, { _id: Types.ObjectId; name: string; maxScore: number }>(
+      source === 'sheet'
+        ? (sheet?.rows ?? []).map((row) => [
+            String(row.criterionId),
+            {
+              _id: row.criterionId,
+              name: row.criterionName ?? '',
+              maxScore: row.maxScore ?? 0,
+            },
+          ])
+        : (
+            await this.criterionModel
+              .find({ _id: { $in: ids } })
+              .select('name maxScore')
+          ).map((row) => [
+            String(row._id),
+            {
+              _id: row._id as Types.ObjectId,
+              name: row.name,
+              maxScore: row.maxScore ?? 0,
+            },
+          ]),
+    );
+    if (input.some((row) => !byId.has(row.criterionId))) {
+      throw new BadRequestException(
+        source === 'sheet'
+          ? 'Có tiêu chí không nằm trong bảng đang chấm.'
+          : 'Có tiêu chí không tồn tại.',
+      );
     }
 
     /*
@@ -2889,11 +3838,7 @@ export class PersonalKpiService {
       đọc từ mẫu: cột số nào khai `rangeFromColumnKey` trỏ vào cột Điểm tối đa
       (tiêu chí) thì giá trị phải nằm trong 0 - điểm tối đa của CHÍNH dòng đó.
     */
-    const template = await this.formTemplateModel.findOne({
-      forCriteria: true,
-      isActive: true,
-    });
-    const columns = template?.columns ?? [];
+    const columns = (await this.criteriaTemplateOf(sheet))?.columns ?? [];
     const known = new Set(columns.map((column) => column.key));
     const maxScoreKeys = new Set(
       columns
@@ -2910,9 +3855,19 @@ export class PersonalKpiService {
         )
         .map((column) => [column.key, column.title]),
     );
+    /*
+      Mọi ô tích của một dòng là một nhóm loại trừ: "Đảm bảo" và "Không đảm bảo"
+      là hai nửa của cùng một kết luận. Giao diện đã chặn, nhưng gọi thẳng API
+      thì vẫn ghi được cả hai - và dòng đó về sau không ai đọc ra nổi.
+    */
+    const flagKeys = new Map(
+      columns
+        .filter((column) => column.dataType === 'boolean')
+        .map((column) => [column.key, column.title]),
+    );
 
     const seen = new Set<string>();
-    const rows = dto.rows.map((row) => {
+    return input.map((row) => {
       const criterion = byId.get(row.criterionId)!;
       if (seen.has(row.criterionId)) {
         throw new BadRequestException(
@@ -2921,7 +3876,7 @@ export class PersonalKpiService {
       }
       seen.add(row.criterionId);
 
-      const max = criterion.maxScore ?? 0;
+      const max = criterion.maxScore;
       // Chỉ giữ ô của cột đang có trong mẫu - cột đã bỏ thì không nhận thêm giá
       // trị mới, nhưng dữ liệu cũ trong bản ghi vẫn còn nguyên.
       const fieldValues: Record<string, string | number | boolean> = {};
@@ -2940,6 +3895,17 @@ export class PersonalKpiService {
         fieldValues[key] = value as string | number | boolean;
       }
 
+      const ticked = [...flagKeys.keys()].filter(
+        (key) => fieldValues[key] === true,
+      );
+      if (ticked.length > 1) {
+        throw new BadRequestException(
+          `"${criterion.name}": chỉ được tích một trong các ô ${ticked
+            .map((key) => `"${flagKeys.get(key)}"`)
+            .join(', ')}.`,
+        );
+      }
+
       const catalogValues: Record<string, { id: string; name: string }> = {};
       for (const [key, value] of Object.entries(row.catalogValues ?? {})) {
         if (!known.has(key) || !value?.id) continue;
@@ -2947,57 +3913,40 @@ export class PersonalKpiService {
       }
 
       return {
-        criterionId: criterion._id as Types.ObjectId,
+        criterionId: criterion._id,
         criterionName: criterion.name,
         maxScore: max,
         fieldValues,
         catalogValues,
       };
     });
-
-    await this.criteriaSheetModel.updateOne(
-      { ownerId: actor.id, reportDate: date },
-      {
-        $set: { rows, ownerDepartmentId: actor.departmentId },
-        $setOnInsert: { ownerId: actor.id, reportDate: date },
-      },
-      { upsert: true },
-    );
-
-    return {
-      message: 'Đã lưu bảng tiêu chí chung.',
-      data: { reportDate: date, rowCount: rows.length },
-    };
   }
 
   /**
-   * Bản tự chấm MỚI NHẤT trong kỳ của từng cán bộ - báo cáo tổng hợp nạp sẵn
-   * số này rồi chỉ huy sửa đè.
-   *
-   * Lấy bản mới nhất chứ không cộng trung bình các ngày: mỗi ngày một bản là
-   * cán bộ chấm lại toàn bộ 6 tiêu chí, nên bản sau luôn là đánh giá thay thế
-   * bản trước, không phải một phần của tổng.
+   * Ghép bộ ô cán bộ vừa khai với điểm chỉ huy đã chấm trước đó của cùng dòng.
+   * Không ghép thì mỗi lần cán bộ lưu lại bảng là xoá sạch số chỉ huy đã chấm.
    */
-  async latestCriteriaSheets(
-    ownerIds: Types.ObjectId[],
-    fromDate: string,
-    toDate: string,
-  ) {
-    if (!ownerIds.length) return new Map<string, PersonalKpiCriterionRow[]>();
-
-    const sheets = await this.criteriaSheetModel
-      .find({
-        ownerId: { $in: ownerIds },
-        ...(fromDate && toDate
-          ? { reportDate: { $gte: fromDate, $lte: toDate } }
-          : {}),
-      })
-      .sort({ reportDate: 1 });
-
-    // Sắp tăng dần rồi ghi đè: bản cuối cùng ghi vào map là bản mới nhất.
-    const latest = new Map<string, PersonalKpiCriterionRow[]>();
-    for (const sheet of sheets) latest.set(String(sheet.ownerId), sheet.rows);
-    return latest;
+  private withPriorReview(
+    rows: Array<{
+      criterionId: Types.ObjectId;
+      criterionName: string;
+      maxScore: number;
+      fieldValues: Record<string, string | number | boolean>;
+      catalogValues: Record<string, { id: string; name: string }>;
+    }>,
+    sheet: PersonalKpiCriteriaSheetDocument | null,
+  ): PersonalKpiCriterionRow[] {
+    const prior = new Map(
+      (sheet?.rows ?? []).map((row) => [String(row.criterionId), row]),
+    );
+    return rows.map((row) => {
+      const before = prior.get(String(row.criterionId));
+      return {
+        ...row,
+        reviewValues: before?.reviewValues ?? {},
+        reviewCatalogValues: before?.reviewCatalogValues ?? {},
+      };
+    });
   }
 
   private async requireActor(userId: string): Promise<ActorInfo> {

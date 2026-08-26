@@ -66,6 +66,20 @@ export class PersonalKpiSubmission {
   })
   itemIds!: Types.ObjectId[];
 
+  /**
+   * Bảng khối A đi kèm lượt gửi này.
+   *
+   * Mảng riêng chứ không nhét chung `itemIds`: hai mảng trỏ vào hai collection
+   * khác nhau nên trộn lại là hỏng `populate`, và `history` của nhiệm vụ tra
+   * ngược bằng đúng `{ itemIds: <id nhiệm vụ> }` sẽ vớ phải cả id bảng.
+   */
+  @Prop({
+    type: [{ type: Types.ObjectId, ref: 'PersonalKpiCriteriaSheet' }],
+    default: [],
+    index: true,
+  })
+  criteriaSheetIds!: Types.ObjectId[];
+
   /** Các lượt cấp dưới được gộp vào lượt này. Rỗng ở lượt của cán bộ. */
   @Prop({
     type: [{ type: Types.ObjectId, ref: 'PersonalKpiSubmission' }],

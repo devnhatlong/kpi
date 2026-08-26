@@ -47,8 +47,14 @@ import { useScopedAxes } from "@/features/kpi-form-config/use-scoped-axes";
 import {
   deletePersonalKpi,
   fetchMyPersonalKpi,
+  criteriaPeriodOf,
+  fetchPersonalCriteriaList,
+  fetchPersonalCriteriaSheet,
+  formatCriteriaPeriod,
+  personalCriteriaKeys,
   personalKpiKeys,
   submitPersonalKpiReport,
+  type PersonalCriteriaSheetSummary,
   type SubmitPersonalKpiPayload,
 } from "@/features/personal-kpi/api";
 import {
@@ -215,6 +221,13 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   const [sendingItem, setSendingItem] = useState<PersonalKpiItem | null>(null);
   const [sendAllOpen, setSendAllOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  /**
+   * Ngày mà hai drawer đang mở cho, khi khác ngày đang nhập.
+   *
+   * Danh sách trải cả tuần nên bấm vào dòng khối A của thứ Hai phải mở đúng
+   * bảng thứ Hai, không phải bảng của ngày đang nhập.
+   */
+  const [focusDate, setFocusDate] = useState<string | null>(null);
 
   const { user } = useAuth();
 
@@ -357,6 +370,48 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     );
   }, [rows, tab, debouncedQuery]);
 
+  /*
+    Bảng khối A của THÁNG chứa ngày đang nhập. Dùng chung khoá SWR (theo tháng)
+    với drawer nên không tốn thêm lượt gọi - ở đây chỉ cần biết bảng có kèm được
+    vào lượt gửi hay không.
+  */
+  const { data: criteriaSheet, mutate: mutateCriteria } = useSWR(
+    personalCriteriaKeys.sheet(criteriaPeriodOf(activeDate)),
+    () => fetchPersonalCriteriaSheet(activeDate),
+    { revalidateOnFocus: false },
+  );
+  /*
+    Bảng khối A của CẢ KHOẢNG đang xem - mỗi ngày một dòng trong danh sách, đứng
+    ngang hàng với nhiệm vụ. Danh sách trải cả tuần nên không dùng lại bản của
+    riêng `activeDate` được.
+  */
+  const { data: criteriaList, mutate: mutateCriteriaList } = useSWR(
+    personalCriteriaKeys.list(fromDate, toDate),
+    () => fetchPersonalCriteriaList({ fromDate, toDate }),
+    { revalidateOnFocus: false },
+  );
+
+  /**
+   * Dòng khối A của danh sách - lọc theo cùng tab và cùng ô tìm kiếm với nhiệm
+   * vụ, nếu không thì bấm tab "Nháp" xong vẫn thấy bảng A đã chốt nằm đó.
+   */
+  const criteriaRows = useMemo(() => {
+    const term = normalizeText(debouncedQuery);
+    return (criteriaList ?? []).filter((sheet) => {
+      const okTab =
+        tab === "ALL"
+          ? true
+          : tab === "DONE"
+            ? sheet.reviewStatus === "APPROVED" ||
+              sheet.reviewStatus === "COMPLETED"
+            : sheet.reviewStatus === tab;
+      const haystack = normalizeText(
+        `tiêu chí chung khối a ${sheet.period} ${formatCriteriaPeriod(sheet.period)}`,
+      );
+      return okTab && (!term || haystack.includes(term));
+    });
+  }, [criteriaList, tab, debouncedQuery]);
+
   /**
    * Nhóm theo trục hoặc theo đơn vị.
    *
@@ -413,6 +468,20 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     () => dayItems.filter((item) => canSendPersonalKpi(item.status)),
     [dayItems],
   );
+
+  const criteriaFilled = (criteriaSheet?.rows ?? []).some(
+    (row) =>
+      Object.values(row.fieldValues ?? {}).some(
+        (value) => value !== "" && value !== false && value !== null,
+      ) || Object.keys(row.catalogValues ?? {}).length > 0,
+  );
+  /*
+    Kèm được khi bảng đã chấm và còn ở chỗ mình. Gửi lẻ một nhiệm vụ thì không
+    hỏi: lượt đó nói về đúng một dòng, đính kèm cả bảng đánh giá ngày vào là
+    gửi thứ người ta không định gửi.
+  */
+  const canSendCriteria =
+    !sendingItem && criteriaFilled && (criteriaSheet?.canEdit ?? false);
   const emptyText =
     rows.length === 0
       ? fromDate === toDate
@@ -505,7 +574,30 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
   };
 
   const refreshDay = async () => {
-    await mutate();
+    await Promise.all([mutate(), mutateCriteria(), mutateCriteriaList()]);
+  };
+
+  /**
+   * Mở bảng khối A của một tháng bất kỳ trong danh sách.
+   *
+   * Còn sửa được thì vào phiếu nhập để chấm; đã chốt thì mở bảng tổng hợp để
+   * xem lại - phiếu nhập lúc đó chỉ bày một bảng khoá.
+   *
+   * Hai drawer đều mở theo NGÀY, nên tháng của bảng phải quy về một ngày cụ
+   * thể: lấy ngày đang nhập nếu nó nằm trong tháng đó, không thì mùng 1.
+   */
+  const openCriteria = (sheet: PersonalCriteriaSheetSummary) => {
+    setFocusDate(
+      criteriaPeriodOf(activeDate) === sheet.period
+        ? activeDate
+        : `${sheet.period}-01`,
+    );
+    if (sheet.canEdit || sheet.canUpdate) {
+      setEdit(null);
+      setDrawerOpen(true);
+      return;
+    }
+    setBoardOpen(true);
   };
 
   /**
@@ -514,7 +606,10 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
    */
   const confirmSend = async (payload: SubmitPersonalKpiPayload) => {
     const targets = sendingItem ? [sendingItem] : sendableItems;
-    if (!targets.length) return;
+    const withCriteria = canSendCriteria && payload.includeCriteria === true;
+    // Không có nhiệm vụ nào nhưng có bảng A thì vẫn gửi - ngày không phát sinh
+    // việc vẫn phải trình bảng đánh giá chung lên.
+    if (!targets.length && !withCriteria) return;
     /*
       Gửi theo ĐÚNG ngày báo cáo của nhiệm vụ. Bảng giờ trải cả tuần nên bấm
       gửi ở một dòng của hôm kia mà lại nộp vào phiếu hôm nay là sai ngày -
@@ -526,11 +621,17 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
     try {
       const result = await submitPersonalKpiReport(sendDate, {
         ...payload,
+        includeCriteria: withCriteria,
         itemIds: targets.map((item) => item.id),
       });
       await refreshDay();
+      if (withCriteria) await mutateCriteria();
+      const sentParts = [
+        result.sentCount ? `${result.sentCount} nhiệm vụ` : "",
+        result.criteriaSentCount ? "bảng khối A" : "",
+      ].filter(Boolean);
       toast.success(
-        `Đã gửi ${result.sentCount} nhiệm vụ tới ${result.recipientName}.`,
+        `Đã gửi ${sentParts.join(" và ")} tới ${result.recipientName}.`,
       );
       setSendingItem(null);
       setSendAllOpen(false);
@@ -672,16 +773,16 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
               variant="outline"
               className="bg-background"
               onClick={() => setSendAllOpen(true)}
-              disabled={sendableItems.length === 0}
+              disabled={sendableItems.length === 0 && !canSendCriteria}
               title={
-                sendableItems.length > 0
+                sendableItems.length > 0 || canSendCriteria
                   ? undefined
                   : "Chưa có nhiệm vụ nháp hoặc bị trả lại nào để gửi"
               }
             >
               <Send className="h-4 w-4" />
               {alreadySent ? "Gửi tiếp" : "Gửi báo cáo"} ({sendableItems.length}
-              )
+              {canSendCriteria ? " + A" : ""})
             </Button>
             {/* Chưa có mẫu thì GIẤU hẳn, không làm mờ: nút mờ vẫn là một lời
                 mời bấm, bấm xong lại chẳng có gì xảy ra. Lý do nằm ở màn chặn
@@ -806,6 +907,10 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
                 <DayTaskTable
                   {...tableProps}
                   rows={pageRows}
+                  /* Chỉ bày ở trang đầu - lặp lại ở mọi trang thì đọc thành
+                     mỗi trang một bảng A khác nhau. */
+                  criteriaRows={safePage === 1 ? criteriaRows : []}
+                  onOpenCriteria={openCriteria}
                   loading={isLoading}
                   emptyText={emptyText}
                 />
@@ -824,12 +929,25 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
             <div className="rounded-md border p-10 text-center text-sm text-muted-foreground">
               Đang tải...
             </div>
-          ) : groups.length === 0 ? (
+          ) : groups.length === 0 && criteriaRows.length === 0 ? (
             <div className="rounded-md border p-10 text-center text-sm text-muted-foreground">
               {emptyText}
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Khối A không thuộc trục nào và cũng không thuộc đơn vị nào -
+                  gom nó vào một nhóm là gán bừa. Cho đứng riêng phía trên. */}
+              {criteriaRows.length > 0 ? (
+                <div className="overflow-hidden rounded-lg border">
+                  <DayTaskTable
+                    {...tableProps}
+                    rows={[]}
+                    criteriaRows={criteriaRows}
+                    onOpenCriteria={openCriteria}
+                    emptyText={emptyText}
+                  />
+                </div>
+              ) : null}
               {groups.map((group) => (
                 <Collapsible
                   key={group.label}
@@ -902,9 +1020,12 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
 
       <PersonalTaskDrawer
         open={drawerOpen}
-        onOpenChange={setDrawerOpen}
+        onOpenChange={(next) => {
+          setDrawerOpen(next);
+          if (!next) setFocusDate(null);
+        }}
         edit={edit}
-        reportDate={activeDate}
+        reportDate={focusDate ?? activeDate}
         notice={
           !edit && alreadySent
             ? "Báo cáo ngày này đã gửi một lượt. Nhiệm vụ nhập thêm sẽ nằm ở Nháp, bấm Gửi tiếp là lên cấp trên."
@@ -917,8 +1038,11 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
 
       <PersonalReportDetailDrawer
         open={boardOpen}
-        onOpenChange={setBoardOpen}
-        reportDate={boardOpen ? activeDate : null}
+        onOpenChange={(next) => {
+          setBoardOpen(next);
+          if (!next) setFocusDate(null);
+        }}
+        reportDate={boardOpen ? (focusDate ?? activeDate) : null}
         onChanged={async () => {
           await refreshDay();
         }}
@@ -976,9 +1100,16 @@ export function PersonalKpiDayView({ reportDate }: PersonalKpiDayViewProps) {
         title={
           sendingItem
             ? `Gửi nhiệm vụ ngày ${formatYmd(sendingItem.reportDate ?? activeDate)}`
-            : `Gửi báo cáo ngày ${formatYmd(activeDate)} (${sendableItems.length} nhiệm vụ)`
+            : `Gửi báo cáo ngày ${formatYmd(activeDate)} (${[
+                `${sendableItems.length} nhiệm vụ`,
+                canSendCriteria ? "bảng khối A" : "",
+              ]
+                .filter(Boolean)
+                .join(" + ")})`
         }
         submitting={sending}
+        canIncludeCriteria={canSendCriteria}
+        criteriaHint={`Bảng chốt kết quả ${formatCriteriaPeriod(criteriaPeriodOf(activeDate))} bạn đã tự chấm. Gửi rồi vẫn sửa được cho tới khi chỉ huy chốt, nhưng mỗi lần sửa đều để lại vết.`}
         onConfirm={confirmSend}
       />
     </div>

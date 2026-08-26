@@ -193,6 +193,16 @@ export class SubmitPersonalKpiDto {
   @IsArray()
   @IsMongoId({ each: true })
   itemIds?: string[];
+
+  /**
+   * Gửi kèm bảng khối A của ngày. Cố tình bắt khai rõ chứ không tự đính kèm:
+   * bảng A là một thứ được duyệt riêng, tự gửi hộ thì cán bộ không biết mình
+   * vừa trình cái gì lên.
+   */
+  @ApiPropertyOptional({ description: 'Gửi kèm bảng khối A của ngày' })
+  @IsOptional()
+  @IsBoolean()
+  includeCriteria?: boolean;
 }
 
 /** Cấp trên gửi tiếp các nhiệm vụ đã duyệt lên cấp cao hơn. */
@@ -206,19 +216,35 @@ export class ForwardPersonalKpiDto {
   @MaxLength(1000)
   note!: string;
 
-  @ApiProperty({ description: 'Các nhiệm vụ được tích trong bảng tổng' })
+  /**
+   * Nhiệm vụ và bảng khối A đều tích được trong bảng tổng, và gửi tiếp được
+   * một mình - nên cả hai mảng đều không bắt buộc, service chặn khi rỗng cả hai.
+   */
+  @ApiPropertyOptional({ description: 'Các nhiệm vụ được tích trong bảng tổng' })
+  @IsOptional()
   @IsArray()
-  @ArrayNotEmpty()
   @IsMongoId({ each: true })
-  itemIds!: string[];
+  itemIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Các bảng khối A được tích' })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true })
+  criteriaSheetIds?: string[];
 }
 
 export class ReviewPersonalKpiDto {
-  @ApiProperty({ description: 'Các nhiệm vụ được tích trong bảng tổng' })
+  @ApiPropertyOptional({ description: 'Các nhiệm vụ được tích trong bảng tổng' })
+  @IsOptional()
   @IsArray()
-  @ArrayNotEmpty()
   @IsMongoId({ each: true })
-  itemIds!: string[];
+  itemIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Các bảng khối A được tích' })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true })
+  criteriaSheetIds?: string[];
 
   /**
    * Mỗi quyết định là dứt điểm, không có bước "duyệt tạm":
@@ -430,16 +456,85 @@ export class PersonalCriterionRowDto {
   catalogValues?: Record<string, { id: string; name: string }>;
 }
 
-/** Lưu cả bảng khối A của một ngày - server ghi đè nguyên bộ. */
+/** Lưu cả bảng khối A của một THÁNG - server ghi đè nguyên bộ. */
 export class SavePersonalCriteriaSheetDto {
-  @ApiPropertyOptional({ description: 'YYYY-MM-DD; bỏ trống = hôm nay' })
+  /**
+   * Kỳ tháng của bảng. Nhận cả YYYY-MM lẫn YYYY-MM-DD (server cắt lấy tháng)
+   * để màn nhập đang đứng ở một ngày cụ thể khỏi phải tự tính kỳ.
+   */
+  @ApiPropertyOptional({
+    description: 'YYYY-MM hoặc YYYY-MM-DD; bỏ trống = tháng này',
+  })
   @IsOptional()
   @IsString()
-  reportDate?: string;
+  period?: string;
 
   @ApiProperty({ type: [PersonalCriterionRowDto] })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => PersonalCriterionRowDto)
   rows!: PersonalCriterionRowDto[];
+}
+
+/**
+ * Cán bộ sửa lại bảng khối A ĐÃ GỬI - đường này chạy được cả khi bảng đang ở
+ * tay cấp trên, đổi lại mọi ô đổi giá trị đều bị ghi vào nhật ký.
+ *
+ * Tách khỏi `SavePersonalCriteriaSheetDto` cho giống cặp sửa nháp / cập nhật
+ * tiến độ của nhiệm vụ: lưu nháp là ghi đè im lặng, cập nhật là có lưu vết.
+ */
+export class UpdatePersonalCriteriaSheetDto {
+  @ApiPropertyOptional({
+    description: 'YYYY-MM hoặc YYYY-MM-DD; bỏ trống = tháng này',
+  })
+  @IsOptional()
+  @IsString()
+  period?: string;
+
+  @ApiProperty({ type: [PersonalCriterionRowDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PersonalCriterionRowDto)
+  rows!: PersonalCriterionRowDto[];
+
+  @ApiPropertyOptional({ description: 'Lý do sửa - hiện trong nhật ký bảng' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+}
+
+/** Một dòng chỉ huy chấm lại trong bảng khối A. */
+export class ScoreCriterionRowDto {
+  @ApiProperty()
+  @IsMongoId()
+  criterionId!: string;
+
+  @ApiPropertyOptional({
+    description: 'Điểm chỉ huy chấm: { "<khoá cột>": "<giá trị>" }',
+  })
+  @IsOptional()
+  @IsObject()
+  values?: Record<string, unknown>;
+}
+
+/**
+ * Chỉ huy chấm lại cả bảng khối A rồi chốt hoàn thành.
+ *
+ * Chấm và chốt đi liền một thao tác, y như `ScorePersonalKpiDto` của nhiệm vụ.
+ * Khác nhiệm vụ ở chỗ chốt áp cho CẢ BẢNG chứ không lẻ từng tiêu chí: bảng A
+ * là một lá phiếu đánh giá, duyệt một nửa thì không còn nghĩa gì.
+ */
+export class ScorePersonalCriteriaSheetDto {
+  @ApiProperty({ type: [ScoreCriterionRowDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ScoreCriterionRowDto)
+  rows!: ScoreCriterionRowDto[];
+
+  @ApiPropertyOptional({ description: 'Nhận xét của chỉ huy' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
 }

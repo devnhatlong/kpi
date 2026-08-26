@@ -34,6 +34,7 @@ import {
 } from "@/features/kpi-form-config/api";
 import { NoReportTemplateNotice } from "@/features/kpi-form-config/components/no-report-template-notice";
 import {
+  criteriaPeriodOf,
   fetchPersonalCriteriaSheet,
   personalCriteriaKeys,
 } from "@/features/personal-kpi/api";
@@ -187,7 +188,9 @@ export function PersonalTaskDrawer({
   */
   const { data: criteriaSheet } = useSWR(
     open && includeCriteria
-      ? personalCriteriaKeys.sheet(reportDate ?? "today")
+      ? personalCriteriaKeys.sheet(
+          reportDate ? criteriaPeriodOf(reportDate) : "current",
+        )
       : null,
     () => fetchPersonalCriteriaSheet(reportDate),
     { revalidateOnFocus: false },
@@ -220,7 +223,7 @@ export function PersonalTaskDrawer({
    * của bảng lên đây: drawer chỉ cần biết "lưu hộ tôi", không cần biết bảng
    * đang có gì.
    */
-  const criteriaSaveRef = useRef<null | (() => Promise<void>)>(null);
+  const criteriaSaveRef = useRef<null | (() => Promise<boolean>)>(null);
   /** Khoá của các nội dung đang thu gọn - giữ ở đây để gấp được cả loạt. */
   const [collapsedKeys, setCollapsedKeys] = useState<string[]>([]);
   /** Trục đang gấp ở THƯ VIỆN bên trái - khác với collapsedKeys của thẻ nhập. */
@@ -596,9 +599,20 @@ export function PersonalTaskDrawer({
     try {
       // Khối A lưu trước: nó là bảng riêng, hỏng thì không nên để nhiệm vụ đã
       // lưu xong rồi mới báo lỗi.
-      await criteriaSaveRef.current?.();
+      const savedCriteria = (await criteriaSaveRef.current?.()) ?? false;
 
       if (!payloads.length) {
+        /*
+          Không nhiệm vụ nào mà bảng A cũng không đụng vào: chẳng có gì để lưu.
+          Báo thành công ở đây là nói dối, và drawer đóng lại làm người dùng
+          tưởng đã khai xong.
+        */
+        if (!savedCriteria) {
+          toast.error(
+            "Chưa có gì để lưu - chấm bảng khối A hoặc chọn nội dung công tác ở cột trái.",
+          );
+          return;
+        }
         toast.success("Đã lưu bảng tiêu chí chung.");
         await onSaved();
         onOpenChange(false);
@@ -1024,7 +1038,7 @@ export function PersonalTaskDrawer({
                     className={activeTab === CRITERIA_TAB ? undefined : "hidden"}
                   >
                     <PersonalCriteriaPanel
-                      reportDate={reportDate}
+                      period={reportDate}
                       enabled
                       disabled={saving}
                       onRegisterSave={(fn) => {
@@ -1118,7 +1132,8 @@ export function PersonalTaskDrawer({
                 {!isEdit ? (
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Inbox className="size-3.5" />
-                    Lưu nháp xong mới gửi lên cấp trên từ danh sách nhiệm vụ.
+                    Lưu nháp xong mới gửi lên cấp trên từ danh sách nhiệm vụ -
+                    bảng khối A gửi kèm trong cùng lượt đó.
                   </p>
                 ) : null}
               </div>
@@ -1150,10 +1165,18 @@ export function PersonalTaskDrawer({
             >
               Hủy
             </Button>
+            {/*
+              Đang bày khối A thì nút luôn mở: chấm tiêu chí chung là một việc
+              độc lập, không cần có nhiệm vụ nào trước. Khoá theo số nội dung
+              thì phiếu chỉ có bảng A không bao giờ lưu được, mà không lưu được
+              thì cũng không gửi được.
+            */}
             <Button
               type="button"
               onClick={() => void submit()}
-              disabled={saving || loading || entries.length === 0}
+              disabled={
+                saving || loading || (entries.length === 0 && !showCriteria)
+              }
             >
               <Check className="h-4 w-4" />
               {saving ? "Đang lưu..." : isEdit ? "Lưu chỉnh sửa" : "Lưu nháp"}

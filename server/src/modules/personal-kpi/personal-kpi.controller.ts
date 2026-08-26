@@ -25,9 +25,11 @@ import {
   PersonalKpiStatisticsQueryDto,
   ReviewPersonalKpiDto,
   ReviewerEditPersonalKpiDto,
+  ScorePersonalCriteriaSheetDto,
   ScorePersonalKpiDto,
   SavePersonalCriteriaSheetDto,
   SubmitPersonalKpiDto,
+  UpdatePersonalCriteriaSheetDto,
   UpdatePersonalKpiDto,
   UpdatePersonalKpiProgressDto,
 } from './dto/personal-kpi.dto';
@@ -160,18 +162,36 @@ export class PersonalKpiController {
     nhiệm vụ và trả lỗi "không tìm thấy".
   */
   @ApiOperation({
-    summary: 'Bảng khối A của một ngày - danh mục tiêu chí kèm điểm đã chấm',
+    summary: 'Bảng khối A của một THÁNG - danh mục tiêu chí kèm điểm đã chấm',
   })
   @Permissions(Permission.EVALUATION_SELF)
   @Get('criteria')
   getCriteriaSheet(
     @CurrentUser() user: JwtPayloadUser,
-    @Query('reportDate') reportDate?: string,
+    @Query('period') period?: string,
   ) {
-    return this.personalKpiService.getCriteriaSheet(user.uid, reportDate);
+    return this.personalKpiService.getCriteriaSheet(user.uid, period);
   }
 
-  @ApiOperation({ summary: 'Lưu bảng khối A của một ngày' })
+  @ApiOperation({
+    summary:
+      'Bảng khối A của tôi theo tháng, lọc bằng khoảng NGÀY - kèm điểm tổng',
+  })
+  @Permissions(Permission.EVALUATION_SELF)
+  @Get('criteria/list')
+  listCriteriaSheets(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+  ) {
+    return this.personalKpiService.listCriteriaSheets(
+      user.uid,
+      fromDate,
+      toDate,
+    );
+  }
+
+  @ApiOperation({ summary: 'Lưu nháp bảng khối A của một ngày' })
   @Permissions(Permission.EVALUATION_SELF)
   @Put('criteria')
   saveCriteriaSheet(
@@ -179,6 +199,39 @@ export class PersonalKpiController {
     @Body() dto: SavePersonalCriteriaSheetDto,
   ) {
     return this.personalKpiService.saveCriteriaSheet(user.uid, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Cập nhật bảng khối A đã gửi - có ghi vết vào nhật ký',
+  })
+  @Permissions(Permission.EVALUATION_SELF)
+  @Patch('criteria/progress')
+  updateCriteriaSheet(
+    @CurrentUser() user: JwtPayloadUser,
+    @Body() dto: UpdatePersonalCriteriaSheetDto,
+  ) {
+    return this.personalKpiService.updateCriteriaSheet(user.uid, dto);
+  }
+
+  @ApiOperation({ summary: 'Lịch sử một bảng khối A: đã đi qua những lượt gửi nào' })
+  @Permissions(Permission.EVALUATION_SELF)
+  @Get('criteria/:id/history')
+  criteriaHistory(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+  ) {
+    return this.personalKpiService.criteriaHistory(user.uid, id);
+  }
+
+  @ApiOperation({ summary: 'Chỉ huy chấm lại và chốt một bảng khối A' })
+  @Permissions(Permission.EVALUATION_APPROVE)
+  @Post('criteria/:id/score')
+  scoreCriteriaSheet(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: ScorePersonalCriteriaSheetDto,
+  ) {
+    return this.personalKpiService.scoreCriteriaSheet(user.uid, id, dto);
   }
 
   @ApiOperation({ summary: 'Cấp trên sửa nội dung nhiệm vụ (có lưu vết)' })

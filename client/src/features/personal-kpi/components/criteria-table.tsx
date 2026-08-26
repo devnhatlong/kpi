@@ -13,6 +13,41 @@ import { AutoGrowTextarea } from "@/features/personal-kpi/components/auto-grow-t
 import { CatalogSelectCell } from "@/features/personal-kpi/components/catalog-select-cell";
 import { cn } from "@/lib/utils";
 
+/** Chữ hiện ra cho một ô - ô tích thành Có / Không. */
+function cellText(
+  column: FormTemplateColumn,
+  value: string | number | boolean | undefined,
+): string {
+  if (column.dataType === "boolean") return value === true ? "Có" : "";
+  return String(value ?? "").trim();
+}
+
+/**
+ * Số cán bộ tự chấm, bày ngay dưới ô chỉ huy đang sửa - chỉ hiện khi hai số
+ * KHÁC nhau. Hiện cả khi giống nhau thì sáu dòng đầy chữ thừa và mắt không còn
+ * bắt được chỗ nào thật sự bị sửa.
+ */
+function SelfHint({
+  column,
+  row,
+  self,
+}: {
+  column: FormTemplateColumn;
+  row: CriteriaRow;
+  self?: Record<string, string | number | boolean>;
+}) {
+  if (!self) return null;
+  const mine = cellText(column, self[column.key]);
+  if (!mine || mine === cellText(column, row.fieldValues[column.key])) {
+    return null;
+  }
+  return (
+    <p className="mt-0.5 text-center text-[11px] text-muted-foreground">
+      Tự chấm: {mine}
+    </p>
+  );
+}
+
 /** Một dòng của bảng A: tiêu chí (bất biến) + giá trị các ô theo khoá cột. */
 export type CriteriaRow = {
   criterionId: string;
@@ -58,6 +93,13 @@ type CriteriaTableProps = {
   headerGroups: FormHeaderGroup[];
   rows: CriteriaRow[];
   disabled?: boolean;
+  /**
+   * Số cán bộ tự chấm: `criterionId` -> khoá cột -> giá trị.
+   *
+   * Chỉ truyền ở màn chỉ huy chấm lại: ô nào lệch thì bày số cũ ngay dưới ô
+   * đang sửa, khỏi phải mở hai bảng cạnh nhau mới biết mình vừa hạ điểm gì.
+   */
+  selfValues?: Record<string, Record<string, string | number | boolean>>;
   onChange: (criterionId: string, patch: CriteriaRowPatch) => void;
 };
 
@@ -75,6 +117,7 @@ export function CriteriaTable({
   headerGroups,
   rows,
   disabled = false,
+  selfValues,
   onChange,
 }: CriteriaTableProps) {
   const visible = columns.filter((column) => column.visible);
@@ -97,6 +140,27 @@ export function CriteriaTable({
     onChange(row.criterionId, {
       fieldValues: { ...row.fieldValues, [key]: value },
     });
+
+  /*
+    Mọi ô tích của một dòng là MỘT nhóm loại trừ: "Đảm bảo" và "Không đảm bảo"
+    là hai nửa của cùng một kết luận, tích cả hai thì dòng đó không đọc ra được
+    gì. Tích ô đang tích thì bỏ tích - quay về "chưa đánh giá", vì bảng cho phép
+    để trống cả hai.
+
+    Gom theo KIỂU CỘT chứ không theo tên: bảng A do admin thiết kế, không có
+    semanticKey nào đánh dấu cặp này. Nếu sau này khối A cần một ô tích độc lập
+    (kiểu "có minh chứng") thì phải sửa đúng chỗ này.
+  */
+  const flagKeys = columns
+    .filter((column) => column.dataType === "boolean")
+    .map((column) => column.key);
+
+  const setFlag = (row: CriteriaRow, key: string, checked: boolean) => {
+    const fieldValues = { ...row.fieldValues };
+    for (const other of flagKeys) delete fieldValues[other];
+    if (checked) fieldValues[key] = true;
+    onChange(row.criterionId, { fieldValues });
+  };
 
   const renderCell = (column: FormTemplateColumn, row: CriteriaRow, index: number) => {
     switch (column.semanticKey) {
@@ -147,7 +211,7 @@ export function CriteriaTable({
           disabled={disabled}
           aria-label={column.title}
           onCheckedChange={(checked) =>
-            setField(row, column.key, checked === true)
+            setFlag(row, column.key, checked === true)
           }
         />
       );
@@ -265,6 +329,11 @@ export function CriteriaTable({
                   className="border-r px-2 py-1.5 align-top last:border-r-0"
                 >
                   {renderCell(column, row, index)}
+                  <SelfHint
+                    column={column}
+                    row={row}
+                    self={selfValues?.[row.criterionId]}
+                  />
                 </td>
               ))}
             </tr>

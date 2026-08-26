@@ -259,9 +259,13 @@ export class KpiSummaryReportsService {
     const missingCount = report.itemIds.length - rows.length;
 
     /*
-      Điểm khối A do CÁN BỘ tự chấm, lấy bản mới nhất trong kỳ. Trả kèm chứ
-      không trộn thẳng vào `criteriaScores`: chỉ huy phải phân biệt được đâu là
-      số cán bộ khai và đâu là số mình đã sửa đè.
+      Điểm khối A của từng cán bộ, lấy bản mới nhất ĐÃ GỬI trong kỳ. Trả kèm
+      chứ không trộn thẳng vào `criteriaScores`: chỉ huy phải phân biệt được
+      đâu là số mang lên từ báo cáo cá nhân và đâu là số mình đã sửa đè ở đây.
+
+      Ô nào chỉ huy đã chấm lại lúc duyệt bảng (`reviewValues`) thì lấy số đó,
+      còn lại mới lấy số cán bộ tự chấm - nếu không thì người duyệt phải chấm
+      hai lần cùng một bảng, một lần ở báo cáo cá nhân, một lần ở đây.
     */
     const ownerIds = [
       ...new Set(rows.map((row) => String(row.ownerId?._id ?? row.ownerId))),
@@ -279,8 +283,15 @@ export class KpiSummaryReportsService {
         criterionId: String(row.criterionId),
         criterionName: row.criterionName ?? '',
         maxScore: row.maxScore ?? 0,
-        fieldValues: row.fieldValues ?? {},
-        catalogValues: row.catalogValues ?? {},
+        fieldValues: { ...(row.fieldValues ?? {}), ...(row.reviewValues ?? {}) },
+        catalogValues: {
+          ...(row.catalogValues ?? {}),
+          ...(row.reviewCatalogValues ?? {}),
+        },
+        /** Số cán bộ tự khai, giữ nguyên để đối chiếu với số đã chốt ở trên. */
+        selfFieldValues: row.fieldValues ?? {},
+        selfCatalogValues: row.catalogValues ?? {},
+        scoredByReviewer: Object.keys(row.reviewValues ?? {}).length > 0,
       })),
     );
 

@@ -9,6 +9,7 @@ import type {
   PersonalKpiItem,
   PersonalKpiLogType,
   PersonalKpiProgressChange,
+  PersonalKpiProgressLog,
   PersonalKpiStatus,
   PersonalTaskDraft,
   TaskAttachment,
@@ -90,6 +91,8 @@ export type SubmitPersonalKpiPayload = {
   note: string;
   /** Bỏ trống = gửi hết nhiệm vụ gửi được trong ngày. */
   itemIds?: string[];
+  /** Gửi kèm bảng khối A của THÁNG chứa ngày báo cáo này. */
+  includeCriteria?: boolean;
 };
 
 export type PersonalKpiDailyReport = {
@@ -126,6 +129,8 @@ export type PersonalKpiSubmission = {
   recipientId: string;
   recipientName: string;
   itemIds: string[];
+  /** Bảng khối A đi kèm lượt này - mảng riêng vì khác collection. */
+  criteriaSheetIds: string[];
   note: string;
   status: "PENDING" | "REVIEWED";
   createdAt: string;
@@ -439,39 +444,233 @@ export type PersonalCriterionRow = {
   maxScore: number;
   fieldValues: Record<string, string | number | boolean>;
   catalogValues: Record<string, { id: string; name: string }>;
+  /** Điểm chỉ huy chấm lại - ô nào có ở đây thì đây mới là số chốt. */
+  reviewValues: Record<string, string | number | boolean>;
+  reviewCatalogValues: Record<string, { id: string; name: string }>;
 };
 
+/** Các ô cán bộ gửi lên khi lưu / cập nhật bảng khối A. */
+export type PersonalCriterionRowInput = {
+  criterionId: string;
+  fieldValues?: Record<string, string | number | boolean>;
+  catalogValues?: Record<string, { id: string; name: string }>;
+};
+
+/**
+ * Bảng khối A của một THÁNG kèm vị trí của nó trong chuỗi gửi duyệt.
+ *
+ * Khối A chốt kết quả theo tháng, cán bộ cập nhật ngày nào cũng được (hoặc
+ * không) - mỗi lần sửa là một mốc nhật ký chứ không phải một bảng mới.
+ *
+ * Vòng đời giống nhiệm vụ: nháp thì sửa thoải mái, gửi rồi thì sửa qua đường
+ * cập nhật và mọi thay đổi vào nhật ký, chốt thì khoá.
+ */
 export type PersonalCriteriaSheet = {
-  reportDate: string;
+  /** Kỳ tháng YYYY-MM. */
+  period: string;
+  /** null = chưa lưu bản nào cho tháng này. */
+  sheetId: string | null;
+  reviewStatus: PersonalKpiStatus;
+  holderLevel: number;
+  returnReason: string;
+  lastSentAt: string | null;
+  lastProgressAt: string | null;
+  reviewNote: string;
+  reviewScoredByName: string;
+  reviewScoredAt: string | null;
+  progressLogs: PersonalKpiProgressLog[];
+  /** Còn ở chỗ cán bộ: lưu nháp và gửi được. */
+  canEdit: boolean;
+  /** Đã gửi nhưng chưa chốt: sửa được qua đường cập nhật, có lưu vết. */
+  canUpdate: boolean;
+  /**
+   * Bộ cột để dựng bảng - bản ĐÃ KHOÁ lúc gửi nếu bảng đã gửi, mẫu đang bật
+   * nếu chưa. Dùng cái này chứ đừng tự đi lấy mẫu live: admin đổi cột giữa
+   * chừng là bảng đã gửi bị vẽ sai bộ cột.
+   */
+  template: {
+    code: string;
+    name: string;
+    version: number;
+    columns: FormTemplateColumn[];
+    headerGroups: FormHeaderGroup[];
+    footer?: FormTemplateFooter;
+  } | null;
   rows: PersonalCriterionRow[];
 };
 
-export const personalCriteriaKeys = {
-  sheet: (reportDate: string) => ["personal-criteria", reportDate] as const,
+/**
+ * Bảng khối A như server trả về ở bảng tổng của chỉ huy và ở lịch sử - bản ghi
+ * thô, chưa ghép danh mục. Khác `PersonalCriteriaSheet` (bản của màn nhập) ở
+ * chỗ có thêm người khai và người gửi.
+ */
+export type PersonalCriteriaSheetRecord = {
+  _id: string;
+  /** Kỳ tháng YYYY-MM. */
+  periodMonth: string;
+  reviewStatus: PersonalKpiStatus;
+  holderLevel: number;
+  returnReason: string;
+  ownerId: string | CatalogRef;
+  ownerDepartmentId?: string | CatalogRef | null;
+  lastSenderId?: string | CatalogRef | null;
+  lastSenderDepartmentId?: string | CatalogRef | null;
+  lastSentAt: string | null;
+  lastProgressAt: string | null;
+  reviewNote: string;
+  reviewScoredByName: string;
+  reviewScoredAt: string | null;
+  progressLogs: PersonalKpiProgressLog[];
+  rows: Array<{
+    criterionId: string;
+    criterionName: string;
+    maxScore: number;
+    fieldValues: Record<string, string | number | boolean>;
+    catalogValues: Record<string, { id: string; name: string }>;
+    reviewValues: Record<string, string | number | boolean>;
+    reviewCatalogValues: Record<string, { id: string; name: string }>;
+  }>;
+  createdAt: string;
+  updatedAt: string;
 };
 
-/** Bảng khối A của một ngày; bỏ trống ngày thì server lấy hôm nay của nó. */
-export function fetchPersonalCriteriaSheet(reportDate?: string) {
+export const personalCriteriaKeys = {
+  /** Khoá theo KỲ THÁNG - khối A một tháng đúng một bản. */
+  sheet: (period: string) => ["personal-criteria", period] as const,
+  history: (id: string) => ["personal-criteria-history", id] as const,
+  list: (fromDate: string, toDate: string) =>
+    ["personal-criteria-list", fromDate, toDate] as const,
+};
+
+/** Kỳ tháng YYYY-MM của một ngày YYYY-MM-DD (hoặc của chính chuỗi tháng). */
+export function criteriaPeriodOf(value: string): string {
+  return value.length >= 7 ? value.slice(0, 7) : value;
+}
+
+/** Nhãn "tháng 8/2026" từ chuỗi YYYY-MM. */
+export function formatCriteriaPeriod(period: string): string {
+  const [year, month] = period.split("-");
+  return month ? `tháng ${Number(month)}/${year}` : period;
+}
+
+/**
+ * Một dòng khối A trong danh sách - bản tóm tắt của cả THÁNG, không kèm các ô.
+ * Điểm tổng do server cộng: client không biết cột nào là cột điểm của mẫu.
+ */
+export type PersonalCriteriaSheetSummary = {
+  sheetId: string | null;
+  /** Kỳ tháng YYYY-MM. */
+  period: string;
+  reviewStatus: PersonalKpiStatus;
+  holderLevel: number;
+  returnReason: string;
+  lastSentAt: string | null;
+  lastProgressAt: string | null;
+  reviewNote: string;
+  reviewScoredByName: string;
+  reviewScoredAt: string | null;
+  canEdit: boolean;
+  canUpdate: boolean;
+  /** Tổng điểm đạt; ô nào chỉ huy đã chấm thì tính số của chỉ huy. */
+  totalScore: number;
+  maxScore: number;
+  /** Số tiêu chí đã đụng vào - tích ô "Không đảm bảo" cũng tính là đã chấm. */
+  scoredCount: number;
+  rowCount: number;
+  recipientName: string;
+  updatedAt: string | null;
+};
+
+/**
+ * Bảng khối A của tôi, lọc theo khoảng NGÀY nhưng trả về theo THÁNG.
+ * Xem một tuần vắt qua hai tháng thì ra hai bảng.
+ */
+export function fetchPersonalCriteriaList(params: {
+  fromDate?: string;
+  toDate?: string;
+}) {
+  const query: Record<string, string> = {};
+  if (params.fromDate) query.fromDate = params.fromDate;
+  if (params.toDate) query.toDate = params.toDate;
+  return unwrapData(
+    api.get<ApiResponse<PersonalCriteriaSheetSummary[]>>(
+      "/personal-kpi/criteria/list",
+      { params: query },
+    ),
+  );
+}
+
+/**
+ * Bảng khối A của một tháng; bỏ trống thì server lấy tháng này.
+ * Nhận cả YYYY-MM lẫn YYYY-MM-DD - server tự cắt lấy tháng.
+ */
+export function fetchPersonalCriteriaSheet(period?: string) {
   return unwrapData(
     api.get<ApiResponse<PersonalCriteriaSheet>>("/personal-kpi/criteria", {
-      params: reportDate ? { reportDate } : undefined,
+      params: period ? { period } : undefined,
     }),
   );
 }
 
+/** Lưu nháp - chỉ chạy khi bảng còn ở chỗ cán bộ, ghi đè im lặng. */
 export function savePersonalCriteriaSheet(input: {
-  reportDate?: string;
-  rows: Array<{
-    criterionId: string;
-    fieldValues?: Record<string, string | number | boolean>;
-    catalogValues?: Record<string, { id: string; name: string }>;
-  }>;
+  period?: string;
+  rows: PersonalCriterionRowInput[];
 }) {
   return unwrapData(
-    api.put<ApiResponse<{ reportDate: string; rowCount: number }>>(
+    api.put<ApiResponse<{ period: string; rowCount: number }>>(
       "/personal-kpi/criteria",
       input,
     ),
+  );
+}
+
+/**
+ * Cập nhật bảng ĐÃ GỬI - chạy được cả khi bảng đang ở tay cấp trên, đổi lại mọi
+ * ô đổi giá trị đều vào nhật ký. Cùng cặp với `updatePersonalKpiProgress`.
+ */
+export function updatePersonalCriteriaSheet(input: {
+  period?: string;
+  rows: PersonalCriterionRowInput[];
+  note?: string;
+}) {
+  return unwrapData(
+    api.patch<ApiResponse<PersonalCriteriaSheet>>(
+      "/personal-kpi/criteria/progress",
+      input,
+    ),
+  );
+}
+
+/** Chỉ huy chấm lại cả bảng khối A rồi chốt - chấm và chốt đi liền một nhịp. */
+export function scorePersonalCriteriaSheet(
+  id: string,
+  input: {
+    rows: Array<{
+      criterionId: string;
+      /** Theo khoá cột, cùng kiểu với ô cán bộ tự chấm (ô tích là boolean). */
+      values: Record<string, string | number | boolean>;
+    }>;
+    note?: string;
+  },
+) {
+  return unwrapData(
+    api.post<ApiResponse<{ id: string }>>(
+      `/personal-kpi/criteria/${id}/score`,
+      input,
+    ),
+  );
+}
+
+/** Lịch sử một bảng khối A: đã đi qua những lượt gửi nào. */
+export function fetchPersonalCriteriaHistory(id: string) {
+  return unwrapData(
+    api.get<
+      ApiResponse<{
+        sheet: PersonalCriteriaSheetRecord;
+        submissions: PersonalKpiSubmission[];
+      }>
+    >(`/personal-kpi/criteria/${id}/history`),
   );
 }
 
@@ -546,6 +745,8 @@ export async function submitPersonalKpiReport(
         reportDate: string;
         level: number;
         sentCount: number;
+        /** 1 = lượt này có kèm bảng khối A. */
+        criteriaSentCount: number;
         recipientId: string;
         recipientName: string;
       }>
@@ -591,8 +792,34 @@ export type PersonalKpiBoardAxis = {
   groups: PersonalKpiBoardGroup[];
 };
 
+/**
+ * Khối A trong bảng tổng: các bảng đang nằm ở chỗ tôi, gom theo phiên bản mẫu.
+ * null = lượt xem này không có bảng A nào (hoặc đang lọc theo trục / từ khoá,
+ * lúc đó khối A không thuộc phạm vi hỏi).
+ */
+export type PersonalKpiBoardCriteriaBlock = {
+  formTemplateId: string | null;
+  formTemplateVersion: number | null;
+  template: {
+    code: string;
+    name: string;
+    version: number;
+    columns: FormTemplateColumn[];
+    headerGroups: FormHeaderGroup[];
+    footer?: FormTemplateFooter;
+  } | null;
+  /**
+   * Ghi chú admin khai sẵn ở danh mục, tra theo id tiêu chí.
+   * Không nằm trong bản chụp của bảng vì nó là chữ mô tả chứ không phải số -
+   * nhưng chỉ huy cần đọc mới biết căn cứ trừ điểm.
+   */
+  criterionNotes: Record<string, string>;
+  sheets: PersonalCriteriaSheetRecord[];
+};
+
 export type PersonalKpiBoard = {
   axes: PersonalKpiBoardAxis[];
+  criteria: PersonalKpiBoardCriteriaBlock[] | null;
   counts: {
     pending: number;
     approved: number;
@@ -645,20 +872,29 @@ export async function fetchPersonalKpiBoard(params: PersonalKpiBoardQuery) {
   );
 }
 
-/** Duyệt hoặc trả lại các nhiệm vụ đã tích trong bảng tổng. */
+/**
+ * Duyệt hoặc trả lại các dòng đã tích trong bảng tổng.
+ * Nhiệm vụ và bảng khối A tích chung một lượt được - server nhận hai mảng id
+ * riêng vì chúng nằm ở hai collection.
+ */
 export async function reviewPersonalKpi(input: {
-  itemIds: string[];
+  itemIds?: string[];
+  criteriaSheetIds?: string[];
   decision: "RETURN" | "COMPLETE";
   reason?: string;
 }) {
   return unwrapData(
-    api.post<ApiResponse<{ count: number }>>("/personal-kpi/review", input),
+    api.post<ApiResponse<{ count: number; criteriaCount: number }>>(
+      "/personal-kpi/review",
+      input,
+    ),
   );
 }
 
-/** Cấp trên gửi tiếp các nhiệm vụ đã duyệt lên cấp cao hơn. */
+/** Cấp trên gửi tiếp các dòng đã duyệt lên cấp cao hơn. */
 export async function forwardPersonalKpi(input: {
-  itemIds: string[];
+  itemIds?: string[];
+  criteriaSheetIds?: string[];
   recipientId: string;
   note: string;
 }) {
@@ -668,6 +904,7 @@ export async function forwardPersonalKpi(input: {
         submissionId: string;
         level: number;
         sentCount: number;
+        criteriaSentCount: number;
         recipientName: string;
       }>
     >("/personal-kpi/forward", input),

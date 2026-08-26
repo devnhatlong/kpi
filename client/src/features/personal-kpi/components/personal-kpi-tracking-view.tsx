@@ -71,6 +71,7 @@ import {
   reviewPersonalKpi,
   type PersonalKpiBoardRow,
 } from "@/features/personal-kpi/api";
+import { CriteriaReviewCard } from "@/features/personal-kpi/components/criteria-review-card";
 import {
   DeadlineCell,
   ProgressBar,
@@ -926,6 +927,17 @@ export function PersonalKpiTrackingView() {
           tone={kpiTone.success}
         />
       </div>
+
+      {/*
+        Khối A đứng riêng phía trên bảng nhiệm vụ: nó chấm cho CẢ NGÀY của một
+        cán bộ chứ không phải một việc, và duyệt theo cả bảng - trộn vào danh
+        sách nhiệm vụ thì bộ lọc theo trục / hạn / tiến độ đều vô nghĩa với nó.
+      */}
+      <CriteriaReviewCard
+        blocks={data?.criteria ?? null}
+        canForwardUp={data?.canForwardUp ?? false}
+        onDone={refresh}
+      />
 
       <Card className="shadow-sm">
         <CardContent className="space-y-4 py-4">

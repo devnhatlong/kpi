@@ -27,11 +27,19 @@ import type { FormTemplateColumn } from "@/features/kpi-form-config/types";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import { AxisTaskTable } from "@/features/personal-kpi/components/axis-task-table";
 import {
+  CriteriaTable,
+  type CriteriaRow,
+} from "@/features/personal-kpi/components/criteria-table";
+import {
   missingRequiredColumns,
   outOfRangeColumns,
 } from "@/features/personal-kpi/task-column-utils";
 import {
   fetchMyPersonalKpi,
+  criteriaPeriodOf,
+  fetchPersonalCriteriaSheet,
+  formatCriteriaPeriod,
+  personalCriteriaKeys,
   personalKpiKeys,
   submitPersonalKpiReport,
   taskToWriteInput,
@@ -117,8 +125,15 @@ export function PersonalReportDetailDrawer({
   const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  /** Các nhiệm vụ sẽ gửi khi xác nhận người nhận; rỗng = đang đóng. */
+  /** Các nhiệm vụ sẽ gửi khi xác nhận người nhận. */
   const [sendIds, setSendIds] = useState<string[]>([]);
+  /**
+   * Hộp thoại chọn người nhận đang mở hay không.
+   *
+   * Cờ riêng chứ không suy từ `sendIds.length`: lượt gửi CHỈ có bảng khối A
+   * không có nhiệm vụ nào, suy theo mảng rỗng thì hộp thoại không mở ra được.
+   */
+  const [sendOpen, setSendOpen] = useState(false);
   /** Nhiệm vụ đang xem lý do trả lại. */
   const [reasonItem, setReasonItem] = useState<PersonalKpiItem | null>(null);
   /** Dải điểm hợp lệ theo nhóm điểm - dùng để chặn trước khi gọi API. */
@@ -136,10 +151,61 @@ export function PersonalReportDetailDrawer({
       setItems([]);
       setEditingIds(new Set());
       setSendIds([]);
+      setSendOpen(false);
       return;
     }
     if (data?.data) setItems(data.data);
   }, [open, data]);
+
+  /*
+    Bảng khối A của THÁNG chứa ngày này - dùng chung khoá SWR (theo tháng) với
+    màn ngày và với drawer nhập,
+    nên không tốn thêm lượt gọi. Ở đây chỉ cần biết bảng có kèm được vào lượt
+    gửi hay không.
+  */
+  const { data: criteriaSheet, mutate: mutateCriteria } = useSWR(
+    open && reportDate
+      ? personalCriteriaKeys.sheet(criteriaPeriodOf(reportDate))
+      : null,
+    () => fetchPersonalCriteriaSheet(reportDate!),
+    { revalidateOnFocus: false },
+  );
+  const criteriaFilled = (criteriaSheet?.rows ?? []).some(
+    (row) =>
+      Object.values(row.fieldValues ?? {}).some(
+        (value) => value !== "" && value !== false && value !== null,
+      ) || Object.keys(row.catalogValues ?? {}).length > 0,
+  );
+  /** Đã chấm và còn ở chỗ mình thì kèm được; đã gửi rồi thì thôi. */
+  const canSendCriteria =
+    criteriaFilled && (criteriaSheet?.canEdit ?? false);
+
+  /*
+    Bảng đã chốt thì bày SỐ CHỈ HUY, số tự chấm lùi xuống dòng nhắc dưới ô -
+    cùng cách với phiếu nhập. Bày số tự chấm ở ô chính thì đọc lại vẫn tưởng
+    điểm mình khai là điểm được duyệt.
+  */
+  const criteriaCompleted = criteriaSheet?.reviewStatus === "COMPLETED";
+  const criteriaRows: CriteriaRow[] = (criteriaSheet?.rows ?? []).map((row) => ({
+    criterionId: row.criterionId,
+    criterionName: row.criterionName,
+    criterionNote: row.criterionNote,
+    maxScore: row.maxScore,
+    fieldValues: criteriaCompleted
+      ? { ...row.fieldValues, ...row.reviewValues }
+      : row.fieldValues,
+    catalogValues: criteriaCompleted
+      ? { ...row.catalogValues, ...row.reviewCatalogValues }
+      : row.catalogValues,
+  }));
+  const criteriaSelfValues = criteriaCompleted
+    ? Object.fromEntries(
+        (criteriaSheet?.rows ?? []).map((row) => [
+          row.criterionId,
+          row.fieldValues,
+        ]),
+      )
+    : undefined;
 
   const groups = useMemo(() => groupByAxisContent(items), [items]);
 
@@ -222,18 +288,28 @@ export function PersonalReportDetailDrawer({
   };
 
   const handleSend = async (payload: SubmitPersonalKpiPayload) => {
-    if (!reportDate || sendIds.length === 0) return;
+    if (!reportDate) return;
+    const withCriteria = canSendCriteria && payload.includeCriteria === true;
+    // Ngày không có nhiệm vụ nào để gửi vẫn phải trình được bảng khối A.
+    if (sendIds.length === 0 && !withCriteria) return;
     setSending(true);
     try {
       const result = await submitPersonalKpiReport(reportDate, {
         ...payload,
+        includeCriteria: withCriteria,
         itemIds: sendIds,
       });
+      const parts = [
+        result.sentCount ? `${result.sentCount} nhiệm vụ` : "",
+        result.criteriaSentCount ? "bảng khối A" : "",
+      ].filter(Boolean);
       toast.success(
-        `Đã gửi ${result.sentCount} nhiệm vụ tới ${result.recipientName}.`,
+        `Đã gửi ${parts.join(" và ")} tới ${result.recipientName}.`,
       );
       setSendIds([]);
+      setSendOpen(false);
       await mutate();
+      if (withCriteria) await mutateCriteria();
       await onChanged();
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không gửi được báo cáo."));
@@ -287,6 +363,58 @@ export function PersonalReportDetailDrawer({
         </SheetHeader>
 
         <div className="flex-1 space-y-4 overflow-auto py-4">
+          {/*
+            Khối A đứng đầu báo cáo, đúng thứ tự của bản in: A trước, nhiệm vụ
+            theo trục sau. Chỉ để XEM - sửa bảng thì vào phiếu nhập, ở đó mới có
+            đủ hai đường "Lưu nháp" và "Cập nhật có lưu vết".
+          */}
+          {criteriaSheet?.sheetId ? (
+            <section className="space-y-2 rounded-lg border bg-card p-3">
+              <header className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold">
+                  A · Tiêu chí chung ·{" "}
+                  {formatCriteriaPeriod(criteriaSheet.period)}
+                </span>
+                <Badge
+                  variant="secondary"
+                  className={personalKpiStatusBadgeClass(
+                    criteriaSheet.reviewStatus,
+                  )}
+                >
+                  {PERSONAL_KPI_STATUS_LABEL[criteriaSheet.reviewStatus]}
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {criteriaSheet.reviewStatus === "DRAFT"
+                    ? 'Chưa gửi - tích "Gửi kèm bảng khối A" khi bấm Gửi báo cáo.'
+                    : criteriaSheet.reviewStatus === "RETURNED"
+                      ? `Bị trả lại: ${criteriaSheet.returnReason || "không ghi lý do"}`
+                      : criteriaSheet.reviewStatus === "COMPLETED"
+                        ? `Đã chốt${
+                            criteriaSheet.reviewScoredByName
+                              ? ` bởi ${criteriaSheet.reviewScoredByName}`
+                              : ""
+                          } - bảng hiện điểm chỉ huy đã chấm.`
+                        : "Đã gửi lên trên, đang chờ chỉ huy chốt."}
+                </span>
+              </header>
+              {criteriaSheet.template ? (
+                <CriteriaTable
+                  columns={criteriaSheet.template.columns}
+                  headerGroups={criteriaSheet.template.headerGroups}
+                  rows={criteriaRows}
+                  disabled
+                  selfValues={criteriaSelfValues}
+                  onChange={() => {}}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Không dựng lại được bộ cột của bảng - mẫu khối A chưa gán hoặc
+                  đã bị xoá.
+                </p>
+              )}
+            </section>
+          ) : null}
+
           {isLoading ? (
             <div className="rounded-md border border-dashed p-10 text-center text-sm text-muted-foreground">
               Đang tải...
@@ -386,20 +514,21 @@ export function PersonalReportDetailDrawer({
             >
               Đóng
             </Button>
-            {sendableItems.length > 0 ? (
+            {sendableItems.length > 0 || canSendCriteria ? (
               <Button
                 type="button"
-                onClick={() =>
-                  setSendIds(sendableItems.map((item) => item.id))
-                }
+                onClick={() => {
+                  setSendIds(sendableItems.map((item) => item.id));
+                  setSendOpen(true);
+                }}
                 disabled={busy || isLoading}
               >
                 <Send className="h-4 w-4" />
                 {sending
                   ? "Đang gửi..."
-                  : everSent
-                    ? `Gửi lại (${sendableItems.length})`
-                    : `Gửi báo cáo (${sendableItems.length})`}
+                  : `${everSent ? "Gửi lại" : "Gửi báo cáo"} (${
+                      sendableItems.length
+                    }${canSendCriteria ? " + A" : ""})`}
               </Button>
             ) : null}
           </div>
@@ -407,16 +536,23 @@ export function PersonalReportDetailDrawer({
       </SheetContent>
 
       <SendRecipientDialog
-        open={sendIds.length > 0}
+        open={sendOpen}
         onOpenChange={(next) => {
-          if (!next && !sending) setSendIds([]);
+          if (next || sending) return;
+          setSendOpen(false);
+          setSendIds([]);
         }}
-        title={
-          sendIds.length === 1
-            ? "Gửi nhiệm vụ"
-            : `Gửi ${sendIds.length} nhiệm vụ`
-        }
+        title={`Gửi ${
+          [
+            sendIds.length ? `${sendIds.length} nhiệm vụ` : "",
+            canSendCriteria ? "bảng khối A" : "",
+          ]
+            .filter(Boolean)
+            .join(" + ") || "báo cáo"
+        }`}
         submitting={sending}
+        canIncludeCriteria={canSendCriteria}
+        criteriaHint={`Bảng chốt kết quả ${formatCriteriaPeriod(criteriaPeriodOf(reportDate ?? ""))} bạn đã tự chấm. Gửi rồi vẫn sửa được cho tới khi chỉ huy chốt, nhưng mỗi lần sửa đều để lại vết.`}
         onConfirm={handleSend}
       />
 

@@ -28,6 +28,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  formatCriteriaPeriod,
+  type PersonalCriteriaSheetSummary,
+} from "@/features/personal-kpi/api";
+import {
   DeadlineCell,
   PercentCell,
   WorkStateBadge,
@@ -97,6 +101,17 @@ export function isSilent(row: DayTaskRow): boolean {
 
 type DayTaskTableProps = {
   rows: DayTaskRow[];
+  /**
+   * Bảng khối A của các ngày trong danh sách - mỗi bảng một dòng, đứng trên
+   * nhiệm vụ.
+   *
+   * Nằm chung bảng chứ không tách ra một khung riêng: khối A cũng là một thứ
+   * phải chấm, phải gửi, phải chờ duyệt như nhiệm vụ - để riêng thì nó biến mất
+   * khỏi tầm mắt và cán bộ tưởng chưa khai gì.
+   */
+  criteriaRows?: PersonalCriteriaSheetSummary[];
+  /** Mở bảng khối A của một ngày (chấm nếu còn sửa được, không thì xem lại). */
+  onOpenCriteria?: (sheet: PersonalCriteriaSheetSummary) => void;
   /** Nhãn cột hạn - lấy theo tên cột ngày trong mẫu KPI. */
   deadlineHeader: string;
   loading?: boolean;
@@ -207,6 +222,129 @@ function KpiResultCell({ row }: { row: DayTaskRow }) {
 }
 
 /**
+ * Một dòng khối A trong danh sách - đọc theo đúng bộ cột của dòng nhiệm vụ.
+ *
+ * Bảng A không có trục, không có hạn, không có phần trăm tiến độ; những ô đó
+ * bày thứ tương đương của nó (điểm đạt / tổng, số tiêu chí đã chấm) thay vì để
+ * trống, nếu không dòng nhìn như một dòng hỏng.
+ */
+function CriteriaSummaryRow({
+  sheet,
+  showDeadline,
+  onOpen,
+}: {
+  sheet: PersonalCriteriaSheetSummary;
+  showDeadline: boolean;
+  onOpen?: (sheet: PersonalCriteriaSheetSummary) => void;
+}) {
+  const done = sheet.rowCount > 0 && sheet.scoredCount >= sheet.rowCount;
+  const touchedAt = sheet.lastProgressAt ?? sheet.updatedAt;
+  /** Còn sửa được thì mời chấm; đã chốt thì chỉ còn xem lại. */
+  const editable = sheet.canEdit || sheet.canUpdate;
+
+  return (
+    <TableRow className="bg-muted/20">
+      <TableCell className="max-w-[420px] whitespace-normal align-middle">
+        {/* Kỳ luôn hiện, không phụ thuộc `showReportDate`: bảng chốt theo tháng
+            nên không nói rõ tháng nào thì xem một tuần vắt qua hai tháng là
+            hai dòng giống hệt nhau. */}
+        <div className="text-xs text-muted-foreground tabular-nums">
+          Chốt {formatCriteriaPeriod(sheet.period)}
+        </div>
+        <div className="break-words font-medium">Tiêu chí chung</div>
+        <div className="break-words text-xs text-muted-foreground">
+          Khối A · chốt kết quả cả tháng, cập nhật được hằng ngày
+        </div>
+      </TableCell>
+
+      <TableCell className="align-middle">
+        <Badge
+          variant="secondary"
+          className={cn("gap-1 font-normal", kpiTone.success.soft)}
+        >
+          <span className="font-semibold">A</span>
+          <span>Tiêu chí chung</span>
+        </Badge>
+      </TableCell>
+
+      <TableCell className="align-middle">
+        <div className="font-medium tabular-nums">
+          {sheet.totalScore} / {sheet.maxScore} điểm
+        </div>
+        <div className="text-xs text-muted-foreground tabular-nums">
+          {sheet.scoredCount}/{sheet.rowCount} tiêu chí đã chấm
+        </div>
+      </TableCell>
+
+      {showDeadline ? (
+        <TableCell className="align-middle text-xs text-muted-foreground">
+          {touchedAt ? `Cập nhật ${formatYmd(touchedAt.slice(0, 10))}` : "-"}
+        </TableCell>
+      ) : null}
+
+      <TableCell className="align-middle">
+        <Badge
+          variant="secondary"
+          className={cn(
+            "font-normal",
+            done ? kpiTone.success.soft : kpiTone.warning.soft,
+          )}
+        >
+          {done
+            ? "Đã chấm đủ"
+            : `Còn ${Math.max(0, sheet.rowCount - sheet.scoredCount)} tiêu chí`}
+        </Badge>
+      </TableCell>
+
+      <TableCell className="align-middle">
+        <Badge
+          variant="secondary"
+          className={personalKpiStatusBadgeClass(sheet.reviewStatus)}
+          title={
+            sheet.returnReason
+              ? `Lý do trả lại: ${sheet.returnReason}`
+              : undefined
+          }
+        >
+          {PERSONAL_KPI_STATUS_LABEL[sheet.reviewStatus]}
+        </Badge>
+      </TableCell>
+
+      <TableCell className="align-middle text-sm text-muted-foreground">
+        {sheet.recipientName || "-"}
+      </TableCell>
+
+      <TableCell className="text-right align-middle">
+        <Button
+          size="sm"
+          variant="outline"
+          className="bg-background"
+          onClick={() => onOpen?.(sheet)}
+          disabled={!onOpen}
+          title={
+            editable
+              ? "Mở bảng tiêu chí chung của ngày này"
+              : "Đã chốt - xem lại bảng và nhật ký"
+          }
+        >
+          {editable ? (
+            <>
+              <Pencil className="h-4 w-4" />
+              Chấm bảng A
+            </>
+          ) : (
+            <>
+              <Eye className="h-4 w-4" />
+              Xem bảng A
+            </>
+          )}
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/**
  * Bảng nhiệm vụ - dùng chung cho cả xem phẳng lẫn xem theo nhóm.
  *
  * Nhóm nào toàn nhiệm vụ của trục chấm theo mục (trục 2) thì đổi bộ cột: trục
@@ -216,6 +354,8 @@ function KpiResultCell({ row }: { row: DayTaskRow }) {
  */
 export function DayTaskTable({
   rows,
+  criteriaRows = [],
+  onOpenCriteria,
   deadlineHeader,
   loading = false,
   emptyText,
@@ -269,7 +409,7 @@ export function DayTaskTable({
               Đang tải...
             </TableCell>
           </TableRow>
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 && criteriaRows.length === 0 ? (
           <TableRow>
             <TableCell
               colSpan={columnCount}
@@ -281,8 +421,20 @@ export function DayTaskTable({
               </div>
             </TableCell>
           </TableRow>
-        ) : (
-          rows.map((row) => {
+        ) : null}
+
+        {criteriaRows.map((sheet) => (
+          <CriteriaSummaryRow
+            key={sheet.sheetId ?? sheet.period}
+            sheet={sheet}
+            showDeadline={showDeadline}
+            onOpen={onOpenCriteria}
+          />
+        ))}
+
+        {loading
+          ? null
+          : rows.map((row) => {
             const { item, summary, deadline, work } = row;
             const health = deadlineHealth(row);
             return (
@@ -469,9 +621,8 @@ export function DayTaskTable({
                   </div>
                 </TableCell>
               </TableRow>
-            );
-          })
-        )}
+              );
+            })}
       </TableBody>
     </Table>
   );

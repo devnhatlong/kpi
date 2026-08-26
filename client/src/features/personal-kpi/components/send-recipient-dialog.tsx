@@ -35,6 +35,15 @@ type SendRecipientDialogProps = {
   description?: string;
   confirmLabel?: string;
   submitting?: boolean;
+  /**
+   * Bảng khối A của tháng có kèm được vào lượt này không.
+   *
+   * Bày ô tích thay vì tự kèm: bảng A được duyệt riêng, gửi hộ mà không hỏi
+   * thì cán bộ không biết mình vừa trình cái gì lên. Mặc định BẬT - chấm bảng
+   * rồi thì gần như luôn muốn gửi cùng báo cáo ngày.
+   */
+  canIncludeCriteria?: boolean;
+  criteriaHint?: string;
   onConfirm: (payload: SubmitPersonalKpiPayload) => Promise<void> | void;
 };
 
@@ -52,6 +61,8 @@ export function SendRecipientDialog({
   description,
   confirmLabel = "Gửi",
   submitting = false,
+  canIncludeCriteria = false,
+  criteriaHint,
   onConfirm,
 }: SendRecipientDialogProps) {
   const [loading, setLoading] = useState(false);
@@ -60,6 +71,7 @@ export function SendRecipientDialog({
   const [query, setQuery] = useState("");
   const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
   const [note, setNote] = useState(DEFAULT_NOTE);
+  const [includeCriteria, setIncludeCriteria] = useState(true);
 
   useEffect(() => {
     if (!open) return;
@@ -68,6 +80,7 @@ export function SendRecipientDialog({
     setQuery("");
     setSelectedPersonIds([]);
     setNote(DEFAULT_NOTE);
+    setIncludeCriteria(true);
     setLoading(true);
 
     void (async () => {
@@ -169,6 +182,7 @@ export function SendRecipientDialog({
     await onConfirm({
       recipientId: selectedPersonIds[0]!,
       note: noteTrimmed,
+      ...(canIncludeCriteria ? { includeCriteria } : {}),
     });
   };
 
@@ -301,6 +315,24 @@ export function SendRecipientDialog({
               </ScrollArea>
             </div>
           </div>
+
+          {canIncludeCriteria ? (
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-muted/30 px-3 py-2.5 text-sm">
+              <Checkbox
+                checked={includeCriteria}
+                disabled={submitting}
+                onCheckedChange={(value) => setIncludeCriteria(value === true)}
+                aria-label="Gửi kèm bảng khối A"
+              />
+              <span className="min-w-0">
+                <span className="font-medium">Gửi kèm bảng khối A</span>
+                <span className="block text-xs text-muted-foreground">
+                  {criteriaHint ??
+                    "Bảng tiêu chí chung chốt kết quả tháng, bạn đã tự chấm."}
+                </span>
+              </span>
+            </label>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="send-note">
