@@ -303,7 +303,119 @@ export class KpiSummaryReportsService {
         rowCount: rows.length,
         missingCount,
         selfCriteriaScores,
+        ...(await this.buildCriteriaAverage(selfSheets, ownerIds.length)),
       },
+    };
+  }
+
+  /**
+   * Điểm khối A GỢI Ý cho đơn vị: trung bình đầu người của các bảng thành viên.
+   *
+   * Cấp chỉ huy không tự chấm lại 6 tiêu chí từ đầu - điểm của đơn vị là kết
+   * quả bình quân của quân số. Cộng thẳng thì 30 điểm nhân lên theo số người,
+   * nên phải chia.
+   *
+   * MẪU SỐ là số cán bộ CÓ BẢNG trong kỳ, và ô để trống của người có bảng tính
+   * là 0. Giữ một mẫu số duy nhất cho mọi tiêu chí thì tổng điểm của đơn vị
+   * đúng bằng "điểm trung bình một người", so thẳng được với trần 30. Chia theo
+   * từng ô (bỏ qua ô trống) thì mỗi tiêu chí một mẫu số và tổng mất ý nghĩa.
+   *
+   * Người CHƯA CÓ bảng nào thì không vào mẫu số: đó là thiếu dữ liệu chứ không
+   * phải làm việc kém - trả kèm `peopleTotal` để chỉ huy nhìn ra khoảng hụt và
+   * tự sửa nếu muốn tính khác.
+   */
+  private async buildCriteriaAverage(
+    selfSheets: Map<
+      string,
+      Array<{
+        criterionId: unknown;
+        criterionName?: string;
+        maxScore?: number;
+        fieldValues?: Record<string, string | number | boolean>;
+        reviewValues?: Record<string, string | number | boolean>;
+      }>
+    >,
+    peopleTotal: number,
+  ) {
+    const peopleWithSheet = selfSheets.size;
+    if (!peopleWithSheet) {
+      return {
+        criteriaAverage: [],
+        criteriaAverageBasis: { peopleWithSheet: 0, peopleTotal },
+      };
+    }
+
+    /*
+      Chỉ trung bình các cột SỐ. Ô tích ("Đảm bảo" / "Không đảm bảo") không có
+      trung bình nào đúng - kết luận của đơn vị không phải là biểu quyết đa số,
+      nên để trống cho chỉ huy tự tích.
+    */
+    const template = await this.formTemplateModel.findOne({
+      forCriteria: true,
+      isActive: true,
+    });
+    const numericKeys = (template?.columns ?? [])
+      .filter(
+        (column) =>
+          column.dataType === 'number' &&
+          column.semanticKey !== 'criterion_max_score',
+      )
+      .map((column) => column.key);
+    if (!numericKeys.length) {
+      return {
+        criteriaAverage: [],
+        criteriaAverageBasis: { peopleWithSheet, peopleTotal },
+      };
+    }
+
+    /** criterionId -> { tên, trần điểm, tổng theo từng khoá cột }. */
+    const totals = new Map<
+      string,
+      {
+        criterionName: string;
+        maxScore: number;
+        sums: Record<string, number>;
+      }
+    >();
+
+    for (const sheetRows of selfSheets.values()) {
+      for (const row of sheetRows) {
+        const id = String(row.criterionId);
+        let entry = totals.get(id);
+        if (!entry) {
+          entry = {
+            criterionName: row.criterionName ?? '',
+            maxScore: row.maxScore ?? 0,
+            sums: Object.fromEntries(numericKeys.map((key) => [key, 0])),
+          };
+          totals.set(id, entry);
+        }
+        // Ô nào chỉ huy đã chấm lại lúc duyệt bảng thì lấy số đó.
+        const values = { ...row.fieldValues, ...row.reviewValues };
+        for (const key of numericKeys) {
+          const raw = values[key];
+          const value = Number(String(raw ?? '').replace(',', '.'));
+          if (Number.isFinite(value)) entry.sums[key] += value;
+        }
+      }
+    }
+
+    const criteriaAverage = [...totals].map(([criterionId, entry]) => ({
+      criterionId,
+      criterionName: entry.criterionName,
+      maxScore: entry.maxScore,
+      fieldValues: Object.fromEntries(
+        numericKeys.map((key) => [
+          key,
+          // Hai chữ số thập phân: trung bình đầu người hiếm khi tròn.
+          Math.round((entry.sums[key]! / peopleWithSheet) * 100) / 100,
+        ]),
+      ) as Record<string, number>,
+    }));
+
+    return {
+      criteriaAverage,
+      criteriaAverageBasis: { peopleWithSheet, peopleTotal },
     };
   }
 

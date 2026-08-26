@@ -179,6 +179,19 @@ export type SummaryReportDetail = {
     fieldValues: Record<string, string | number | boolean>;
     catalogValues: Record<string, { id: string; name: string }>;
   }>;
+  /**
+   * Điểm khối A GỢI Ý cho đơn vị: trung bình đầu người của các bảng thành viên.
+   * Chỉ nạp sẵn vào bảng của đơn vị khi chỉ huy chưa chấm - số chốt vẫn là
+   * `report.criteriaScores`.
+   */
+  criteriaAverage: Array<{
+    criterionId: string;
+    criterionName: string;
+    maxScore: number;
+    fieldValues: Record<string, number>;
+  }>;
+  /** Mẫu số của phép trung bình: N người có bảng / M người trong báo cáo. */
+  criteriaAverageBasis: { peopleWithSheet: number; peopleTotal: number };
 };
 
 /** Đếm cho dòng "N báo cáo · M đã gửi" trên đầu trang. */

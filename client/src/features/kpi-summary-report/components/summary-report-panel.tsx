@@ -713,6 +713,13 @@ export function SummaryReportPanel({
         report={report}
         people={reportPeople}
         selfScores={detail.selfCriteriaScores ?? []}
+        averageScores={detail.criteriaAverage ?? []}
+        averageBasis={
+          detail.criteriaAverageBasis ?? {
+            peopleWithSheet: 0,
+            peopleTotal: reportPeople.length,
+          }
+        }
         editable={canEditNow}
         onSaved={onChanged}
       />

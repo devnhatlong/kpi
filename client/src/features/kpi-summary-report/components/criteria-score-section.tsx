@@ -22,6 +22,7 @@ import {
   saveSummaryCriteriaScores,
   type SummaryCriterionScoreInput,
 } from "@/features/kpi-summary-report/api";
+import { kpiTone } from "@/features/personal-kpi/status-styles";
 import type {
   CriterionSubjectType,
   SummaryReport,
@@ -52,6 +53,9 @@ type CriteriaScoreSectionProps = {
   people: Array<{ id: string; name: string }>;
   /** Điểm cán bộ TỰ CHẤM ở báo cáo cá nhân - nạp sẵn khi chỉ huy chưa sửa. */
   selfScores: SummaryReportDetail["selfCriteriaScores"];
+  /** Trung bình đầu người của các bảng thành viên - nạp sẵn cho bảng đơn vị. */
+  averageScores: SummaryReportDetail["criteriaAverage"];
+  averageBasis: SummaryReportDetail["criteriaAverageBasis"];
   /** Báo cáo còn sửa được không; đã trình hoặc đã duyệt thì chỉ đọc. */
   editable: boolean;
   onSaved: () => void | Promise<void>;
@@ -69,6 +73,8 @@ export function CriteriaScoreSection({
   report,
   people,
   selfScores,
+  averageScores,
+  averageBasis,
   editable,
   onSaved,
 }: CriteriaScoreSectionProps) {
@@ -132,6 +138,18 @@ export function CriteriaScoreSection({
     rowsFor(unitSubject);
     for (const person of people) {
       rowsFor({ type: "USER", id: person.id, name: person.name });
+    }
+
+    /*
+      Bảng của ĐƠN VỊ nạp sẵn trung bình đầu người của các bảng thành viên -
+      cấp chỉ huy không chấm lại sáu tiêu chí từ con số không. Vẫn sửa đè được,
+      và điểm chỉ huy đã lưu (vòng dưới) luôn thắng con số gợi ý này.
+    */
+    for (const row of averageScores) {
+      apply(rowsFor(unitSubject), row.criterionId, {
+        fieldValues: row.fieldValues,
+        catalogValues: {},
+      });
     }
 
     /*
@@ -290,6 +308,36 @@ export function CriteriaScoreSection({
               Điểm của báo cáo
             </Badge>
           </div>
+          {/*
+            Nói rõ con số ở đây từ đâu ra và mẫu số là bao nhiêu. Không nói thì
+            chỉ huy thấy một bảng tự có số mà không biết nó tính trên mấy người,
+            và không biết mình được phép sửa.
+          */}
+          <p className="text-xs text-muted-foreground">
+            {averageBasis.peopleWithSheet > 0 ? (
+              <>
+                Nạp sẵn theo trung bình đầu người của{" "}
+                <span className="font-medium">
+                  {averageBasis.peopleWithSheet}
+                </span>
+                {averageBasis.peopleTotal > averageBasis.peopleWithSheet ? (
+                  <>
+                    /{averageBasis.peopleTotal} cán bộ{" "}
+                    <span className={kpiTone.warning.text}>
+                      ({averageBasis.peopleTotal -
+                        averageBasis.peopleWithSheet}{" "}
+                      người chưa có bảng khối A nên không vào mẫu số)
+                    </span>
+                  </>
+                ) : (
+                  " cán bộ"
+                )}
+                . Sửa đè được, số bạn nhập mới là số chốt.
+              </>
+            ) : (
+              "Chưa cán bộ nào trong báo cáo có bảng khối A - bảng này đang trống, bạn tự chấm."
+            )}
+          </p>
           {renderTable(unitSubject)}
         </div>
 
