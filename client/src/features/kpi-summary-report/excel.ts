@@ -98,6 +98,73 @@ function exportCellText(
   return cellText(row, column);
 }
 
+/** Một dòng của bảng khối A khi xuất file. */
+export type CriteriaExportRow = {
+  criterionId: string;
+  criterionName: string;
+  criterionNote: string;
+  maxScore: number;
+  fieldValues: Record<string, string | number | boolean>;
+  catalogValues: Record<string, { id: string; name: string }>;
+};
+
+/**
+ * Giá trị một ô của bảng khối A, đọc theo đúng luật của `CriteriaTable`.
+ *
+ * Bốn ô ánh xạ tiêu chí lấy từ chính dòng chứ không từ `fieldValues`: chúng là
+ * phần admin khai sẵn ở danh mục, người chấm không gõ lại nên không có gì lưu
+ * trong hai túi giá trị.
+ */
+function criteriaCellText(
+  row: CriteriaExportRow,
+  column: FormTemplateColumn,
+  index: number,
+): string | number {
+  switch (column.semanticKey) {
+    case "stt":
+      return index + 1;
+    case "criterion":
+      return row.criterionName;
+    case "criterion_note":
+      return row.criterionNote;
+    case "criterion_max_score":
+      return row.maxScore;
+    default:
+      break;
+  }
+  const picked = row.catalogValues[column.key];
+  if (picked?.id) return picked.name ?? "";
+  const raw = row.fieldValues[column.key];
+  if (column.dataType === "boolean") return raw === true ? "x" : "";
+  if (raw === undefined || raw === null || String(raw).trim() === "") return "";
+  /*
+    Cột điểm ghi xuống dưới dạng SỐ chứ không phải chuỗi: ghi chuỗi thì Excel
+    căn trái, không cộng được, và người nhận không dùng lại được ô đó trong
+    công thức nào.
+  */
+  if (column.dataType === "number") {
+    const value = Number(String(raw).replace(",", "."));
+    if (Number.isFinite(value)) return value;
+  }
+  return String(raw);
+}
+
+/** Tổng của một cột số ở dòng "Tổng điểm" - khớp tfoot của `CriteriaTable`. */
+function criteriaColumnTotal(
+  rows: CriteriaExportRow[],
+  column: FormTemplateColumn,
+): number | null {
+  if (column.dataType !== "number") return null;
+  if (column.semanticKey === "criterion_max_score") {
+    return rows.reduce((sum, row) => sum + row.maxScore, 0);
+  }
+  return rows.reduce((sum, row) => {
+    const text = String(row.fieldValues[column.key] ?? "").trim();
+    const value = Number(text.replace(",", "."));
+    return sum + (text && Number.isFinite(value) ? value : 0);
+  }, 0);
+}
+
 /** Tên sheet Excel: bỏ ký tự cấm và cắt còn 31 ký tự. */
 function sheetName(raw: string, fallback: string): string {
   const cleaned = raw.replace(/[[\]:*?/\\]/g, " ").trim();
@@ -203,6 +270,17 @@ function setOutlineBorder(cell: ExcelJS.Cell) {
 export async function exportSummaryReportToExcel(
   report: SummaryReport,
   blocks: SummaryAxisBlock[],
+  /**
+   * Khối A - in TRƯỚC các trục, đúng thứ tự của mẫu giấy (A rồi mới tới B).
+   * Bỏ trống thì file không có khối A, dùng cho mẫu báo cáo không bật khối này.
+   */
+  criteria?: {
+    template: {
+      columns: FormTemplateColumn[];
+      headerGroups: FormHeaderGroup[];
+    } | null;
+    rows: CriteriaExportRow[];
+  },
 ) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = report.ownerName || "KPI Manager";
@@ -218,13 +296,19 @@ export async function exportSummaryReportToExcel(
   const visibleOf = (axis: SummaryAxisBlock) =>
     (axis.template?.columns ?? []).filter((column) => column.visible);
 
+  const criteriaColumns = (criteria?.template?.columns ?? []).filter(
+    (column) => column.visible,
+  );
+  const hasCriteria = Boolean(criteria?.rows.length) && criteriaColumns.length > 0;
+
   /*
     Các trục dài ngắn khác nhau nên phần tiêu đề gộp theo trục rộng nhất, nếu
-    không thì tiêu đề hụt so với bảng bên dưới.
+    không thì tiêu đề hụt so với bảng bên dưới. Khối A cũng tính vào - nó là một
+    bảng trong cùng sheet, bỏ qua thì tiêu đề hụt đúng bằng phần nó rộng hơn.
   */
   const widestCol = axes.reduce(
     (max, axis) => Math.max(max, visibleOf(axis).length),
-    1,
+    Math.max(1, hasCriteria ? criteriaColumns.length : 1),
   );
 
   /*
@@ -269,6 +353,97 @@ export async function exportSummaryReportToExcel(
     cursor += 1;
   }
   cursor += 1;
+
+  /*
+    ------------------------------------------------------------- khối A
+
+    Đứng trước mọi trục, đúng thứ tự mẫu giấy: "A. DANH MỤC ĐIỂM TIÊU CHÍ CHUNG"
+    rồi mới tới "B. NHIỆM VỤ CÔNG TÁC". In bộ điểm của ĐƠN VỊ - đó là điểm của
+    báo cáo; bảng của từng cán bộ là đánh giá cá nhân, mẫu giấy không có.
+
+    Tiêu chí chưa chấm vẫn in ra kèm điểm tối đa: bản in phải liệt kê đủ danh
+    mục và tổng trần điểm, giống hệt tờ mẫu chưa điền.
+  */
+  if (hasCriteria) {
+    const rows = criteria!.rows;
+    const lastCol = Math.max(1, criteriaColumns.length);
+
+    sheet.mergeCells(cursor, 1, cursor, lastCol);
+    const bandCell = sheet.getCell(cursor, 1);
+    bandCell.value = "A · DANH MỤC ĐIỂM TIÊU CHÍ CHUNG";
+    bandCell.font = { bold: true, size: 12 };
+    bandCell.alignment = { vertical: "middle" };
+    bandCell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFE2E8F0" },
+    };
+    setOutlineBorder(bandCell);
+    cursor += 1;
+
+    const placed = placeHeaderCells(
+      criteria!.template!.columns,
+      criteria!.template!.headerGroups,
+      0,
+    );
+    const headerTop = cursor;
+    if (placed) {
+      for (const cell of placed.cells) {
+        const top = headerTop + cell.row;
+        const bottom = top + cell.rowSpan - 1;
+        const left = cell.col + 1;
+        const right = left + cell.colSpan - 1;
+        if (bottom > top || right > left) {
+          sheet.mergeCells(top, left, bottom, right);
+        }
+        const target = sheet.getCell(top, left);
+        target.value = cell.label;
+        target.font = { bold: true };
+        target.alignment = {
+          horizontal: "center",
+          vertical: "middle",
+          wrapText: true,
+        };
+        setOutlineBorder(target);
+      }
+      criteriaColumns.forEach((column, index) => {
+        widenColumn(index + 1, Math.max(10, Math.round(column.width / 7)));
+      });
+      cursor = headerTop + placed.rowCount;
+    }
+
+    rows.forEach((row, rowIndex) => {
+      criteriaColumns.forEach((column, index) => {
+        const cell = sheet.getCell(cursor, index + 1);
+        cell.value = criteriaCellText(row, column, rowIndex);
+        cell.alignment = {
+          vertical: "top",
+          wrapText: true,
+          horizontal:
+            column.dataType === "number" || column.semanticKey === "stt"
+              ? "center"
+              : undefined,
+        };
+        setOutlineBorder(cell);
+      });
+      cursor += 1;
+    });
+
+    // Dòng "Tổng điểm" cuối bảng - có ở mẫu giấy, và là chỗ đọc ra 24/30.
+    if (criteriaColumns.some((column) => column.dataType === "number")) {
+      criteriaColumns.forEach((column, index) => {
+        const cell = sheet.getCell(cursor, index + 1);
+        const total = criteriaColumnTotal(rows, column);
+        cell.value = index === 0 && total === null ? "Tổng điểm" : (total ?? "");
+        cell.font = { bold: true };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        setOutlineBorder(cell);
+      });
+      cursor += 1;
+    }
+
+    cursor += 1;
+  }
 
   for (const axis of axes) {
     const template = axis.template;
@@ -411,7 +586,7 @@ export async function exportSummaryReportToExcel(
     cursor += 1;
   }
 
-  if (!axes.length) {
+  if (!axes.length && !hasCriteria) {
     sheet.getCell(cursor, 1).value = "Báo cáo chưa có nhiệm vụ nào.";
   }
 

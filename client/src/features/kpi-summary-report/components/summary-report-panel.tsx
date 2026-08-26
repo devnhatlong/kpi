@@ -44,9 +44,15 @@ import {
 import { useQualityLevelMap } from "@/features/kpi-form-config/use-quality-levels";
 import { useAxisTemplates } from "@/features/personal-kpi/use-axis-templates";
 import {
+  criterionKeys,
+  fetchCriteriaAll,
   fetchFormTemplateForCriteria,
   formTemplateKeys,
 } from "@/features/kpi-form-config/api";
+import {
+  entityId,
+  type Criterion,
+} from "@/features/kpi-form-config/types";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import {
   approveSummaryReport,
@@ -64,7 +70,10 @@ import { ProgressUpdateDialog } from "@/features/personal-kpi/components/progres
 import { ReviewerEditDialog } from "@/features/personal-kpi/components/reviewer-edit-dialog";
 import { PickCompletedDialog } from "@/features/kpi-summary-report/components/pick-completed-dialog";
 import { SummaryEntriesTable } from "@/features/kpi-summary-report/components/summary-entries-table";
-import { exportSummaryReportToExcel } from "@/features/kpi-summary-report/excel";
+import {
+  exportSummaryReportToExcel,
+  type CriteriaExportRow,
+} from "@/features/kpi-summary-report/excel";
 import {
   buildReportContent,
   groupByAxis,
@@ -224,6 +233,12 @@ export function SummaryReportPanel({
     fetchFormTemplateForCriteria,
     { revalidateOnFocus: false },
   );
+  /*
+    Danh mục tiêu chí - cần cho file xuất, để in đủ cả tiêu chí CHƯA chấm kèm
+    điểm tối đa. `criteriaScores` chỉ lưu dòng đã có giá trị, in mỗi nó thì bản
+    in thiếu dòng và tổng trần điểm không còn ra 30. Chung khoá SWR với khối A.
+  */
+  const criteriaCatalog = useSWR(criterionKeys.all, fetchCriteriaAll);
   /*
     Nhiệm vụ khoá bộ cột theo phiên bản mẫu lúc gửi, nhưng CÔNG THỨC tính điểm
     thì lấy theo mẫu đang áp dụng của trục - admin sửa công thức xong phải thấy
@@ -409,6 +424,63 @@ export function SummaryReportPanel({
   };
 
   /**
+   * Dựng khối A cho file xuất: danh mục tiêu chí ghép với điểm ĐƠN VỊ.
+   *
+   * Đi từ danh mục chứ không từ `criteriaScores`: bản lưu chỉ có dòng đã chấm,
+   * in mỗi nó thì bản in thiếu tiêu chí và tổng trần điểm không còn ra 30. Tên
+   * và trần điểm ưu tiên bản ĐÃ CHỤP lúc chấm - danh mục sửa về sau không được
+   * làm méo một báo cáo đã trình.
+   *
+   * Thứ tự đè giống hệt màn hình (xem `CriteriaScoreSection`): trung bình đầu
+   * người nạp trước, điểm chỉ huy đã lưu đè lên. Chỉ in bản đã lưu thì báo cáo
+   * chưa bấm Lưu sẽ ra file trống trong khi màn hình đang hiện đủ số - hai thứ
+   * lệch nhau là lỗi nặng hơn cả việc in ra một con số chưa chốt.
+   */
+  const buildCriteriaExport = (
+    fresh: SummaryReportDetail,
+    catalog: Criterion[],
+    template: typeof criteriaTemplate.data,
+  ) => {
+    if (!template) return undefined;
+
+    const average = new Map(
+      (fresh.criteriaAverage ?? []).map((row) => [row.criterionId, row]),
+    );
+    const saved = new Map(
+      (fresh.report.criteriaScores ?? [])
+        .filter((row) => row.subjectType === "DEPARTMENT")
+        .map((row) => [row.criterionId, row]),
+    );
+    const rows: CriteriaExportRow[] = catalog.map((item) => {
+      const id = entityId(item);
+      const match = saved.get(id);
+      const mean = average.get(id);
+      saved.delete(id);
+      return {
+        criterionId: id,
+        criterionName: match?.criterionName || mean?.criterionName || item.name,
+        criterionNote: item.note ?? "",
+        maxScore: match?.maxScore ?? mean?.maxScore ?? item.maxScore ?? 0,
+        fieldValues: match?.fieldValues ?? mean?.fieldValues ?? {},
+        catalogValues: match?.catalogValues ?? {},
+      };
+    });
+    // Tiêu chí đã chấm rồi mới bị gỡ khỏi danh mục: vẫn phải in, điểm đã vào báo cáo.
+    for (const row of saved.values()) {
+      rows.push({
+        criterionId: row.criterionId,
+        criterionName: row.criterionName,
+        criterionNote: "",
+        maxScore: row.maxScore,
+        fieldValues: row.fieldValues,
+        catalogValues: row.catalogValues,
+      });
+    }
+
+    return { template, rows };
+  };
+
+  /**
    * File xuất ra phải là số của LÚC BẤM, không phải bản đang nằm trong bộ nhớ
    * đệm: báo cáo có thể vừa bị cấp trên sửa, hoặc mở từ hôm qua chưa nạp lại.
    * Nạp lại một lượt rồi mới dựng file; khác với bản trên màn hình thì đồng bộ
@@ -418,7 +490,11 @@ export function SummaryReportPanel({
     setExporting(true);
     try {
       const fresh = await fetchSummaryReport(report._id);
-      await exportSummaryReportToExcel(fresh.report, fresh.axes);
+      await exportSummaryReportToExcel(
+        fresh.report,
+        fresh.axes,
+        buildCriteriaExport(fresh, criteriaCatalog.data ?? [], criteriaTemplate.data),
+      );
       const stale = fresh.report.updatedAt !== report.updatedAt;
       if (stale) await onChanged();
       toast.success(
