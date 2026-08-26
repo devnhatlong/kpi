@@ -4101,8 +4101,18 @@ export class PersonalKpiService {
       to: unknown;
     }> = [];
 
-    const titleOf = (key: string) =>
-      template?.columns?.find((column) => column.key === key)?.title ?? key;
+    /*
+      Tên cột kèm NHÓM HEADER bọc ngoài: mẫu thật đặt hai cột trùng tên "Thực tế
+      hoàn thành %" cho cả nhóm tiến độ (B) lẫn nhóm chất lượng (C). Ghi mỗi tên
+      cột thì đọc nhật ký thấy hai dòng y hệt nhau, không biết số nào của nhóm
+      nào - và ở client hai dòng đó còn trùng cả key React.
+    */
+    const titleOf = (key: string) => {
+      const column = template?.columns?.find((entry) => entry.key === key);
+      if (!column) return key;
+      const group = (column.headerPath ?? []).filter(Boolean).join(' · ');
+      return group ? `${group} · ${column.title}` : column.title;
+    };
 
     if (dto.axisId !== undefined && String(item.axisId) !== dto.axisId) {
       const axis = await this.axisModel

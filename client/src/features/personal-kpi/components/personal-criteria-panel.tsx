@@ -359,8 +359,9 @@ function CriteriaLog({ logs }: { logs: PersonalKpiProgressLog[] }) {
               ) : null}
               {log.changes.length ? (
                 <ul className="mt-0.5 space-y-0.5 rounded-md bg-muted/50 px-2 py-1">
-                  {log.changes.map((change) => (
-                    <li key={`${change.detail}-${change.to}`}>
+                  {/* Khoá theo vị trí - hai cột của mẫu có thể trùng tên. */}
+                  {log.changes.map((change, index) => (
+                    <li key={index}>
                       <span className="text-muted-foreground">
                         {change.detail}:{" "}
                       </span>

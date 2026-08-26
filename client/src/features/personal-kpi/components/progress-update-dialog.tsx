@@ -500,9 +500,16 @@ function TaskTimeline({
 
               {log.changes.length > 0 ? (
                 <div className="mt-1 space-y-0.5 rounded-md bg-muted/50 px-2 py-1">
-                  {log.changes.map((change) => (
+                  {/*
+                    Khoá theo VỊ TRÍ, không theo nội dung: hai ô khác nhau vẫn
+                    có thể ra cùng `field` + `detail` (mẫu thật có hai cột trùng
+                    tên "Thực tế hoàn thành %"). Danh sách này là ảnh chụp của
+                    một mốc đã xảy ra, không bao giờ đảo hay chèn thêm, nên
+                    dùng chỉ số là an toàn.
+                  */}
+                  {log.changes.map((change, index) => (
                     <ChangeLine
-                      key={`${change.field}-${change.detail}`}
+                      key={index}
                       change={change}
                       columns={columns}
                     />
