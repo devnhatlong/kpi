@@ -235,8 +235,12 @@ export function pathRequiresPermissions(
   return hit ? hit[1] : null;
 }
 
+/*
+  Dòng trên là ĐƠN VỊ, dòng dưới là tên phần mềm - cùng thứ tự với màn đăng
+  nhập. Đảo hai dòng ở hai chỗ thì cùng một hệ thống mà đọc ra hai nhận diện.
+*/
 export const SIDEBAR_BRAND = {
-  title: "Quản lý KPI",
-  subtitle: "Công an Lâm Đồng",
+  title: "Công an tỉnh Lâm Đồng",
+  subtitle: "Hệ thống quản lý và chấm điểm KPI",
   logo: "/icons/logo_cand.png",
 } as const;

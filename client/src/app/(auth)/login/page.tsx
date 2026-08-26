@@ -40,19 +40,23 @@ export default function LoginPage() {
           className="absolute inset-0 opacity-70 mix-blend-overlay pointer-events-none"
           style={{ background: "var(--gradient-mesh)" }}
         />
-        <div className="relative flex items-center gap-3">
-          <div className="relative h-14 w-14">
+        <div className="relative flex items-center gap-4">
+          <div className="relative h-20 w-20 shrink-0">
             <Image
               src="/icons/logo_cand.png"
               alt="Logo Công an"
               fill
-              sizes="56px"
+              sizes="80px"
               className="object-contain"
             />
           </div>
           <div>
-            <div className="font-display text-xl font-bold">KPI Công an Lâm Đồng</div>
-            <div className="text-xs text-white/75">Hệ thống chấm điểm hiệu suất công tác</div>
+            <div className="font-display text-3xl font-bold leading-tight">
+              Công an tỉnh Lâm Đồng
+            </div>
+            <div className="text-base text-white/80">
+              Hệ thống quản lý và chấm điểm KPI
+            </div>
           </div>
         </div>
 
@@ -91,17 +95,25 @@ export default function LoginPage() {
 
       <main className="flex items-center justify-center px-6 py-12 sm:px-10">
         <div className="w-full max-w-md">
-          <div className="lg:hidden flex items-center gap-3 mb-8">
-            <div className="relative h-14 w-14 rounded-xl overflow-hidden ring-1 ring-primary/20">
+          {/* Bản cho màn hẹp: cùng cỡ chữ với cột trái, khỏi lệch nhận diện. */}
+          <div className="lg:hidden flex items-center gap-4 mb-8">
+            <div className="relative h-20 w-20 shrink-0 rounded-xl overflow-hidden ring-1 ring-primary/20">
               <Image
                 src="/icons/logo_cand.png"
                 alt="Logo Công an"
                 fill
-                sizes="56px"
+                sizes="80px"
                 className="object-contain"
               />
             </div>
-            <div className="font-display text-xl font-bold">KPI Công an Lâm Đồng</div>
+            <div>
+              <div className="font-display text-2xl font-bold leading-tight">
+                Công an tỉnh Lâm Đồng
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Hệ thống quản lý và chấm điểm KPI
+              </div>
+            </div>
           </div>
 
           <div className="mb-8">
