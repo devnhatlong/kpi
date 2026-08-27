@@ -439,6 +439,22 @@ export class PersonalMissionBoardQueryDto {
   includeDecided?: boolean;
 }
 
+/**
+ * Xin đọc trọn báo cáo một ngày của MỘT cán bộ.
+ *
+ * Bắt buộc cả hai trường: bỏ trống ngày thì thành "mọi ngày của người này",
+ * là một câu hỏi khác hẳn và nặng hơn nhiều.
+ */
+export class PersonalMissionStaffDayQueryDto {
+  @ApiProperty({ description: 'Cán bộ cần xem' })
+  @IsMongoId()
+  ownerId: string;
+
+  @ApiProperty({ description: 'Ngày báo cáo YYYY-MM-DD' })
+  @IsString()
+  reportDate: string;
+}
+
 export const PERSONAL_MISSION_STAT_SCOPES = ['mine', 'unit'] as const;
 export type PersonalMissionStatScope =
   (typeof PERSONAL_MISSION_STAT_SCOPES)[number];

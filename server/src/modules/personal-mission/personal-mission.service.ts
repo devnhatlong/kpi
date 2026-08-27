@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -40,6 +41,7 @@ import {
   PersonalMissionBoardQueryDto,
   PersonalMissionListQueryDto,
   PersonalMissionReportsQueryDto,
+  PersonalMissionStaffDayQueryDto,
   PersonalMissionStatisticsQueryDto,
   ReviewPersonalMissionDto,
   ReviewerEditPersonalMissionDto,
@@ -1716,6 +1718,125 @@ export class PersonalMissionService {
   }
 
   /**
+   * Trọn báo cáo MỘT NGÀY của một cán bộ, cho chỉ huy đọc lại như bản cán bộ
+   * nhập.
+   *
+   * Bảng tổng (`board`) chỉ trả những việc đang nằm ở chỗ mình, nên nhìn vào đó
+   * chỉ huy thấy một mảnh: việc đã duyệt xong và chuyển tiếp lên trên đã rời
+   * khỏi bàn mình, dù nó vẫn là một dòng trong báo cáo ngày hôm đó. Muốn đọc
+   * "cả ngày này cán bộ làm những gì" thì phải hỏi theo CHỦ NHIỆM VỤ, không hỏi
+   * theo người đang giữ.
+   *
+   * Nháp chưa gửi thì không trả: đó là phần cán bộ đang soạn dở, chưa ai được
+   * xem - kể cả chỉ huy.
+   */
+  async staffDayReport(userId: string, query: PersonalMissionStaffDayQueryDto) {
+    const actor = await this.requireActor(userId);
+    const ownerId = this.requireObjectId(query.ownerId, 'Cán bộ');
+    const reportDate = this.requireYmd(query.reportDate, 'reportDate');
+
+    const owner = await this.userModel
+      .findById(ownerId)
+      .select('fullName username rank departmentId');
+    if (!owner) throw new NotFoundException('Không tìm thấy cán bộ.');
+
+    // Không populate mà tra tên đơn vị bằng một lượt riêng: populate làm kiểu
+    // của `departmentId` nhập nhằng giữa id và cả tài liệu, mà chỗ kiểm tra
+    // quyền ngay dưới đây cần đúng cái id.
+    const ownerDepartmentId = owner.departmentId
+      ? new Types.ObjectId(String(owner.departmentId))
+      : null;
+
+    await this.requireCanReadStaffDay(
+      actor,
+      ownerDepartmentId,
+      ownerId,
+      reportDate,
+    );
+
+    const items = await this.itemModel
+      .find({
+        ownerId,
+        reportDate,
+        reviewStatus: { $ne: 'DRAFT' },
+      })
+      // Cùng thứ tự với màn nhập: theo trục rồi theo nội dung công việc, trong
+      // một ô thì giữ thứ tự cán bộ đã gõ.
+      .sort({ axisId: 1, workContentId: 1, createdAt: 1 })
+      .populate('axisId', 'code name description')
+      .populate('workContentId', 'code name description note')
+      .populate('lastDecidedById', 'fullName username');
+
+    /*
+      Khối A của đúng THÁNG chứa ngày này. Nó chấm theo tháng chứ không theo
+      ngày, nhưng màn nhập vẫn bày nó chung bảng với nhiệm vụ - bỏ ra thì bản
+      chỉ huy đọc thiếu mất một nửa thứ cán bộ phải khai.
+    */
+    const month = serverMonth(reportDate);
+    const criteria = (
+      await this.criteriaSheetSummaries(ownerId, {
+        $gte: month,
+        $lte: month,
+      })
+    ).filter((sheet) => sheet.reviewStatus !== 'DRAFT');
+
+    const department = ownerDepartmentId
+      ? await this.departmentModel.findById(ownerDepartmentId).select('name')
+      : null;
+
+    return {
+      message: 'OK',
+      data: {
+        reportDate,
+        owner: {
+          id: String(owner._id),
+          name: owner.fullName?.trim() || owner.username,
+          rank: owner.rank ?? '',
+          departmentName: department?.name ?? '',
+        },
+        items,
+        criteria,
+      },
+    };
+  }
+
+  /**
+   * Ai được đọc trọn báo cáo ngày của ai.
+   *
+   * Hai đường vào, vì hai tình huống thật sự khác nhau:
+   *
+   *  1. Cán bộ thuộc cây đơn vị mình - đây là quan hệ chỉ huy thường ngày, cùng
+   *     phạm vi mà trang Thống kê đang dùng cho `scope=unit`.
+   *  2. Người đang có ít nhất một việc của ngày đó nằm trên bàn mình. Ở cấp cao
+   *     báo cáo chuyển lên từ nhánh khác, đơn vị người khai không nằm trong cây
+   *     của mình; nhưng việc đã đến tay mình để duyệt thì đọc trọn ngày của nó
+   *     không phải nới quyền, mà chính là thứ đang phải duyệt.
+   */
+  private async requireCanReadStaffDay(
+    actor: ActorInfo,
+    ownerDepartmentId: Types.ObjectId | null,
+    ownerId: Types.ObjectId,
+    reportDate: string,
+  ) {
+    if (String(ownerId) === String(actor.id)) return;
+
+    if (actor.departmentId && ownerDepartmentId) {
+      const subtree = await this.departmentSubtreeIds(actor.departmentId);
+      const wanted = String(ownerDepartmentId);
+      if (subtree.some((id) => String(id) === wanted)) return;
+    }
+
+    const holds = await this.itemModel.exists({
+      ownerId,
+      reportDate,
+      currentRecipientId: actor.id,
+    });
+    if (holds) return;
+
+    throw new ForbiddenException('Bạn không xem được báo cáo của cán bộ này.');
+  }
+
+  /**
    * Bộ lọc bảng tổng, dịch sang thứ bảng khối A hiểu được.
    *
    * Bảng khối A không có trục, không có nội dung công việc, và không có ô chữ
@@ -3356,10 +3477,27 @@ export class PersonalMissionService {
     }
     if (toDate) range.$lte = serverMonth(this.requireYmd(toDate, 'toDate'));
 
+    return {
+      message: 'OK',
+      data: await this.criteriaSheetSummaries(actor.id, range),
+    };
+  }
+
+  /**
+   * Phần tính toán của `listCriteriaSheets`, tách ra để màn chỉ huy đọc bảng
+   * của cán bộ khác dùng lại được.
+   *
+   * Chỉ khác đúng chủ bảng; phép cộng điểm và cách đếm "đã chấm" phải giữ y
+   * nguyên, kẻo cùng một bảng mà cán bộ nhìn ra một số, chỉ huy nhìn ra số khác.
+   */
+  private async criteriaSheetSummaries(
+    ownerId: Types.ObjectId,
+    monthRange: Record<string, string> = {},
+  ) {
     const sheets = await this.criteriaSheetModel
       .find({
-        ownerId: actor.id,
-        ...(Object.keys(range).length ? { periodMonth: range } : {}),
+        ownerId,
+        ...(Object.keys(monthRange).length ? { periodMonth: monthRange } : {}),
       })
       .sort({ periodMonth: -1 })
       .populate('currentRecipientId', 'fullName username');
@@ -3448,7 +3586,7 @@ export class PersonalMissionService {
       });
     }
 
-    return { message: 'OK', data };
+    return data;
   }
 
   /** Lưu nháp cả bảng khối A của một THÁNG - ghi đè nguyên bộ, không lưu vết. */
@@ -4132,7 +4270,10 @@ export class PersonalMissionService {
     if (!wanted.length) return [];
 
     const users = await this.userModel
-      .find({ _id: { $in: wanted.map((id) => new Types.ObjectId(id)) }, isActive: true })
+      .find({
+        _id: { $in: wanted.map((id) => new Types.ObjectId(id)) },
+        isActive: true,
+      })
       .select('fullName username');
 
     const byId = new Map(users.map((user) => [String(user._id), user]));

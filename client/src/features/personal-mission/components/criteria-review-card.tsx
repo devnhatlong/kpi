@@ -12,7 +12,6 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
@@ -21,9 +20,11 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -96,7 +97,12 @@ type CriteriaReviewCardProps = {
 /**
  * Khối A trong bảng tổng của chỉ huy: các bảng tiêu chí chung cấp dưới đã gửi.
  *
- * Để riêng khỏi bảng nhiệm vụ chứ không nhét thành một trục giả: bảng A không
+ * Dựng thành một nút nhỏ mở hộp thoại chứ không phải khối nằm sẵn trong trang:
+ * bảng A chốt theo THÁNG nên chỉ huy chỉ đụng tới vài lần, còn bảng nhiệm vụ
+ * thì ngày nào cũng phải xem - để bảng A nằm trên đầu trang là ngày nào cũng
+ * phải cuộn qua nó mới tới thứ mình cần.
+ *
+ * Vẫn tách khỏi bảng nhiệm vụ chứ không nhét thành một trục giả: bảng A không
  * có trục, không có nội dung công việc, và duyệt theo CẢ BẢNG chứ không lẻ từng
  * dòng - gộp vào bảng nhiệm vụ là phải bịa dữ liệu cho ba cột đó.
  */
@@ -123,6 +129,11 @@ export function CriteriaReviewCard({
   const [returnReason, setReturnReason] = useState("");
   const [forwardSheet, setForwardSheet] =
     useState<PersonalCriteriaSheetRecord | null>(null);
+  /**
+   * Tên rõ là hộp thoại nào, vì trong file này còn hai hộp thoại nữa (trả lại,
+   * gửi lên) cũng có tham số tên `open`.
+   */
+  const [sheetsOpen, setSheetsOpen] = useState(false);
 
   if (!sheets.length) return null;
 
@@ -213,185 +224,216 @@ export function CriteriaReviewCard({
     }
   };
 
+  /** Ruột tiêu đề - CardTitle và DialogTitle bọc ngoài khác nhau. */
+  const titleRow = (
+    <>
+      <ClipboardCheck className="size-4" />
+      Bảng tiêu chí chung (khối A)
+      <Badge
+        variant="secondary"
+        className={cn("font-normal", missionTone.info.soft)}
+      >
+        {sheets.length} bảng
+      </Badge>
+    </>
+  );
+
+  const hint =
+    "Bảng chốt kết quả của CẢ THÁNG, cán bộ cập nhật dần trong tháng. Bạn sửa đè được từng ô - số cán bộ khai vẫn nằm dưới ô để đối chiếu. Chốt là cả bảng khoá lại, cán bộ không sửa tiếp được nữa.";
+
+  /** Danh sách bảng - phần nặng nhất, chỉ dựng một lần cho cả hai kiểu vỏ. */
+  const sheetList = (
+    <div className="space-y-3">
+      {sheets.map(({ sheet, template }) => {
+        const status = sheet.reviewStatus;
+        const editable = canCompletePersonalMission(status);
+        const busy = busyId === sheet._id;
+        const rows = rowsOf(sheet);
+        const dept = departmentName(sheet.ownerDepartmentId);
+        const selfValues = Object.fromEntries(
+          sheet.rows.map((row) => [row.criterionId, row.fieldValues]),
+        );
+
+        return (
+          <Collapsible
+            key={sheet._id}
+            className="overflow-hidden rounded-lg border"
+          >
+            <div className="flex flex-wrap items-center gap-2 bg-muted/30 px-3 py-2.5">
+              <CollapsibleTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-7 shrink-0 [&>svg]:transition-transform data-[state=closed]:[&>svg]:-rotate-90"
+                  aria-label={`Mở bảng của ${personName(sheet.ownerId)}`}
+                >
+                  <ChevronDown className="size-4" />
+                </Button>
+              </CollapsibleTrigger>
+              <span className="font-medium">{personName(sheet.ownerId)}</span>
+              {dept ? (
+                <span className="text-xs text-muted-foreground">{dept}</span>
+              ) : null}
+              <Badge variant="secondary" className="font-normal">
+                Chốt {formatCriteriaPeriod(sheet.periodMonth)}
+              </Badge>
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "font-normal",
+                  status === "COMPLETED"
+                    ? missionTone.success.soft
+                    : status === "RETURNED"
+                      ? missionTone.danger.soft
+                      : missionTone.warning.soft,
+                )}
+              >
+                {PERSONAL_MISSION_STATUS_LABEL[status]}
+              </Badge>
+              {sheet.lastProgressAt ? (
+                <span className="text-xs text-muted-foreground">
+                  Cán bộ đã sửa lại sau khi gửi
+                </span>
+              ) : null}
+            </div>
+
+            <CollapsibleContent className="space-y-3 border-t p-3">
+              {template ? (
+                <CriteriaTable
+                  columns={template.columns}
+                  headerGroups={template.headerGroups}
+                  rows={rows}
+                  disabled={!editable || busy}
+                  selfValues={selfValues}
+                  onChange={(criterionId, part) =>
+                    patch(sheet, criterionId, part)
+                  }
+                />
+              ) : (
+                <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+                  Không dựng lại được bộ cột của bảng này - mẫu khối A đã bị xoá
+                  hoặc chưa gán.
+                </p>
+              )}
+
+              {status === "COMPLETED" ? (
+                <p className="text-xs text-muted-foreground">
+                  Đã chốt
+                  {sheet.reviewScoredByName
+                    ? ` bởi ${sheet.reviewScoredByName}`
+                    : ""}
+                  .{sheet.reviewNote ? ` Nhận xét: ${sheet.reviewNote}` : ""}
+                </p>
+              ) : editable ? (
+                <div className="space-y-2">
+                  <Textarea
+                    rows={2}
+                    value={note[sheet._id] ?? ""}
+                    placeholder="Nhận xét của chỉ huy (không bắt buộc)"
+                    disabled={busy}
+                    onChange={(event) =>
+                      setNote((prev) => ({
+                        ...prev,
+                        [sheet._id]: event.target.value,
+                      }))
+                    }
+                  />
+                  {/*
+                      Chốt là khoá cả tháng: cán bộ hết đường cập nhật cho
+                      những ngày còn lại. Nhắc trước khi bấm, không chặn -
+                      đơn vị vẫn có thể cần chốt sớm.
+                    */}
+                  {sheet.periodMonth === serverYmd().slice(0, 7) ? (
+                    <p className={cn("text-xs", missionTone.warning.text)}>
+                      Tháng này chưa kết thúc - chốt bây giờ là khoá luôn, cán
+                      bộ không cập nhật tiếp được.
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {canReviewPersonalMission(status) ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => {
+                          setReturnSheet(sheet);
+                          setReturnReason("");
+                        }}
+                      >
+                        <Undo2 className="size-4" />
+                        Trả lại
+                      </Button>
+                    ) : null}
+                    {canForwardUp ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => setForwardSheet(sheet)}
+                      >
+                        <Send className="size-4" />
+                        Gửi lên cấp trên
+                      </Button>
+                    ) : null}
+                    <Button
+                      size="sm"
+                      disabled={busy || !template}
+                      onClick={() => void doScore(sheet)}
+                    >
+                      {busy ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <ClipboardCheck className="size-4" />
+                      )}
+                      Chấm & chốt
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </CollapsibleContent>
+          </Collapsible>
+        );
+      })}
+    </div>
+  );
+
   return (
     <>
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+      <Dialog open={sheetsOpen} onOpenChange={setSheetsOpen}>
+        <DialogTrigger asChild>
+          {/*
+            Chỉ một nút nhỏ. Số trên huy hiệu là thứ phải thấy mà không cần
+            bấm vào: có bảng nào đang chờ mình hay không.
+          */}
+          <Button variant="outline" size="sm">
             <ClipboardCheck className="size-4" />
-            Bảng tiêu chí chung (khối A)
+            Bảng khối A
             <Badge
               variant="secondary"
               className={cn("font-normal", missionTone.info.soft)}
             >
-              {sheets.length} bảng
+              {sheets.length}
             </Badge>
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Bảng chốt kết quả của CẢ THÁNG, cán bộ cập nhật dần trong tháng. Bạn
-            sửa đè được từng ô - số cán bộ khai vẫn nằm dưới ô để đối chiếu.
-            Chốt là cả bảng khoá lại, cán bộ không sửa tiếp được nữa.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {sheets.map(({ sheet, template }) => {
-            const status = sheet.reviewStatus;
-            const editable = canCompletePersonalMission(status);
-            const busy = busyId === sheet._id;
-            const rows = rowsOf(sheet);
-            const dept = departmentName(sheet.ownerDepartmentId);
-            const selfValues = Object.fromEntries(
-              sheet.rows.map((row) => [row.criterionId, row.fieldValues]),
-            );
-
-            return (
-              <Collapsible
-                key={sheet._id}
-                className="overflow-hidden rounded-lg border"
-              >
-                <div className="flex flex-wrap items-center gap-2 bg-muted/30 px-3 py-2.5">
-                  <CollapsibleTrigger asChild>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="size-7 shrink-0 [&>svg]:transition-transform data-[state=closed]:[&>svg]:-rotate-90"
-                      aria-label={`Mở bảng của ${personName(sheet.ownerId)}`}
-                    >
-                      <ChevronDown className="size-4" />
-                    </Button>
-                  </CollapsibleTrigger>
-                  <span className="font-medium">
-                    {personName(sheet.ownerId)}
-                  </span>
-                  {dept ? (
-                    <span className="text-xs text-muted-foreground">
-                      {dept}
-                    </span>
-                  ) : null}
-                  <Badge variant="secondary" className="font-normal">
-                    Chốt {formatCriteriaPeriod(sheet.periodMonth)}
-                  </Badge>
-                  <Badge
-                    variant="secondary"
-                    className={cn(
-                      "font-normal",
-                      status === "COMPLETED"
-                        ? missionTone.success.soft
-                        : status === "RETURNED"
-                          ? missionTone.danger.soft
-                          : missionTone.warning.soft,
-                    )}
-                  >
-                    {PERSONAL_MISSION_STATUS_LABEL[status]}
-                  </Badge>
-                  {sheet.lastProgressAt ? (
-                    <span className="text-xs text-muted-foreground">
-                      Cán bộ đã sửa lại sau khi gửi
-                    </span>
-                  ) : null}
-                </div>
-
-                <CollapsibleContent className="space-y-3 border-t p-3">
-                  {template ? (
-                    <CriteriaTable
-                      columns={template.columns}
-                      headerGroups={template.headerGroups}
-                      rows={rows}
-                      disabled={!editable || busy}
-                      selfValues={selfValues}
-                      onChange={(criterionId, part) =>
-                        patch(sheet, criterionId, part)
-                      }
-                    />
-                  ) : (
-                    <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-                      Không dựng lại được bộ cột của bảng này - mẫu khối A đã bị
-                      xoá hoặc chưa gán.
-                    </p>
-                  )}
-
-                  {status === "COMPLETED" ? (
-                    <p className="text-xs text-muted-foreground">
-                      Đã chốt
-                      {sheet.reviewScoredByName
-                        ? ` bởi ${sheet.reviewScoredByName}`
-                        : ""}
-                      .
-                      {sheet.reviewNote ? ` Nhận xét: ${sheet.reviewNote}` : ""}
-                    </p>
-                  ) : editable ? (
-                    <div className="space-y-2">
-                      <Textarea
-                        rows={2}
-                        value={note[sheet._id] ?? ""}
-                        placeholder="Nhận xét của chỉ huy (không bắt buộc)"
-                        disabled={busy}
-                        onChange={(event) =>
-                          setNote((prev) => ({
-                            ...prev,
-                            [sheet._id]: event.target.value,
-                          }))
-                        }
-                      />
-                      {/*
-                        Chốt là khoá cả tháng: cán bộ hết đường cập nhật cho
-                        những ngày còn lại. Nhắc trước khi bấm, không chặn -
-                        đơn vị vẫn có thể cần chốt sớm.
-                      */}
-                      {sheet.periodMonth === serverYmd().slice(0, 7) ? (
-                        <p className={cn("text-xs", missionTone.warning.text)}>
-                          Tháng này chưa kết thúc - chốt bây giờ là khoá luôn,
-                          cán bộ không cập nhật tiếp được.
-                        </p>
-                      ) : null}
-                      <div className="flex flex-wrap justify-end gap-2">
-                        {canReviewPersonalMission(status) ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => {
-                              setReturnSheet(sheet);
-                              setReturnReason("");
-                            }}
-                          >
-                            <Undo2 className="size-4" />
-                            Trả lại
-                          </Button>
-                        ) : null}
-                        {canForwardUp ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => setForwardSheet(sheet)}
-                          >
-                            <Send className="size-4" />
-                            Gửi lên cấp trên
-                          </Button>
-                        ) : null}
-                        <Button
-                          size="sm"
-                          disabled={busy || !template}
-                          onClick={() => void doScore(sheet)}
-                        >
-                          {busy ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <ClipboardCheck className="size-4" />
-                          )}
-                          Chấm & chốt
-                        </Button>
-                      </div>
-                    </div>
-                  ) : null}
-                </CollapsibleContent>
-              </Collapsible>
-            );
-          })}
-        </CardContent>
-      </Card>
+          </Button>
+        </DialogTrigger>
+        {/*
+          flex-col + min-h-0 để phần cuộn nằm gọn trong khung: bảng tiêu chí
+          khá dài, không chặn chiều cao thì hộp thoại tràn khỏi màn hình và
+          hàng nút "Chấm & chốt" bị đẩy ra ngoài tầm với.
+        */}
+        <DialogContent className="flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-5xl">
+          <DialogHeader className="border-b px-6 py-4 pr-14">
+            <DialogTitle className="flex flex-wrap items-center gap-2 text-base">
+              {titleRow}
+            </DialogTitle>
+            <DialogDescription>{hint}</DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+            {sheetList}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <SendRecipientDialog
         open={!!forwardSheet}

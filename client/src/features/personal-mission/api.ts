@@ -375,6 +375,8 @@ export const personalMissionKeys = {
       params.status ?? "",
       params.q ?? "",
     ] as const,
+  staffDay: (ownerId: string, reportDate: string) =>
+    ["personal-mission", "staff-day", ownerId, reportDate] as const,
 };
 
 export async function fetchPersonalMissionReports(
@@ -951,6 +953,38 @@ export async function reviewPersonalMission(input: {
       "/personal-mission/review",
       input,
     ),
+  );
+}
+
+export type StaffDayReport = {
+  reportDate: string;
+  owner: {
+    id: string;
+    name: string;
+    /** Cấp bậc hàm; tài khoản chưa gán thì rỗng. */
+    rank: string;
+    departmentName: string;
+  };
+  items: PersonalMissionApiRecord[];
+  /** Bảng khối A của THÁNG chứa ngày này - màn nhập cũng bày nó chung bảng. */
+  criteria: PersonalCriteriaSheetSummary[];
+};
+
+/**
+ * Trọn báo cáo một ngày của một cán bộ, cho chỉ huy đọc lại.
+ *
+ * Khác `fetchPersonalMissionBoard` ở chỗ hỏi theo CHỦ nhiệm vụ chứ không theo
+ * người đang giữ: việc đã duyệt và chuyển tiếp lên trên không còn nằm ở bàn chỉ
+ * huy nữa, nhưng nó vẫn là một dòng của báo cáo ngày hôm đó.
+ */
+export function fetchStaffDayReport(input: {
+  ownerId: string;
+  reportDate: string;
+}) {
+  return unwrapData(
+    api.get<ApiResponse<StaffDayReport>>("/personal-mission/staff-day", {
+      params: { ownerId: input.ownerId, reportDate: input.reportDate },
+    }),
   );
 }
 

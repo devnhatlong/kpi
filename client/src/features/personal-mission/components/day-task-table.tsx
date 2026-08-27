@@ -99,7 +99,7 @@ export function isSilent(row: DayTaskRow): boolean {
   return row.silence !== null && row.silence >= SILENCE_ALERT_DAYS;
 }
 
-type DayTaskTableProps = {
+type DayTaskTableBaseProps = {
   rows: DayTaskRow[];
   /**
    * Bảng khối A của các ngày trong danh sách - mỗi bảng một dòng, đứng trên
@@ -131,11 +131,35 @@ type DayTaskTableProps = {
    * hiện tên trục.
    */
   axisOrderById?: Map<string, number>;
-  onUpdateProgress: (item: PersonalMissionItem) => void;
-  onEditDetail: (item: PersonalMissionItem) => void;
-  onSend: (item: PersonalMissionItem) => void;
-  onDelete: (item: PersonalMissionItem) => void;
 };
+
+/**
+ * Hai kiểu dùng, tách thành hai nhánh để chỗ gọi không lỡ tay quên:
+ *
+ * - mặc định: bảng của chính chủ, phải đủ bốn thao tác;
+ * - `readOnly`: chỉ huy đọc lại báo cáo của cán bộ khác, bỏ hẳn cột "Thao tác".
+ *
+ * Cập nhật tiến độ / sửa / gửi / xoá đều là việc của CHỦ nhiệm vụ. Bày cho
+ * người khác thì hoặc bấm vào là lỗi quyền, hoặc sửa đè lên bản của người ta.
+ * Bỏ cả cột chứ không chỉ khoá nút - một cột toàn nút xám chỉ tổ chiếm chỗ.
+ */
+type DayTaskTableProps = DayTaskTableBaseProps &
+  (
+    | {
+        readOnly: true;
+        onUpdateProgress?: never;
+        onEditDetail?: never;
+        onSend?: never;
+        onDelete?: never;
+      }
+    | {
+        readOnly?: false;
+        onUpdateProgress: (item: PersonalMissionItem) => void;
+        onEditDetail: (item: PersonalMissionItem) => void;
+        onSend: (item: PersonalMissionItem) => void;
+        onDelete: (item: PersonalMissionItem) => void;
+      }
+  );
 
 /**
  * Ô "Kết quả nhiệm vụ" - tự đổi cách bày theo MẪU của chính dòng đó.
@@ -233,10 +257,13 @@ function MissionResultCell({ row }: { row: DayTaskRow }) {
 function CriteriaSummaryRow({
   sheet,
   showDeadline,
+  readOnly,
   onOpen,
 }: {
   sheet: PersonalCriteriaSheetSummary;
   showDeadline: boolean;
+  /** Phải theo đúng bảng chứa nó, kẻo dòng này thừa một ô và lệch cả cột. */
+  readOnly: boolean;
   onOpen?: (sheet: PersonalCriteriaSheetSummary) => void;
 }) {
   const done = sheet.rowCount > 0 && sheet.scoredCount >= sheet.rowCount;
@@ -316,32 +343,34 @@ function CriteriaSummaryRow({
         {sheet.recipientName || "-"}
       </TableCell>
 
-      <TableCell className="text-right align-middle">
-        <Button
-          size="sm"
-          variant="outline"
-          className="bg-background"
-          onClick={() => onOpen?.(sheet)}
-          disabled={!onOpen}
-          title={
-            editable
-              ? "Mở bảng tiêu chí chung của ngày này"
-              : "Đã chốt - xem lại bảng và nhật ký"
-          }
-        >
-          {editable ? (
-            <>
-              <Pencil className="h-4 w-4" />
-              Chấm bảng A
-            </>
-          ) : (
-            <>
-              <Eye className="h-4 w-4" />
-              Xem bảng A
-            </>
-          )}
-        </Button>
-      </TableCell>
+      {readOnly ? null : (
+        <TableCell className="text-right align-middle">
+          <Button
+            size="sm"
+            variant="outline"
+            className="bg-background"
+            onClick={() => onOpen?.(sheet)}
+            disabled={!onOpen}
+            title={
+              editable
+                ? "Mở bảng tiêu chí chung của ngày này"
+                : "Đã chốt - xem lại bảng và nhật ký"
+            }
+          >
+            {editable ? (
+              <>
+                <Pencil className="h-4 w-4" />
+                Chấm bảng A
+              </>
+            ) : (
+              <>
+                <Eye className="h-4 w-4" />
+                Xem bảng A
+              </>
+            )}
+          </Button>
+        </TableCell>
+      )}
     </TableRow>
   );
 }
@@ -365,6 +394,7 @@ export function DayTaskTable({
   hideHeader = false,
   showReportDate = false,
   axisOrderById,
+  readOnly = false,
   onUpdateProgress,
   onEditDetail,
   onSend,
@@ -377,7 +407,9 @@ export function DayTaskTable({
   const showDeadline = rows.some(
     (row) => Boolean(row.summary.deadline) || row.summary.tracksProgress,
   );
-  const columnCount = showDeadline ? 8 : 7;
+  // Bớt một khi ẩn cột "Thao tác": ô "chưa có dữ liệu" căn theo colSpan này,
+  // lệch số là nó không trải hết bảng.
+  const columnCount = (showDeadline ? 8 : 7) - (readOnly ? 1 : 0);
 
   return (
     <Table>
@@ -397,7 +429,9 @@ export function DayTaskTable({
             <TableHead className="w-[170px]">Tình trạng thực hiện</TableHead>
             <TableHead className="w-[130px]">Trạng thái duyệt</TableHead>
             <TableHead className="w-[160px]">Cấp trên theo dõi</TableHead>
-            <TableHead className="w-[170px] text-right">Thao tác</TableHead>
+            {readOnly ? null : (
+              <TableHead className="w-[170px] text-right">Thao tác</TableHead>
+            )}
           </TableRow>
         </TableHeader>
       )}
@@ -430,6 +464,7 @@ export function DayTaskTable({
             key={sheet.sheetId ?? sheet.period}
             sheet={sheet}
             showDeadline={showDeadline}
+            readOnly={readOnly}
             onOpen={onOpenCriteria}
           />
         ))}
@@ -559,75 +594,77 @@ export function DayTaskTable({
                     {item.recipientName ?? "-"}
                   </TableCell>
 
-                  <TableCell className="text-right align-middle">
-                    <div className="inline-flex items-center gap-1">
-                      {/* Việc đã chốt thì nút đổi thành xem lại - vẫn phải tra
-                        được nhật ký tiến độ chứ không khoá cứng. */}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="bg-background"
-                        onClick={() => onUpdateProgress(item)}
-                        disabled={actingId === item.id}
-                        title={
-                          canUpdateProgress(item.status)
-                            ? "Cập nhật tiến độ hôm nay - gửi rồi vẫn cập nhật được"
-                            : "Đã chốt hoàn thành - xem lại nhật ký tiến độ"
-                        }
-                      >
-                        {canUpdateProgress(item.status) ? (
-                          <>
-                            <Pencil className="h-4 w-4" />
-                            Cập nhật
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="h-4 w-4" />
-                            Xem tiến độ
-                          </>
-                        )}
-                      </Button>
+                  {readOnly ? null : (
+                    <TableCell className="text-right align-middle">
+                      <div className="inline-flex items-center gap-1">
+                        {/* Việc đã chốt thì nút đổi thành xem lại - vẫn phải tra
+                          được nhật ký tiến độ chứ không khoá cứng. */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="bg-background"
+                          onClick={() => onUpdateProgress?.(item)}
+                          disabled={actingId === item.id}
+                          title={
+                            canUpdateProgress(item.status)
+                              ? "Cập nhật tiến độ hôm nay - gửi rồi vẫn cập nhật được"
+                              : "Đã chốt hoàn thành - xem lại nhật ký tiến độ"
+                          }
+                        >
+                          {canUpdateProgress(item.status) ? (
+                            <>
+                              <Pencil className="h-4 w-4" />
+                              Cập nhật
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="h-4 w-4" />
+                              Xem tiến độ
+                            </>
+                          )}
+                        </Button>
 
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-label="Thao tác khác"
-                            disabled={actingId === item.id}
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onSelect={() => onEditDetail(item)}
-                            disabled={!canEditPersonalMission(item.status)}
-                          >
-                            <SquarePen className="h-4 w-4" />
-                            Sửa chi tiết
-                          </DropdownMenuItem>
-                          {/* Chỉ dòng đã từng gửi (bị trả lại rồi sửa) mới gửi lẻ
-                            được; báo cáo mới thì gửi cả lượt ở trên. */}
-                          {item.status === "DRAFT" && item.sentAt ? (
-                            <DropdownMenuItem onSelect={() => onSend(item)}>
-                              <Send className="h-4 w-4" />
-                              Gửi lại nhiệm vụ này
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label="Thao tác khác"
+                              disabled={actingId === item.id}
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onSelect={() => onEditDetail?.(item)}
+                              disabled={!canEditPersonalMission(item.status)}
+                            >
+                              <SquarePen className="h-4 w-4" />
+                              Sửa chi tiết
                             </DropdownMenuItem>
-                          ) : null}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onSelect={() => onDelete(item)}
-                            disabled={!canDeletePersonalMission(item.status)}
-                            className="text-destructive focus:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Xoá nhiệm vụ
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </TableCell>
+                            {/* Chỉ dòng đã từng gửi (bị trả lại rồi sửa) mới gửi lẻ
+                              được; báo cáo mới thì gửi cả lượt ở trên. */}
+                            {item.status === "DRAFT" && item.sentAt ? (
+                              <DropdownMenuItem onSelect={() => onSend?.(item)}>
+                                <Send className="h-4 w-4" />
+                                Gửi lại nhiệm vụ này
+                              </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onSelect={() => onDelete?.(item)}
+                              disabled={!canDeletePersonalMission(item.status)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Xoá nhiệm vụ
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               );
             })}

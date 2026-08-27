@@ -22,6 +22,7 @@ import {
   PersonalMissionBoardQueryDto,
   PersonalMissionListQueryDto,
   PersonalMissionReportsQueryDto,
+  PersonalMissionStaffDayQueryDto,
   PersonalMissionStatisticsQueryDto,
   ReviewPersonalMissionDto,
   ReviewerEditPersonalMissionDto,
@@ -35,7 +36,7 @@ import {
 } from './dto/personal-mission.dto';
 import { PersonalMissionService } from './personal-mission.service';
 
-@ApiTags('Personal nhiệm vụ')
+@ApiTags('Personal Mission')
 @ApiBearerAuth()
 @UseGuards(JwtGuard, PermissionsGuard)
 @Controller('personal-mission')
@@ -136,6 +137,18 @@ export class PersonalMissionController {
     @Query() query: PersonalMissionBoardQueryDto,
   ) {
     return this.personalMissionService.board(user.uid, query);
+  }
+
+  @ApiOperation({
+    summary: 'Toàn bộ báo cáo một ngày của một cán bộ cấp dưới',
+  })
+  @Permissions(Permission.EVALUATION_APPROVE)
+  @Get('staff-day')
+  staffDay(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: PersonalMissionStaffDayQueryDto,
+  ) {
+    return this.personalMissionService.staffDayReport(user.uid, query);
   }
 
   @ApiOperation({ summary: 'Các lượt gửi đến tôi' })

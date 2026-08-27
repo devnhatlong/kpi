@@ -2,14 +2,16 @@
 
 import { useMemo, useState } from "react";
 import {
+  CalendarDays,
   CheckCheck,
+  CircleCheck,
+  MessageSquareWarning,
   ChevronDown,
   Crosshair,
   Eye,
   MoreHorizontal,
   PencilLine,
   Search,
-  TrendingUp,
   TriangleAlert,
   Undo2,
 } from "lucide-react";
@@ -80,6 +82,7 @@ import {
 import { ProgressUpdateDialog } from "@/features/personal-mission/components/progress-update-dialog";
 import { ReviewerEditDialog } from "@/features/personal-mission/components/reviewer-edit-dialog";
 import { ReviewScoreDialog } from "@/features/personal-mission/components/review-score-dialog";
+import { StaffDayReportDialog } from "@/features/personal-mission/components/staff-day-report-dialog";
 import {
   missionTone,
   personalMissionStatusBadgeClass,
@@ -131,12 +134,20 @@ const TABS: Array<{ value: TabValue; label: string }> = [
   { value: "DONE", label: "Hoàn thành" },
 ];
 
-type GroupMode = "TASK" | "AXIS" | "UNIT";
+/**
+ * Cách bày danh sách: phẳng, hay gom theo trục / đơn vị / cán bộ.
+ *
+ * Giữ đúng bộ của màn nhập cá nhân - cùng một khái niệm thì phải cùng một tên,
+ * chứ chỗ gọi "Theo nhiệm vụ" chỗ gọi "Theo nội dung nhiệm vụ" là hai màn đọc
+ * ra hai thứ khác nhau.
+ */
+type GroupMode = "TASK" | "AXIS" | "UNIT" | "PERSON";
 
 const GROUP_MODES: Array<{ value: GroupMode; label: string }> = [
-  { value: "TASK", label: "Theo nhiệm vụ" },
+  { value: "TASK", label: "Theo nội dung nhiệm vụ" },
   { value: "AXIS", label: "Theo trục" },
   { value: "UNIT", label: "Theo đơn vị" },
+  { value: "PERSON", label: "Theo cá nhân" },
 ];
 
 type TrackingRow = {
@@ -676,6 +687,20 @@ function TrackingTable({
 export function PersonalMissionTrackingView() {
   const [tab, setTab] = useState<TabValue>("ALL");
   const [groupMode, setGroupMode] = useState<GroupMode>("UNIT");
+
+  /*
+    Đọc trọn báo cáo một ngày của một cán bộ.
+
+    Giữ luôn danh sách ngày của cán bộ đó thay vì để hộp thoại tự hỏi: danh sách
+    ngoài này lọc theo KHOẢNG ngày, nên "ngày nào" là câu chỉ bảng đang xem mới
+    trả lời được. Hộp thoại đoán thay là đọc nhầm báo cáo của hôm khác.
+  */
+  const [dayReport, setDayReport] = useState<{
+    ownerId: string;
+    ownerName: string;
+    dates: string[];
+  } | null>(null);
+  const [dayReportDate, setDayReportDate] = useState<string | null>(null);
   const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
     useListPagination();
   const [departmentId, setDepartmentId] = useState(ALL);
@@ -865,18 +890,20 @@ export function PersonalMissionTrackingView() {
     }
     const byKey = new Map<string, TrackingRow[]>();
     for (const row of filtered) {
+      // Khoá gom lấy từ chính dòng, không lấy bộ lọc đang chọn: lọc theo một
+      // đơn vị vẫn phải ra được nhiều nhóm cán bộ bên trong đơn vị đó.
       const key =
         groupMode === "AXIS"
           ? row.item.axisName || "Chưa rõ trục"
-          : row.ownerDepartmentName;
+          : groupMode === "PERSON"
+            ? row.ownerName
+            : row.ownerDepartmentName;
       byKey.set(key, [...(byKey.get(key) ?? []), row]);
     }
     return [...byKey.entries()]
       .sort(([left], [right]) => left.localeCompare(right, "vi"))
       .map(([label, groupRows]) => ({ label, rows: groupRows }));
   }, [filtered, pageRows, groupMode]);
-
-  const averageAll = averagePercent(scoped);
 
   const refresh = async () => {
     await mutate();
@@ -918,17 +945,36 @@ export function PersonalMissionTrackingView() {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <h1 className="font-display text-2xl font-semibold tracking-tight">
-          Theo dõi nhiệm vụ cá nhân
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Từng nhiệm vụ cán bộ tự đăng ký trong báo cáo ngày đều được chỉ huy
-          theo dõi tiến độ tới khi xác nhận hoàn thành.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="font-display text-2xl font-semibold tracking-tight">
+            Theo dõi nhiệm vụ cá nhân
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Từng nhiệm vụ cán bộ tự đăng ký trong báo cáo ngày đều được chỉ huy
+            theo dõi tiến độ tới khi xác nhận hoàn thành.
+          </p>
+        </div>
+
+        {/*
+          Khối A thu về một nút cạnh tiêu đề, bấm mới bung ra hộp thoại.
+
+          Nó vẫn phải tách khỏi bảng nhiệm vụ - chấm cho CẢ THÁNG của một cán bộ
+          chứ không phải một việc, và duyệt theo cả bảng, nên bộ lọc theo trục /
+          hạn / tiến độ đều vô nghĩa với nó. Nhưng để nguyên cả bảng nằm đây thì
+          nó đẩy bảng nhiệm vụ - thứ ngày nào cũng phải xem - xuống khỏi màn
+          hình, trong khi bảng A cả tháng mới đụng vài lần.
+
+          Không có bảng nào chờ thì component tự trả về null, nút biến mất.
+        */}
+        <CriteriaReviewCard
+          blocks={data?.criteria ?? null}
+          canForwardUp={data?.canForwardUp ?? false}
+          onDone={refresh}
+        />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
           label="Nhiệm vụ đang theo dõi"
           value={String(counts.ALL)}
@@ -938,7 +984,6 @@ export function PersonalMissionTrackingView() {
         <StatCard
           label="Trễ hạn"
           value={String(counts.OVERDUE)}
-          hint={`Chưa cập nhật ≥ ${SILENCE_ALERT_DAYS} ngày: ${counts.SILENT}`}
           icon={TriangleAlert}
           tone={missionTone.danger}
         />
@@ -948,25 +993,30 @@ export function PersonalMissionTrackingView() {
           icon={CheckCheck}
           tone={missionTone.warning}
         />
+        {/*
+          "Hoàn thành" tách khỏi dòng phụ của Tiến độ trung bình: đó là con số
+          chỉ huy tìm để biết đã chốt được bao nhiêu, không phải chú thích của
+          một chỉ số khác.
+        */}
         <StatCard
-          label="Tiến độ trung bình"
-          value={averageAll === null ? "-" : `${averageAll} %`}
-          hint={`Đã hoàn thành: ${counts.DONE}`}
-          icon={TrendingUp}
+          label="Hoàn thành"
+          value={String(counts.DONE)}
+          icon={CircleCheck}
           tone={missionTone.success}
         />
+        {/*
+          "Chưa cập nhật" cũng tách khỏi dòng phụ của Trễ hạn: hai thứ khác
+          nhau hẳn - trễ hạn là quá ngày phải xong, còn đây là việc chưa quá hạn
+          nhưng nhiều ngày không ai đụng tới. Gộp làm một dòng khiến chỉ huy bỏ
+          sót nhóm thứ hai.
+        */}
+        <StatCard
+          label={`Chưa cập nhật ≥ ${SILENCE_ALERT_DAYS} ngày`}
+          value={String(counts.SILENT)}
+          icon={MessageSquareWarning}
+          tone={missionTone.warning}
+        />
       </div>
-
-      {/*
-        Khối A đứng riêng phía trên bảng nhiệm vụ: nó chấm cho CẢ NGÀY của một
-        cán bộ chứ không phải một việc, và duyệt theo cả bảng - trộn vào danh
-        sách nhiệm vụ thì bộ lọc theo trục / hạn / tiến độ đều vô nghĩa với nó.
-      */}
-      <CriteriaReviewCard
-        blocks={data?.criteria ?? null}
-        canForwardUp={data?.canForwardUp ?? false}
-        onDone={refresh}
-      />
 
       <Card className="shadow-sm">
         <CardContent className="space-y-4 py-4">
@@ -1057,6 +1107,17 @@ export function PersonalMissionTrackingView() {
                   (row) => row.item.status === "COMPLETED",
                 ).length;
                 const groupPercent = averagePercent(group.rows);
+                /*
+                  Mọi dòng trong nhóm theo cá nhân đều cùng một chủ, nên lấy
+                  dòng đầu là đủ. Ngày xếp mới nhất lên trước - mở ra là thấy
+                  ngay báo cáo gần nhất.
+                */
+                const groupOwnerId = group.rows[0]?.item.ownerId ?? "";
+                const groupDates = [
+                  ...new Set(
+                    group.rows.map((row) => row.reportDate).filter(Boolean),
+                  ),
+                ].sort((left, right) => right.localeCompare(left));
                 const table = (
                   <TrackingTable
                     rows={group.rows}
@@ -1147,17 +1208,43 @@ export function PersonalMissionTrackingView() {
                           Hoàn thành {groupDone}
                         </Badge>
                       ) : null}
-                      {groupPercent === null ? null : (
-                        <div className="ml-auto flex min-w-[140px] items-center gap-2">
-                          <ProgressBar
-                            percent={groupPercent}
-                            className="flex-1"
-                          />
-                          <span className="text-xs text-muted-foreground tabular-nums">
-                            {groupPercent}%
-                          </span>
-                        </div>
-                      )}
+                      <div className="ml-auto flex items-center gap-3">
+                        {groupPercent === null ? null : (
+                          <div className="flex min-w-[140px] items-center gap-2">
+                            <ProgressBar
+                              percent={groupPercent}
+                              className="flex-1"
+                            />
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {groupPercent}%
+                            </span>
+                          </div>
+                        )}
+                        {/*
+                          Chỉ ở nhóm theo cá nhân mới có nút này: gom theo trục
+                          hay theo đơn vị thì một nhóm là việc của nhiều người,
+                          không có "báo cáo ngày" nào để mở.
+                        */}
+                        {groupMode === "PERSON" && groupOwnerId ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="bg-background"
+                            onClick={() => {
+                              setDayReport({
+                                ownerId: groupOwnerId,
+                                ownerName: group.label,
+                                dates: groupDates,
+                              });
+                              setDayReportDate(groupDates[0] ?? null);
+                            }}
+                          >
+                            <CalendarDays className="size-4" />
+                            Xem báo cáo ngày
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                     <CollapsibleContent className="border-t">
                       {table}
@@ -1195,6 +1282,19 @@ export function PersonalMissionTrackingView() {
             setDetailOpen(true);
           }
         }}
+      />
+
+      <StaffDayReportDialog
+        open={!!dayReport}
+        onOpenChange={(next) => {
+          if (!next) setDayReport(null);
+        }}
+        ownerId={dayReport?.ownerId ?? null}
+        ownerName={dayReport?.ownerName ?? ""}
+        reportDate={dayReportDate}
+        onReportDateChange={setDayReportDate}
+        availableDates={dayReport?.dates ?? []}
+        axisOrderById={axisOrderById}
       />
 
       <ReviewScoreDialog

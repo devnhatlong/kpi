@@ -212,7 +212,21 @@
       "PowerShell(cd d:\\\\Project\\\\WebApp\\\\KPI\\\\client; npx eslint src/features/personal-mission 2>&1 | Select-String -Pattern \"  error\" | ForEach-Object { \\($_ -split '\\\\s{2,}'\\)[-1] } | Group-Object | Select-Object Count, Name)",
       "Bash(awk 'NR>=2540 && NR<=2720 && \\(/changes.push/ || /await item.save/ || /const changes/ || /progressLogs.push/\\)' personal-mission.service.ts)",
       "Bash(awk -F: '$1>2490 && $1<2760')",
-      "Bash(editableDayItems)"
+      "Bash(editableDayItems)",
+      "Bash(rg -rn \"Bảng tiêu chí chung\" --glob '*.tsx' .)",
+      "Bash(rg -rn \"CriteriaReviewCard\" --glob '*.tsx' ..)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-criteria-card.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/fix-criteria-card.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/wire-tracking-view.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/polish-criteria-card.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/drop-card-variant.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/add-staff-day.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/refactor-criteria-summaries.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/add-staff-day-service.js\")",
+      "Bash(git stash *)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/client-staff-day-api.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/day-table-readonly.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/wire-staff-day.js\")"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
