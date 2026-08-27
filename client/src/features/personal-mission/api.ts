@@ -314,16 +314,58 @@ export function taskToWriteInput(
   };
 }
 
+/** Thanh tab của màn nhập - phải khớp bộ của server. */
+export const PERSONAL_MISSION_MINE_TABS = [
+  "ALL",
+  "DRAFT",
+  "PENDING",
+  "RETURNED",
+  "DONE",
+] as const;
+export type PersonalMissionMineTab =
+  (typeof PERSONAL_MISSION_MINE_TABS)[number];
+
 export type PersonalMissionMineQuery = {
   page?: number;
   limit?: number;
   status?: PersonalMissionStatus | "ALL" | "";
+  /**
+   * Lọc theo tab. Khác `status`: "Hoàn thành" gồm cả đã duyệt lẫn đã chốt, một
+   * trạng thái lẻ không nói được điều đó.
+   */
+  tab?: PersonalMissionMineTab;
   /** Đúng một ngày; server bỏ qua fromDate/toDate khi có trường này. */
   reportDate?: string;
   fromDate?: string;
   toDate?: string;
   q?: string;
   axisId?: string;
+};
+
+/**
+ * Số liệu tổng của màn nhập, tính trên CẢ khoảng ngày chứ không trên trang.
+ *
+ * Tách khỏi danh sách vì danh sách giờ chỉ trả một trang: đếm trên trang đang
+ * xem thì lật sang trang 2 là mọi con số đổi hết.
+ */
+export type PersonalMissionMineOverview = {
+  counts: {
+    ALL: number;
+    DRAFT: number;
+    PENDING: number;
+    RETURNED: number;
+    DONE: number;
+    overdue: number;
+    running: number;
+    silent: number;
+  };
+  /**
+   * Từng ngày trong khoảng: tổng nhiệm vụ và số còn sửa / gửi được.
+   *
+   * Hai ô "Sửa báo cáo ngày" / "Gửi báo cáo ngày" cần biết cả những ngày không
+   * có dòng nào trên trang hiện tại - không thì lật trang là mất lựa chọn.
+   */
+  days: Array<{ date: string; total: number; editable: number }>;
 };
 
 export const personalMissionKeys = {
@@ -377,6 +419,28 @@ export const personalMissionKeys = {
     ] as const,
   staffDay: (ownerId: string, reportDate: string) =>
     ["personal-mission", "staff-day", ownerId, reportDate] as const,
+  board: (params: PersonalMissionBoardQuery) =>
+    [
+      "personal-mission",
+      "board",
+      params.fromDate ?? "",
+      params.toDate ?? "",
+      params.departmentId ?? "",
+      params.q ?? "",
+      params.tab ?? "ALL",
+      params.groupMode ?? "TASK",
+      params.groupKey ?? null,
+      params.page ?? 1,
+      params.limit ?? 20,
+    ] as const,
+  myOverview: (params: { fromDate?: string; toDate?: string; q?: string }) =>
+    [
+      "personal-mission",
+      "my-overview",
+      params.fromDate ?? "",
+      params.toDate ?? "",
+      params.q ?? "",
+    ] as const,
 };
 
 export async function fetchPersonalMissionReports(
@@ -421,6 +485,7 @@ export async function fetchMyPersonalMission(
         toDate: params.toDate || undefined,
         status:
           params.status && params.status !== "ALL" ? params.status : undefined,
+        tab: params.tab && params.tab !== "ALL" ? params.tab : undefined,
         axisId: params.axisId || undefined,
       }),
     }),
@@ -428,6 +493,23 @@ export async function fetchMyPersonalMission(
     ...result,
     data: result.data.map(mapPersonalMissionFromApi),
   }));
+}
+
+export function fetchMyPersonalMissionOverview(
+  params: { fromDate?: string; toDate?: string; q?: string } = {},
+) {
+  return unwrapData(
+    api.get<ApiResponse<PersonalMissionMineOverview>>(
+      "/personal-mission/mine/overview",
+      {
+        params: buildListQuery({
+          q: params.q,
+          fromDate: params.fromDate || undefined,
+          toDate: params.toDate || undefined,
+        }),
+      },
+    ),
+  );
 }
 
 export async function createPersonalMissionBatch(
@@ -880,8 +962,53 @@ export type PersonalMissionBoardCriteriaBlock = {
   sheets: PersonalCriteriaSheetRecord[];
 };
 
+/** Thanh tab của bảng tổng - phải khớp bộ của server. */
+export const PERSONAL_MISSION_BOARD_TABS = [
+  "ALL",
+  "TODAY",
+  "BACKLOG",
+  "OVERDUE",
+  "DUE_SOON",
+  "SILENT",
+  "AWAITING",
+  "DONE",
+] as const;
+export type PersonalMissionBoardTab =
+  (typeof PERSONAL_MISSION_BOARD_TABS)[number];
+
+export type PersonalMissionGroupMode = "TASK" | "AXIS" | "UNIT" | "PERSON";
+
+/**
+ * Tiêu đề một nhóm, đếm trên TOÀN BỘ bộ lọc chứ không trên trang đang xem.
+ *
+ * Nhờ vậy nhóm thu lại vẫn nói đúng số nhiệm vụ, số trễ và tiến độ trung bình
+ * mà không phải tải dòng nào - dòng chỉ tải khi người dùng bung nhóm ra.
+ */
+export type PersonalMissionBoardGroupHeader = {
+  /** id của trục / đơn vị / cán bộ; rỗng = nhóm "chưa rõ". */
+  key: string;
+  label: string;
+  total: number;
+  overdue: number;
+  silent: number;
+  done: number;
+  percent: number | null;
+};
+
 export type PersonalMissionBoard = {
+  /** Dòng của TRANG hiện tại, gom theo trục để mang theo bộ cột của mẫu. */
   axes: PersonalMissionBoardAxis[];
+  /**
+   * Id các dòng theo đúng thứ tự server sắp.
+   *
+   * `axes` gom lại theo trục nên duyệt qua nó là mất thứ tự, mà thứ tự mới là
+   * thứ quyết định dòng nào rơi vào trang này.
+   */
+  order: string[];
+  /** Chỉ có khi đang xem theo nhóm; null = xem phẳng. */
+  groups: PersonalMissionBoardGroupHeader[] | null;
+  /** Các đơn vị có mặt trong bộ lọc, để dựng ô chọn đơn vị. */
+  departments: Array<{ id: string; name: string }>;
   criteria: PersonalMissionBoardCriteriaBlock[] | null;
   counts: {
     pending: number;
@@ -889,10 +1016,13 @@ export type PersonalMissionBoard = {
     returned: number;
     completed: number;
   };
+  /** Đếm cho cả tám tab, không phụ thuộc tab đang chọn. */
+  tabCounts: Record<PersonalMissionBoardTab, number>;
   /** false = không còn ai ở trên, đây là cấp cuối của chuỗi. */
   canForwardUp: boolean;
-  rowCount: number;
-  truncated: boolean;
+  page: number;
+  limit: number;
+  total: number;
 };
 
 export type PersonalMissionBoardQuery = {
@@ -907,6 +1037,12 @@ export type PersonalMissionBoardQuery = {
   ownerId?: string;
   q?: string;
   includeDecided?: boolean;
+  page?: number;
+  limit?: number;
+  tab?: PersonalMissionBoardTab;
+  groupMode?: PersonalMissionGroupMode;
+  /** Có thì chỉ lấy dòng của đúng nhóm đó; rỗng = nhóm "chưa rõ". */
+  groupKey?: string;
 };
 
 export async function fetchPersonalMissionBoard(
@@ -928,7 +1064,13 @@ export async function fetchPersonalMissionBoard(
   put("senderId", params.senderId);
   put("ownerId", params.ownerId);
   put("q", params.q);
+  put("tab", params.tab);
+  put("groupMode", params.groupMode);
   if (params.includeDecided) query.includeDecided = true;
+  if (params.page) query.page = String(params.page);
+  if (params.limit) query.limit = String(params.limit);
+  // Khoá rỗng là nhóm "chưa rõ" - phải gửi đi, khác hẳn với không chọn nhóm nào.
+  if (params.groupKey !== undefined) query.groupKey = params.groupKey;
 
   return unwrapData(
     api.get<ApiResponse<PersonalMissionBoard>>("/personal-mission/board", {

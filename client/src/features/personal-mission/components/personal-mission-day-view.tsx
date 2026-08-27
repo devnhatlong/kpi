@@ -55,6 +55,7 @@ import { useScopedAxes } from "@/features/mission-form-config/use-scoped-axes";
 import {
   deletePersonalMission,
   fetchMyPersonalMission,
+  fetchMyPersonalMissionOverview,
   criteriaPeriodOf,
   fetchPersonalCriteriaList,
   fetchPersonalCriteriaSheet,
@@ -67,7 +68,6 @@ import {
 } from "@/features/personal-mission/api";
 import {
   DayTaskTable,
-  isSilent,
   type DayTaskRow,
 } from "@/features/personal-mission/components/day-task-table";
 import { PersonalTaskDrawer } from "@/features/personal-mission/components/personal-task-drawer";
@@ -97,7 +97,23 @@ import { cn } from "@/lib/utils";
 
 /** Một ngày của một người hiếm khi quá vài chục việc - lấy hết rồi lọc tại chỗ
  * để đếm được số việc từng thẻ mà không phải gọi thêm API đếm. */
+/**
+ * Trần khi xem theo nhóm: lúc đó phải lấy trọn khoảng ngày mới đếm đúng tiêu đề
+ * nhóm. Đây là bảng nhiệm vụ của chính mình nên khối lượng nhỏ.
+ */
 const DAY_FETCH_LIMIT = 200;
+
+/** Số 0 cho mọi ô trong lúc chờ server trả - đừng để giao diện nhấp nháy số cũ. */
+const EMPTY_COUNTS = {
+  ALL: 0,
+  DRAFT: 0,
+  PENDING: 0,
+  RETURNED: 0,
+  DONE: 0,
+  overdue: 0,
+  running: 0,
+  silent: 0,
+};
 
 type TabValue = "ALL" | "DRAFT" | "PENDING" | "RETURNED" | "DONE";
 
@@ -289,19 +305,48 @@ export function PersonalMissionDayView({
   const activeDayLabel =
     activeDate === todayYmd ? "hôm nay" : formatYmd(activeDate);
 
+  /*
+    Lọc theo tab, tìm kiếm và cắt trang đều ở server.
+
+    Xem theo nhóm là ngoại lệ: tiêu đề nhóm phải đếm trên cả khoảng ngày, mà
+    đây là bảng nhiệm vụ của CHÍNH MÌNH nên khối lượng nhỏ - lấy trọn khoảng
+    một lượt vẫn nhẹ, không đáng dựng thêm cơ chế tải theo nhóm như bảng duyệt
+    của chỉ huy (nơi một cấp nhận báo cáo của hàng chục đơn vị).
+  */
+  const grouping = groupMode !== "TASK";
   const listParams = useMemo(
     () => ({
       fromDate,
       toDate,
-      page: 1,
-      limit: DAY_FETCH_LIMIT,
+      tab,
+      q: debouncedQuery || undefined,
+      page: grouping ? 1 : page,
+      limit: grouping ? DAY_FETCH_LIMIT : limit,
     }),
-    [fromDate, toDate],
+    [fromDate, toDate, tab, debouncedQuery, grouping, page, limit],
   );
 
   const { data, isLoading, mutate } = useSWR(
     personalMissionKeys.byDate(listParams),
     () => fetchMyPersonalMission(listParams),
+    // Giữ dữ liệu cũ khi lật trang - không thì mỗi lần bấm là bảng chớp trắng.
+    { keepPreviousData: true },
+  );
+
+  /*
+    Số liệu tổng: đếm theo tab, các thẻ số liệu, và từng ngày trong khoảng.
+
+    Gọi riêng khỏi danh sách vì danh sách chỉ còn một trang. Phần theo ngày còn
+    để dựng hai ô "Sửa báo cáo ngày" / "Gửi báo cáo ngày" - hai ô đó phải thấy
+    được cả ngày không có dòng nào trên trang hiện tại.
+  */
+  const overviewParams = useMemo(
+    () => ({ fromDate, toDate, q: debouncedQuery || undefined }),
+    [fromDate, toDate, debouncedQuery],
+  );
+  const { data: overview, mutate: mutateOverview } = useSWR(
+    personalMissionKeys.myOverview(overviewParams),
+    () => fetchMyPersonalMissionOverview(overviewParams),
   );
 
   const items = useMemo(() => data?.data ?? [], [data]);
@@ -349,15 +394,6 @@ export function PersonalMissionDayView({
           silence: summary.tracksProgress
             ? silenceDays(item.lastProgressAt ?? item.createdAt, todayYmd)
             : null,
-          haystack: normalizeText(
-            [
-              summary.title,
-              item.workContentName,
-              item.axisName,
-              item.recipientName ?? "",
-              ...Object.values(item.task.fieldValues ?? {}),
-            ].join(" "),
-          ),
         };
       }),
     [items, templates.byAxis, qualityLevelById, todayYmd],
@@ -371,22 +407,13 @@ export function PersonalMissionDayView({
     return titles.size === 1 ? [...titles][0]! : "Hạn";
   }, [rows]);
 
-  const counts = useMemo(() => {
-    const byTab = (value: TabValue) =>
-      rows.filter((row) => matchesTab(row.item, value)).length;
-    return {
-      ALL: rows.length,
-      DRAFT: byTab("DRAFT"),
-      PENDING: byTab("PENDING"),
-      RETURNED: byTab("RETURNED"),
-      DONE: byTab("DONE"),
-      overdue: countOverdue(rows),
-      // "Đang thực hiện" tính cả việc đã gửi đang chờ duyệt: chừng nào cấp
-      // trên chưa chốt hoàn thành thì việc vẫn còn đang chạy.
-      running: rows.filter((row) => row.item.status !== "COMPLETED").length,
-      silent: rows.filter(isSilent).length,
-    };
-  }, [rows]);
+  /*
+    Con số của CẢ khoảng ngày, do server đếm.
+
+    Đếm trên danh sách đang hiện thì lật sang trang 2 là mọi số đổi, mà tab
+    "Chờ duyệt (3)" cũng chỉ còn đúng với ba dòng đang nhìn thấy.
+  */
+  const counts = overview?.counts ?? EMPTY_COUNTS;
 
   /*
     Ngày báo cáo của các dòng ĐANG HIỆN.
@@ -399,23 +426,23 @@ export function PersonalMissionDayView({
     Đúng một ngày thì mở thẳng ngày đó. Nhiều ngày thì không đoán: đoán sai là
     người dùng sửa nhầm báo cáo của ngày khác mà không hề biết.
   */
-  const editableDays = useMemo(() => {
-    const count = new Map<string, number>();
-    for (const row of rows) {
-      const date = row.item.reportDate;
-      /*
-        Đếm việc CÒN SỬA ĐƯỢC, không đếm tổng: việc đã gửi thì server chặn ghi
-        nội dung, nên ngày nào gửi hết là mở phiếu ra trống. Hiện một mục ghi
-        "7 việc" mà bấm vào chẳng có gì thì thà đừng hiện.
-      */
-      if (!date || !canEditPersonalMission(row.item.status)) continue;
-      count.set(date, (count.get(date) ?? 0) + 1);
-    }
-    // Mới nhất lên đầu - ngày hay sửa nhất là ngày vừa khai.
-    return [...count.entries()]
-      .sort(([left], [right]) => right.localeCompare(left))
-      .map(([date, tasks]) => ({ date, tasks }));
-  }, [rows]);
+  /*
+    Đếm việc CÒN SỬA ĐƯỢC, không đếm tổng: việc đã gửi thì server chặn ghi nội
+    dung, nên ngày nào gửi hết là mở phiếu ra trống. Hiện một mục ghi "7 việc"
+    mà bấm vào chẳng có gì thì thà đừng hiện.
+
+    Sửa được và gửi được là cùng một bộ trạng thái (nháp / bị trả lại) nên hai ô
+    dùng chung một danh sách.
+  */
+  const editableDays = useMemo(
+    () =>
+      (overview?.days ?? [])
+        .filter((day) => day.editable > 0)
+        // Mới nhất lên đầu - ngày hay sửa nhất là ngày vừa khai.
+        .sort((left, right) => right.date.localeCompare(left.date))
+        .map((day) => ({ date: day.date, tasks: day.editable })),
+    [overview?.days],
+  );
 
   /** Mở phiếu sửa cho đúng một ngày; ngày lấy từ dòng chứ không từ activeDate. */
   const openEditDay = (date: string) => {
@@ -424,14 +451,6 @@ export function PersonalMissionDayView({
     setEditDay(true);
     setDrawerOpen(true);
   };
-
-  const filtered = useMemo(() => {
-    const term = normalizeText(debouncedQuery);
-    return rows.filter(
-      (row) =>
-        matchesTab(row.item, tab) && (!term || row.haystack.includes(term)),
-    );
-  }, [rows, tab, debouncedQuery]);
 
   /*
     Bảng khối A của THÁNG chứa ngày đang nhập. Dùng chung khoá SWR (theo tháng)
@@ -490,7 +509,7 @@ export function PersonalMissionDayView({
     if (groupMode === "TASK") return [];
 
     const byKey = new Map<string, DayTaskRow[]>();
-    for (const row of filtered) {
+    for (const row of rows) {
       const key =
         groupMode === "AXIS"
           ? row.item.axisName || "Chưa rõ trục"
@@ -511,19 +530,12 @@ export function PersonalMissionDayView({
         overdue: countOverdue(groupRows),
         percent: averagePercent(groupRows),
       }));
-  }, [
-    filtered,
-    groupMode,
-    user?.departmentName,
-    user?.fullName,
-    user?.username,
-  ]);
+  }, [rows, groupMode, user?.departmentName, user?.fullName, user?.username]);
 
-  const total = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  // Lọc xong có thể còn ít trang hơn trang đang đứng - kẹp lại kẻo bảng trống.
-  const safePage = Math.min(page, totalPages);
-  const pageRows = filtered.slice((safePage - 1) * limit, safePage * limit);
+  // Server cắt trang rồi: `rows` chính là trang đang xem.
+  const total = data?.meta.total ?? 0;
+  const totalPages = data?.meta.totalPages ?? 1;
+  const safePage = data?.meta.page ?? page;
 
   /*
     Bảng xem cả khoảng ngày, nhưng "báo cáo ngày" thì vẫn là chuyện của ĐÚNG
@@ -555,31 +567,19 @@ export function PersonalMissionDayView({
    * đó nằm chình ình trên màn hình mà không nút nào đụng tới được - menu từng
    * dòng cũng bỏ qua chúng vì nó chỉ hiện cho việc ĐÃ TỪNG gửi rồi bị trả lại.
    */
-  const sendableDays = useMemo(() => {
-    const count = new Map<string, number>();
-    for (const item of items) {
-      if (!canSendPersonalMission(item.status)) continue;
-      const date = item.reportDate ?? activeDate;
-      count.set(date, (count.get(date) ?? 0) + 1);
-    }
-    return [...count.entries()]
-      .sort(([left], [right]) => right.localeCompare(left))
-      .map(([date, tasks]) => ({ date, tasks }));
-  }, [items, activeDate]);
+  const sendableDays = editableDays;
 
   /** Ngày của lượt gửi đang mở; null = ngày mặc định (`activeDate`). */
   const [sendDay, setSendDay] = useState<string | null>(null);
   const sendDate = sendDay ?? activeDate;
-  /** Nhiệm vụ sẽ đi trong lượt gửi - theo ngày đã chọn, không theo activeDate. */
-  const sendTargets = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          (item.reportDate ?? activeDate) === sendDate &&
-          canSendPersonalMission(item.status),
-      ),
-    [items, sendDate, activeDate],
-  );
+  /**
+   * Số nhiệm vụ sẽ đi trong lượt gửi, để hiện trên nút xác nhận.
+   *
+   * Lấy từ số server đếm cho đúng ngày đó chứ không đếm trên danh sách: danh
+   * sách giờ chỉ là một trang, đếm ở đó thì gửi 12 việc mà nút ghi "3 nhiệm vụ".
+   */
+  const sendTargetCount =
+    (overview?.days ?? []).find((day) => day.date === sendDate)?.editable ?? 0;
 
   const criteriaFilled = (criteriaSheet?.rows ?? []).some(
     (row) =>
@@ -686,7 +686,14 @@ export function PersonalMissionDayView({
   };
 
   const refreshDay = async () => {
-    await Promise.all([mutate(), mutateCriteria(), mutateCriteriaList()]);
+    await Promise.all([
+      mutate(),
+      // Đếm nằm ở lượt gọi riêng nên phải nạp lại cùng nhịp - không thì lưu
+      // xong danh sách đổi mà thanh tab vẫn ghi số cũ.
+      mutateOverview(),
+      mutateCriteria(),
+      mutateCriteriaList(),
+    ]);
   };
 
   /**
@@ -719,11 +726,10 @@ export function PersonalMissionDayView({
    * Nhờ vậy mỗi lần gửi vẫn sinh ra một lượt gửi có người nhận và ghi chú.
    */
   const confirmSend = async (payload: SubmitPersonalMissionPayload) => {
-    const targets = sendingItem ? [sendingItem] : sendTargets;
     const withCriteria = canSendCriteria && payload.includeCriteria === true;
     // Không có nhiệm vụ nào nhưng có bảng A thì vẫn gửi - ngày không phát sinh
     // việc vẫn phải trình bảng đánh giá chung lên.
-    if (!targets.length && !withCriteria) return;
+    if (!sendingItem && !sendTargetCount && !withCriteria) return;
     /*
       Gửi theo ĐÚNG ngày báo cáo của nhiệm vụ. Bảng giờ trải cả tuần nên bấm
       gửi ở một dòng của hôm kia mà lại nộp vào phiếu hôm nay là sai ngày -
@@ -737,7 +743,13 @@ export function PersonalMissionDayView({
       const result = await submitPersonalMissionReport(submitDate, {
         ...payload,
         includeCriteria: withCriteria,
-        itemIds: targets.map((item) => item.id),
+        /*
+          Gửi lẻ thì nêu đích danh một id. Gửi cả ngày thì KHÔNG liệt kê id:
+          danh sách ở màn này chỉ còn một trang, liệt kê từ đó là bỏ sót những
+          việc đang nằm ở trang sau. Bỏ trống thì server tự lấy hết nhiệm vụ
+          gửi được của đúng ngày đó.
+        */
+        itemIds: sendingItem ? [sendingItem.id] : undefined,
       });
       await refreshDay();
       if (withCriteria) await mutateCriteria();
@@ -1113,7 +1125,12 @@ export function PersonalMissionDayView({
               <SegmentedTabs
                 ariaLabel="Cách nhóm danh sách"
                 value={groupMode}
-                onChange={setGroupMode}
+                onChange={(next) => {
+                  setGroupMode(next);
+                  // Xem theo nhóm lấy trọn khoảng, xem phẳng cắt trang - đổi
+                  // qua lại mà giữ trang cũ thì trang đó có thể không còn.
+                  setPage(1);
+                }}
                 items={GROUP_MODES}
                 className="border bg-transparent"
                 indicatorClassName="bg-muted shadow-none"
@@ -1136,7 +1153,7 @@ export function PersonalMissionDayView({
               <div className="rounded-md border">
                 <DayTaskTable
                   {...tableProps}
-                  rows={pageRows}
+                  rows={rows}
                   /* Chỉ bày ở trang đầu - lặp lại ở mọi trang thì đọc thành
                      mỗi trang một bảng A khác nhau. */
                   criteriaRows={safePage === 1 ? criteriaRows : []}
@@ -1324,7 +1341,7 @@ export function PersonalMissionDayView({
           sendingItem
             ? `Gửi nhiệm vụ ngày ${formatYmd(sendingItem.reportDate ?? activeDate)}`
             : `Gửi báo cáo ngày ${formatYmd(sendDate)} (${[
-                `${sendTargets.length} nhiệm vụ`,
+                `${sendTargetCount} nhiệm vụ`,
                 canSendCriteria ? "bảng khối A" : "",
               ]
                 .filter(Boolean)

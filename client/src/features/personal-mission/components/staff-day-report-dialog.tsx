@@ -126,7 +126,6 @@ export function StaffDayReportDialog({
         silence: summary.tracksProgress
           ? silenceDays(item.lastProgressAt ?? item.createdAt, todayYmd)
           : null,
-        haystack: "",
       };
     });
   }, [data?.items, templates.byAxis, qualityLevelById, todayYmd]);

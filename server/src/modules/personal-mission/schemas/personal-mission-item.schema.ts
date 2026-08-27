@@ -428,6 +428,71 @@ export class PersonalMissionItem {
   @Prop({ type: [PersonalMissionEditSchema], default: [] })
   edits!: PersonalMissionEdit[];
 
+  // ------------------------------------------- giá trị suy ra, chép sẵn
+  /*
+    Bốn trường dưới đây KHÔNG phải dữ liệu người dùng nhập. Chúng là thứ suy ra
+    từ `fieldValues` cộng với MẪU BẢNG của trục, chép sẵn ra thành trường riêng
+    mỗi lần ghi.
+
+    Vì sao phải chép: hạn và tiến độ nằm trong `fieldValues` dưới khoá cột do
+    mẫu tự đặt, mẫu nào cũng có thể khác. Mongo không lọc, không đếm, không sắp
+    xếp theo thứ nó không nhìn thấy - nên nếu không chép ra thì mọi bộ lọc kiểu
+    "trễ hạn", "chưa cập nhật", "chờ xác nhận" đều buộc phải kéo cả bảng về máy
+    người dùng rồi lọc ở đó. Ở cấp cao nhận báo cáo của nhiều đơn vị thì đó là
+    hàng nghìn dòng mỗi lần mở trang.
+
+    Đổi lại: phải tính lại mỗi lần nội dung, điểm chỉ huy chấm, hoặc mẫu của
+    trục thay đổi. Tất cả đi qua `refreshDerived` trong service - đừng ghi tay
+    mấy trường này ở chỗ khác.
+  */
+
+  /** Hạn hoàn thành (YYYY-MM-DD) đọc từ cột ngày của mẫu; null = mẫu không có. */
+  @Prop({ type: String, default: null })
+  deadlineDate!: string | null;
+
+  /** % tiến độ chốt (đã ghép điểm chỉ huy chấm lại); null = chưa khai. */
+  @Prop({ type: Number, default: null })
+  progressPercent!: number | null;
+
+  /** Mẫu của trục này có cột tiến độ hay không - trục chấm theo mục thì không. */
+  @Prop({ type: Boolean, default: false })
+  tracksProgress!: boolean;
+
+  /**
+   * Cán bộ đã làm xong phần việc của mình chưa - KHÁC "chỉ huy đã chốt".
+   *
+   * Trục có cột tiến độ: đủ 100%. Trục chấm theo mục: đã khai kết quả (điểm Đạt
+   * hoặc tích Không đạt). Đây là căn cứ của tab "Chờ xác nhận hoàn thành", và
+   * cũng là thứ khiến một việc thôi bị tính là trễ hạn.
+   */
+  @Prop({ type: Boolean, default: false })
+  workDone!: boolean;
+
+  /**
+   * Ngày (YYYY-MM-DD, giờ server) của lần đụng vào tiến độ gần nhất; chưa cập
+   * nhật lần nào thì lấy ngày tạo.
+   *
+   * Có sẵn dạng chuỗi ngày để so trực tiếp với mốc "im lặng N ngày" - so bằng
+   * `lastProgressAt` kiểu Date thì phải quy múi giờ trong lúc truy vấn, và
+   * cập nhật lúc 23h hôm qua sẽ ra 0 ngày thay vì 1.
+   */
+  @Prop({ type: String, default: '' })
+  lastTouchedDate!: string;
+
+  /**
+   * Nội dung nhiệm vụ gộp lại, đã bỏ dấu và hạ chữ thường, cho ô tìm kiếm.
+   *
+   * Thay cho cách cũ là `$expr` + `$objectToArray` quét từng khoá của
+   * `fieldValues`: cách đó không dùng được index nên mỗi lần gõ tìm kiếm là
+   * một lượt quét toàn bộ collection.
+   *
+   * CHỈ chứa nội dung của chính nhiệm vụ. Tên cán bộ, tên đơn vị, tên trục nằm
+   * ở collection khác và đổi được - chép vào đây là tự tạo ra dữ liệu cũ. Tìm
+   * theo mấy tên đó thì service tra id trước rồi lọc theo id.
+   */
+  @Prop({ trim: true, default: '' })
+  searchText!: string;
+
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -455,3 +520,25 @@ PersonalMissionItemSchema.index({
   axisId: 1,
   workContentId: 1,
 });
+
+/*
+  Bảng tổng lọc theo tab. Mọi truy vấn đều bắt đầu bằng người đang giữ + khoảng
+  ngày, nên hai khoá đó đứng đầu; trường của tab đứng sau để cùng một index
+  phục vụ được cả "trễ hạn" lẫn "sắp đến hạn".
+*/
+PersonalMissionItemSchema.index({
+  currentRecipientId: 1,
+  reportDate: 1,
+  workDone: 1,
+  deadlineDate: 1,
+});
+PersonalMissionItemSchema.index({
+  currentRecipientId: 1,
+  reportDate: 1,
+  workDone: 1,
+  lastTouchedDate: 1,
+});
+
+/** Ô tìm kiếm trên bảng tổng và trên danh sách của cán bộ. */
+PersonalMissionItemSchema.index({ currentRecipientId: 1, searchText: 1 });
+PersonalMissionItemSchema.index({ ownerId: 1, searchText: 1 });

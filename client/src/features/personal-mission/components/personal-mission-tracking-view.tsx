@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   CalendarDays,
   CheckCheck,
@@ -21,7 +21,6 @@ import { toast } from "sonner";
 import { DateRangeFilter } from "@/components/common/date-range-filter";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import { TablePagination } from "@/components/common/table-pagination";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -66,11 +65,16 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ResolvedTemplate } from "@/features/mission-form-config/form-template-utils";
 import { entityId } from "@/features/mission-form-config/types";
 import { useQualityLevelMap } from "@/features/mission-form-config/use-quality-levels";
+import type { QualityLevel } from "@/features/mission-form-config/types";
 import { useScopedAxes } from "@/features/mission-form-config/use-scoped-axes";
 import {
   fetchPersonalMissionBoard,
   mapPersonalMissionFromApi,
   reviewPersonalMission,
+  personalMissionKeys,
+  type PersonalMissionBoard,
+  type PersonalMissionBoardGroupHeader,
+  type PersonalMissionBoardQuery,
   type PersonalMissionBoardRow,
 } from "@/features/personal-mission/api";
 import { CriteriaReviewCard } from "@/features/personal-mission/components/criteria-review-card";
@@ -162,31 +166,7 @@ type TrackingRow = {
   ownerName: string;
   ownerDepartmentName: string;
   reportDate: string;
-  haystack: string;
 };
-
-function normalizeText(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/đ/g, "d")
-    .trim();
-}
-
-/**
- * Chữ cái đầu của HAI từ cuối tên: "Nguyễn Nhật Long" -> "NL".
- * Tên Việt phân biệt nhau ở tên đệm và tên, không phải ở họ - lấy chữ đầu của
- * họ thì cả phòng toàn chữ "N".
- */
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "?";
-  return parts
-    .slice(-2)
-    .map((part) => part[0]!.toUpperCase())
-    .join("");
-}
 
 /** Việc đã chốt hoặc đã đủ tiến độ thì không tính là nợ nữa. */
 function isSettled(row: TrackingRow): boolean {
@@ -216,47 +196,12 @@ function isAwaitingConfirm(row: TrackingRow): boolean {
   return row.work === "DONE" && row.item.status !== "COMPLETED";
 }
 
-function matchesTab(
-  row: TrackingRow,
-  tab: TabValue,
-  todayYmd: string,
-): boolean {
-  switch (tab) {
-    case "ALL":
-      return true;
-    case "TODAY":
-      return row.reportDate === todayYmd;
-    case "BACKLOG":
-      return row.reportDate < todayYmd && row.item.status !== "COMPLETED";
-    case "OVERDUE":
-      return isOverdue(row);
-    case "DUE_SOON":
-      return isDueSoon(row);
-    case "SILENT":
-      return isSilent(row);
-    case "AWAITING":
-      return isAwaitingConfirm(row);
-    case "DONE":
-      return row.item.status === "COMPLETED";
-  }
-}
-
 /** "Cập nhật N ngày trước" - đọc từ mốc cập nhật tiến độ gần nhất. */
 function lastTouchedLabel(row: TrackingRow): string {
   if (!row.item.lastProgressAt) return "Chưa cập nhật tiến độ";
   if (row.silence === null) return "Chưa cập nhật tiến độ";
   if (row.silence === 0) return "Cập nhật hôm nay";
   return `Cập nhật ${row.silence} ngày trước`;
-}
-
-function averagePercent(rows: TrackingRow[]): number | null {
-  const values = rows
-    .map((row) => row.summary.progressPercent)
-    .filter((value): value is number => value !== null);
-  if (!values.length) return null;
-  return Math.round(
-    values.reduce((sum, value) => sum + value, 0) / values.length,
-  );
 }
 
 type StatCardProps = {
@@ -471,7 +416,6 @@ function TrackingTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[180px]">Cán bộ</TableHead>
           <TableHead className="w-[340px]">Biểu mẫu · Nhiệm vụ</TableHead>
           {/* MỘT cột kết quả, tự đổi theo mẫu của từng dòng. Ba cột cố định
               Tiến độ / Chất lượng / Kết quả chỉ đúng với một loại trục; danh
@@ -482,6 +426,7 @@ function TrackingTable({
           ) : null}
           <TableHead className="w-[130px]">Trạng thái duyệt</TableHead>
           <TableHead className="w-[160px]">Tình trạng thực hiện</TableHead>
+          <TableHead className="w-[180px]">Cán bộ</TableHead>
           <TableHead className="w-[210px] text-right">Thao tác</TableHead>
         </TableRow>
       </TableHeader>
@@ -491,24 +436,6 @@ function TrackingTable({
           const busy = busyId === row.item.id;
           return (
             <TableRow key={row.item.id}>
-              <TableCell className="align-middle">
-                <div className="flex items-center gap-2">
-                  <Avatar className="size-8">
-                    <AvatarFallback className="text-xs">
-                      {initialsOf(row.ownerName)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">
-                      {row.ownerName}
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {row.ownerDepartmentName}
-                    </div>
-                  </div>
-                </div>
-              </TableCell>
-
               {/* Tên nội dung công việc dài cả dòng - phải cho
                     xuống hàng, không thì cột này kéo giãn cả
                     bảng và mấy cột sau bị bóp lại. */}
@@ -608,6 +535,25 @@ function TrackingTable({
               </TableCell>
 
               {/*
+                Cán bộ đứng sau tình trạng thực hiện, không đứng đầu bảng: mắt
+                đọc từ trái sang, mà thứ chỉ huy dò trước là nhiệm vụ và tình
+                trạng của nó - tên người chỉ cần khi đã thấy dòng đáng để ý.
+
+                Không còn ảnh đại diện: chữ cái tắt của tên không nói thêm được
+                gì mà chiếm mất phần bề ngang của chính cái tên.
+              */}
+              <TableCell className="align-middle">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">
+                    {row.ownerName}
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {row.ownerDepartmentName}
+                  </div>
+                </div>
+              </TableCell>
+
+              {/*
                 Một nút mở chi tiết, phần quyết định gom vào menu "..." - bày cả
                 bốn nút ra hàng thì mỗi dòng là một rừng nút, mà thao tác hay
                 dùng nhất vẫn là mở ra đọc đã. Menu giữ lại đường duyệt nhanh
@@ -684,93 +630,19 @@ function TrackingTable({
   );
 }
 
-export function PersonalMissionTrackingView() {
-  const [tab, setTab] = useState<TabValue>("ALL");
-  const [groupMode, setGroupMode] = useState<GroupMode>("UNIT");
-
-  /*
-    Đọc trọn báo cáo một ngày của một cán bộ.
-
-    Giữ luôn danh sách ngày của cán bộ đó thay vì để hộp thoại tự hỏi: danh sách
-    ngoài này lọc theo KHOẢNG ngày, nên "ngày nào" là câu chỉ bảng đang xem mới
-    trả lời được. Hộp thoại đoán thay là đọc nhầm báo cáo của hôm khác.
-  */
-  const [dayReport, setDayReport] = useState<{
-    ownerId: string;
-    ownerName: string;
-    dates: string[];
-  } | null>(null);
-  const [dayReportDate, setDayReportDate] = useState<string | null>(null);
-  const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
-    useListPagination();
-  const [departmentId, setDepartmentId] = useState(ALL);
-  /**
-   * Lọc theo ngày báo cáo - chạy ở server để đếm tab đúng theo khoảng đang xem.
-   *
-   * null = chưa đụng tới, dùng mặc định (tuần này). Chuỗi rỗng = người dùng đã
-   * chủ động bỏ lọc. Tách hai thứ đó ra mới suy lại được ngày mặc định khi
-   * đồng bộ xong giờ server, mà không đè lên lựa chọn của người dùng.
-   */
-  const [fromOverride, setFromOverride] = useState<string | null>(null);
-  const [toOverride, setToOverride] = useState<string | null>(null);
-  /* Giữ ID chứ không giữ nguyên đối tượng dòng: sửa xong nạp lại danh sách
-     thì hộp thoại chi tiết phải hiện số liệu và nhật ký mới, không phải bản
-     chụp lúc bấm mở. */
-  const [detailId, setDetailId] = useState<string | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
-  /** Nhiệm vụ đang mở form chấm điểm để chốt hoàn thành. */
-  const [editRow, setEditRow] = useState<TrackingRow | null>(null);
-  const [editOpen, setEditOpen] = useState(false);
-
-  const [scoreRow, setScoreRow] = useState<TrackingRow | null>(null);
-  const [scoreOpen, setScoreOpen] = useState(false);
-  const [returnRow, setReturnRow] = useState<TrackingRow | null>(null);
-  const [returnReason, setReturnReason] = useState("");
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  /*
-    Số hiệu khối B theo mẫu báo cáo áp dụng cho ĐƠN VỊ CỦA NGƯỜI XEM. Cấp dưới
-    có thể đang dùng mẫu khác, nên trục nào không nằm trong mẫu này thì không
-    gán số - thà thiếu số còn hơn gán một số chỉ đúng ở bảng của mình.
-  */
-  const { axes: scopedAxes } = useScopedAxes();
-  const axisOrderById = useMemo(
-    () => new Map(scopedAxes.map((axis, index) => [entityId(axis), index + 1])),
-    [scopedAxes],
-  );
-
-  const { ready } = useServerTime();
-  const todayYmd = serverYmd();
-
-  /*
-    Tính lại khi đồng bộ xong giờ server - lần render đầu còn đang dùng giờ máy.
-    `ready` không xuất hiện trong thân hàm nên eslint coi là thừa, nhưng độ lệch
-    giờ mà `currentWeekRange` đọc lại nằm ở module ngoài React.
-  */
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const week = useMemo(() => currentWeekRange(), [ready]);
-  const fromDate = fromOverride ?? week.from;
-  const toDate = toOverride ?? week.to;
-  const usingDefaultWeek = fromOverride === null && toOverride === null;
-
-  // Lấy hết việc đang ở chỗ mình, kể cả đã chốt - đếm tab và số thống kê phải
-  // theo toàn bộ chứ không theo tab đang xem.
-  const boardQuery = useMemo(
-    () => ({
-      includeDecided: true,
-      fromDate: fromDate || undefined,
-      toDate: toDate || undefined,
-    }),
-    [fromDate, toDate],
-  );
-  const { data, isLoading, mutate } = useSWR(
-    ["personal-mission", "tracking-board", fromDate, toDate],
-    () => fetchPersonalMissionBoard(boardQuery),
-  );
-
-  const qualityLevelById = useQualityLevelMap();
-
-  const rows = useMemo<TrackingRow[]>(() => {
+/**
+ * Dựng dòng bảng từ phản hồi của server.
+ *
+ * Tách khỏi component vì mỗi nhóm khi bung ra cũng tự tải dòng của riêng nó -
+ * hai chỗ phải dựng y hệt nhau, kẻo cùng một nhiệm vụ mà xem phẳng và xem theo
+ * nhóm lại ra hai tiến độ.
+ */
+function useTrackingRows(
+  data: PersonalMissionBoard | undefined,
+  qualityLevelById: Map<string, QualityLevel>,
+  todayYmd: string,
+): TrackingRow[] {
+  return useMemo<TrackingRow[]>(() => {
     const result: TrackingRow[] = [];
     for (const axis of data?.axes ?? []) {
       for (const group of axis.groups) {
@@ -815,99 +687,428 @@ export function PersonalMissionTrackingView() {
             ownerName: item.ownerName ?? "Chưa rõ cán bộ",
             ownerDepartmentName: department || "Chưa rõ đơn vị",
             reportDate: raw.reportDate ?? "",
-            haystack: normalizeText(
-              [
-                summary.title,
-                item.workContentName,
-                item.axisName,
-                item.ownerName ?? "",
-                department,
-              ].join(" "),
-            ),
           });
         }
       }
     }
-    return result;
+
+    /*
+      Xếp lại theo đúng thứ tự server đã sắp. `axes` gom dòng theo trục nên
+      duyệt qua nó là mất thứ tự - mà thứ tự lại chính là thứ quyết định dòng
+      nào rơi vào trang này, nên bày sai thứ tự thì lật trang đọc thành lộn xộn.
+    */
+    const byId = new Map(result.map((row) => [row.item.id, row]));
+    const ordered = (data?.order ?? [])
+      .map((id) => byId.get(id))
+      .filter((row): row is TrackingRow => Boolean(row));
+    // Server cũ chưa trả `order` thì giữ nguyên thứ tự cũ, đừng làm trắng bảng.
+    return ordered.length ? ordered : result;
   }, [data, qualityLevelById, todayYmd]);
+}
 
-  /** Dòng đang mở ở hộp thoại chi tiết, luôn lấy bản mới nhất của danh sách. */
-  const detailRow = useMemo(
-    () => rows.find((row) => row.item.id === detailId) ?? null,
-    [rows, detailId],
+/** Số nhiệm vụ tải mỗi lượt khi bung một nhóm ra. */
+const GROUP_PAGE_SIZE = 25;
+
+/** Server chỉ chịu trả tối đa chừng này dòng một lượt. */
+const GROUP_MAX_ROWS = 200;
+
+const EMPTY_TAB_COUNTS: Record<TabValue, number> = {
+  ALL: 0,
+  TODAY: 0,
+  BACKLOG: 0,
+  OVERDUE: 0,
+  DUE_SOON: 0,
+  SILENT: 0,
+  AWAITING: 0,
+  DONE: 0,
+};
+
+type TrackingGroupPanelProps = {
+  group: PersonalMissionBoardGroupHeader;
+  /** Bộ lọc chung của trang - nhóm chỉ thêm vào đúng khoá của mình. */
+  boardQuery: PersonalMissionBoardQuery;
+  groupMode: GroupMode;
+  qualityLevelById: Map<string, QualityLevel>;
+  todayYmd: string;
+  axisOrderById: Map<string, number>;
+  busyId: string | null;
+  onOpenDayReport: (
+    ownerId: string,
+    ownerName: string,
+    dates: string[],
+  ) => void;
+  onDetail: (row: TrackingRow) => void;
+  onEdit: (row: TrackingRow) => void;
+  onComplete: (row: TrackingRow) => void;
+  onReturn: (row: TrackingRow) => void;
+};
+
+/**
+ * Một nhóm trong bảng theo dõi: tiêu đề luôn hiện, dòng chỉ tải khi bung ra.
+ *
+ * Tiêu đề dùng số server đã đếm trên TOÀN BỘ bộ lọc, nên nhóm còn đang thu vẫn
+ * nói đúng số nhiệm vụ, số trễ và tiến độ trung bình. Trước đây mọi nhóm đều
+ * mở sẵn và mang theo đủ dòng - ở cấp nhận báo cáo của nhiều đơn vị thì đó là
+ * cả nghìn dòng dựng ra chỉ để người xem cuộn qua.
+ */
+function TrackingGroupPanel({
+  group,
+  boardQuery,
+  groupMode,
+  qualityLevelById,
+  todayYmd,
+  axisOrderById,
+  busyId,
+  onOpenDayReport,
+  onDetail,
+  onEdit,
+  onComplete,
+  onReturn,
+}: TrackingGroupPanelProps) {
+  const [open, setOpen] = useState(false);
+  /*
+    Nới trần thay vì cộng dồn từng trang: SWR giữ nguyên một khoá cho cả nhóm
+    nên không phải tự ghép mảng, và bấm "xem thêm" rồi thu nhóm lại mở ra vẫn
+    thấy đúng chừng đó dòng.
+  */
+  const [rowLimit, setRowLimit] = useState(GROUP_PAGE_SIZE);
+
+  const query = useMemo(
+    () => ({
+      ...boardQuery,
+      groupKey: group.key,
+      groupMode,
+      page: 1,
+      limit: rowLimit,
+    }),
+    [boardQuery, group.key, groupMode, rowLimit],
   );
 
-  const departments = useMemo(() => {
-    const names = new Set(rows.map((row) => row.ownerDepartmentName));
-    return [...names].sort((a, b) => a.localeCompare(b, "vi"));
-  }, [rows]);
-
-  /** Bộ lọc đơn vị + tìm kiếm áp trước, tab đếm trên phần còn lại. */
-  const scoped = useMemo(() => {
-    const term = normalizeText(debouncedQuery);
-    return rows.filter(
-      (row) =>
-        (departmentId === ALL || row.ownerDepartmentName === departmentId) &&
-        (!term || row.haystack.includes(term)),
-    );
-  }, [rows, departmentId, debouncedQuery]);
-
-  const counts = useMemo(() => {
-    const byTab = (value: TabValue) =>
-      scoped.filter((row) => matchesTab(row, value, todayYmd)).length;
-    return {
-      ALL: scoped.length,
-      TODAY: byTab("TODAY"),
-      BACKLOG: byTab("BACKLOG"),
-      OVERDUE: byTab("OVERDUE"),
-      DUE_SOON: byTab("DUE_SOON"),
-      SILENT: byTab("SILENT"),
-      AWAITING: byTab("AWAITING"),
-      DONE: byTab("DONE"),
-    };
-  }, [scoped, todayYmd]);
-
-  const filtered = useMemo(
-    () => scoped.filter((row) => matchesTab(row, tab, todayYmd)),
-    [scoped, tab, todayYmd],
+  const { data, isLoading } = useSWR(
+    open ? personalMissionKeys.board(query) : null,
+    () => fetchPersonalMissionBoard(query),
+    { keepPreviousData: true },
   );
 
+  const rows = useTrackingRows(data, qualityLevelById, todayYmd);
+
+  /*
+    Xem theo cá nhân thì mở được trọn báo cáo một ngày của người đó. Ngày lấy
+    từ chính các dòng ĐÃ tải - không đoán, vì đoán sai là đọc nhầm báo cáo hôm
+    khác. Vì vậy nút chỉ hiện khi nhóm đã bung ra.
+  */
+  const ownerId = rows[0]?.item.ownerId ?? "";
+  const dates = useMemo(
+    () =>
+      [...new Set(rows.map((row) => row.reportDate).filter(Boolean))].sort(
+        (left, right) => right.localeCompare(left),
+      ),
+    [rows],
+  );
+
+  const loaded = rows.length;
+  const canLoadMore =
+    open &&
+    loaded >= rowLimit &&
+    loaded < group.total &&
+    rowLimit < GROUP_MAX_ROWS;
+
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      className="overflow-hidden rounded-lg border"
+    >
+      <div className="flex flex-wrap items-center gap-2 bg-muted/30 px-3 py-2.5">
+        {/* data-state nằm trên nút nên xoay mũi tên qua nút, icon không mang
+            thuộc tính đó. */}
+        <CollapsibleTrigger asChild>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-7 shrink-0 [&>svg]:transition-transform data-[state=closed]:[&>svg]:-rotate-90"
+            aria-label={`${open ? "Thu gọn" : "Mở"} ${group.label}`}
+          >
+            <ChevronDown className="size-4" />
+          </Button>
+        </CollapsibleTrigger>
+        {/* Bấm vào cả dải tiêu đề cũng mở được - vùng bấm rộng hơn cái mũi tên
+            7px rất nhiều. */}
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="cursor-pointer text-left font-semibold hover:underline"
+          >
+            {group.label}
+          </button>
+        </CollapsibleTrigger>
+        <Badge
+          variant="secondary"
+          className={cn("font-normal", missionTone.info.soft)}
+        >
+          {group.total} nhiệm vụ
+        </Badge>
+        {group.overdue > 0 ? (
+          <Badge
+            variant="secondary"
+            className={cn("font-normal", missionTone.danger.soft)}
+          >
+            Trễ {group.overdue}
+          </Badge>
+        ) : null}
+        {group.silent > 0 ? (
+          <Badge
+            variant="secondary"
+            className={cn("font-normal", missionTone.warning.soft)}
+          >
+            Chưa cập nhật {group.silent}
+          </Badge>
+        ) : null}
+        {group.done > 0 ? (
+          <Badge
+            variant="secondary"
+            className={cn("font-normal", missionTone.success.soft)}
+          >
+            Hoàn thành {group.done}
+          </Badge>
+        ) : null}
+
+        <div className="ml-auto flex items-center gap-3">
+          {group.percent === null ? null : (
+            <div className="flex min-w-[140px] items-center gap-2">
+              <ProgressBar percent={group.percent} className="flex-1" />
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {group.percent}%
+              </span>
+            </div>
+          )}
+          {groupMode === "PERSON" && ownerId ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="bg-background"
+              onClick={() => onOpenDayReport(ownerId, group.label, dates)}
+            >
+              <CalendarDays className="size-4" />
+              Xem báo cáo ngày
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      <CollapsibleContent className="border-t">
+        {isLoading && !rows.length ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            Đang tải...
+          </div>
+        ) : (
+          <>
+            <TrackingTable
+              rows={rows}
+              busyId={busyId}
+              axisOrderById={axisOrderById}
+              onDetail={onDetail}
+              onEdit={onEdit}
+              onComplete={onComplete}
+              onReturn={onReturn}
+            />
+            {loaded < group.total ? (
+              <div className="flex items-center justify-center gap-3 border-t bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+                <span>
+                  Đang xem {loaded}/{group.total} nhiệm vụ
+                </span>
+                {canLoadMore ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="bg-background"
+                    onClick={() =>
+                      setRowLimit((prev) =>
+                        Math.min(prev + GROUP_PAGE_SIZE, GROUP_MAX_ROWS),
+                      )
+                    }
+                  >
+                    Xem thêm
+                  </Button>
+                ) : (
+                  // Chạm trần thì nói thẳng cách xem hết, đừng để người dùng
+                  // bấm mãi một cái nút không nhúc nhích.
+                  <span>Thu hẹp khoảng ngày hoặc bộ lọc để xem tiếp.</span>
+                )}
+              </div>
+            ) : null}
+          </>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+export function PersonalMissionTrackingView() {
+  const [tab, setTab] = useState<TabValue>("ALL");
+  const [groupMode, setGroupMode] = useState<GroupMode>("UNIT");
+
+  /*
+    Đọc trọn báo cáo một ngày của một cán bộ.
+
+    Giữ luôn danh sách ngày của cán bộ đó thay vì để hộp thoại tự hỏi: danh sách
+    ngoài này lọc theo KHOẢNG ngày, nên "ngày nào" là câu chỉ bảng đang xem mới
+    trả lời được. Hộp thoại đoán thay là đọc nhầm báo cáo của hôm khác.
+  */
+  const [dayReport, setDayReport] = useState<{
+    ownerId: string;
+    ownerName: string;
+    dates: string[];
+  } | null>(null);
+  const [dayReportDate, setDayReportDate] = useState<string | null>(null);
+  const { page, setPage, limit, setLimit, query, setQuery, debouncedQuery } =
+    useListPagination();
+  const [departmentId, setDepartmentId] = useState(ALL);
   /**
-   * Phân trang chỉ áp cho kiểu xem phẳng. Xem theo nhóm mà cắt trang thì một
-   * đơn vị bị xẻ đôi qua hai trang, con số ở tiêu đề nhóm đọc ra thành sai.
+   * Lọc theo ngày báo cáo - chạy ở server để đếm tab đúng theo khoảng đang xem.
+   *
+   * null = chưa đụng tới, dùng mặc định (tuần này). Chuỗi rỗng = người dùng đã
+   * chủ động bỏ lọc. Tách hai thứ đó ra mới suy lại được ngày mặc định khi
+   * đồng bộ xong giờ server, mà không đè lên lựa chọn của người dùng.
    */
-  const total = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const safePage = Math.min(page, totalPages);
-  const pageRows = useMemo(
-    () => filtered.slice((safePage - 1) * limit, safePage * limit),
-    [filtered, safePage, limit],
+  const [fromOverride, setFromOverride] = useState<string | null>(null);
+  const [toOverride, setToOverride] = useState<string | null>(null);
+  /* Giữ ID chứ không giữ nguyên đối tượng dòng: sửa xong nạp lại danh sách
+     thì hộp thoại chi tiết phải hiện số liệu và nhật ký mới, không phải bản
+     chụp lúc bấm mở. */
+  /*
+    Giữ nguyên đối tượng dòng chứ không giữ id.
+
+    Xem theo nhóm thì dòng do TỪNG NHÓM tự tải khi bung ra, nên không còn một
+    danh sách duy nhất để tra id. Ba hộp thoại kia (sửa, chấm, trả lại) vốn đã
+    giữ cả dòng - giữ giống nhau thì bốn chỗ cùng một luật.
+  */
+  const [detailRow, setDetailRow] = useState<TrackingRow | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  /** Nhiệm vụ đang mở form chấm điểm để chốt hoàn thành. */
+  const [editRow, setEditRow] = useState<TrackingRow | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+
+  const [scoreRow, setScoreRow] = useState<TrackingRow | null>(null);
+  const [scoreOpen, setScoreOpen] = useState(false);
+  const [returnRow, setReturnRow] = useState<TrackingRow | null>(null);
+  const [returnReason, setReturnReason] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  /*
+    Số hiệu khối B theo mẫu báo cáo áp dụng cho ĐƠN VỊ CỦA NGƯỜI XEM. Cấp dưới
+    có thể đang dùng mẫu khác, nên trục nào không nằm trong mẫu này thì không
+    gán số - thà thiếu số còn hơn gán một số chỉ đúng ở bảng của mình.
+  */
+  const { axes: scopedAxes } = useScopedAxes();
+  const axisOrderById = useMemo(
+    () => new Map(scopedAxes.map((axis, index) => [entityId(axis), index + 1])),
+    [scopedAxes],
   );
 
-  const groups = useMemo(() => {
-    if (groupMode === "TASK") {
-      return [{ label: "", rows: pageRows }];
-    }
-    const byKey = new Map<string, TrackingRow[]>();
-    for (const row of filtered) {
-      // Khoá gom lấy từ chính dòng, không lấy bộ lọc đang chọn: lọc theo một
-      // đơn vị vẫn phải ra được nhiều nhóm cán bộ bên trong đơn vị đó.
-      const key =
-        groupMode === "AXIS"
-          ? row.item.axisName || "Chưa rõ trục"
-          : groupMode === "PERSON"
-            ? row.ownerName
-            : row.ownerDepartmentName;
-      byKey.set(key, [...(byKey.get(key) ?? []), row]);
-    }
-    return [...byKey.entries()]
-      .sort(([left], [right]) => left.localeCompare(right, "vi"))
-      .map(([label, groupRows]) => ({ label, rows: groupRows }));
-  }, [filtered, pageRows, groupMode]);
+  const { ready } = useServerTime();
+  const todayYmd = serverYmd();
+
+  /*
+    Tính lại khi đồng bộ xong giờ server - lần render đầu còn đang dùng giờ máy.
+    `ready` không xuất hiện trong thân hàm nên eslint coi là thừa, nhưng độ lệch
+    giờ mà `currentWeekRange` đọc lại nằm ở module ngoài React.
+  */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const week = useMemo(() => currentWeekRange(), [ready]);
+  const fromDate = fromOverride ?? week.from;
+  const toDate = toOverride ?? week.to;
+  const usingDefaultWeek = fromOverride === null && toOverride === null;
+
+  /*
+    Lọc, đếm và cắt trang đều do server làm.
+
+    Cấp càng cao thì số báo cáo nhận về càng nhiều - kéo cả khoảng ngày về rồi
+    lọc trong trình duyệt là mỗi lần mở trang tải hàng nghìn dòng, mà bộ đếm
+    trên thanh tab còn sai âm thầm khi chạm trần số dòng server chịu trả.
+
+    Vì thế mọi thứ ảnh hưởng tới kết quả đều nằm trong khoá SWR: đổi tab, đổi
+    đơn vị, gõ tìm kiếm hay lật trang đều là một câu hỏi mới gửi xuống.
+  */
+  const boardQuery = useMemo(
+    () => ({
+      includeDecided: true,
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+      departmentId: departmentId === ALL ? undefined : departmentId,
+      q: debouncedQuery || undefined,
+      tab,
+      groupMode,
+      page,
+      limit,
+    }),
+    [
+      fromDate,
+      toDate,
+      departmentId,
+      debouncedQuery,
+      tab,
+      groupMode,
+      page,
+      limit,
+    ],
+  );
+  const { data, isLoading, mutate } = useSWR(
+    personalMissionKeys.board(boardQuery),
+    () => fetchPersonalMissionBoard(boardQuery),
+    // Giữ dữ liệu cũ trong lúc tải trang mới: không có nó thì mỗi lần lật trang
+    // hay gõ tìm kiếm là cả bảng chớp trắng một nhịp.
+    { keepPreviousData: true },
+  );
+
+  const qualityLevelById = useQualityLevelMap();
+
+  const rows = useTrackingRows(data, qualityLevelById, todayYmd);
+
+  const departments = data?.departments ?? [];
+  const counts = data?.tabCounts ?? EMPTY_TAB_COUNTS;
+  const groups = data?.groups ?? null;
+  const total = data?.total ?? 0;
+  const safePage = data?.page ?? page;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
 
   const refresh = async () => {
     await mutate();
   };
+
+  /*
+    Bốn thao tác dòng gom lại thành hàm đặt tên, vì giờ có hai chỗ dựng bảng:
+    danh sách phẳng ở đây, và từng nhóm tự dựng bảng của nó. Viết inline ở cả
+    hai nơi là hai bản dễ trôi lệch nhau.
+  */
+  const openDetail = useCallback((row: TrackingRow) => {
+    setDetailRow(row);
+    setDetailOpen(true);
+  }, []);
+  const openEdit = useCallback((row: TrackingRow) => {
+    setEditRow(row);
+    setEditOpen(true);
+  }, []);
+  const openReturn = useCallback((row: TrackingRow) => {
+    setReturnRow(row);
+    setReturnReason("");
+  }, []);
+  const openDayReport = useCallback(
+    (ownerId: string, ownerName: string, dates: string[]) => {
+      setDayReport({ ownerId, ownerName, dates });
+      setDayReportDate(dates[0] ?? null);
+    },
+    [],
+  );
+
+  /** Chưa có việc nào và không khớp bộ lọc là hai chuyện, nói cho đúng cái nào. */
+  const emptyText =
+    counts.ALL === 0
+      ? "Chưa có nhiệm vụ nào của cấp dưới ở chỗ bạn."
+      : "Không có nhiệm vụ nào khớp bộ lọc.";
 
   /**
    * Chốt hoàn thành đi kèm chấm điểm - mở form thẩm định chứ không chốt thẳng.
@@ -1043,9 +1244,9 @@ export function PersonalMissionTrackingView() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>Tất cả đơn vị</SelectItem>
-                {departments.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
+                {departments.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>
+                    {department.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1057,11 +1258,18 @@ export function PersonalMissionTrackingView() {
               from={fromDate}
               to={toDate}
               isDefault={usingDefaultWeek}
-              onFromChange={setFromOverride}
-              onToChange={setToOverride}
+              onFromChange={(value) => {
+                setFromOverride(value);
+                setPage(1);
+              }}
+              onToChange={(value) => {
+                setToOverride(value);
+                setPage(1);
+              }}
               onReset={() => {
                 setFromOverride(null);
                 setToOverride(null);
+                setPage(1);
               }}
             />
 
@@ -1081,177 +1289,71 @@ export function PersonalMissionTrackingView() {
             <SegmentedTabs
               ariaLabel="Cách nhóm danh sách"
               value={groupMode}
-              onChange={setGroupMode}
+              onChange={(next) => {
+                setGroupMode(next);
+                // Xem phẳng đang ở trang 5 mà chuyển sang xem theo nhóm rồi
+                // quay lại thì trang 5 có thể không còn tồn tại nữa.
+                setPage(1);
+              }}
               items={GROUP_MODES}
               className="ml-auto flex-nowrap border bg-transparent"
               indicatorClassName="bg-muted shadow-none"
             />
           </div>
 
-          {isLoading ? (
+          {groups ? (
+            /*
+              Xem theo nhóm: server trả TIÊU ĐỀ nhóm cho toàn bộ bộ lọc, dòng
+              thì để từng nhóm tự tải khi người dùng bung ra.
+
+              Nhờ vậy con số ở tiêu đề luôn đúng trên cả khoảng ngày mà không
+              phải tải dòng nào - cấp có năm chục đơn vị vẫn mở trang tức thì,
+              còn ai muốn xem chi tiết đơn vị nào thì bấm mở đúng đơn vị đó.
+            */
+            <div className="space-y-3">
+              {groups.length === 0 ? (
+                <div className="rounded-md border p-10 text-center text-sm text-muted-foreground">
+                  {emptyText}
+                </div>
+              ) : (
+                groups.map((group) => (
+                  <TrackingGroupPanel
+                    key={group.key || "__unknown__"}
+                    group={group}
+                    boardQuery={boardQuery}
+                    groupMode={groupMode}
+                    qualityLevelById={qualityLevelById}
+                    todayYmd={todayYmd}
+                    axisOrderById={axisOrderById}
+                    busyId={busyId}
+                    onOpenDayReport={openDayReport}
+                    onDetail={openDetail}
+                    onEdit={openEdit}
+                    onComplete={openScore}
+                    onReturn={openReturn}
+                  />
+                ))
+              )}
+            </div>
+          ) : isLoading ? (
             <div className="rounded-md border p-10 text-center text-sm text-muted-foreground">
               Đang tải...
             </div>
-          ) : filtered.length === 0 ? (
+          ) : rows.length === 0 ? (
             <div className="rounded-md border p-10 text-center text-sm text-muted-foreground">
-              {rows.length === 0
-                ? "Chưa có nhiệm vụ nào của cấp dưới ở chỗ bạn."
-                : "Không có nhiệm vụ nào khớp bộ lọc."}
+              {emptyText}
             </div>
           ) : (
-            <div className="space-y-4">
-              {groups.map((group) => {
-                const groupOverdue = group.rows.filter(isOverdue).length;
-                const groupSilent = group.rows.filter(isSilent).length;
-                const groupDone = group.rows.filter(
-                  (row) => row.item.status === "COMPLETED",
-                ).length;
-                const groupPercent = averagePercent(group.rows);
-                /*
-                  Mọi dòng trong nhóm theo cá nhân đều cùng một chủ, nên lấy
-                  dòng đầu là đủ. Ngày xếp mới nhất lên trước - mở ra là thấy
-                  ngay báo cáo gần nhất.
-                */
-                const groupOwnerId = group.rows[0]?.item.ownerId ?? "";
-                const groupDates = [
-                  ...new Set(
-                    group.rows.map((row) => row.reportDate).filter(Boolean),
-                  ),
-                ].sort((left, right) => right.localeCompare(left));
-                const table = (
-                  <TrackingTable
-                    rows={group.rows}
-                    busyId={busyId}
-                    axisOrderById={axisOrderById}
-                    onDetail={(row) => {
-                      setDetailId(row.item.id);
-                      setDetailOpen(true);
-                    }}
-                    onEdit={(row) => {
-                      setEditRow(row);
-                      setEditOpen(true);
-                    }}
-                    onComplete={openScore}
-                    onReturn={(row) => {
-                      setReturnRow(row);
-                      setReturnReason("");
-                    }}
-                  />
-                );
-
-                // Xem phẳng thì không có tiêu đề nhóm nên chẳng có gì để thu.
-                if (!group.label) {
-                  return (
-                    <div
-                      key="all"
-                      className="overflow-hidden rounded-lg border"
-                    >
-                      {table}
-                    </div>
-                  );
-                }
-
-                return (
-                  <Collapsible
-                    key={group.label}
-                    defaultOpen
-                    className="overflow-hidden rounded-lg border"
-                  >
-                    <div className="flex flex-wrap items-center gap-2 bg-muted/30 px-3 py-2.5">
-                      {/* data-state nằm trên nút nên xoay mũi tên qua nút, icon
-                          không mang thuộc tính đó. */}
-                      <CollapsibleTrigger asChild>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="size-7 shrink-0 [&>svg]:transition-transform data-[state=closed]:[&>svg]:-rotate-90"
-                          aria-label={`Thu gọn ${group.label}`}
-                        >
-                          <ChevronDown className="size-4" />
-                        </Button>
-                      </CollapsibleTrigger>
-                      <span className="font-semibold">{group.label}</span>
-                      <Badge
-                        variant="secondary"
-                        className={cn("font-normal", missionTone.info.soft)}
-                      >
-                        {group.rows.length} nhiệm vụ
-                      </Badge>
-                      {groupOverdue > 0 ? (
-                        <Badge
-                          variant="secondary"
-                          className={cn("font-normal", missionTone.danger.soft)}
-                        >
-                          Trễ {groupOverdue}
-                        </Badge>
-                      ) : null}
-                      {groupSilent > 0 ? (
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            "font-normal",
-                            missionTone.warning.soft,
-                          )}
-                        >
-                          Chưa cập nhật {groupSilent}
-                        </Badge>
-                      ) : null}
-                      {groupDone > 0 ? (
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            "font-normal",
-                            missionTone.success.soft,
-                          )}
-                        >
-                          Hoàn thành {groupDone}
-                        </Badge>
-                      ) : null}
-                      <div className="ml-auto flex items-center gap-3">
-                        {groupPercent === null ? null : (
-                          <div className="flex min-w-[140px] items-center gap-2">
-                            <ProgressBar
-                              percent={groupPercent}
-                              className="flex-1"
-                            />
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              {groupPercent}%
-                            </span>
-                          </div>
-                        )}
-                        {/*
-                          Chỉ ở nhóm theo cá nhân mới có nút này: gom theo trục
-                          hay theo đơn vị thì một nhóm là việc của nhiều người,
-                          không có "báo cáo ngày" nào để mở.
-                        */}
-                        {groupMode === "PERSON" && groupOwnerId ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="bg-background"
-                            onClick={() => {
-                              setDayReport({
-                                ownerId: groupOwnerId,
-                                ownerName: group.label,
-                                dates: groupDates,
-                              });
-                              setDayReportDate(groupDates[0] ?? null);
-                            }}
-                          >
-                            <CalendarDays className="size-4" />
-                            Xem báo cáo ngày
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                    <CollapsibleContent className="border-t">
-                      {table}
-                    </CollapsibleContent>
-                  </Collapsible>
-                );
-              })}
+            <div className="overflow-hidden rounded-lg border">
+              <TrackingTable
+                rows={rows}
+                busyId={busyId}
+                axisOrderById={axisOrderById}
+                onDetail={openDetail}
+                onEdit={openEdit}
+                onComplete={openScore}
+                onReturn={openReturn}
+              />
             </div>
           )}
 
@@ -1278,7 +1380,7 @@ export function PersonalMissionTrackingView() {
         onSaved={async () => {
           await refresh();
           if (editRow) {
-            setDetailId(editRow.item.id);
+            setDetailRow(editRow);
             setDetailOpen(true);
           }
         }}

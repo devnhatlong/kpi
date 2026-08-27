@@ -67,8 +67,6 @@ export type DayTaskRow = {
   work: WorkState;
   /** Số ngày không ai cập nhật tiến độ; null = chưa có mốc nào. */
   silence: number | null;
-  /** Chuỗi gộp mọi thứ tìm được của dòng - lọc theo ô tìm kiếm. */
-  haystack: string;
 };
 
 /**

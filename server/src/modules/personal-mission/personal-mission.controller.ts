@@ -114,6 +114,18 @@ export class PersonalMissionController {
     return this.personalMissionService.findMine(user.uid, query);
   }
 
+  @ApiOperation({
+    summary: 'Số liệu tổng của màn nhập: đếm theo tab và theo từng ngày',
+  })
+  @Permissions(Permission.EVALUATION_SELF)
+  @Get('mine/overview')
+  myOverview(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: PersonalMissionListQueryDto,
+  ) {
+    return this.personalMissionService.myOverview(user.uid, query);
+  }
+
   @ApiOperation({ summary: 'Gửi báo cáo ngày lên cấp trên' })
   @Permissions(Permission.EVALUATION_SELF)
   @Post('reports/:reportDate/submit')

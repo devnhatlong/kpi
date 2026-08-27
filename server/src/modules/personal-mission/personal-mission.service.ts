@@ -2,7 +2,9 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  type OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -43,6 +45,9 @@ import {
   PersonalMissionReportsQueryDto,
   PersonalMissionStaffDayQueryDto,
   PersonalMissionStatisticsQueryDto,
+  type PersonalMissionBoardTab,
+  type PersonalMissionGroupMode,
+  type PersonalMissionMineTab,
   ReviewPersonalMissionDto,
   ReviewerEditPersonalMissionDto,
   ScorePersonalCriteriaSheetDto,
@@ -127,6 +132,16 @@ const ROLE_LADDER: RoleCode[] = [
 
 const BOARD_MAX_ROWS = 2000;
 
+/** Số dòng mỗi trang của bảng tổng khi client không nói rõ. */
+const BOARD_PAGE_SIZE = 20;
+
+/**
+ * Bao nhiêu ngày không ai đụng vào tiến độ thì kêu "chưa cập nhật".
+ * Phải bằng `SILENCE_ALERT_DAYS` bên client - hai bên lệch nhau là con số trên
+ * thẻ và danh sách bên dưới đếm ra hai kết quả.
+ */
+const SILENCE_ALERT_DAYS = 3;
+
 /**
  * Trang Thống kê phải quét rộng hơn bảng duyệt vì còn xếp hạng theo cán bộ.
  * Chạm ngưỡng thì trả kèm cờ `truncated` để màn hình nói rõ số liệu chưa đủ,
@@ -175,7 +190,9 @@ type SubmittableDoc = LoggableDoc & {
 };
 
 @Injectable()
-export class PersonalMissionService {
+export class PersonalMissionService implements OnModuleInit {
+  private readonly logger = new Logger(PersonalMissionService.name);
+
   constructor(
     @InjectModel(PersonalMissionItem.name)
     private readonly itemModel: Model<PersonalMissionItemDocument>,
@@ -204,6 +221,49 @@ export class PersonalMissionService {
     private readonly formTemplatesService: FormTemplatesService,
     private readonly uploadsService: UploadsService,
   ) {}
+
+  async onModuleInit() {
+    await this.backfillDerived();
+  }
+
+  /**
+   * Điền các trường suy ra cho nhiệm vụ đã có từ trước.
+   *
+   * Chạy lúc khởi động chứ không phải một script rời: máy triển khai không có
+   * internet và quản trị không nhất thiết mở được terminal ở đó, nên thứ gì
+   * bắt buộc phải chạy một lần thì để nó tự chạy khi bật dịch vụ.
+   *
+   * Chỉ đụng vào bản ghi CHƯA có `lastTouchedDate` - trường luôn có giá trị sau
+   * khi tính, kể cả nhiệm vụ chưa ai cập nhật lần nào. Vì vậy lần khởi động thứ
+   * hai trở đi truy vấn này không khớp bản ghi nào và tốn gần như không gì.
+   *
+   * Làm theo lô để một cơ sở dữ liệu lớn không kéo hết vào bộ nhớ, và bọc
+   * try/catch để lỗi ở đây không chặn cả dịch vụ khởi động - bảng tổng lọc
+   * thiếu vẫn hơn là không ai đăng nhập được.
+   */
+  private async backfillDerived() {
+    const filter = { lastTouchedDate: { $exists: false } };
+    try {
+      const total = await this.itemModel.countDocuments(filter);
+      if (!total) return;
+
+      this.logger.log(`Đang tính lại dữ liệu tra cứu cho ${total} nhiệm vụ...`);
+      let done = 0;
+      for (;;) {
+        const batch = await this.itemModel.find(filter).limit(200);
+        if (!batch.length) break;
+        await this.refreshDerivedMany(batch);
+        await Promise.all(batch.map((item) => item.save()));
+        done += batch.length;
+      }
+      this.logger.log(`Đã tính xong ${done} nhiệm vụ.`);
+    } catch (error) {
+      this.logger.error(
+        'Không tính lại được dữ liệu tra cứu của nhiệm vụ cá nhân.',
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
 
   // ============================================================ cán bộ nhập
 
@@ -311,9 +371,38 @@ export class PersonalMissionService {
   }
 
   async findMine(ownerId: string, query: PersonalMissionListQueryDto = {}) {
-    const owner = this.requireObjectId(ownerId, 'Người dùng');
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
+    const filter = this.mineFilter(ownerId, query, { withTab: true });
+
+    const [data, total] = await Promise.all([
+      this.itemModel
+        .find(filter)
+        // Nhiều ngày thì ngày mới lên trước; trong một ngày giữ thứ tự nhập.
+        .sort({ reportDate: -1, createdAt: 1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('axisId', 'code name description')
+        .populate('workContentId', 'code name description note')
+        .populate('lastDecidedById', 'fullName username'),
+      this.itemModel.countDocuments(filter),
+    ]);
+
+    return buildPaginatedResponse(data, total, page, limit);
+  }
+
+  /**
+   * Bộ lọc dùng chung cho danh sách của cán bộ và cho phần đếm của nó.
+   *
+   * Phải là MỘT chỗ: đếm một kiểu mà liệt kê một kiểu thì thanh tab ghi 5 việc
+   * còn bảng bày ra 3, không ai biết bên nào đúng.
+   */
+  private mineFilter(
+    ownerId: string,
+    query: PersonalMissionListQueryDto,
+    options: { withTab: boolean },
+  ): Record<string, unknown> {
+    const owner = this.requireObjectId(ownerId, 'Người dùng');
     const filter: Record<string, unknown> = { ownerId: owner };
 
     /*
@@ -337,22 +426,151 @@ export class PersonalMissionService {
     if (query.axisId) {
       filter.axisId = this.requireObjectId(query.axisId, 'Trục');
     }
-    if (query.q?.trim()) Object.assign(filter, this.contentMatches(query.q));
 
-    const [data, total] = await Promise.all([
-      this.itemModel
-        .find(filter)
-        // Nhiều ngày thì ngày mới lên trước; trong một ngày giữ thứ tự nhập.
-        .sort({ reportDate: -1, createdAt: 1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .populate('axisId', 'code name description')
-        .populate('workContentId', 'code name description note')
-        .populate('lastDecidedById', 'fullName username'),
-      this.itemModel.countDocuments(filter),
+    const clauses: Record<string, unknown>[] = [];
+    if (options.withTab) {
+      const tab = this.mineTabClause(query.tab);
+      if (tab) clauses.push(tab);
+    }
+    if (query.q?.trim()) {
+      // Bảng của chính mình thì chỉ tìm trong nội dung: chủ nhiệm vụ luôn là
+      // mình, còn tên trục / nội dung công việc đã có ô lọc riêng.
+      const term = this.normalizeSearch(query.q);
+      if (term) clauses.push({ searchText: { $regex: this.likeRegex(term) } });
+    }
+
+    return clauses.length ? { $and: [filter, ...clauses] } : filter;
+  }
+
+  /** "Hoàn thành" của cán bộ gồm cả đã duyệt lẫn đã chốt - hai trạng thái. */
+  private mineTabClause(
+    tab: PersonalMissionMineTab | undefined,
+  ): Record<string, unknown> | null {
+    if (!tab || tab === 'ALL') return null;
+    if (tab === 'DONE') {
+      return { reviewStatus: { $in: ['APPROVED', 'COMPLETED'] } };
+    }
+    return { reviewStatus: tab };
+  }
+
+  /**
+   * Số liệu tổng của màn nhập: đếm cho thanh tab, cho các thẻ số liệu, và
+   * cho từng NGÀY trong khoảng.
+   *
+   * Tách khỏi danh sách vì danh sách giờ chỉ trả một trang. Mấy con số này phải
+   * đúng trên toàn khoảng - đếm trên trang đang xem thì lật sang trang 2 là mọi
+   * con số đổi hết.
+   *
+   * Phần theo ngày để dựng hai ô chọn "Sửa báo cáo ngày" / "Gửi báo cáo ngày":
+   * danh sách lọc theo KHOẢNG còn báo cáo lại thuộc đúng một ngày, nên hai ô đó
+   * phải biết những ngày nào còn việc sửa được, kể cả ngày không có dòng nào
+   * trên trang hiện tại.
+   */
+  async myOverview(ownerId: string, query: PersonalMissionListQueryDto) {
+    const today = serverDateYmd();
+    const filter = this.mineFilter(ownerId, query, { withTab: false });
+    const silentFrom = shiftYmd(today, -SILENCE_ALERT_DAYS);
+
+    const notSettled = {
+      $and: [
+        { $ne: ['$reviewStatus', 'COMPLETED'] },
+        { $ne: ['$workDone', true] },
+      ],
+    };
+    const countIf = (cond: unknown) => ({ $sum: { $cond: [cond, 1, 0] } });
+    // Sửa được và gửi được là cùng một bộ trạng thái, nên đếm một lần.
+    const editable = { $in: ['$reviewStatus', ['DRAFT', 'RETURNED']] };
+
+    const [totals] = await this.itemModel.aggregate<{
+      ALL: number;
+      DRAFT: number;
+      PENDING: number;
+      RETURNED: number;
+      DONE: number;
+      overdue: number;
+      running: number;
+      silent: number;
+    }>([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          ALL: { $sum: 1 },
+          DRAFT: countIf({ $eq: ['$reviewStatus', 'DRAFT'] }),
+          PENDING: countIf({ $eq: ['$reviewStatus', 'PENDING'] }),
+          RETURNED: countIf({ $eq: ['$reviewStatus', 'RETURNED'] }),
+          DONE: countIf({
+            $in: ['$reviewStatus', ['APPROVED', 'COMPLETED']],
+          }),
+          overdue: countIf({
+            $and: [
+              // $not của aggregation nhận MẢNG một phần tử - truyền thẳng biểu
+              // thức vào là cú pháp khác, đừng rút gọn.
+              { $not: [{ $in: ['$reviewStatus', ['APPROVED', 'COMPLETED']] }] },
+              { $ne: ['$workDone', true] },
+              /*
+                Trong aggregate, trường THIẾU HẲN không giống null: $ne trả true
+                và $lt coi missing nhỏ hơn mọi chuỗi - dòng không có hạn vẫn lọt
+                vào nhóm trễ hạn. $ifNull quy cả hai về null, mà null trong $and
+                là giá trị sai nên cả mệnh đề tắt. Bên find() không dính lỗi này
+                (truy vấn coi missing là null), nên hai chỗ rất dễ lệch nhau.
+              */
+              { $ifNull: ['$deadlineDate', null] },
+              { $lt: ['$deadlineDate', today] },
+            ],
+          }),
+          // "Đang thực hiện" tính cả việc đã gửi đang chờ duyệt: chừng nào cấp
+          // trên chưa chốt hoàn thành thì việc vẫn còn đang chạy.
+          running: countIf({ $ne: ['$reviewStatus', 'COMPLETED'] }),
+          silent: countIf({
+            $and: [
+              notSettled,
+              { $eq: ['$tracksProgress', true] },
+              { $ifNull: ['$lastTouchedDate', null] },
+              { $lte: ['$lastTouchedDate', silentFrom] },
+            ],
+          }),
+        },
+      },
+      { $project: { _id: 0 } },
     ]);
 
-    return buildPaginatedResponse(data, total, page, limit);
+    const days = await this.itemModel.aggregate<{
+      _id: string;
+      total: number;
+      editable: number;
+    }>([
+      { $match: filter },
+      {
+        $group: {
+          _id: '$reportDate',
+          total: { $sum: 1 },
+          editable: countIf(editable),
+        },
+      },
+      { $sort: { _id: -1 } },
+    ]);
+
+    return {
+      message: 'OK',
+      data: {
+        counts: totals ?? {
+          ALL: 0,
+          DRAFT: 0,
+          PENDING: 0,
+          RETURNED: 0,
+          DONE: 0,
+          overdue: 0,
+          running: 0,
+          silent: 0,
+        },
+        days: days.map((row) => ({
+          date: row._id,
+          total: row.total,
+          editable: row.editable,
+        })),
+      },
+    };
   }
 
   /** Danh sách báo cáo theo ngày của chính mình. */
@@ -1533,6 +1751,9 @@ export class PersonalMissionService {
         to: this.changeText(change.to),
       })),
     });
+    // Tính lại lần nữa: dropStaleReviewValues chạy SAU applyDerivedColumns
+    // và có thể vừa bỏ đi số chỉ huy chấm mà tiến độ suy ra đang dựa vào.
+    await this.refreshDerived(item);
     await item.save();
 
     return {
@@ -1600,72 +1821,130 @@ export class PersonalMissionService {
   // ======================================================= bảng tổng theo trục
 
   /**
-   * Bảng tổng của cấp trên: mọi nhiệm vụ đang nằm ở tay mình, gom
-   * Trục → Nội dung công việc → dòng, kèm bộ cột của mẫu đã khoá lúc gửi.
+   * Bảng tổng của cấp trên: nhiệm vụ đang nằm ở tay mình.
+   *
+   * Lọc, đếm và CẮT TRANG đều ở đây chứ không đẩy về máy người dùng. Cấp càng
+   * cao thì số báo cáo nhận về càng lớn - kéo cả khoảng ngày về rồi lọc ở
+   * trình duyệt là mỗi lần mở trang tải hàng nghìn dòng, và số ở thanh tab còn
+   * sai âm thầm khi chạm trần.
+   *
+   * Ba kiểu trả về, tuỳ `groupMode` và `groupKey`:
+   *   - TASK: một trang dòng phẳng;
+   *   - nhóm, chưa có `groupKey`: chỉ TIÊU ĐỀ nhóm - đếm bằng aggregate trên
+   *     toàn bộ nên luôn đúng, không phụ thuộc đang ở trang nào;
+   *   - nhóm, có `groupKey`: một trang dòng của riêng nhóm đó.
    */
   async board(userId: string, query: PersonalMissionBoardQueryDto) {
     const actor = await this.requireActor(userId);
+    const today = serverDateYmd();
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(Math.max(1, query.limit ?? BOARD_PAGE_SIZE), 200);
+    const groupMode = query.groupMode ?? 'TASK';
 
-    const filter: Record<string, unknown> = { currentRecipientId: actor.id };
-    filter.reviewStatus = query.status
+    const base: Record<string, unknown> = { currentRecipientId: actor.id };
+    base.reviewStatus = query.status
       ? query.status
       : query.includeDecided
         ? { $in: ['PENDING', 'APPROVED', 'RETURNED', 'COMPLETED'] }
         : 'PENDING';
 
     if (query.reportDate) {
-      filter.reportDate = this.requireYmd(query.reportDate, 'reportDate');
+      base.reportDate = this.requireYmd(query.reportDate, 'reportDate');
     } else {
       const range: Record<string, string> = {};
       if (query.fromDate) {
         range.$gte = this.requireYmd(query.fromDate, 'fromDate');
       }
       if (query.toDate) range.$lte = this.requireYmd(query.toDate, 'toDate');
-      if (Object.keys(range).length) filter.reportDate = range;
+      if (Object.keys(range).length) base.reportDate = range;
     }
 
-    if (query.axisId)
-      filter.axisId = this.requireObjectId(query.axisId, 'Trục');
+    if (query.axisId) base.axisId = this.requireObjectId(query.axisId, 'Trục');
     if (query.workContentId) {
-      filter.workContentId = this.requireObjectId(
+      base.workContentId = this.requireObjectId(
         query.workContentId,
         'Nội dung công việc',
       );
     }
     if (query.senderId) {
-      filter.lastSenderId = this.requireObjectId(query.senderId, 'Người gửi');
+      base.lastSenderId = this.requireObjectId(query.senderId, 'Người gửi');
     }
     if (query.ownerId) {
-      filter.ownerId = this.requireObjectId(query.ownerId, 'Cán bộ');
+      base.ownerId = this.requireObjectId(query.ownerId, 'Cán bộ');
     }
     if (query.departmentId) {
       // Khớp cả đơn vị của cán bộ lẫn đơn vị đã gửi lên, vì ở cấp cao nhiệm vụ
       // có thể do Đội tạo nhưng Phòng mới là nơi chuyển lên.
       const dept = this.requireObjectId(query.departmentId, 'Đơn vị');
-      filter.$or = [
+      base.$or = [
         { ownerDepartmentId: dept },
         { lastSenderDepartmentId: dept },
       ];
     }
-    if (query.q?.trim()) Object.assign(filter, this.contentMatches(query.q));
 
-    const rows = await this.itemModel
-      .find(filter)
-      .sort({ reportDate: -1, axisId: 1, workContentId: 1, createdAt: 1 })
-      .limit(BOARD_MAX_ROWS)
-      .populate('axisId', 'code name description sortOrder maxScore')
-      .populate('workContentId', 'code name description note sortOrder')
-      .populate('ownerId', 'fullName username')
-      .populate('ownerDepartmentId', 'code name')
-      .populate('lastSenderId', 'fullName username')
-      .populate('lastSenderDepartmentId', 'code name');
+    const searchClause = await this.searchClause(query.q);
+    const tabClause = this.tabClause(query.tab, today);
+    const groupClause = this.groupClause(groupMode, query.groupKey);
 
-    const axes = await this.groupRowsByAxis(rows);
-    const criteria = await this.boardCriteria(filter);
+    /** Ghép các mệnh đề phụ vào bộ lọc gốc, giữ `base` phẳng để dùng lại. */
+    const withClauses = (...clauses: Array<Record<string, unknown> | null>) => {
+      const extra = clauses.filter(Boolean) as Record<string, unknown>[];
+      return extra.length ? { $and: [base, ...extra] } : base;
+    };
+
+    /*
+      Thanh tab đếm trên bộ lọc HIỆN TẠI nhưng bỏ chính tab đang chọn - nếu
+      không thì mọi tab khác đều về 0 ngay khi bấm vào một tab.
+    */
+    const tabCounts = await this.boardTabCounts(
+      withClauses(searchClause),
+      today,
+    );
+
+    const canListRows = groupMode === 'TASK' || query.groupKey !== undefined;
+    const rowFilter = withClauses(searchClause, tabClause, groupClause);
+
+    const [rows, total] = canListRows
+      ? await Promise.all([
+          this.itemModel
+            .find(rowFilter)
+            .sort({ reportDate: -1, axisId: 1, workContentId: 1, createdAt: 1 })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .populate('axisId', 'code name description sortOrder maxScore')
+            .populate('workContentId', 'code name description note sortOrder')
+            .populate('ownerId', 'fullName username')
+            .populate('ownerDepartmentId', 'code name')
+            .populate('lastSenderId', 'fullName username')
+            .populate('lastSenderDepartmentId', 'code name'),
+          this.itemModel.countDocuments(rowFilter),
+        ])
+      : [[] as PersonalMissionItemDocument[], 0];
+
+    const groups =
+      groupMode === 'TASK'
+        ? null
+        : await this.boardGroups(
+            groupMode,
+            withClauses(searchClause, tabClause),
+            today,
+          );
+
+    const [axes, departments] = await Promise.all([
+      this.groupRowsByAxis(rows),
+      this.boardDepartments(withClauses(searchClause)),
+    ]);
+
+    /*
+      Khối A không có ô chữ nào để tìm, cũng không thuộc trục hay nội dung công
+      việc nào - đang lọc theo mấy thứ đó thì giấu nó đi chứ không trả bảng
+      rỗng, kẻo người dùng tưởng mất bảng. Giữ đúng luật cũ.
+    */
+    const criteria = searchClause ? null : await this.boardCriteria(base);
 
     // Đếm theo TOÀN BỘ việc đang ở chỗ mình, không theo bộ lọc trạng thái đang
     // xem - để thanh tab luôn nói được còn bao nhiêu việc đã duyệt chờ gửi lên.
-    const countFilter = { ...filter };
+    const countFilter = { ...base };
     delete countFilter.reviewStatus;
     const countRows = await this.itemModel.aggregate<{
       _id: PersonalMissionReviewStatus;
@@ -1708,12 +1987,415 @@ export class PersonalMissionService {
       message: 'OK',
       data: {
         axes,
+        /*
+          Thứ tự dòng theo đúng cách server sắp. `axes` gom lại theo trục nên
+          duyệt qua nó là mất thứ tự - mà thứ tự lại chính là thứ quyết định
+          dòng nào thuộc trang này.
+        */
+        order: rows.map((row) => String(row._id)),
+        groups,
+        departments,
         criteria,
         counts,
+        tabCounts,
         canForwardUp,
-        rowCount: rows.length,
-        truncated: rows.length >= BOARD_MAX_ROWS,
+        page,
+        limit,
+        total,
       },
+    };
+  }
+
+  /**
+   * Điều kiện của một tab, viết thẳng bằng trường đã chép sẵn.
+   *
+   * Phải khớp từng luật với `matchesTab` bên client. Hai bên lệch nhau thì con
+   * số trên tab và danh sách bên dưới nói hai chuyện khác nhau.
+   */
+  private tabClause(
+    tab: PersonalMissionBoardTab | undefined,
+    today: string,
+  ): Record<string, unknown> | null {
+    // "Chưa xong": chỉ huy chưa chốt VÀ cán bộ cũng chưa báo xong. Việc đã xong
+    // thì thôi tính là trễ hạn hay bỏ bê nữa.
+    const unsettled = [
+      { reviewStatus: { $ne: 'COMPLETED' } },
+      { workDone: { $ne: true } },
+    ];
+
+    switch (tab) {
+      case undefined:
+      case 'ALL':
+        return null;
+      case 'TODAY':
+        return { reportDate: today };
+      case 'BACKLOG':
+        return {
+          $and: [
+            { reportDate: { $lt: today } },
+            { reviewStatus: { $ne: 'COMPLETED' } },
+          ],
+        };
+      case 'OVERDUE':
+        // `$ne: null` là bắt buộc: trong thứ tự so sánh của BSON thì null nhỏ
+        // hơn mọi chuỗi, nên chỉ `$lt` sẽ vơ luôn cả dòng không có hạn.
+        return {
+          $and: [...unsettled, { deadlineDate: { $ne: null, $lt: today } }],
+        };
+      case 'DUE_SOON':
+        return {
+          $and: [
+            ...unsettled,
+            { deadlineDate: { $gte: today, $lte: shiftYmd(today, 2) } },
+          ],
+        };
+      case 'SILENT':
+        return {
+          $and: [
+            ...unsettled,
+            // Trục không có cột tiến độ thì không đếm ngày: cán bộ có muốn cập
+            // nhật cũng không có ô nào để nhập, gắn nhãn "bỏ bê" là oan.
+            { tracksProgress: true },
+            {
+              lastTouchedDate: {
+                $ne: '',
+                $lte: shiftYmd(today, -SILENCE_ALERT_DAYS),
+              },
+            },
+          ],
+        };
+      case 'AWAITING':
+        return {
+          $and: [{ workDone: true }, { reviewStatus: { $ne: 'COMPLETED' } }],
+        };
+      case 'DONE':
+        return { reviewStatus: 'COMPLETED' };
+    }
+  }
+
+  /** Đếm cho cả tám tab trong MỘT lượt quét. */
+  private async boardTabCounts(
+    filter: Record<string, unknown>,
+    today: string,
+  ): Promise<Record<PersonalMissionBoardTab, number>> {
+    const unsettled = {
+      $and: [
+        { $ne: ['$reviewStatus', 'COMPLETED'] },
+        { $ne: ['$workDone', true] },
+      ],
+    };
+    const countIf = (cond: unknown) => ({
+      $sum: { $cond: [cond, 1, 0] },
+    });
+
+    const [row] = await this.itemModel.aggregate<
+      Record<PersonalMissionBoardTab, number>
+    >([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          ALL: { $sum: 1 },
+          TODAY: countIf({ $eq: ['$reportDate', today] }),
+          BACKLOG: countIf({
+            $and: [
+              { $lt: ['$reportDate', today] },
+              { $ne: ['$reviewStatus', 'COMPLETED'] },
+            ],
+          }),
+          OVERDUE: countIf({
+            $and: [
+              unsettled,
+              { $ifNull: ['$deadlineDate', null] },
+              { $lt: ['$deadlineDate', today] },
+            ],
+          }),
+          DUE_SOON: countIf({
+            $and: [
+              unsettled,
+              { $ifNull: ['$deadlineDate', null] },
+              { $gte: ['$deadlineDate', today] },
+              { $lte: ['$deadlineDate', shiftYmd(today, 2)] },
+            ],
+          }),
+          SILENT: countIf({
+            $and: [
+              unsettled,
+              { $eq: ['$tracksProgress', true] },
+              { $ifNull: ['$lastTouchedDate', null] },
+              {
+                $lte: [
+                  '$lastTouchedDate',
+                  shiftYmd(today, -SILENCE_ALERT_DAYS),
+                ],
+              },
+            ],
+          }),
+          AWAITING: countIf({
+            $and: [
+              { $eq: ['$workDone', true] },
+              { $ne: ['$reviewStatus', 'COMPLETED'] },
+            ],
+          }),
+          DONE: countIf({ $eq: ['$reviewStatus', 'COMPLETED'] }),
+        },
+      },
+      { $project: { _id: 0 } },
+    ]);
+
+    return (
+      row ?? {
+        ALL: 0,
+        TODAY: 0,
+        BACKLOG: 0,
+        OVERDUE: 0,
+        DUE_SOON: 0,
+        SILENT: 0,
+        AWAITING: 0,
+        DONE: 0,
+      }
+    );
+  }
+
+  /** Khoá gom nhóm ứng với từng kiểu xem. */
+  private groupField(mode: PersonalMissionGroupMode): string {
+    if (mode === 'AXIS') return 'axisId';
+    if (mode === 'PERSON') return 'ownerId';
+    return 'ownerDepartmentId';
+  }
+
+  /** Thu hẹp về đúng một nhóm khi người dùng bung nó ra. */
+  private groupClause(
+    mode: PersonalMissionGroupMode,
+    key: string | undefined,
+  ): Record<string, unknown> | null {
+    if (mode === 'TASK' || key === undefined) return null;
+    const field = this.groupField(mode);
+    // Khoá rỗng là nhóm "chưa rõ" - dòng không gắn đơn vị hoặc không gắn chủ.
+    if (!key) return { [field]: null };
+    return { [field]: this.requireObjectId(key, 'Nhóm') };
+  }
+
+  /**
+   * Tiêu đề các nhóm: tên, số nhiệm vụ, số trễ / chưa cập nhật / hoàn thành và
+   * tiến độ trung bình.
+   *
+   * Đếm bằng aggregate trên TOÀN BỘ bộ lọc chứ không trên trang đang xem - con
+   * số ở tiêu đề nhóm mà chỉ đúng với trang hiện tại thì đọc ra là sai.
+   */
+  private async boardGroups(
+    mode: PersonalMissionGroupMode,
+    filter: Record<string, unknown>,
+    today: string,
+  ) {
+    const field = this.groupField(mode);
+    const unsettled = {
+      $and: [
+        { $ne: ['$reviewStatus', 'COMPLETED'] },
+        { $ne: ['$workDone', true] },
+      ],
+    };
+
+    const rows = await this.itemModel.aggregate<{
+      _id: Types.ObjectId | null;
+      total: number;
+      overdue: number;
+      silent: number;
+      done: number;
+      percentSum: number;
+      percentCount: number;
+    }>([
+      { $match: filter },
+      {
+        $group: {
+          _id: `$${field}`,
+          total: { $sum: 1 },
+          overdue: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    unsettled,
+                    { $ifNull: ['$deadlineDate', null] },
+                    { $lt: ['$deadlineDate', today] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          silent: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    unsettled,
+                    { $eq: ['$tracksProgress', true] },
+                    { $ifNull: ['$lastTouchedDate', null] },
+                    {
+                      $lte: [
+                        '$lastTouchedDate',
+                        shiftYmd(today, -SILENCE_ALERT_DAYS),
+                      ],
+                    },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          done: {
+            $sum: { $cond: [{ $eq: ['$reviewStatus', 'COMPLETED'] }, 1, 0] },
+          },
+          // Trung bình chỉ tính trên dòng ĐÃ khai tiến độ - gộp cả dòng chưa
+          // khai thành 0% là kéo tụt số của cả nhóm vì một việc chưa tới lượt.
+          percentSum: { $sum: { $ifNull: ['$progressPercent', 0] } },
+          percentCount: {
+            $sum: { $cond: [{ $ne: ['$progressPercent', null] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    const labels = await this.groupLabels(
+      mode,
+      rows.map((row) => row._id),
+    );
+
+    return rows
+      .map((row) => ({
+        key: row._id ? String(row._id) : '',
+        label:
+          labels.get(row._id ? String(row._id) : '') ??
+          this.unknownGroupLabel(mode),
+        total: row.total,
+        overdue: row.overdue,
+        silent: row.silent,
+        done: row.done,
+        percent: row.percentCount
+          ? Math.round(row.percentSum / row.percentCount)
+          : null,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label, 'vi'));
+  }
+
+  private unknownGroupLabel(mode: PersonalMissionGroupMode): string {
+    if (mode === 'AXIS') return 'Chưa rõ trục';
+    if (mode === 'PERSON') return 'Chưa rõ cán bộ';
+    return 'Chưa rõ đơn vị';
+  }
+
+  /** Tên hiển thị của từng khoá nhóm, tra một lượt cho cả danh sách. */
+  private async groupLabels(
+    mode: PersonalMissionGroupMode,
+    ids: Array<Types.ObjectId | null>,
+  ): Promise<Map<string, string>> {
+    const list = ids.filter((id): id is Types.ObjectId => Boolean(id));
+    if (!list.length) return new Map();
+
+    if (mode === 'AXIS') {
+      const rows = await this.axisModel
+        .find({ _id: { $in: list } })
+        .select('name');
+      return new Map(rows.map((row) => [String(row._id), row.name ?? '']));
+    }
+    if (mode === 'PERSON') {
+      const rows = await this.userModel
+        .find({ _id: { $in: list } })
+        .select('fullName username');
+      return new Map(
+        rows.map((row) => [
+          String(row._id),
+          row.fullName?.trim() || row.username,
+        ]),
+      );
+    }
+    const rows = await this.departmentModel
+      .find({ _id: { $in: list } })
+      .select('name');
+    return new Map(rows.map((row) => [String(row._id), row.name ?? '']));
+  }
+
+  /**
+   * Các đơn vị có mặt trong bộ lọc, để dựng ô chọn đơn vị.
+   *
+   * Lấy từ aggregate chứ không nhặt từ trang đang xem: nhặt từ trang thì sang
+   * trang 2 danh sách đơn vị lại đổi, và đơn vị vừa chọn có thể biến mất khỏi
+   * chính ô chọn nó.
+   */
+  private async boardDepartments(filter: Record<string, unknown>) {
+    const rows = await this.itemModel.aggregate<{
+      _id: Types.ObjectId | null;
+    }>([{ $match: filter }, { $group: { _id: '$ownerDepartmentId' } }]);
+
+    const ids = rows
+      .map((row) => row._id)
+      .filter((id): id is Types.ObjectId => Boolean(id));
+    if (!ids.length) return [];
+
+    const departments = await this.departmentModel
+      .find({ _id: { $in: ids } })
+      .select('name');
+    return departments
+      .map((row) => ({ id: String(row._id), name: row.name ?? '' }))
+      .sort((left, right) => left.name.localeCompare(right.name, 'vi'));
+  }
+
+  /**
+   * Ô tìm kiếm: khớp nội dung nhiệm vụ, hoặc tên cán bộ / đơn vị / trục / nội
+   * dung công việc.
+   *
+   * Nội dung nhiệm vụ khớp trên `searchText` đã chép sẵn - dùng được index,
+   * khác hẳn cách cũ là `$expr` quét từng khoá của `fieldValues` trên toàn bộ
+   * collection.
+   *
+   * Mấy cái TÊN thì nằm ở collection khác và người dùng hay gõ không dấu, nên
+   * tra id trước: các bảng danh mục này đều nhỏ, và lọc trong bộ nhớ mới dùng
+   * được đúng cách bỏ dấu mà client đang dùng.
+   */
+  private async searchClause(
+    raw: string | undefined,
+  ): Promise<Record<string, unknown> | null> {
+    const term = this.normalizeSearch(raw ?? '');
+    if (!term) return null;
+
+    const pick = <T extends { _id: unknown }>(
+      rows: T[],
+      nameOf: (row: T) => string,
+    ) =>
+      rows
+        .filter((row) => this.normalizeSearch(nameOf(row)).includes(term))
+        .map((row) => row._id as Types.ObjectId);
+
+    const [users, departments, axes, contents] = await Promise.all([
+      this.userModel.find().select('fullName username'),
+      this.departmentModel.find().select('name'),
+      this.axisModel.find().select('name'),
+      this.workContentModel.find().select('name code'),
+    ]);
+
+    return {
+      $or: [
+        { searchText: { $regex: this.likeRegex(term) } },
+        {
+          ownerId: {
+            $in: pick(users, (row) => `${row.fullName ?? ''} ${row.username}`),
+          },
+        },
+        {
+          ownerDepartmentId: {
+            $in: pick(departments, (row) => row.name ?? ''),
+          },
+        },
+        { axisId: { $in: pick(axes, (row) => row.name ?? '') } },
+        {
+          workContentId: {
+            $in: pick(contents, (row) => `${row.name ?? ''} ${row.code ?? ''}`),
+          },
+        },
+      ],
     };
   }
 
@@ -2214,6 +2896,7 @@ export class PersonalMissionService {
       if (!template) continue;
       item.formTemplateId = template._id as Types.ObjectId;
       item.formTemplateVersion = template.version ?? 1;
+      await this.refreshDerived(item);
       await item.save();
     }
   }
@@ -2371,6 +3054,9 @@ export class PersonalMissionService {
       item.fieldValues = fieldValues;
       item.markModified('fieldValues');
     }
+
+    // Cột tự tính vừa đổi thì hạn / tiến độ / chuỗi tìm kiếm cũng đổi theo.
+    await this.refreshDerivedMany(items);
   }
 
   /**
@@ -2500,6 +3186,132 @@ export class PersonalMissionService {
       },
     ];
     item.markModified('progressLogs');
+  }
+
+  // ============================================ trường suy ra (denormalized)
+
+  /**
+   * Tính lại toàn bộ trường suy ra của một nhiệm vụ.
+   *
+   * PHẢI gọi sau mọi thay đổi chạm tới nội dung, điểm chỉ huy chấm lại, mốc cập
+   * nhật tiến độ, hoặc mẫu bảng gắn cho nhiệm vụ. Bỏ sót một đường ghi là bảng
+   * tổng lọc ra kết quả cũ mà không có dấu hiệu gì báo sai.
+   *
+   * Đọc SỐ CHỐT - điểm chỉ huy chấm lại đè lên số cán bộ tự chấm - đúng luật mà
+   * bảng danh sách đang hiển thị. Bày một đằng lọc một nẻo còn khó hiểu hơn là
+   * lọc sai hẳn.
+   */
+  private async refreshDerived(
+    item: PersonalMissionItemDocument,
+    ctx?: {
+      templateCache?: Map<string, TrackingTemplate | null>;
+      percentByLevelId?: Map<string, number>;
+    },
+  ) {
+    const template = await this.trackingTemplateOf(item, ctx?.templateCache);
+    const percentByLevelId =
+      ctx?.percentByLevelId ?? (await this.qualityPercentMap());
+
+    const final = {
+      fieldValues: { ...item.fieldValues, ...item.reviewValues },
+      catalogValues: { ...item.catalogValues, ...item.reviewCatalogValues },
+    };
+
+    const { progress } = resolveTrackingColumns(template);
+    item.tracksProgress = !!progress;
+    item.progressPercent = readItemPercent(final, progress, percentByLevelId);
+    item.deadlineDate = this.readDeadlineDate(template, final.fieldValues);
+
+    /*
+      "Xong" của trục có cột tiến độ là đủ 100%; của trục chấm theo mục là đã
+      khai kết quả (điền điểm Đạt hoặc tích Không đạt). Suy 0% cho trục không có
+      cột tiến độ là bịa ra con số mẫu không hề có - cùng luật với `workStateOf`
+      bên client.
+    */
+    item.workDone = progress
+      ? item.progressPercent !== null && item.progressPercent >= 100
+      : this.hasDeclaredResult(template, final.fieldValues);
+
+    // Chưa cập nhật lần nào thì tính từ lúc đăng ký - không thì nhiệm vụ vừa
+    // tạo đã bị coi là im lặng vô hạn.
+    const touchedAt = item.lastProgressAt ?? item.createdAt ?? new Date();
+    item.lastTouchedDate = serverDateYmd(touchedAt);
+
+    item.searchText = this.buildSearchText(item);
+  }
+
+  /** Tính lại cho cả lô, dùng chung một bộ nhớ đệm mẫu và bảng phần trăm. */
+  private async refreshDerivedMany(items: PersonalMissionItemDocument[]) {
+    if (!items.length) return;
+    const ctx = {
+      templateCache: new Map<string, TrackingTemplate | null>(),
+      percentByLevelId: await this.qualityPercentMap(),
+    };
+    for (const item of items) await this.refreshDerived(item, ctx);
+  }
+
+  /**
+   * Hạn hoàn thành đọc từ mẫu: cột `deadline` kiểu ngày, mẫu khác thì cột ngày
+   * đầu tiên. Khớp từng luật với `trackingColumns` bên client.
+   */
+  private readDeadlineDate(
+    template: TrackingTemplate | null,
+    fieldValues: Record<string, string | number>,
+  ): string | null {
+    const visible = (template?.columns ?? []).filter(
+      (column) => column.visible,
+    );
+    const column =
+      visible.find(
+        (item) => item.key === 'deadline' && item.dataType === 'date',
+      ) ?? visible.find((item) => item.dataType === 'date');
+    if (!column) return null;
+
+    const raw = String(fieldValues[column.key] ?? '').trim();
+    // Ô ngày vẫn là ô chữ tự do - gõ dở dang thì đừng ghi vào trường đem đi so
+    // sánh, kẻo nó lọt vào nhóm "trễ hạn" chỉ vì chuỗi rác nhỏ hơn ngày hôm nay.
+    return raw && isYmd(raw) ? raw : null;
+  }
+
+  /** Trục chấm theo mục: đã điền điểm Đạt hoặc đã tích Không đạt. */
+  private hasDeclaredResult(
+    template: TrackingTemplate | null,
+    fieldValues: Record<string, string | number>,
+  ): boolean {
+    const { scores, flags } = resolveResultColumns(template);
+    const scored = scores.some((column) =>
+      String(fieldValues[column.key] ?? '').trim(),
+    );
+    const flagged = flags.some(
+      (column) => String(fieldValues[column.key] ?? '') === '1',
+    );
+    return scored || flagged;
+  }
+
+  /**
+   * Chuỗi tìm kiếm của một nhiệm vụ: mọi ô chữ/số cộng tên các giá trị danh
+   * mục, bỏ dấu và hạ chữ thường.
+   *
+   * Lấy số cán bộ tự khai chứ không ghép điểm chỉ huy chấm lại: người tìm đang
+   * gõ lại thứ mình từng đọc trên bảng, mà bảng bày lời cán bộ khai.
+   */
+  private buildSearchText(item: PersonalMissionItemDocument): string {
+    const parts = [
+      ...Object.values(item.fieldValues ?? {}),
+      ...Object.values(item.catalogValues ?? {}).map((value) => value?.name),
+    ];
+    return this.normalizeSearch(parts.filter(Boolean).join(' '));
+  }
+
+  /** Bỏ dấu, hạ chữ thường - phải khớp `normalizeText` bên client. */
+  private normalizeSearch(value: string): string {
+    return value
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .replace(/đ/g, 'd')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   /** Phần trăm tiến độ hiện tại của từng nhiệm vụ, tra theo id. */
@@ -2868,6 +3680,9 @@ export class PersonalMissionService {
       at: now,
     });
 
+    // Đường ghi quan trọng nhất với bảng tổng: tiến độ, mốc im lặng và cờ
+    // "đã xong" đều đổi ở đây.
+    await this.refreshDerived(item);
     await item.save();
     await item.populate([
       { path: 'axisId', select: 'code name description' },
@@ -3034,6 +3849,8 @@ export class PersonalMissionService {
       note: item.reviewNote,
       at: now,
     });
+    // Chỉ huy vừa chấm lại: số chốt đổi nên tiến độ suy ra cũng phải đổi.
+    await this.refreshDerived(item);
     await item.save();
     await this.closeSubmissionsIfSettled([item]);
 

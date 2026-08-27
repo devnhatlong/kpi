@@ -294,6 +294,20 @@ export class ReviewPersonalMissionDto {
   reason?: string;
 }
 
+/**
+ * Thanh tab của màn nhập. Khác bộ tab bảng tổng: cán bộ quan tâm bản của mình
+ * đang ở đâu trong quy trình, chỉ huy quan tâm việc chạy tới đâu.
+ */
+export const PERSONAL_MISSION_MINE_TABS = [
+  'ALL',
+  'DRAFT',
+  'PENDING',
+  'RETURNED',
+  'DONE',
+] as const;
+export type PersonalMissionMineTab =
+  (typeof PERSONAL_MISSION_MINE_TABS)[number];
+
 export class PersonalMissionListQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
@@ -330,6 +344,14 @@ export class PersonalMissionListQueryDto {
   @IsOptional()
   @IsIn([...PERSONAL_MISSION_REVIEW_STATUSES])
   status?: string;
+
+  @ApiPropertyOptional({
+    enum: PERSONAL_MISSION_MINE_TABS,
+    description: 'DONE gồm cả đã duyệt lẫn đã chốt - status lẻ không nói được',
+  })
+  @IsOptional()
+  @IsIn([...PERSONAL_MISSION_MINE_TABS])
+  tab?: PersonalMissionMineTab;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -379,6 +401,30 @@ export class PersonalMissionReportsQueryDto {
 }
 
 /** Bảng tổng theo trục cho cấp trên. */
+/** Thanh tab của bảng tổng. Server lọc và đếm theo đúng bộ này. */
+export const PERSONAL_MISSION_BOARD_TABS = [
+  'ALL',
+  'TODAY',
+  'BACKLOG',
+  'OVERDUE',
+  'DUE_SOON',
+  'SILENT',
+  'AWAITING',
+  'DONE',
+] as const;
+export type PersonalMissionBoardTab =
+  (typeof PERSONAL_MISSION_BOARD_TABS)[number];
+
+/** Cách gom danh sách; TASK = xem phẳng, không gom. */
+export const PERSONAL_MISSION_GROUP_MODES = [
+  'TASK',
+  'AXIS',
+  'UNIT',
+  'PERSON',
+] as const;
+export type PersonalMissionGroupMode =
+  (typeof PERSONAL_MISSION_GROUP_MODES)[number];
+
 export class PersonalMissionBoardQueryDto {
   @ApiPropertyOptional({ description: 'Bỏ trống = mọi ngày còn việc' })
   @IsOptional()
@@ -437,6 +483,48 @@ export class PersonalMissionBoardQueryDto {
   @Type(() => Boolean)
   @IsBoolean()
   includeDecided?: boolean;
+
+  @ApiPropertyOptional({ minimum: 1, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 200, default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+
+  @ApiPropertyOptional({
+    enum: PERSONAL_MISSION_BOARD_TABS,
+    description: 'Lọc theo tình trạng thực hiện - đếm luôn trả về đủ mọi tab',
+  })
+  @IsOptional()
+  @IsIn([...PERSONAL_MISSION_BOARD_TABS])
+  tab?: PersonalMissionBoardTab;
+
+  @ApiPropertyOptional({
+    enum: PERSONAL_MISSION_GROUP_MODES,
+    description:
+      'Khác TASK thì trả tiêu đề nhóm thay cho dòng; kèm groupKey mới trả dòng',
+  })
+  @IsOptional()
+  @IsIn([...PERSONAL_MISSION_GROUP_MODES])
+  groupMode?: PersonalMissionGroupMode;
+
+  /*
+    Cố tình KHÔNG dùng @IsMongoId: nhóm "chưa có đơn vị" / "chưa rõ cán bộ" có
+    khoá là chuỗi rỗng, mà đó là nhóm có thật cần mở ra xem được.
+  */
+  @ApiPropertyOptional({
+    description: 'Chỉ lấy dòng của một nhóm; rỗng = nhóm không có khoá',
+  })
+  @IsOptional()
+  @IsString()
+  groupKey?: string;
 }
 
 /**
