@@ -23,7 +23,7 @@ import {
   type KpiCriterionSubjectType,
 } from '../schemas/kpi-summary-report.schema';
 
-/** Kho nhiệm vụ đã hoàn thành để nhặt vào báo cáo tổng hợp. */
+/** Kho nhiệm vụ đã hoàn thành để chọn vào báo cáo tổng hợp. */
 export class SummaryCandidatesQueryDto {
   @ApiPropertyOptional({ description: 'YYYY-MM-DD' })
   @IsOptional()
@@ -79,6 +79,45 @@ export class SummaryCandidatesQueryDto {
   reportId?: string;
 }
 
+/** Nhiệm vụ tự nhập - việc không đi qua KPI cá nhân. */
+export class CreateSummaryManualItemDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(300)
+  title!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsMongoId()
+  axisId?: string;
+
+  @ApiPropertyOptional({ description: 'Cán bộ / bộ phận thực hiện' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  ownerName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  departmentName?: string;
+
+  @ApiPropertyOptional({ description: 'Điểm chỉ huy ghi cho việc này' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(1000)
+  score?: number;
+}
+
 export class CreateSummaryReportDto {
   @ApiProperty()
   @IsString()
@@ -108,13 +147,27 @@ export class CreateSummaryReportDto {
 
   /**
    * Tích sẵn từ bước "Chọn nhiệm vụ hoàn thành". Cho phép rỗng: lập khung báo
-   * cáo trước rồi nhặt việc sau là cách làm bình thường.
+   * cáo trước rồi chọn việc sau là cách làm bình thường.
    */
   @ApiPropertyOptional({ description: 'Nhiệm vụ đã hoàn thành được tích' })
   @IsOptional()
   @IsArray()
   @IsMongoId({ each: true })
   itemIds?: string[];
+
+  /**
+   * Việc chỉ huy tự khai theo trục, gửi luôn trong lần tạo.
+   *
+   * Đi kèm ở đây chứ không bắt gọi thêm `POST :id/manual-items`: trình tạo báo
+   * cáo chỉ ghi xuống ở bước cuối, tách làm hai lượt thì lỡ lượt sau hỏng là
+   * người dùng còn lại một báo cáo thiếu việc mà không biết thiếu ở đâu.
+   */
+  @ApiPropertyOptional({ type: [CreateSummaryManualItemDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateSummaryManualItemDto)
+  manualItems?: CreateSummaryManualItemDto[];
 }
 
 export class UpdateSummaryReportDto {
@@ -160,45 +213,6 @@ export class ChangeSummaryItemsDto {
   @ArrayNotEmpty()
   @IsMongoId({ each: true })
   itemIds!: string[];
-}
-
-/** Nhiệm vụ tự nhập - việc không đi qua KPI cá nhân. */
-export class CreateSummaryManualItemDto {
-  @ApiProperty()
-  @IsString()
-  @MaxLength(300)
-  title!: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(1000)
-  note?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsMongoId()
-  axisId?: string;
-
-  @ApiPropertyOptional({ description: 'Cán bộ / bộ phận thực hiện' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  ownerName?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  departmentName?: string;
-
-  @ApiPropertyOptional({ description: 'Điểm chỉ huy ghi cho việc này' })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @Max(1000)
-  score?: number;
 }
 
 /** Trình báo cáo lên cấp trên - cùng luật người nhận với báo cáo ngày. */

@@ -1,7 +1,14 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { ClipboardCheck, FileText, Loader2, Send } from "lucide-react";
+import {
+  CircleCheck,
+  ClipboardCheck,
+  FileText,
+  Loader2,
+  Send,
+  SquarePen,
+} from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 
@@ -15,12 +22,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/features/auth/auth-provider";
 import {
   createSummaryReport,
   sendSummaryReport,
 } from "@/features/kpi-summary-report/api";
+import {
+  ManualDraftList,
+  toManualItemInput,
+  type SummaryManualDraft,
+} from "@/features/kpi-summary-report/components/manual-draft-list";
 import { SummaryCandidatePicker } from "@/features/kpi-summary-report/components/summary-candidate-picker";
 import { periodLabel } from "@/features/kpi-summary-report/types";
 import { fetchPersonalKpiRecipients } from "@/features/personal-kpi/api";
@@ -32,11 +45,14 @@ import { cn } from "@/lib/utils";
 
 const STEPS = [
   { key: "info", label: "Thông tin", icon: FileText },
-  { key: "pick", label: "Chọn nhiệm vụ hoàn thành", icon: ClipboardCheck },
+  { key: "pick", label: "Nội dung báo cáo", icon: ClipboardCheck },
   { key: "send", label: "Trình cấp trên", icon: Send },
 ] as const;
 
 type StepKey = (typeof STEPS)[number]["key"];
+
+/** Hai lối đưa việc vào báo cáo - dùng được cả hai trong cùng một báo cáo. */
+type SourceKey = "completed" | "manual";
 
 const NO_SCOPE = "__none__";
 const DEFAULT_SEND_NOTE = "Kính gửi";
@@ -55,13 +71,17 @@ type CreateReportWizardProps = {
 };
 
 /**
- * Trình tạo báo cáo tổng hợp: khai thông tin → nhặt việc đã hoàn thành → trình
- * cấp trên.
+ * Trình tạo báo cáo tổng hợp: khai thông tin → dựng nội dung → trình cấp trên.
  *
- * Báo cáo chỉ được ghi xuống ở bước cuối, trong một lần gọi kèm danh sách
- * nhiệm vụ - bỏ dở giữa chừng thì không để lại báo cáo rỗng nào cho người dùng
- * dọn. Bước cuối vẫn cho phép lưu lại để soạn tiếp, vì không phải lúc nào lập
- * xong cũng trình đi ngay.
+ * Nội dung đến từ hai lối, dùng được cả hai trong cùng một báo cáo: chọn việc
+ * cấp dưới đã hoàn thành, và tự khai việc theo trục. Lối thứ hai không phải cho
+ * đủ bộ - việc của chính đơn vị, việc phối hợp, việc đột xuất không đi qua KPI
+ * cá nhân nên không có gì để mà chọn, mà báo cáo thì vẫn phải nói tới chúng.
+ *
+ * Báo cáo chỉ được ghi xuống ở bước cuối, trong một lần gọi kèm cả hai danh
+ * sách - bỏ dở giữa chừng thì không để lại báo cáo rỗng nào cho người dùng dọn.
+ * Bước cuối vẫn cho phép lưu lại để soạn tiếp, vì không phải lúc nào lập xong
+ * cũng trình đi ngay.
  */
 export function CreateReportWizard({
   open,
@@ -70,11 +90,13 @@ export function CreateReportWizard({
 }: CreateReportWizardProps) {
   const { user } = useAuth();
   const [step, setStep] = useState<StepKey>("info");
+  const [source, setSource] = useState<SourceKey>("completed");
   const [title, setTitle] = useState("");
   const [scopeId, setScopeId] = useState(NO_SCOPE);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [drafts, setDrafts] = useState<SummaryManualDraft[]>([]);
   const [recipientId, setRecipientId] = useState("");
   const [sendNote, setSendNote] = useState(DEFAULT_SEND_NOTE);
   const [busy, setBusy] = useState(false);
@@ -98,11 +120,13 @@ export function CreateReportWizard({
     if (open) {
       const week = currentWeekRange();
       setStep("info");
+      setSource("completed");
       setTitle(defaultTitle(serverYmd()));
       setScopeId(user?.departmentId || NO_SCOPE);
       setFromDate(week.from);
       setToDate(week.to);
       setSelected(new Set());
+      setDrafts([]);
       setRecipientId("");
       setSendNote(DEFAULT_SEND_NOTE);
     }
@@ -138,6 +162,7 @@ export function CreateReportWizard({
   );
 
   const canContinue = title.trim().length > 0;
+  const totalItems = selected.size + drafts.length;
 
   /** Ghi báo cáo xuống; `andSend` thì trình luôn cho cấp trên đã chọn. */
   const submit = async (andSend: boolean) => {
@@ -158,6 +183,7 @@ export function CreateReportWizard({
         toDate,
         scopeDepartmentId: scopeId === NO_SCOPE ? undefined : scopeId,
         itemIds: [...selected],
+        manualItems: drafts.map(toManualItemInput),
       });
 
       if (andSend) {
@@ -183,7 +209,13 @@ export function CreateReportWizard({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <DialogContent className="sm:max-w-3xl">
+      {/*
+        Rộng và cao hẳn: bước "Nội dung báo cáo" vừa có form khai vừa có danh
+        sách bên dưới, khung hẹp thì hai thứ chen nhau, mỗi thứ còn một mẩu.
+        Cao tối đa 90vh và cho phần thân tự cuộn - thanh bước ở trên và hai nút
+        ở dưới đứng yên, không bị đẩy khuất khi mở form khai.
+      */}
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Tạo báo cáo tổng hợp</DialogTitle>
         </DialogHeader>
@@ -229,110 +261,160 @@ export function CreateReportWizard({
           })}
         </div>
 
-        {step === "info" ? (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="wizard-title">
-                Tên báo cáo <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="wizard-title"
-                value={title}
-                maxLength={300}
-                onChange={(event) => setTitle(event.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Phạm vi tổng hợp</Label>
-              <SearchableSelect
-                value={scopeId}
-                onValueChange={setScopeId}
-                options={scopeOptions}
-              />
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
+        {/* Thân bước là vùng cuộn duy nhất; -mr-2 pr-2 để thanh cuộn nằm gọn
+            trong lề sẵn có của hộp thoại, không đè lên nội dung. */}
+        <div className="-mr-2 min-h-0 flex-1 overflow-y-auto pr-2">
+          {step === "info" ? (
+            <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label htmlFor="wizard-from">Từ ngày</Label>
+                <Label htmlFor="wizard-title">
+                  Tên báo cáo <span className="text-destructive">*</span>
+                </Label>
                 <Input
-                  id="wizard-from"
-                  type="date"
-                  value={fromDate}
-                  onChange={(event) => setFromDate(event.target.value)}
+                  id="wizard-title"
+                  value={title}
+                  maxLength={300}
+                  onChange={(event) => setTitle(event.target.value)}
                 />
               </div>
+
               <div className="space-y-1.5">
-                <Label htmlFor="wizard-to">Đến ngày</Label>
-                <Input
-                  id="wizard-to"
-                  type="date"
-                  value={toDate}
-                  onChange={(event) => setToDate(event.target.value)}
+                <Label>Phạm vi tổng hợp</Label>
+                <SearchableSelect
+                  value={scopeId}
+                  onValueChange={setScopeId}
+                  options={scopeOptions}
                 />
               </div>
-            </div>
 
-            <p
-              className={cn("rounded-lg border p-3 text-xs", kpiTone.info.soft)}
-            >
-              Báo cáo tổng hợp chỉ lấy các nhiệm vụ đã được chỉ huy xác nhận
-              hoàn thành.
-            </p>
-          </div>
-        ) : null}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="wizard-from">Từ ngày</Label>
+                  <Input
+                    id="wizard-from"
+                    type="date"
+                    value={fromDate}
+                    onChange={(event) => setFromDate(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="wizard-to">Đến ngày</Label>
+                  <Input
+                    id="wizard-to"
+                    type="date"
+                    value={toDate}
+                    onChange={(event) => setToDate(event.target.value)}
+                  />
+                </div>
+              </div>
 
-        {step === "pick" ? (
-          <SummaryCandidatePicker
-            selected={selected}
-            onChange={setSelected}
-            listClassName="max-h-[300px]"
-          />
-        ) : null}
-
-        {step === "send" ? (
-          <div className="space-y-3">
-            <div className="rounded-lg border p-3 text-sm">
-              <p className="font-medium">{title.trim() || "Chưa đặt tên"}</p>
-              <p className="text-xs text-muted-foreground">
-                {scopeOptions.find((option) => option.value === scopeId)
-                  ?.label ?? "Không đặt phạm vi"}{" "}
-                · {periodLabel(fromDate, toDate)} · {selected.size} nhiệm vụ
+              <p
+                className={cn(
+                  "rounded-lg border p-3 text-xs",
+                  kpiTone.info.soft,
+                )}
+              >
+                Bước sau chọn nội dung báo cáo: lấy việc cấp dưới đã được chỉ
+                huy xác nhận hoàn thành, hoặc tự khai việc của đơn vị theo trục
+                - dùng được cả hai.
               </p>
             </div>
+          ) : null}
 
-            <div className="space-y-1.5">
-              <Label>Cấp trên nhận báo cáo</Label>
-              <SearchableSelect
-                value={recipientId}
-                onValueChange={setRecipientId}
-                options={recipientOptions}
-                placeholder={
-                  recipientOptions.length
-                    ? "Chọn cấp trên..."
-                    : "Không có cấp trên nào trong phạm vi của bạn"
-                }
-              />
+          {/*
+          Hai lối đưa việc vào báo cáo nằm cạnh nhau chứ không phải chọn một rồi
+          thôi: đếm số việc ngay trên nhãn tab để đang đứng ở lối này vẫn thấy
+          lối kia đã có gì.
+        */}
+          {step === "pick" ? (
+            <Tabs
+              value={source}
+              onValueChange={(next) => setSource(next as SourceKey)}
+            >
+              <TabsList>
+                <TabsTrigger value="completed">
+                  <CircleCheck className="mr-1.5 size-4" />
+                  Việc cấp dưới hoàn thành
+                  {selected.size ? (
+                    <span className="ml-1.5 text-muted-foreground">
+                      · {selected.size}
+                    </span>
+                  ) : null}
+                </TabsTrigger>
+                <TabsTrigger value="manual">
+                  <SquarePen className="mr-1.5 size-4" />
+                  Tự khai theo trục
+                  {drafts.length ? (
+                    <span className="ml-1.5 text-muted-foreground">
+                      · {drafts.length}
+                    </span>
+                  ) : null}
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="completed">
+                {/* Cao theo màn hình chứ không chốt px: màn lớn thì thấy được
+                  nhiều dòng hơn, màn nhỏ vẫn còn chỗ cho thanh bước và nút. */}
+                <SummaryCandidatePicker
+                  selected={selected}
+                  onChange={setSelected}
+                  listClassName="max-h-[46vh]"
+                />
+              </TabsContent>
+
+              <TabsContent value="manual">
+                <ManualDraftList drafts={drafts} onChange={setDrafts} />
+              </TabsContent>
+            </Tabs>
+          ) : null}
+
+          {step === "send" ? (
+            <div className="space-y-3">
+              <div className="rounded-lg border p-3 text-sm">
+                <p className="font-medium">{title.trim() || "Chưa đặt tên"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {scopeOptions.find((option) => option.value === scopeId)
+                    ?.label ?? "Không đặt phạm vi"}{" "}
+                  · {periodLabel(fromDate, toDate)} · {totalItems} nhiệm vụ
+                  {drafts.length
+                    ? ` (${selected.size} từ cấp dưới, ${drafts.length} tự khai)`
+                    : ""}
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Cấp trên nhận báo cáo</Label>
+                <SearchableSelect
+                  value={recipientId}
+                  onValueChange={setRecipientId}
+                  options={recipientOptions}
+                  placeholder={
+                    recipientOptions.length
+                      ? "Chọn cấp trên..."
+                      : "Không có cấp trên nào trong phạm vi của bạn"
+                  }
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="wizard-send-note">Lời trình gửi kèm</Label>
+                <Textarea
+                  id="wizard-send-note"
+                  rows={3}
+                  value={sendNote}
+                  maxLength={1000}
+                  onChange={(event) => setSendNote(event.target.value)}
+                />
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Chưa muốn trình ngay thì bấm &quot;Lưu để soạn tiếp&quot; - báo
+                cáo nằm ở mục Đang soạn, thêm bớt nhiệm vụ thoải mái rồi trình
+                sau.
+              </p>
             </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="wizard-send-note">Lời trình gửi kèm</Label>
-              <Textarea
-                id="wizard-send-note"
-                rows={3}
-                value={sendNote}
-                maxLength={1000}
-                onChange={(event) => setSendNote(event.target.value)}
-              />
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              Chưa muốn trình ngay thì bấm &quot;Lưu để soạn tiếp&quot; - báo
-              cáo nằm ở mục Đang soạn, thêm bớt nhiệm vụ thoải mái rồi trình
-              sau.
-            </p>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
 
         <div className="flex items-center justify-between gap-2">
           <Button

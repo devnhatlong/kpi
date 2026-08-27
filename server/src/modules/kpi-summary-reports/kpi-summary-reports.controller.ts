@@ -42,7 +42,7 @@ export class KpiSummaryReportsController {
   constructor(private readonly service: KpiSummaryReportsService) {}
 
   @ApiOperation({
-    summary: 'Kho nhiệm vụ đã hoàn thành để nhặt vào báo cáo, gom theo trục',
+    summary: 'Kho nhiệm vụ đã hoàn thành để chọn vào báo cáo, gom theo trục',
   })
   @Get('candidates')
   candidates(

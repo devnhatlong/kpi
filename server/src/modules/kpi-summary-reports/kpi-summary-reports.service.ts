@@ -39,6 +39,7 @@ import {
 } from './dto/kpi-summary-report.dto';
 import {
   KpiSummaryLogType,
+  KpiSummaryManualItem,
   KpiSummaryReport,
   KpiSummaryReportDocument,
   KpiSummaryReportStatus,
@@ -81,7 +82,7 @@ export class KpiSummaryReportsService {
     private readonly personalKpiService: PersonalKpiService,
   ) {}
 
-  // ==================================================== kho nhiệm vụ để nhặt
+  // ==================================================== kho nhiệm vụ để chọn
 
   /**
    * Nhiệm vụ đã hoàn thành mà tôi được phép đưa vào báo cáo, gom theo trục.
@@ -129,6 +130,8 @@ export class KpiSummaryReportsService {
     const itemIds = await this.requireEligibleItems(actor, dto.itemIds ?? [], {
       allowEmpty: true,
     });
+    const manualItems = await this.buildManualItems(dto.manualItems ?? []);
+    this.assertItemLimit(itemIds.length + manualItems.length);
 
     const report = await this.reportModel.create({
       title,
@@ -142,13 +145,11 @@ export class KpiSummaryReportsService {
       scopeName: scope.name,
       itemIds,
       itemCount: itemIds.length,
-      manualItems: [],
+      manualItems,
       logs: [
         {
           type: 'CREATE' as const,
-          message: itemIds.length
-            ? `Khởi tạo báo cáo tổng hợp với ${itemIds.length} nhiệm vụ`
-            : 'Khởi tạo báo cáo tổng hợp',
+          message: this.createLogMessage(itemIds.length, manualItems.length),
           byId: actor.id,
           byName: actor.name,
           at: new Date(),
@@ -157,10 +158,21 @@ export class KpiSummaryReportsService {
       status: 'DRAFT' as const,
     });
 
+    const total = itemIds.length + manualItems.length;
     return {
-      message: `Đã tạo báo cáo tổng hợp với ${itemIds.length} nhiệm vụ.`,
+      message: `Đã tạo báo cáo tổng hợp với ${total} nhiệm vụ.`,
       data: this.toReportSummary(report),
     };
+  }
+
+  /** Nhật ký nói rõ việc lấy từ cấp dưới và việc chỉ huy tự khai là bao nhiêu. */
+  private createLogMessage(itemCount: number, manualCount: number) {
+    const parts: string[] = [];
+    if (itemCount) parts.push(`${itemCount} nhiệm vụ đã hoàn thành`);
+    if (manualCount) parts.push(`${manualCount} nhiệm vụ tự nhập`);
+    return parts.length
+      ? `Khởi tạo báo cáo tổng hợp với ${parts.join(' và ')}`
+      : 'Khởi tạo báo cáo tổng hợp';
   }
 
   async findAll(userId: string, query: SummaryReportListQueryDto) {
@@ -531,6 +543,55 @@ export class KpiSummaryReportsService {
   // ======================================================= nhiệm vụ tự nhập
 
   /**
+   * Dựng các dòng tự nhập từ DTO - dùng chung cho lúc tạo báo cáo và lúc thêm
+   * lẻ từng dòng, để hai đường vào không trôi ra hai cách hiểu khác nhau.
+   *
+   * Tên trục được CHÉP vào dòng nên phải tra thật: nhận bừa một axisId không có
+   * trong danh mục thì báo cáo mang dòng trống tên trục, đọc lại không biết
+   * việc này thuộc đâu. Tra cả mớ trong một lượt truy vấn.
+   */
+  private async buildManualItems(
+    dtos: CreateSummaryManualItemDto[],
+  ): Promise<KpiSummaryManualItem[]> {
+    const wantedAxes = new Map<string, Types.ObjectId>();
+    for (const dto of dtos) {
+      if (!dto.axisId) continue;
+      const id = this.requireObjectId(dto.axisId, 'Trục');
+      wantedAxes.set(String(id), id);
+    }
+
+    const axisNames = new Map<string, string>();
+    if (wantedAxes.size) {
+      const axes = await this.axisModel
+        .find({ _id: { $in: [...wantedAxes.values()] } })
+        .select('name code');
+      for (const axis of axes) {
+        axisNames.set(String(axis._id), axis.name?.trim() || axis.code);
+      }
+      if (axisNames.size !== wantedAxes.size) {
+        throw new BadRequestException('Trục không tồn tại.');
+      }
+    }
+
+    const now = new Date();
+    return dtos.map((dto) => {
+      const title = dto.title?.trim() ?? '';
+      if (!title) throw new BadRequestException('Tên nhiệm vụ là bắt buộc.');
+      const axisKey = dto.axisId ? String(new Types.ObjectId(dto.axisId)) : '';
+      return {
+        title,
+        note: dto.note?.trim() ?? '',
+        axisId: axisKey ? wantedAxes.get(axisKey)! : null,
+        axisName: axisKey ? (axisNames.get(axisKey) ?? '') : '',
+        ownerName: dto.ownerName?.trim() ?? '',
+        departmentName: dto.departmentName?.trim() ?? '',
+        score: dto.score ?? null,
+        createdAt: now,
+      };
+    });
+  }
+
+  /**
    * Việc không đi qua KPI cá nhân vẫn phải có mặt trong báo cáo tổng hợp.
    * Chép thẳng nội dung vào báo cáo: không có bản ghi gốc nào để trỏ tới, nên
    * cũng không có gì để đồng bộ về sau.
@@ -543,32 +604,15 @@ export class KpiSummaryReportsService {
     const actor = await this.resolveScope(userId);
     const report = await this.requireEditable(actor, id);
 
-    const title = dto.title?.trim() ?? '';
-    if (!title) throw new BadRequestException('Tên nhiệm vụ là bắt buộc.');
-
-    let axisId: Types.ObjectId | null = null;
-    let axisName = '';
-    if (dto.axisId) {
-      const axis = await this.axisModel
-        .findById(this.requireObjectId(dto.axisId, 'Trục'))
-        .select('name code');
-      if (!axis) throw new BadRequestException('Trục không tồn tại.');
-      axisId = axis._id as Types.ObjectId;
-      axisName = axis.name?.trim() || axis.code;
-    }
-
+    const [built] = await this.buildManualItems([dto]);
     this.assertItemLimit(report.itemCount + report.manualItems.length + 1);
-    report.manualItems.push({
-      title,
-      note: dto.note?.trim() ?? '',
-      axisId,
-      axisName,
-      ownerName: dto.ownerName?.trim() ?? '',
-      departmentName: dto.departmentName?.trim() ?? '',
-      score: dto.score ?? null,
-      createdAt: new Date(),
-    });
-    this.pushLog(report, actor, 'ADD_MANUAL', `Thêm nhiệm vụ tự nhập "${title}"`);
+    report.manualItems.push(built);
+    this.pushLog(
+      report,
+      actor,
+      'ADD_MANUAL',
+      `Thêm nhiệm vụ tự nhập "${built.title}"`,
+    );
     await report.save();
 
     return {
@@ -829,7 +873,7 @@ export class KpiSummaryReportsService {
    *
    * Chỉ người lập trình bản của mình: bản đang soạn, hoặc bản vừa bị trả lại đã
    * sửa xong. Cấp trên duyệt là hết đời bản đó - muốn tổng hợp tiếp lên cấp cao
-   * hơn thì lập báo cáo của cấp mình rồi nhặt nhiệm vụ trong nhánh, chứ không
+   * hơn thì lập báo cáo của cấp mình rồi chọn nhiệm vụ trong nhánh, chứ không
    * đẩy tiếp bản của cấp dưới: mỗi cấp có cách gom và cách diễn giải của mình.
    *
    * Người nhận đi qua đúng luật của báo cáo ngày (cấp trên trong nhánh đơn vị),

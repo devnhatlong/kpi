@@ -170,7 +170,7 @@ export const KpiSummaryReportLogSchema =
 
 /**
  * Báo cáo tổng hợp: một tập nhiệm vụ KPI cá nhân ĐÃ HOÀN THÀNH được người lập
- * nhặt ra và gom lại, trải hết các trục, rồi trình lên cấp trên.
+ * chọn ra và gom lại, trải hết các trục, rồi trình lên cấp trên.
  *
  * Chỉ giữ `itemIds` chứ không chép nội dung nhiệm vụ sang đây. Nhiệm vụ đã
  * COMPLETED là điểm dừng của chuỗi duyệt nên nội dung gần như đứng yên, mà giữ
@@ -212,7 +212,7 @@ export class KpiSummaryReport {
   @Prop({ trim: true, default: '', maxlength: 200 })
   scopeName!: string;
 
-  /** Nhiệm vụ đã nhặt vào báo cáo, giữ nguyên thứ tự người lập tích. */
+  /** Nhiệm vụ đã chọn vào báo cáo, giữ nguyên thứ tự người lập tích. */
   @Prop({
     type: [{ type: Types.ObjectId, ref: PersonalKpiItem.name }],
     default: [],

@@ -137,7 +137,7 @@ export function SummaryReportWorkspace({
               <p className="text-sm text-muted-foreground">
                 {incoming
                   ? "Bản tổng hợp cấp dưới trình lên - đọc, sửa rồi duyệt hoặc trả lại."
-                  : "Tổng hợp nhiệm vụ đã xác nhận hoàn thành và trình lên cấp trên."}
+                  : "Tổng hợp việc cấp dưới đã hoàn thành và việc đơn vị tự khai, rồi trình lên cấp trên."}
               </p>
             </div>
           </div>

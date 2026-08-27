@@ -47,7 +47,7 @@ export const summaryReportKeys = {
 };
 
 /**
- * Kho nhiệm vụ đã hoàn thành để nhặt vào báo cáo.
+ * Kho nhiệm vụ đã hoàn thành để chọn vào báo cáo.
  * KHÔNG dùng buildListQuery: nó luôn kèm page/limit, mà endpoint này không phân
  * trang nên DTO không khai hai trường đó -> ValidationPipe trả 400.
  */
@@ -102,6 +102,8 @@ export type CreateSummaryReportInput = {
   scopeDepartmentId?: string;
   note?: string;
   itemIds?: string[];
+  /** Việc chỉ huy tự khai theo trục, ghi cùng lượt với báo cáo. */
+  manualItems?: SummaryManualItemInput[];
 };
 
 export async function createSummaryReport(input: CreateSummaryReportInput) {

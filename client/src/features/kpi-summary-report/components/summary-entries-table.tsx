@@ -380,7 +380,7 @@ export function SummaryEntriesTable({
           (entry) => entry.kind === "MANUAL" || !entry.tracksProgress,
         );
         const minWidth =
-          (percent ? 1090 : 720) + (showAxis ? 150 : 0) + (showTotal ? 90 : 0);
+          (percent ? 890 : 520) + (showAxis ? 150 : 0) + (showTotal ? 90 : 0);
         /*
           Đếm cột để dòng tổng gộp ô cho đúng. Bộ cột theo % có thêm bốn cột
           (tiến độ %, điểm tiến độ, chất lượng %, điểm chất lượng); bộ cột theo
@@ -389,7 +389,7 @@ export function SummaryEntriesTable({
         // Cột thao tác có mặt khi mở được chi tiết hoặc bỏ được dòng.
         const hasActions = Boolean(onOpen) || editable;
         const columnCount =
-          (percent ? 7 : 4) +
+          (percent ? 6 : 3) +
           (showAxis ? 1 : 0) +
           (showTotal ? 1 : 0) +
           (hasActions ? 1 : 0);
@@ -442,7 +442,6 @@ export function SummaryEntriesTable({
                         Nhiệm vụ
                         {grouped ? "" : ` (${group.entries.length})`}
                       </TableHead>
-                      <TableHead className="w-[200px]">Cán bộ</TableHead>
                       {showAxis ? (
                         <TableHead className="w-[150px]">Trục</TableHead>
                       ) : null}
@@ -490,24 +489,16 @@ export function SummaryEntriesTable({
                     {group.entries.map((entry) => (
                       <TableRow key={entry.key}>
                         <TableCell className="align-middle">
-                          <p className="font-medium">{entry.title}</p>
-                          {entry.subtitle ? (
-                            <p className="text-xs text-muted-foreground">
-                              {entry.subtitle}
-                            </p>
-                          ) : null}
-                        </TableCell>
-                        <TableCell className="align-middle text-sm">
-                          <p className="flex flex-wrap items-center gap-1.5">
-                            {entry.ownerName || "-"}
+                          <p className="flex flex-wrap items-center gap-1.5 font-medium">
+                            {entry.title}
                             {/* Dòng lấy từ KPI là chuyện thường nên không gắn
                                 nhãn; chỉ đánh dấu dòng người lập gõ tay, vì số
                                 đó không tra ngược về nhiệm vụ nào được. */}
                             <SourceBadge kind={entry.kind} />
                           </p>
-                          {entry.departmentName ? (
+                          {entry.subtitle ? (
                             <p className="text-xs text-muted-foreground">
-                              {entry.departmentName}
+                              {entry.subtitle}
                             </p>
                           ) : null}
                         </TableCell>
@@ -642,7 +633,7 @@ export function SummaryEntriesTable({
                       axisName={group.label}
                       maxScore={group.maxScore}
                       percent={percent}
-                      leadingSpan={2 + (showAxis ? 1 : 0)}
+                      leadingSpan={1 + (showAxis ? 1 : 0)}
                       columnCount={columnCount}
                       showTotal={showTotal}
                       trailing={hasActions ? 1 : 0}

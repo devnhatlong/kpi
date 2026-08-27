@@ -55,6 +55,7 @@ import {
 } from "@/features/kpi-form-config/types";
 import { useScoreGroupMap } from "@/features/kpi-form-config/use-score-groups";
 import {
+  addSummaryManualItem,
   approveSummaryReport,
   deleteSummaryReport,
   fetchSummaryReport,
@@ -62,6 +63,7 @@ import {
   removeSummaryManualItem,
   removeSummaryReportItems,
   sendSummaryReport,
+  updateSummaryManualItem,
 } from "@/features/kpi-summary-report/api";
 import { ManualEntryDialog } from "@/features/kpi-summary-report/components/manual-entry-dialog";
 import { mapPersonalKpiFromApi } from "@/features/personal-kpi/api";
@@ -119,9 +121,15 @@ function StatCard({
   icon: typeof FileText;
   tone?: (typeof kpiTone)[keyof typeof kpiTone];
 }) {
+  /*
+    Bốn ô nằm cùng một hàng lưới nên cao bằng nhau theo ô cao nhất - ô nào có
+    dòng chú thích là kéo cả hàng cao lên. CardContent không tự giãn theo Card,
+    nên không có flex-1 thì nội dung mấy ô còn lại dính mép trên, chừa một
+    khoảng trống dưới đáy.
+  */
   return (
-    <Card className="border-border/80 shadow-sm">
-      <CardContent className="flex items-center gap-3 p-4">
+    <Card className="flex flex-col border-border/80 shadow-sm">
+      <CardContent className="flex flex-1 items-center gap-3 p-4">
         <span
           className={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-lg",
@@ -532,22 +540,29 @@ export function SummaryReportPanel({
                   <Loader2 className="size-4 animate-spin text-muted-foreground" />
                 ) : null}
               </div>
+              {/* Tên đơn vị là danh tính của cả bản báo cáo - để nó to và đậm
+                  hơn hẳn dòng kỳ/ngày đứng cạnh. Không nhắc lại người lập ở đây:
+                  tài khoản thường mang chính tên đơn vị nên hai giá trị trùng
+                  nhau, đọc thành một thứ bị lặp. */}
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Badge
                   variant="secondary"
-                  className={cn("font-normal", kpiTone.neutral.soft)}
+                  className={cn("text-sm font-bold", kpiTone.neutral.soft)}
                 >
                   {report.scopeName || "Chưa đặt phạm vi"}
                 </Badge>
                 <span>
                   Kỳ {periodLabel(report.fromDate, report.toDate)} · Tạo{" "}
-                  {formatYmd(serverYmd(report.createdAt))} ·{" "}
-                  {report.ownerName || "-"}
+                  {formatYmd(serverYmd(report.createdAt))}
                 </span>
               </div>
+              {/* Tên đơn vị là thứ người đọc tìm trước tiên ở hai dòng này -
+                  "ai đang giữ bản trình" và "ai đã duyệt" - nên để nó đậm,
+                  phần thời gian lùi lại làm nền. */}
               {report.status === "SENT" && report.sentToName ? (
                 <p className={cn("text-xs", kpiTone.warning.text)}>
-                  Đã trình {report.sentToName}
+                  Đã trình{" "}
+                  <span className="font-semibold">{report.sentToName}</span>
                   {report.sentAt
                     ? ` lúc ${formatServerHm(report.sentAt)} ${formatYmd(serverYmd(report.sentAt))}`
                     : ""}
@@ -556,7 +571,10 @@ export function SummaryReportPanel({
               ) : null}
               {report.status === "APPROVED" ? (
                 <p className={cn("text-xs", kpiTone.success.text)}>
-                  {report.decidedByName || "Cấp trên"} đã duyệt
+                  <span className="font-semibold">
+                    {report.decidedByName || "Cấp trên"}
+                  </span>{" "}
+                  đã duyệt
                   {report.decidedAt
                     ? ` lúc ${formatServerHm(report.decidedAt)} ${formatYmd(serverYmd(report.decidedAt))}`
                     : ""}
@@ -573,7 +591,7 @@ export function SummaryReportPanel({
                   >
                     lập bản tổng hợp của cấp mình
                   </Link>{" "}
-                  - các nhiệm vụ trong bản này vẫn nhặt lại được.
+                  - các nhiệm vụ trong bản này vẫn chọn lại được.
                 </p>
               ) : null}
             </div>
@@ -728,8 +746,12 @@ export function SummaryReportPanel({
             >
               <Send className="mt-0.5 size-4 shrink-0" />
               <span>
-                <span className="font-medium">
-                  Lời trình của {report.ownerName || "cấp dưới"}:{" "}
+                <span>
+                  Lời trình của{" "}
+                  <span className="font-semibold">
+                    {report.ownerName || "cấp dưới"}
+                  </span>
+                  :{" "}
                 </span>
                 {report.sentNote}
               </span>
@@ -897,9 +919,16 @@ export function SummaryReportPanel({
       <ManualEntryDialog
         open={manualOpen}
         onOpenChange={setManualOpen}
-        reportId={report._id}
         item={manualEditing}
-        onAdded={onChanged}
+        formKey={manualEditing?._id ?? "new"}
+        onSubmit={async (input) => {
+          if (manualEditing) {
+            await updateSummaryManualItem(report._id, manualEditing._id, input);
+          } else {
+            await addSummaryManualItem(report._id, input);
+          }
+          await onChanged();
+        }}
       />
 
       {/* Chi tiết một nhiệm vụ KPI ngay trong báo cáo - chỉ đọc, có đường sang
@@ -1005,7 +1034,7 @@ export function SummaryReportPanel({
             <DialogTitle>Xoá báo cáo tổng hợp</DialogTitle>
             <DialogDescription>
               Xoá &quot;{report.title}&quot;? Các nhiệm vụ bên trong không bị
-              ảnh hưởng, chúng quay lại kho để nhặt vào báo cáo khác.
+              ảnh hưởng, chúng quay lại kho để chọn vào báo cáo khác.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

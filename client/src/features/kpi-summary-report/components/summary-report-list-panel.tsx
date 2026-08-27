@@ -160,10 +160,13 @@ export function SummaryReportListPanel({
                   </Badge>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {/* Bản cấp dưới trình lên thì thứ cần biết trước là AI trình. */}
-                  {scope === "incoming"
-                    ? report.ownerName || "Chưa rõ người lập"
-                    : report.scopeName || "Chưa đặt phạm vi"}{" "}
+                  {/* Bản cấp dưới trình lên thì thứ cần biết trước là AI trình -
+                      để đậm cho tên đơn vị tách khỏi ngày tháng đứng cạnh. */}
+                  <span className="font-semibold text-foreground">
+                    {scope === "incoming"
+                      ? report.ownerName || "Chưa rõ người lập"
+                      : report.scopeName || "Chưa đặt phạm vi"}
+                  </span>{" "}
                   · {createdLabel(report.createdAt)}
                 </p>
                 <Badge

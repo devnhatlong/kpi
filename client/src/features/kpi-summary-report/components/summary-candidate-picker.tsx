@@ -292,7 +292,6 @@ export function SummaryCandidatePicker({
                 />
               </TableHead>
               <TableHead>Nhiệm vụ đã hoàn thành</TableHead>
-              <TableHead className="w-[180px]">Cán bộ</TableHead>
               <TableHead className="w-[110px] text-right">Điểm chốt</TableHead>
             </TableRow>
           </TableHeader>
@@ -300,7 +299,7 @@ export function SummaryCandidatePicker({
             {isLoading ? (
               <TableRow>
                 <TableCell
-                  colSpan={4}
+                  colSpan={3}
                   className="py-10 text-center text-sm text-muted-foreground"
                 >
                   <Loader2 className="mx-auto mb-2 size-4 animate-spin" />
@@ -312,7 +311,7 @@ export function SummaryCandidatePicker({
             {error ? (
               <TableRow>
                 <TableCell
-                  colSpan={4}
+                  colSpan={3}
                   className="py-10 text-center text-sm text-destructive"
                 >
                   {getApiErrorMessage(error, "Không tải được kho nhiệm vụ.")}
@@ -322,7 +321,7 @@ export function SummaryCandidatePicker({
 
             {!isLoading && !error && visible.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="py-12 text-center">
+                <TableCell colSpan={3} className="py-12 text-center">
                   <Inbox className="mx-auto size-8 text-muted-foreground" />
                   <p className="mt-2 text-sm text-muted-foreground">
                     Không có nhiệm vụ hoàn thành phù hợp
@@ -368,14 +367,6 @@ export function SummaryCandidatePicker({
                       >
                         {entry.axisName}
                       </Badge>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="align-middle text-sm">
-                    <p>{entry.ownerName || "-"}</p>
-                    {entry.departmentName ? (
-                      <p className="text-xs text-muted-foreground">
-                        {entry.departmentName}
-                      </p>
                     ) : null}
                   </TableCell>
                   <TableCell className="text-right align-middle text-sm font-medium tabular-nums">
