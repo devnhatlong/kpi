@@ -55,12 +55,17 @@ export type AuthUser = {
 
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
+/**
+ * Nhãn dự phòng khi chỉ có mã vai trò trong tay - tên thật lấy từ bảng vai trò
+ * bên server. Xếp từ cao xuống thấp đúng bậc nghiệp vụ.
+ */
 export const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: "Quản trị hệ thống",
-  CAT_ADMIN: "Quản trị Công an tỉnh",
-  UNIT_ADMIN: "Quản trị đơn vị",
-  MANAGER: "Quản lý",
-  STAFF: "Cán bộ",
+  CAT_ADMIN: "Công an tỉnh",
+  UNIT_ADMIN: "Trưởng phòng, trưởng xã",
+  VICE_UNIT_ADMIN: "Phó phòng, phó xã",
+  MANAGER: "Đội trưởng",
+  STAFF: "Cán bộ chiến sĩ",
 };
 
 export function displayNameOf(user: AuthUser): string {

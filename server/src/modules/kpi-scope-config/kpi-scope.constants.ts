@@ -77,7 +77,7 @@ export const KPI_SCOPE_SEEDS: KpiScopeSeed[] = [
     isEnabled: false,
     scopes: [],
     requireApproval: true,
-    note: 'Tài khoản cấu hình hệ thống - không giao KPI. Việc đó của Quản trị Công an tỉnh.',
+    note: 'Tài khoản cấu hình hệ thống - không giao KPI. Việc đó của Công an tỉnh.',
   },
   {
     roleCode: RoleCode.CAT_ADMIN,
@@ -92,6 +92,14 @@ export const KPI_SCOPE_SEEDS: KpiScopeSeed[] = [
     scopes: ['CHILD_UNITS', 'USERS_IN_OWN_UNIT'],
     requireApproval: true,
     note: 'Quản trị đơn vị giao xuống đơn vị con hoặc cán bộ trong đơn vị.',
+  },
+  {
+    // Phó đứng thay trưởng nên giao được đúng phạm vi của trưởng.
+    roleCode: RoleCode.VICE_UNIT_ADMIN,
+    isEnabled: true,
+    scopes: ['CHILD_UNITS', 'USERS_IN_OWN_UNIT'],
+    requireApproval: true,
+    note: 'Phó phòng, phó xã giao xuống đơn vị con hoặc cán bộ trong đơn vị.',
   },
   {
     roleCode: RoleCode.MANAGER,

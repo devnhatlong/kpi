@@ -29,7 +29,7 @@ const SYSTEM_ROLES: Array<{
 }> = [
   {
     code: RoleCode.SUPER_ADMIN,
-    name: 'Super Admin',
+    name: 'Quản trị hệ thống',
     sortOrder: 10,
     permissions: ALL_PERMISSIONS,
   },
@@ -37,7 +37,7 @@ const SYSTEM_ROLES: Array<{
     // Cấp cao nhất của chuỗi nghiệp vụ: nhận báo cáo tổng hợp từ các đơn vị,
     // duyệt và chốt. Không có quyền cấu hình hệ thống - việc đó của SUPER_ADMIN.
     code: RoleCode.CAT_ADMIN,
-    name: 'Quản trị Công an tỉnh',
+    name: 'Công an tỉnh',
     sortOrder: 15,
     permissions: [
       Permission.USER_VIEW,
@@ -51,7 +51,7 @@ const SYSTEM_ROLES: Array<{
   },
   {
     code: RoleCode.UNIT_ADMIN,
-    name: 'Unit Admin',
+    name: 'Trưởng phòng, trưởng xã',
     sortOrder: 20,
     // Không có ROLE_ASSIGN / USER_MANAGE: hai quyền đó chưa bị giới hạn theo
     // phạm vi đơn vị nên cấp cho quản trị đơn vị là họ tự gán được vai trò
@@ -68,8 +68,28 @@ const SYSTEM_ROLES: Array<{
     ],
   },
   {
+    /*
+      Phó đứng thay trưởng khi trưởng vắng, nên giữ ĐÚNG bộ quyền của trưởng -
+      cắt bớt là mỗi lần trưởng đi vắng công việc của phòng đứng lại. Khác biệt
+      giữa phó và trưởng nằm ở bậc báo cáo (ROLE_LADDER), không nằm ở quyền
+      thao tác: phó vẫn phải trình báo cáo lên trưởng.
+    */
+    code: RoleCode.VICE_UNIT_ADMIN,
+    name: 'Phó phòng, phó xã',
+    sortOrder: 25,
+    permissions: [
+      Permission.USER_VIEW,
+      Permission.DEPARTMENT_VIEW,
+      Permission.KPI_MANAGE,
+      Permission.TASK_ASSIGN,
+      Permission.TASK_VIEW,
+      Permission.EVALUATION_SELF,
+      Permission.EVALUATION_APPROVE,
+    ],
+  },
+  {
     code: RoleCode.MANAGER,
-    name: 'Manager',
+    name: 'Đội trưởng',
     sortOrder: 30,
     permissions: [
       Permission.USER_VIEW,
@@ -82,11 +102,28 @@ const SYSTEM_ROLES: Array<{
   },
   {
     code: RoleCode.STAFF,
-    name: 'Staff',
+    name: 'Cán bộ chiến sĩ',
     sortOrder: 40,
     permissions: [Permission.TASK_VIEW, Permission.EVALUATION_SELF],
   },
 ];
+
+/**
+ * Tên cũ của vai trò hệ thống, để đổi sang tên nghiệp vụ đúng cách gọi trong
+ * ngành.
+ *
+ * Seeder ghi tên bằng `$setOnInsert` nên bản ghi đã có trong CSDL không bao giờ
+ * đổi tên theo code - phải có đoạn này mới sửa được. Chỉ đổi khi tên hiện tại
+ * ĐÚNG là một tên cũ đã biết: quản trị viên đặt tên riêng cho vai trò thì tên
+ * đó phải sống sót qua mỗi lần khởi động, không bị code ghi đè.
+ */
+const LEGACY_ROLE_NAMES: Record<string, string[]> = {
+  [RoleCode.SUPER_ADMIN]: ['Super Admin'],
+  [RoleCode.CAT_ADMIN]: ['Quản trị Công an tỉnh'],
+  [RoleCode.UNIT_ADMIN]: ['Unit Admin', 'Quản trị đơn vị'],
+  [RoleCode.MANAGER]: ['Manager', 'Quản lý'],
+  [RoleCode.STAFF]: ['Staff', 'Cán bộ'],
+};
 
 @Injectable()
 export class RolesService implements OnModuleInit {
@@ -238,6 +275,27 @@ export class RolesService implements OnModuleInit {
           },
         },
         { upsert: true },
+      );
+    }
+
+    await this.renameLegacySystemRoles();
+  }
+
+  /**
+   * Đổi tên vai trò hệ thống sang cách gọi trong ngành.
+   *
+   * Lọc theo đúng tên cũ chứ không ghi đè vô điều kiện: tên nào quản trị viên
+   * tự đặt thì không khớp danh sách cũ nên giữ nguyên. Chạy mỗi lần khởi động
+   * cũng không sao - đổi xong thì lần sau bộ lọc không còn khớp gì nữa.
+   */
+  private async renameLegacySystemRoles() {
+    for (const role of SYSTEM_ROLES) {
+      const legacyNames = LEGACY_ROLE_NAMES[role.code];
+      if (!legacyNames?.length) continue;
+
+      await this.roleModel.updateOne(
+        { code: role.code, name: { $in: legacyNames } },
+        { $set: { name: role.name, slug: Helper.slugify(role.name) } },
       );
     }
   }

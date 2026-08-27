@@ -53,6 +53,7 @@ export const ROLE_LEVEL_HINT: Record<string, string> = {
   SUPER_ADMIN: "Chỉ cấu hình",
   CAT_ADMIN: "Toàn hệ thống",
   UNIT_ADMIN: "Đơn vị phụ trách",
+  VICE_UNIT_ADMIN: "Đơn vị phụ trách",
   MANAGER: "Đơn vị phụ trách",
   STAFF: "Cá nhân",
 };

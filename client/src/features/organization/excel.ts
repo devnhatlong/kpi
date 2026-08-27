@@ -143,6 +143,16 @@ export async function downloadUsersImportTemplate() {
     true,
   ]);
   ws.addRow([
+    "pv01.pho",
+    "Phó phòng PV01",
+    "pv01.pho@lamdong.bca",
+    "0123456789",
+    "Phó trưởng phòng",
+    "PV01",
+    "VICE_UNIT_ADMIN",
+    true,
+  ]);
+  ws.addRow([
     "pv01.cntt",
     "Đội Công nghệ thông tin",
     "pv01.cntt@lamdong.bca",

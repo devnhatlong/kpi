@@ -115,6 +115,7 @@ const OWNER_EDITABLE: PersonalKpiReviewStatus[] = ['DRAFT', 'RETURNED'];
 const ROLE_LADDER: RoleCode[] = [
   RoleCode.STAFF,
   RoleCode.MANAGER,
+  RoleCode.VICE_UNIT_ADMIN,
   RoleCode.UNIT_ADMIN,
   RoleCode.CAT_ADMIN,
 ];
@@ -926,6 +927,7 @@ export class PersonalKpiService {
       roleCodes.some((code) =>
         [
           RoleCode.MANAGER,
+          RoleCode.VICE_UNIT_ADMIN,
           RoleCode.UNIT_ADMIN,
           RoleCode.CAT_ADMIN,
           RoleCode.SUPER_ADMIN,
