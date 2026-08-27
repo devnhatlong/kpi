@@ -7,6 +7,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { randomUUID } from 'crypto';
+import { RoleCode } from '@/common/enums/role-code.enum';
 import { buildPaginatedResponse } from '@/common/utils/pagination.util';
 import {
   Department,
@@ -49,8 +50,18 @@ import {
   type HolderType,
 } from './schemas/kpi-assignment.schema';
 
-/** Vai trò được thay mặt đơn vị nhận / giao / duyệt nhiệm vụ của đơn vị. */
-const UNIT_ROLE_CODES = ['SUPER_ADMIN', 'UNIT_ADMIN', 'MANAGER'];
+/**
+ * Vai trò được thay mặt đơn vị nhận / giao / duyệt nhiệm vụ của đơn vị.
+ *
+ * Dùng enum chứ không gõ chuỗi: thêm vai trò mới mà quên danh sách này thì
+ * người giữ vai trò đó im lặng mất quyền thay mặt đơn vị, không lỗi gì để lần.
+ */
+const UNIT_ROLE_CODES: string[] = [
+  RoleCode.SUPER_ADMIN,
+  RoleCode.UNIT_ADMIN,
+  RoleCode.VICE_UNIT_ADMIN,
+  RoleCode.MANAGER,
+];
 
 const LIST_POPULATE = [
   { path: 'axisId', select: 'code name' },

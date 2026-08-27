@@ -24,10 +24,10 @@ type TodayStatus =
   | "completed";
 
 function roleSubtitle(user: AuthUser) {
-  const code = user.roleAssignments[0]?.roleCode;
-  const role =
-    code === "STAFF" ? "Cán bộ chiến sĩ" : primaryRoleLabel(user);
-  return `${role} · Báo cáo KPI hằng ngày`;
+  // Người có chức vụ giữ nhiều vai trò - lấy vai trò cao nhất, không lấy vai
+  // trò được gán trước. Nhãn của STAFF nay đã là "Cán bộ chiến sĩ" nên không
+  // còn phải vá riêng cho nó ở đây nữa.
+  return `${primaryRoleLabel(user)} · Báo cáo KPI hằng ngày`;
 }
 
 function formatTodayLabel(ymd: string) {

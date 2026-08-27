@@ -81,8 +81,40 @@ export function initialsOf(user: AuthUser): string {
   return name.slice(0, 2).toUpperCase() || "?";
 }
 
+/** Bậc vai trò từ thấp lên cao - để chọn vai trò "chính" khi giữ nhiều vai trò. */
+const ROLE_RANK: string[] = [
+  "STAFF",
+  "MANAGER",
+  "VICE_UNIT_ADMIN",
+  "UNIT_ADMIN",
+  "CAT_ADMIN",
+  "SUPER_ADMIN",
+];
+
+/**
+ * Vai trò cao nhất người này đang giữ.
+ *
+ * Một tài khoản có chức vụ nay giữ nhiều vai trò cùng lúc, mà `roleAssignments`
+ * xếp theo thứ tự lúc gán chứ không theo bậc - lấy phần tử đầu là đội trưởng
+ * hiện ra thành "Cán bộ chiến sĩ" chỉ vì vai trò đó được gán trước.
+ */
+export function highestRoleCode(user: AuthUser | null | undefined): string {
+  let best = "";
+  let bestRank = -1;
+  for (const { roleCode } of user?.roleAssignments ?? []) {
+    const rank = ROLE_RANK.indexOf(roleCode);
+    // Vai trò tự tạo không có trong bảng bậc: vẫn nhận, nhưng nhường mọi vai
+    // trò hệ thống - dùng làm nhãn khi người này không giữ vai trò nào khác.
+    if (rank > bestRank || (bestRank < 0 && !best)) {
+      best = roleCode;
+      bestRank = rank;
+    }
+  }
+  return best;
+}
+
 export function primaryRoleLabel(user: AuthUser): string {
-  const code = user.roleAssignments[0]?.roleCode;
+  const code = highestRoleCode(user);
   if (!code) return "Người dùng";
   return ROLE_LABELS[code] ?? code;
 }
