@@ -112,6 +112,8 @@ export function SendRecipientDialog({
       const haystack = [
         item.fullName,
         item.username,
+        item.rank ?? "",
+        item.position ?? "",
         item.departmentName,
         item.departmentCode,
       ]
@@ -284,14 +286,28 @@ export function SendRecipientDialog({
                                     : "cursor-pointer",
                                 )}
                               >
+                                {/*
+                                  "Trung tá Lê Hoàng Long" đọc như MỘT cụm xưng
+                                  hô, nên cấp bậc cùng màu với tên - tô xám là
+                                  cắt cụm đó làm đôi.
+
+                                  Không bày tên đăng nhập: nó chỉ để phân biệt
+                                  hai người trùng tên, mà người gửi thì chọn cấp
+                                  trên theo chức vụ chứ không theo tài khoản.
+                                  Vẫn tìm được theo tên đăng nhập ở ô tìm kiếm.
+                                */}
                                 <span className="flex min-w-0 items-center gap-2 pl-2">
                                   <UserRound className="h-4 w-4 shrink-0 text-amber-500" />
-                                  <span className="truncate">
-                                    {person.fullName}
-                                    <span className="text-muted-foreground">
-                                      {" "}
-                                      ({person.username})
+                                  <span className="min-w-0">
+                                    <span className="block truncate">
+                                      {person.rank ? `${person.rank} ` : ""}
+                                      {person.fullName}
                                     </span>
+                                    {person.position ? (
+                                      <span className="block truncate text-xs text-muted-foreground">
+                                        {person.position}
+                                      </span>
+                                    ) : null}
                                   </span>
                                 </span>
                                 <span className="flex justify-center">

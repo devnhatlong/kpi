@@ -81,6 +81,7 @@ export type PersonalMissionRecipient = {
   id: string;
   fullName: string;
   username: string;
+  rank?: string;
   position?: string;
   departmentId: string | null;
   departmentCode: string;

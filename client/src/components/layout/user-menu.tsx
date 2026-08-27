@@ -6,7 +6,11 @@ import { Lock, LogOut, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/features/auth/auth-provider";
-import { displayNameOf, initialsOf, primaryRoleLabel } from "@/features/auth/types";
+import {
+  displayNameOf,
+  initialsOf,
+  primaryRoleLabel,
+} from "@/features/auth/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -22,6 +26,8 @@ export function UserMenu() {
 
   const name = user ? displayNameOf(user) : "Người dùng";
   const role = user ? primaryRoleLabel(user) : "";
+  /** Cấp bậc hàm - tài khoản chưa được gán thì bỏ trống, không hiện chỗ giữ. */
+  const rank = user?.rank?.trim() ?? "";
   const initials = user ? initialsOf(user) : "?";
 
   const handleLogout = async () => {
@@ -47,9 +53,20 @@ export function UserMenu() {
             </AvatarFallback>
           </Avatar>
           <div className="hidden min-w-0 text-left leading-tight md:block">
-            <div className="truncate text-sm font-semibold text-foreground">{name}</div>
+            {/*
+              Cấp bậc và tên là MỘT cụm xưng hô nên cùng một màu - tách màu là
+              bắt mắt ghép lại. Dòng dưới vẫn là vai trò trong hệ thống, khác
+              hẳn cấp bậc hàm: một cái nói quyền trên phần mềm, một cái nói
+              quân hàm.
+            */}
+            <div className="truncate text-sm font-semibold text-primary">
+              {rank ? `${rank} ` : ""}
+              {name}
+            </div>
             {role ? (
-              <div className="truncate text-xs text-muted-foreground">{role}</div>
+              <div className="truncate text-xs text-muted-foreground">
+                {role}
+              </div>
             ) : null}
           </div>
         </button>

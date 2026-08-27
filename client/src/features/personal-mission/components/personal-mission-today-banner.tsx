@@ -20,7 +20,7 @@ type TodayStatus = "none" | "rejected" | "draft" | "sent" | "completed";
 
 function roleSubtitle(user: AuthUser) {
   // Người có chức vụ giữ nhiều vai trò - lấy vai trò cao nhất, không lấy vai
-  // trò được gán trước. Nhãn của STAFF nay đã là "Cán bộ chiến sĩ" nên không
+  // trò được gán trước. Nhãn của STAFF nay đã là "Cán bộ" nên không
   // còn phải vá riêng cho nó ở đây nữa.
   return `${primaryRoleLabel(user)} · Báo cáo nhiệm vụ hằng ngày`;
 }

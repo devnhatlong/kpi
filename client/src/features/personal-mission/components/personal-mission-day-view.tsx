@@ -39,6 +39,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/features/auth/auth-provider";
 import { NoReportTemplateNotice } from "@/features/mission-form-config/components/no-report-template-notice";
@@ -392,14 +399,31 @@ export function PersonalMissionDayView({
     Đúng một ngày thì mở thẳng ngày đó. Nhiều ngày thì không đoán: đoán sai là
     người dùng sửa nhầm báo cáo của ngày khác mà không hề biết.
   */
-  const datesInView = useMemo(() => {
-    const set = new Set<string>();
+  const editableDays = useMemo(() => {
+    const count = new Map<string, number>();
     for (const row of rows) {
-      if (row.item.reportDate) set.add(row.item.reportDate);
+      const date = row.item.reportDate;
+      /*
+        Đếm việc CÒN SỬA ĐƯỢC, không đếm tổng: việc đã gửi thì server chặn ghi
+        nội dung, nên ngày nào gửi hết là mở phiếu ra trống. Hiện một mục ghi
+        "7 việc" mà bấm vào chẳng có gì thì thà đừng hiện.
+      */
+      if (!date || !canEditPersonalMission(row.item.status)) continue;
+      count.set(date, (count.get(date) ?? 0) + 1);
     }
-    return [...set].sort();
+    // Mới nhất lên đầu - ngày hay sửa nhất là ngày vừa khai.
+    return [...count.entries()]
+      .sort(([left], [right]) => right.localeCompare(left))
+      .map(([date, tasks]) => ({ date, tasks }));
   }, [rows]);
-  const editDayTarget = datesInView.length === 1 ? datesInView[0]! : null;
+
+  /** Mở phiếu sửa cho đúng một ngày; ngày lấy từ dòng chứ không từ activeDate. */
+  const openEditDay = (date: string) => {
+    setEdit(null);
+    setFocusDate(date);
+    setEditDay(true);
+    setDrawerOpen(true);
+  };
 
   const filtered = useMemo(() => {
     const term = normalizeText(debouncedQuery);
@@ -521,6 +545,40 @@ export function PersonalMissionDayView({
   const sendableItems = useMemo(
     () => dayItems.filter((item) => canSendPersonalMission(item.status)),
     [dayItems],
+  );
+
+  /**
+   * Các ngày trong khoảng đang xem còn nhiệm vụ chưa gửi, kèm số lượng.
+   *
+   * Trước đây chỉ gửi được việc của `activeDate`, mà `activeDate` là "hôm nay
+   * nếu nằm trong khoảng". Khai việc hôm qua rồi quên gửi thì hôm nay bảy việc
+   * đó nằm chình ình trên màn hình mà không nút nào đụng tới được - menu từng
+   * dòng cũng bỏ qua chúng vì nó chỉ hiện cho việc ĐÃ TỪNG gửi rồi bị trả lại.
+   */
+  const sendableDays = useMemo(() => {
+    const count = new Map<string, number>();
+    for (const item of items) {
+      if (!canSendPersonalMission(item.status)) continue;
+      const date = item.reportDate ?? activeDate;
+      count.set(date, (count.get(date) ?? 0) + 1);
+    }
+    return [...count.entries()]
+      .sort(([left], [right]) => right.localeCompare(left))
+      .map(([date, tasks]) => ({ date, tasks }));
+  }, [items, activeDate]);
+
+  /** Ngày của lượt gửi đang mở; null = ngày mặc định (`activeDate`). */
+  const [sendDay, setSendDay] = useState<string | null>(null);
+  const sendDate = sendDay ?? activeDate;
+  /** Nhiệm vụ sẽ đi trong lượt gửi - theo ngày đã chọn, không theo activeDate. */
+  const sendTargets = useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          (item.reportDate ?? activeDate) === sendDate &&
+          canSendPersonalMission(item.status),
+      ),
+    [items, sendDate, activeDate],
   );
 
   const criteriaFilled = (criteriaSheet?.rows ?? []).some(
@@ -661,7 +719,7 @@ export function PersonalMissionDayView({
    * Nhờ vậy mỗi lần gửi vẫn sinh ra một lượt gửi có người nhận và ghi chú.
    */
   const confirmSend = async (payload: SubmitPersonalMissionPayload) => {
-    const targets = sendingItem ? [sendingItem] : sendableItems;
+    const targets = sendingItem ? [sendingItem] : sendTargets;
     const withCriteria = canSendCriteria && payload.includeCriteria === true;
     // Không có nhiệm vụ nào nhưng có bảng A thì vẫn gửi - ngày không phát sinh
     // việc vẫn phải trình bảng đánh giá chung lên.
@@ -671,11 +729,12 @@ export function PersonalMissionDayView({
       gửi ở một dòng của hôm kia mà lại nộp vào phiếu hôm nay là sai ngày -
       server cũng chặn vì một lượt gửi chỉ được gồm nhiệm vụ cùng một ngày.
     */
-    const sendDate = sendingItem?.reportDate ?? activeDate;
+    // Gửi lẻ thì theo ngày của chính dòng đó; gửi cả lượt thì theo ngày đã chọn.
+    const submitDate = sendingItem?.reportDate ?? sendDate;
     setSending(true);
     setActingId(sendingItem?.id ?? null);
     try {
-      const result = await submitPersonalMissionReport(sendDate, {
+      const result = await submitPersonalMissionReport(submitDate, {
         ...payload,
         includeCriteria: withCriteria,
         itemIds: targets.map((item) => item.id),
@@ -691,6 +750,7 @@ export function PersonalMissionDayView({
       );
       setSendingItem(null);
       setSendAllOpen(false);
+      setSendDay(null);
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không gửi được nhiệm vụ."));
     } finally {
@@ -820,52 +880,129 @@ export function PersonalMissionDayView({
               cũ: bảng đó bày các ô nhập chen trong cột nên tràn ngang, mà lại
               là bộ ô thứ hai phải nuôi song song với phiếu nhập.
             */}
-            {/* Cùng kiểu với nút "Gửi báo cáo" bên cạnh: ghost không có nền nên
-                đứng giữa hai nút có nền, nó đọc như một dòng chữ chứ không ra nút. */}
-            <Button
-              variant="outline"
-              className="bg-background"
-              onClick={() => {
-                if (!editDayTarget) return;
-                setEdit(null);
-                // Mở đúng ngày của các dòng đang hiện, KHÔNG phải activeDate.
-                setFocusDate(editDayTarget);
-                setEditDay(true);
-                setDrawerOpen(true);
-              }}
-              disabled={!editDayTarget}
-              /* Nói thẳng vì sao bấm không được - nút xám không lý do là chỗ
-                 người dùng đứng lại lâu nhất. */
-              title={
-                rows.length === 0
-                  ? "Khoảng ngày đang chọn chưa có nhiệm vụ nào."
-                  : editDayTarget
-                    ? undefined
-                    : `Danh sách đang gồm ${datesInView.length} ngày. Báo cáo lập theo từng ngày - chọn đúng một ngày ở bộ lọc rồi sửa.`
-              }
-            >
-              <Table2 className="h-4 w-4" />
-              {editDayTarget
-                ? `Sửa báo cáo ${formatYmd(editDayTarget)}`
-                : "Sửa cả báo cáo"}
-            </Button>
+            {/*
+              Một ngày thì mở thẳng, nhiều ngày thì bung menu chọn.
+
+              Danh sách lọc theo KHOẢNG còn báo cáo thuộc một NGÀY, nên nút này
+              phải tự nói nó sắp mở ngày nào. Bày menu cả khi chỉ có một ngày là
+              bắt bấm thừa một nhịp cho việc chẳng có gì để chọn.
+            */}
+            {editableDays.length === 1 ? (
+              <Button
+                variant="outline"
+                className="bg-background"
+                onClick={() => openEditDay(editableDays[0]!.date)}
+              >
+                <Table2 className="h-4 w-4" />
+                Sửa báo cáo {formatYmd(editableDays[0]!.date)}
+              </Button>
+            ) : editableDays.length > 1 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="bg-background">
+                    <Table2 className="h-4 w-4" />
+                    Sửa báo cáo
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                    Báo cáo lập theo từng ngày - chọn ngày cần sửa
+                  </DropdownMenuLabel>
+                  {editableDays.map(({ date, tasks }) => (
+                    <DropdownMenuItem
+                      key={date}
+                      onSelect={() => openEditDay(date)}
+                      className="justify-between gap-3"
+                    >
+                      <span>{formatYmd(date)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {tasks} việc còn sửa
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              /* Nút xám không lý do là chỗ người dùng đứng lại lâu nhất. */
+              <Button
+                variant="outline"
+                className="bg-background"
+                disabled
+                title={
+                  rows.length === 0
+                    ? "Khoảng ngày đang chọn chưa có nhiệm vụ nào."
+                    : "Mọi nhiệm vụ trong khoảng này đã gửi hoặc đã chốt - không sửa nội dung được nữa."
+                }
+              >
+                <Table2 className="h-4 w-4" />
+                Sửa báo cáo
+              </Button>
+            )}
             {/* Gửi được nhiều lượt trong ngày - lượt sau gom nốt việc còn nháp
                 và việc vừa sửa sau khi bị trả lại. */}
-            <Button
-              variant="outline"
-              className="bg-background"
-              onClick={() => setSendAllOpen(true)}
-              disabled={sendableItems.length === 0 && !canSendCriteria}
-              title={
-                sendableItems.length > 0 || canSendCriteria
-                  ? undefined
-                  : "Chưa có nhiệm vụ nháp hoặc bị trả lại nào để gửi"
-              }
-            >
-              <Send className="h-4 w-4" />
-              {alreadySent ? "Gửi tiếp" : "Gửi báo cáo"} ({sendableItems.length}
-              {canSendCriteria ? " + A" : ""})
-            </Button>
+            {/*
+              Cùng khuôn với nút "Sửa báo cáo": nhiều ngày còn nhiệm vụ chưa gửi
+              thì bung menu chọn, một ngày thì gửi thẳng.
+
+              Nhãn luôn mang NGÀY vì màn hình đang bày cả khoảng - "Gửi báo cáo
+              (0 + A)" trên một bảng đầy việc của hôm qua khiến người dùng tưởng
+              nút hỏng, trong khi nó đếm đúng, chỉ là đếm cho hôm nay.
+            */}
+            {sendableDays.length > 1 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="bg-background">
+                    <Send className="h-4 w-4" />
+                    Gửi báo cáo
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                    Mỗi lượt gửi chỉ gồm nhiệm vụ của một ngày
+                  </DropdownMenuLabel>
+                  {sendableDays.map(({ date, tasks }) => (
+                    <DropdownMenuItem
+                      key={date}
+                      onSelect={() => {
+                        setSendDay(date);
+                        setSendAllOpen(true);
+                      }}
+                      className="justify-between gap-3"
+                    >
+                      <span>{formatYmd(date)}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {tasks} việc chưa gửi
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                variant="outline"
+                className="bg-background"
+                onClick={() => {
+                  // Đúng một ngày còn việc thì gửi ngày đó, không phải activeDate:
+                  // hôm nay có thể chẳng có việc nào trong khi hôm qua còn nguyên.
+                  setSendDay(sendableDays[0]?.date ?? activeDate);
+                  setSendAllOpen(true);
+                }}
+                disabled={sendableDays.length === 0 && !canSendCriteria}
+                title={
+                  sendableDays.length > 0 || canSendCriteria
+                    ? undefined
+                    : "Chưa có nhiệm vụ nháp hoặc bị trả lại nào để gửi"
+                }
+              >
+                <Send className="h-4 w-4" />
+                {alreadySent ? "Gửi tiếp" : "Gửi báo cáo"}{" "}
+                {formatYmd(sendableDays[0]?.date ?? activeDate)} (
+                {sendableDays[0]?.tasks ?? 0}
+                {canSendCriteria ? " + A" : ""})
+              </Button>
+            )}
             {/* Chưa có mẫu thì GIẤU hẳn, không làm mờ: nút mờ vẫn là một lời
                 mời bấm, bấm xong lại chẳng có gì xảy ra. Lý do nằm ở màn chặn
                 ngay bên dưới, không cần nhắc lại bằng một nút chết. */}
@@ -1181,12 +1318,13 @@ export function PersonalMissionDayView({
           if (open || sending) return;
           setSendingItem(null);
           setSendAllOpen(false);
+          setSendDay(null);
         }}
         title={
           sendingItem
             ? `Gửi nhiệm vụ ngày ${formatYmd(sendingItem.reportDate ?? activeDate)}`
-            : `Gửi báo cáo ngày ${formatYmd(activeDate)} (${[
-                `${sendableItems.length} nhiệm vụ`,
+            : `Gửi báo cáo ngày ${formatYmd(sendDate)} (${[
+                `${sendTargets.length} nhiệm vụ`,
                 canSendCriteria ? "bảng khối A" : "",
               ]
                 .filter(Boolean)
@@ -1194,7 +1332,7 @@ export function PersonalMissionDayView({
         }
         submitting={sending}
         canIncludeCriteria={canSendCriteria}
-        criteriaHint={`Bảng chốt kết quả ${formatCriteriaPeriod(criteriaPeriodOf(activeDate))} bạn đã tự chấm. Gửi rồi vẫn sửa được cho tới khi chỉ huy chốt, nhưng mỗi lần sửa đều để lại vết.`}
+        criteriaHint={`Bảng chốt kết quả ${formatCriteriaPeriod(criteriaPeriodOf(sendDate))} bạn đã tự chấm. Gửi rồi vẫn sửa được cho tới khi chỉ huy chốt, nhưng mỗi lần sửa đều để lại vết.`}
         onConfirm={confirmSend}
       />
     </div>

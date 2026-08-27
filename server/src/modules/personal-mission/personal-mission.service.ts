@@ -3236,7 +3236,7 @@ export class PersonalMissionService {
 
     const found = await this.userModel
       .find(filter)
-      .select('fullName username departmentId roleAssignments position')
+      .select('fullName username departmentId roleAssignments position rank')
       .populate('departmentId', 'code name')
       .sort({ fullName: 1, username: 1 })
       .lean();
@@ -3254,6 +3254,7 @@ export class PersonalMissionService {
         id: String(user._id),
         fullName: user.fullName?.trim() || user.username,
         username: user.username,
+        rank: (user as { rank?: string }).rank ?? '',
         position: user.position ?? '',
         departmentId: userDept?._id ? String(userDept._id) : null,
         departmentCode: userDept?.code ?? '',

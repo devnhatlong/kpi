@@ -14,6 +14,6 @@ export enum RoleCode {
     VICE_UNIT_ADMIN = 'VICE_UNIT_ADMIN',
     /** Đội trưởng. */
     MANAGER = 'MANAGER',
-    /** Cán bộ chiến sĩ. */
+    /** Cán bộ. */
     STAFF = 'STAFF',
 }

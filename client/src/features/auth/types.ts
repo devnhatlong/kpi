@@ -66,7 +66,7 @@ export const ROLE_LABELS: Record<string, string> = {
   UNIT_ADMIN: "Trưởng phòng, trưởng xã",
   VICE_UNIT_ADMIN: "Phó phòng, phó xã",
   MANAGER: "Đội trưởng",
-  STAFF: "Cán bộ chiến sĩ",
+  STAFF: "Cán bộ",
 };
 
 export function displayNameOf(user: AuthUser): string {
@@ -97,7 +97,7 @@ const ROLE_RANK: string[] = [
  *
  * Một tài khoản có chức vụ nay giữ nhiều vai trò cùng lúc, mà `roleAssignments`
  * xếp theo thứ tự lúc gán chứ không theo bậc - lấy phần tử đầu là đội trưởng
- * hiện ra thành "Cán bộ chiến sĩ" chỉ vì vai trò đó được gán trước.
+ * hiện ra thành "Cán bộ" chỉ vì vai trò đó được gán trước.
  */
 export function highestRoleCode(user: AuthUser | null | undefined): string {
   let best = "";

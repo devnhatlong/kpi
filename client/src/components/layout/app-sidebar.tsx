@@ -259,7 +259,13 @@ export function AppSidebar() {
                   `group-data-[collapsible=icon]:[&>div:last-child]:hidden` -
                   đúng thứ cần khi thu sidebar về dạng biểu tượng.
                 */}
-                <div className="min-w-0 flex-1 text-left font-display text-sm font-bold uppercase leading-[1.3] tracking-wide break-words line-clamp-2">
+                {/*
+                  Dùng `text-sidebar-primary` chứ không phải `text-primary`:
+                  sidebar có bộ token riêng, ở nền tối nó là sắc xanh sáng hơn
+                  cho đọc được. Lấy token của trang chính thì chế độ tối chữ sẽ
+                  chìm vào nền.
+                */}
+                <div className="min-w-0 flex-1 text-left font-display text-sm font-bold uppercase leading-[1.3] tracking-wide break-words line-clamp-2 text-sidebar-primary">
                   {SIDEBAR_BRAND.subtitle}
                 </div>
               </Link>

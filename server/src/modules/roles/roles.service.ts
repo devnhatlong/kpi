@@ -27,86 +27,86 @@ const SYSTEM_ROLES: Array<{
   sortOrder: number;
   permissions: string[];
 }> = [
-  {
-    code: RoleCode.SUPER_ADMIN,
-    name: 'Quản trị hệ thống',
-    sortOrder: 10,
-    permissions: ALL_PERMISSIONS,
-  },
-  {
-    // Cấp cao nhất của chuỗi nghiệp vụ: nhận báo cáo tổng hợp từ các đơn vị,
-    // duyệt và chốt. Không có quyền cấu hình hệ thống - việc đó của SUPER_ADMIN.
-    code: RoleCode.CAT_ADMIN,
-    name: 'Công an tỉnh',
-    sortOrder: 15,
-    permissions: [
-      Permission.USER_VIEW,
-      Permission.DEPARTMENT_VIEW,
-      Permission.MISSION_MANAGE,
-      Permission.TASK_ASSIGN,
-      Permission.TASK_VIEW,
-      Permission.EVALUATION_SELF,
-      Permission.EVALUATION_APPROVE,
-    ],
-  },
-  {
-    code: RoleCode.UNIT_ADMIN,
-    name: 'Trưởng phòng, trưởng xã',
-    sortOrder: 20,
-    // Không có ROLE_ASSIGN / USER_MANAGE: hai quyền đó chưa bị giới hạn theo
-    // phạm vi đơn vị nên cấp cho quản trị đơn vị là họ tự gán được vai trò
-    // SUPER_ADMIN cho chính mình. DEPARTMENT_MANAGE cũng vậy - xoá được đơn vị
-    // của bất kỳ nhánh nào. Chỉ mở lại khi các route đó chặn theo cây đơn vị.
-    permissions: [
-      Permission.USER_VIEW,
-      Permission.DEPARTMENT_VIEW,
-      Permission.MISSION_MANAGE,
-      Permission.TASK_ASSIGN,
-      Permission.TASK_VIEW,
-      Permission.EVALUATION_SELF,
-      Permission.EVALUATION_APPROVE,
-    ],
-  },
-  {
-    /*
-      Phó đứng thay trưởng khi trưởng vắng, nên giữ ĐÚNG bộ quyền của trưởng -
-      cắt bớt là mỗi lần trưởng đi vắng công việc của phòng đứng lại. Khác biệt
-      giữa phó và trưởng nằm ở bậc báo cáo (ROLE_LADDER), không nằm ở quyền
-      thao tác: phó vẫn phải trình báo cáo lên trưởng.
-    */
-    code: RoleCode.VICE_UNIT_ADMIN,
-    name: 'Phó phòng, phó xã',
-    sortOrder: 25,
-    permissions: [
-      Permission.USER_VIEW,
-      Permission.DEPARTMENT_VIEW,
-      Permission.MISSION_MANAGE,
-      Permission.TASK_ASSIGN,
-      Permission.TASK_VIEW,
-      Permission.EVALUATION_SELF,
-      Permission.EVALUATION_APPROVE,
-    ],
-  },
-  {
-    code: RoleCode.MANAGER,
-    name: 'Đội trưởng',
-    sortOrder: 30,
-    permissions: [
-      Permission.USER_VIEW,
-      Permission.DEPARTMENT_VIEW,
-      Permission.TASK_ASSIGN,
-      Permission.TASK_VIEW,
-      Permission.EVALUATION_SELF,
-      Permission.EVALUATION_APPROVE,
-    ],
-  },
-  {
-    code: RoleCode.STAFF,
-    name: 'Cán bộ chiến sĩ',
-    sortOrder: 40,
-    permissions: [Permission.TASK_VIEW, Permission.EVALUATION_SELF],
-  },
-];
+    {
+      code: RoleCode.SUPER_ADMIN,
+      name: 'Quản trị hệ thống',
+      sortOrder: 10,
+      permissions: ALL_PERMISSIONS,
+    },
+    {
+      // Cấp cao nhất của chuỗi nghiệp vụ: nhận báo cáo tổng hợp từ các đơn vị,
+      // duyệt và chốt. Không có quyền cấu hình hệ thống - việc đó của SUPER_ADMIN.
+      code: RoleCode.CAT_ADMIN,
+      name: 'Công an tỉnh',
+      sortOrder: 15,
+      permissions: [
+        Permission.USER_VIEW,
+        Permission.DEPARTMENT_VIEW,
+        Permission.MISSION_MANAGE,
+        Permission.TASK_ASSIGN,
+        Permission.TASK_VIEW,
+        Permission.EVALUATION_SELF,
+        Permission.EVALUATION_APPROVE,
+      ],
+    },
+    {
+      code: RoleCode.UNIT_ADMIN,
+      name: 'Trưởng phòng, trưởng xã',
+      sortOrder: 20,
+      // Không có ROLE_ASSIGN / USER_MANAGE: hai quyền đó chưa bị giới hạn theo
+      // phạm vi đơn vị nên cấp cho quản trị đơn vị là họ tự gán được vai trò
+      // SUPER_ADMIN cho chính mình. DEPARTMENT_MANAGE cũng vậy - xoá được đơn vị
+      // của bất kỳ nhánh nào. Chỉ mở lại khi các route đó chặn theo cây đơn vị.
+      permissions: [
+        Permission.USER_VIEW,
+        Permission.DEPARTMENT_VIEW,
+        Permission.MISSION_MANAGE,
+        Permission.TASK_ASSIGN,
+        Permission.TASK_VIEW,
+        Permission.EVALUATION_SELF,
+        Permission.EVALUATION_APPROVE,
+      ],
+    },
+    {
+      /*
+        Phó đứng thay trưởng khi trưởng vắng, nên giữ ĐÚNG bộ quyền của trưởng -
+        cắt bớt là mỗi lần trưởng đi vắng công việc của phòng đứng lại. Khác biệt
+        giữa phó và trưởng nằm ở bậc báo cáo (ROLE_LADDER), không nằm ở quyền
+        thao tác: phó vẫn phải trình báo cáo lên trưởng.
+      */
+      code: RoleCode.VICE_UNIT_ADMIN,
+      name: 'Phó phòng, phó xã',
+      sortOrder: 25,
+      permissions: [
+        Permission.USER_VIEW,
+        Permission.DEPARTMENT_VIEW,
+        Permission.MISSION_MANAGE,
+        Permission.TASK_ASSIGN,
+        Permission.TASK_VIEW,
+        Permission.EVALUATION_SELF,
+        Permission.EVALUATION_APPROVE,
+      ],
+    },
+    {
+      code: RoleCode.MANAGER,
+      name: 'Đội trưởng',
+      sortOrder: 30,
+      permissions: [
+        Permission.USER_VIEW,
+        Permission.DEPARTMENT_VIEW,
+        Permission.TASK_ASSIGN,
+        Permission.TASK_VIEW,
+        Permission.EVALUATION_SELF,
+        Permission.EVALUATION_APPROVE,
+      ],
+    },
+    {
+      code: RoleCode.STAFF,
+      name: 'Cán bộ',
+      sortOrder: 40,
+      permissions: [Permission.TASK_VIEW, Permission.EVALUATION_SELF],
+    },
+  ];
 
 /**
  * Tên cũ của vai trò hệ thống, để đổi sang tên nghiệp vụ đúng cách gọi trong
@@ -131,7 +131,7 @@ export class RolesService implements OnModuleInit {
     @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
     @Inject(forwardRef(() => PermissionsService))
     private readonly permissionsService: PermissionsService,
-  ) {}
+  ) { }
 
   async onModuleInit() {
     await this.permissionsService.seedSystemPermissions();
