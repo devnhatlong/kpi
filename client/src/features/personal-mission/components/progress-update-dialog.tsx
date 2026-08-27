@@ -62,6 +62,7 @@ import {
   canCompletePersonalMission,
   canSendPersonalMission,
   canUpdateProgress,
+  PERSONAL_MISSION_STATUS_LABEL,
   type PersonalMissionItem,
   type PersonalMissionProgressChange,
   type PersonalMissionProgressLog,
@@ -1260,6 +1261,23 @@ type ProgressUpdateDialogProps = {
 };
 
 /**
+ * Một dữ kiện ở hàng thông tin đầu hộp thoại.
+ *
+ * Không có giá trị thì KHÔNG vẽ gì: hàng này có sáu mục mà phần lớn nhiệm vụ
+ * chỉ có hai ba mục có số - bày đủ sáu kèm dấu gạch ngang thì mắt phải lọc lấy
+ * mấy mục có nghĩa giữa một đống chỗ trống.
+ */
+function MetaFact({ label, value }: { label: string; value?: string | null }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-baseline gap-1.5">
+      <dt className="text-muted-foreground">{label}:</dt>
+      <dd className="font-medium text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+/**
  * Cập nhật tiến độ hằng ngày cho một nhiệm vụ.
  *
  * Bên trái là mấy ô cần gõ, bên phải là bối cảnh: mốc tiến độ đã đi tới đâu và
@@ -1375,11 +1393,32 @@ export function ProgressUpdateDialog({
           chiếu điểm, nhật ký từng ngày) - hẹp là số nào cũng xuống dòng. */}
       <DialogContent className="sm:max-w-[min(94vw,84rem)]">
         <DialogHeader>
+          {/*
+            TÊN NHIỆM VỤ đứng làm tiêu đề, nội dung công việc lùi xuống dòng
+            dưới. Trước đây tiêu đề là `workContentName` - tức là tên NHÓM việc,
+            không phải tên việc: mở hai nhiệm vụ khác nhau cùng một nội dung ra
+            thì hai hộp thoại có tiêu đề y hệt nhau, không biết đang sửa cái nào.
+          */}
           <DialogTitle className="pr-6">
-            {readOnly ? "Tiến độ" : "Cập nhật"}: {shown?.workContentName}
+            <span className="block text-sm font-normal text-muted-foreground">
+              {readOnly ? "Xem tiến độ" : "Cập nhật tiến độ"}
+            </span>
+            <span className="mt-0.5 block">
+              {summary?.title || shown?.workContentName || "Nhiệm vụ"}
+            </span>
           </DialogTitle>
           <DialogDescription asChild>
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              {/* Chỉ nhắc nội dung khi nó KHÁC tiêu đề - việc chưa đặt tên thì
+                  tiêu đề đã là nội dung rồi, lặp lại chỉ tổ dài. */}
+              {summary?.title && shown?.workContentName ? (
+                <span className="w-full text-sm">
+                  Thuộc nội dung:{" "}
+                  <span className="text-foreground">
+                    {shown.workContentName}
+                  </span>
+                </span>
+              ) : null}
               {shown ? (
                 <>
                   <Badge
@@ -1418,6 +1457,51 @@ export function ProgressUpdateDialog({
                       Bị hạ điểm
                     </Badge>
                   ) : null}
+
+                  {/*
+                    Hàng dữ kiện: những thứ trước đây phải đóng hộp thoại, quay
+                    ra danh sách mới tra được. Mỗi mục chỉ hiện khi có số thật -
+                    bày một hàng toàn dấu gạch ngang thì thà không bày.
+                  */}
+                  <dl className="flex w-full flex-wrap gap-x-5 gap-y-1 pt-1 text-xs">
+                    <MetaFact
+                      label="Ngày báo cáo"
+                      value={
+                        shown.reportDate ? formatYmd(shown.reportDate) : null
+                      }
+                    />
+                    <MetaFact
+                      label={summary?.deadlineTitle || "Hạn hoàn thành"}
+                      value={
+                        summary?.deadline ? formatYmd(summary.deadline) : null
+                      }
+                    />
+                    <MetaFact
+                      label="Trạng thái duyệt"
+                      value={PERSONAL_MISSION_STATUS_LABEL[shown.status]}
+                    />
+                    <MetaFact
+                      label="Cập nhật gần nhất"
+                      value={
+                        shown.lastProgressAt
+                          ? formatYmd(serverYmd(shown.lastProgressAt))
+                          : "Chưa lần nào"
+                      }
+                    />
+                    <MetaFact label="Đang ở chỗ" value={shown.recipientName} />
+                    <MetaFact
+                      label="Chỉ huy đã chấm"
+                      value={
+                        shown.reviewScoredByName
+                          ? `${shown.reviewScoredByName}${
+                              shown.reviewScoredAt
+                                ? ` · ${formatYmd(serverYmd(shown.reviewScoredAt))}`
+                                : ""
+                            }`
+                          : null
+                      }
+                    />
+                  </dl>
                 </>
               ) : null}
             </div>

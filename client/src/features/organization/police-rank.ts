@@ -1,37 +1,42 @@
 /**
  * Cấp bậc hàm trong Công an nhân dân.
  *
- * Xếp từ THẤP LÊN CAO theo trật tự của Luật Công an nhân dân. Bốn nhóm nối
+ * Xếp từ CAO XUỐNG THẤP - đây là thứ tự bày ra trong dropdown. Bốn nhóm nối
  * liền nhau trong một mảng, không chèn tiêu đề nhóm: `SearchableSelect` chỉ
  * nhận danh sách phẳng, mà bốn nhóm này tự phân biệt bằng chữ cuối (sĩ / úy /
  * tá / tướng) nên nhìn vào là ra ngay.
  *
- * BẢN SAO của `server/src/common/enums/police-rank.enum.ts` - hai bên phải
- * giống hệt nhau. Lệch một giá trị là server trả 400 cho đúng cái cấp bậc mà
- * dropdown vừa bày ra cho người dùng chọn.
+ * Cùng BỘ GIÁ TRỊ với `server/src/common/enums/police-rank.enum.ts`, nhưng thứ
+ * tự hai bên không cần trùng: bên server danh sách chỉ dùng để kiểm tra giá trị
+ * gửi lên có nằm trong danh mục hay không, thứ tự không ảnh hưởng gì. Thêm hay
+ * bớt một cấp bậc thì phải sửa CẢ HAI - lệch bộ giá trị là server trả 400 cho
+ * đúng cái cấp bậc mà dropdown vừa bày ra cho người dùng chọn.
  */
 export const POLICE_RANKS = [
-  // Hạ sĩ quan, chiến sĩ
-  "Binh nhì",
-  "Binh nhất",
-  "Hạ sĩ",
-  "Trung sĩ",
-  "Thượng sĩ",
-  // Sĩ quan cấp úy
-  "Thiếu úy",
-  "Trung úy",
-  "Thượng úy",
-  "Đại úy",
-  // Sĩ quan cấp tá
-  "Thiếu tá",
-  "Trung tá",
-  "Thượng tá",
-  "Đại tá",
   // Sĩ quan cấp tướng
-  "Thiếu tướng",
-  "Trung tướng",
-  "Thượng tướng",
   "Đại tướng",
+  "Thượng tướng",
+  "Trung tướng",
+  "Thiếu tướng",
+
+  // Sĩ quan cấp tá
+  "Đại tá",
+  "Thượng tá",
+  "Trung tá",
+  "Thiếu tá",
+
+  // Sĩ quan cấp úy
+  "Đại úy",
+  "Thượng úy",
+  "Trung úy",
+  "Thiếu úy",
+
+  // Hạ sĩ quan, chiến sĩ
+  "Thượng sĩ",
+  "Trung sĩ",
+  "Hạ sĩ",
+  "Binh nhất",
+  "Binh nhì",
 ] as const;
 
 export type PoliceRank = (typeof POLICE_RANKS)[number];

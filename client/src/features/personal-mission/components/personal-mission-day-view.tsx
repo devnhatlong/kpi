@@ -106,13 +106,14 @@ const TABS: Array<{ value: TabValue; label: string }> = [
 /** Chip trạng thái cạnh ô ngày - cao bằng nút chọn ngày cho thẳng hàng. */
 const headerChipClass = "h-8 gap-1.5 rounded-md px-3 text-sm font-normal";
 
-/** Cách bày danh sách: phẳng, gom theo trục, hay gom theo đơn vị. */
-type GroupMode = "TASK" | "AXIS" | "UNIT";
+/** Cách bày danh sách: phẳng, hay gom theo trục / đơn vị / cán bộ. */
+type GroupMode = "TASK" | "AXIS" | "UNIT" | "PERSON";
 
 const GROUP_MODES: Array<{ value: GroupMode; label: string }> = [
-  { value: "TASK", label: "Theo nhiệm vụ" },
+  { value: "TASK", label: "Theo nội dung nhiệm vụ" },
   { value: "AXIS", label: "Theo trục" },
   { value: "UNIT", label: "Theo đơn vị" },
+  { value: "PERSON", label: "Theo cá nhân" },
 ];
 
 function matchesTab(item: PersonalMissionItem, tab: TabValue): boolean {
@@ -431,11 +432,15 @@ export function PersonalMissionDayView({
   }, [criteriaList, tab, debouncedQuery]);
 
   /**
-   * Nhóm theo trục hoặc theo đơn vị.
+   * Nhóm theo trục, theo đơn vị, hoặc theo cán bộ.
    *
-   * Màn này chỉ có nhiệm vụ của chính mình nên "theo đơn vị" ra đúng một nhóm -
-   * là đơn vị của người đang xem. Cách gom giữ nguyên để khi màn cấp trên dùng
-   * lại thì mỗi cán bộ ra một nhóm.
+   * Màn này chỉ có nhiệm vụ của chính mình nên "theo đơn vị" và "theo cá nhân"
+   * đều ra đúng một nhóm - là đơn vị và tên của người đang xem. Cách gom giữ
+   * nguyên để khi màn cấp trên dùng lại thì mỗi đơn vị / mỗi cán bộ ra một nhóm.
+   *
+   * Khoá gom lấy từ CHÍNH DÒNG (`row.item.ownerName`) chứ không lấy tên người
+   * đang đăng nhập: hai thứ đó trùng nhau ở màn này, nhưng chỉ có cái trước mới
+   * đúng khi danh sách chứa việc của nhiều người.
    */
   const groups = useMemo(() => {
     if (groupMode === "TASK") return [];
@@ -445,7 +450,12 @@ export function PersonalMissionDayView({
       const key =
         groupMode === "AXIS"
           ? row.item.axisName || "Chưa rõ trục"
-          : user?.departmentName || "Đơn vị công tác";
+          : groupMode === "PERSON"
+            ? row.item.ownerName ||
+              user?.fullName ||
+              user?.username ||
+              "Chưa rõ cán bộ"
+            : user?.departmentName || "Đơn vị công tác";
       byKey.set(key, [...(byKey.get(key) ?? []), row]);
     }
 
@@ -457,7 +467,13 @@ export function PersonalMissionDayView({
         overdue: countOverdue(groupRows),
         percent: averagePercent(groupRows),
       }));
-  }, [filtered, groupMode, user?.departmentName]);
+  }, [
+    filtered,
+    groupMode,
+    user?.departmentName,
+    user?.fullName,
+    user?.username,
+  ]);
 
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / limit));
