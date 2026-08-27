@@ -218,33 +218,49 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="border-b border-sidebar-border">
+      <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
+            {/*
+              Logo + tên phần mềm, in hoa. Bỏ dòng tên đơn vị: nhét cả hai vào
+              bề ngang này là dòng nào cũng bị cắt cụt ("Hệ thống quản lý và
+              chấm đi..."), mà tên bị cắt thì để cũng như không. Tên đơn vị vẫn
+              còn ở màn đăng nhập và trên tiêu đề trình duyệt.
+
+              Cho chữ xuống dòng thay vì truncate - hai dòng ngắn đọc được trọn
+              câu, một dòng dài thì không.
+            */}
             <SidebarMenuButton
               size="lg"
               asChild
-              tooltip={SIDEBAR_BRAND.title}
-              className="h-14 group-data-[collapsible=icon]:h-14 group-data-[collapsible=icon]:p-1"
+              tooltip={SIDEBAR_BRAND.subtitle}
+              className="h-16 group-data-[collapsible=icon]:h-16 group-data-[collapsible=icon]:p-1"
             >
               <Link href="/dashboard">
-                <div className="relative aspect-square size-10 shrink-0">
+                {/*
+                  Thu gọn thì nhỏ lại: --sidebar-width-icon là 4rem, trừ lề của
+                  header và của nút thì chỉ còn khoảng 46px - để nguyên 48px là
+                  logo tràn ra ngoài.
+                */}
+                <div className="relative aspect-square size-12 shrink-0 group-data-[collapsible=icon]:size-10">
                   <Image
                     src={SIDEBAR_BRAND.logo}
                     alt={SIDEBAR_BRAND.title}
                     fill
-                    sizes="40px"
+                    sizes="48px"
                     className="object-contain"
                     priority
                   />
                 </div>
-                <div className="grid min-w-0 flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-display font-semibold">
-                    {SIDEBAR_BRAND.title}
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {SIDEBAR_BRAND.subtitle}
-                  </span>
+                {/*
+                  Phải là <div>, không được là <span>: sidebarMenuButtonVariants
+                  ép `[&>span:last-child]:truncate` nên span sẽ bị cắt một dòng.
+                  Là div thì thoát luật đó, mà vẫn dính
+                  `group-data-[collapsible=icon]:[&>div:last-child]:hidden` -
+                  đúng thứ cần khi thu sidebar về dạng biểu tượng.
+                */}
+                <div className="min-w-0 flex-1 text-left font-display text-sm font-bold uppercase leading-[1.3] tracking-wide break-words line-clamp-2">
+                  {SIDEBAR_BRAND.subtitle}
                 </div>
               </Link>
             </SidebarMenuButton>

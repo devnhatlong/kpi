@@ -186,7 +186,8 @@
       "Bash(rg -n 'updateOne|filter|code|\\\\$setOnInsert')",
       "Bash(cp \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/verify-form-config.js\" \"d:/Project/WebApp/KPI/server/_verify-tmp.js\")",
       "Bash(node _verify-tmp.js)",
-      "Bash(rg -n \"import|bulk\" ../../../../server/src/modules/departments/*.controller.ts)"
+      "Bash(rg -n \"import|bulk\" ../../../../server/src/modules/departments/*.controller.ts)",
+      "Bash(rg -rn \"SIDEBAR_BRAND\" --glob '*.ts' -A8)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
