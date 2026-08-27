@@ -343,15 +343,21 @@ export function CriteriaTable({
             </tr>
           ))}
         </tbody>
+        {/*
+          Dòng tổng dùng nền ĐẶC + viền trên dày, không phải nền pha mờ: pha
+          40% chỉ chênh nền card chừng 2% độ sáng, ra một vệt mờ chứ không ra
+          dải tổng kết. Đây là dòng người đọc tìm đầu tiên khi liếc bảng nên
+          phải tách hẳn khỏi thân bảng.
+        */}
         {hasTotals ? (
           <tfoot>
-            <tr className="bg-muted/40 font-semibold">
+            <tr className="bg-secondary font-semibold">
               {visible.map((column, index) => {
                 const total = columnTotal(column);
                 return (
                   <td
                     key={column.id}
-                    className="border-r px-2 py-2 text-center tabular-nums last:border-r-0"
+                    className="border-t-2 border-t-border border-r px-2 py-2 text-center tabular-nums last:border-r-0"
                   >
                     {index === 0 && total === null
                       ? "Tổng điểm"

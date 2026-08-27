@@ -695,7 +695,7 @@ export function PersonalMissionDayView({
             </p>
             {/* Trùng đúng chữ với mục menu để vào trang là biết mình đang ở đâu. */}
             <h1 className="font-display text-2xl font-semibold tracking-tight">
-              nhiệm vụ cá nhân
+              Nhiệm vụ cá nhân
             </h1>
             <div className="flex flex-wrap items-center gap-2">
               {/*

@@ -187,7 +187,17 @@
       "Bash(cp \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/verify-form-config.js\" \"d:/Project/WebApp/KPI/server/_verify-tmp.js\")",
       "Bash(node _verify-tmp.js)",
       "Bash(rg -n \"import|bulk\" ../../../../server/src/modules/departments/*.controller.ts)",
-      "Bash(rg -rn \"SIDEBAR_BRAND\" --glob '*.ts' -A8)"
+      "Bash(rg -rn \"SIDEBAR_BRAND\" --glob '*.ts' -A8)",
+      "Bash(rg -U --multiline -n '<\\(h1|h2|h3|CardTitle|DialogTitle|SheetTitle\\)[^>]*>\\\\s*\\\\n?\\\\s*[a-zàáâãèéêìíòóôõùúýăđĩũơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]' --glob '*.tsx')",
+      "Bash(cd \"d:/Project/WebApp/KPI/client/src\" && ls app/*.css styles/*.css 2>/dev/null; echo \"---\"; rg -ln \"\\\\-\\\\-background|--card\" --glob '*.css' .. 2>/dev/null | head)",
+      "Read(//d/Project/WebApp/**)",
+      "Bash(rg -o 'bg-white\\(/\\\\d+\\)?' --glob '*.tsx')",
+      "Bash(node _contrast-tmp.js)",
+      "Bash(rm -f _contrast-tmp.js)",
+      "Bash(node _gamut-tmp.js)",
+      "Bash(rm -f _gamut-tmp.js)",
+      "Bash(rg -no 'bg-\\(blue|indigo|sky|slate|zinc|gray|neutral|violet\\)-\\\\d+\\(/\\\\d+\\)?|from-\\\\w+-\\\\d+|to-\\\\w+-\\\\d+|bg-gradient[\\\\w-]*' personal-task-drawer.tsx)",
+      "Bash(rg -o '\\\\-\\\\-background:[^;]+;' .next/static/css/*.css)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

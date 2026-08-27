@@ -92,7 +92,7 @@ export function ReceivedAssignmentsView() {
     <div className="space-y-4">
       <div className="space-y-1">
         <h1 className="font-display text-2xl font-semibold tracking-tight">
-          nhiệm vụ cấp trên giao
+          Nhiệm vụ cấp trên giao
         </h1>
         <p className="text-sm text-muted-foreground">
           Nhiệm vụ đang nằm ở chỗ bạn. Giao tiếp xuống cấp dưới, hoặc nhận thực
