@@ -47,6 +47,19 @@ export class PersonalMissionContentDto {
   @IsOptional()
   @IsObject()
   attachments?: Record<string, unknown>;
+
+  /**
+   * Cán bộ phối hợp. KHÔNG gửi người xử lý chính ở đây - người đó luôn là
+   * người khai nhiệm vụ, server tự biết từ token.
+   *
+   * Gửi mảng rỗng để gỡ hết người phối hợp; bỏ trống trường này thì giữ nguyên
+   * danh sách đang có.
+   */
+  @ApiPropertyOptional({ description: 'Id cán bộ phối hợp', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true, message: 'Cán bộ phối hợp không hợp lệ.' })
+  collaboratorIds?: string[];
 }
 
 export class CreatePersonalMissionDto extends PersonalMissionContentDto {
@@ -142,6 +155,18 @@ export class UpdatePersonalMissionProgressDto {
   @IsOptional()
   @IsObject()
   results?: Record<string, string>;
+
+  /**
+   * Cán bộ phối hợp - sửa được cả sau khi đã khai, vì người cùng làm thường
+   * chỉ lộ ra trong lúc chạy việc chứ không biết trước từ hôm đăng ký.
+   *
+   * Bỏ trống = giữ nguyên; gửi mảng rỗng = gỡ hết.
+   */
+  @ApiPropertyOptional({ description: 'Id cán bộ phối hợp', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true, message: 'Cán bộ phối hợp không hợp lệ.' })
+  collaboratorIds?: string[];
 }
 
 /**

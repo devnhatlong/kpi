@@ -48,6 +48,29 @@ export type PersonalMissionCatalogValue = {
   name: string;
 };
 
+/**
+ * Cán bộ cùng làm việc này, ngoài người báo cáo.
+ *
+ * Người xử lý CHÍNH không nằm ở đây - đó luôn là `ownerId`, tức người khai
+ * nhiệm vụ. Danh sách này chỉ dành cho người phối hợp.
+ *
+ * Chép sẵn `name` bên cạnh `userId`: bảng báo cáo bày hàng trăm dòng, join sang
+ * users cho từng dòng chỉ để lấy cái tên là quá đắt. Cán bộ đổi tên thì tên
+ * trong nhiệm vụ cũ giữ nguyên - đúng thứ cần khi đọc lại báo cáo đã trình.
+ */
+@Schema({ _id: false })
+export class PersonalMissionCollaborator {
+  @Prop({ type: Types.ObjectId, ref: User.name, required: true })
+  userId!: Types.ObjectId;
+
+  @Prop({ trim: true, default: '' })
+  name!: string;
+}
+
+export const PersonalMissionCollaboratorSchema = SchemaFactory.createForClass(
+  PersonalMissionCollaborator,
+);
+
 /** Một trường bị cấp trên sửa - giữ cả giá trị trước và sau. */
 @Schema({ _id: false })
 export class PersonalMissionFieldChange {
@@ -113,6 +136,8 @@ export const PERSONAL_MISSION_PROGRESS_FIELDS = [
    * tên cột của mẫu) nằm ở `detail`.
    */
   'content',
+  /** Đổi danh sách cán bộ phối hợp - tên người nằm ở `from` / `to`. */
+  'collaborators',
 ] as const;
 
 export type PersonalMissionProgressField =
@@ -232,6 +257,17 @@ export class PersonalMissionItem {
   /** Đơn vị của cán bộ lúc tạo - để cấp trên gom theo đơn vị mà không join. */
   @Prop({ type: Types.ObjectId, ref: 'Department', default: null, index: true })
   ownerDepartmentId!: Types.ObjectId | null;
+
+  /**
+   * Cán bộ phối hợp - KHÔNG BẮT BUỘC, và không gồm người xử lý chính.
+   *
+   * Người xử lý chính chính là `ownerId` ở trên: nhiệm vụ cá nhân do ai khai
+   * thì người đó chịu trách nhiệm chính, không có đường nào khai hộ người khác.
+   * Vì vậy không dựng thêm trường `mainHandlerId` - hai trường luôn bằng nhau
+   * là hai trường chờ ngày lệch nhau.
+   */
+  @Prop({ type: [PersonalMissionCollaboratorSchema], default: [] })
+  collaborators!: PersonalMissionCollaborator[];
 
   /** Ngày báo cáo (YYYY-MM-DD) theo giờ Việt Nam trên server. */
   @Prop({ required: true, trim: true, index: true })

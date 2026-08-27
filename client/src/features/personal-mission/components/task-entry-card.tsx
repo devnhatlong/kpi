@@ -8,6 +8,7 @@ import type {
   FormHeaderGroup,
   FormTemplateColumn,
 } from "@/features/mission-form-config/types";
+import { CollaboratorPicker } from "@/features/personal-mission/components/collaborator-picker";
 import { TaskFieldsGrid } from "@/features/personal-mission/components/task-fields-grid";
 import type {
   DraftContentEntry,
@@ -167,7 +168,7 @@ export function TaskEntryCard({
               <span className="mt-5 flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-medium text-muted-foreground tabular-nums">
                 {taskIndex + 1}
               </span>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 space-y-2.5">
                 <TaskFieldsGrid
                   columns={columns}
                   headerGroups={headerGroups}
@@ -178,6 +179,21 @@ export function TaskEntryCard({
                   disabled={disabled}
                   onChange={(patch) => onTaskChange(task.key, patch)}
                 />
+                {/*
+                  Nằm NGOÀI TaskFieldsGrid: lưới đó dựng theo cột của mẫu bảng,
+                  còn người phối hợp là trường cố định của hệ thống, không do
+                  mẫu quyết định. Nhét vào trong thì mẫu nào không khai cột đó
+                  là mất luôn ô chọn người.
+                */}
+                <div className="border-t border-dashed pt-2.5">
+                  <CollaboratorPicker
+                    value={task.collaboratorIds ?? []}
+                    disabled={disabled}
+                    onChange={(collaboratorIds) =>
+                      onTaskChange(task.key, { collaboratorIds })
+                    }
+                  />
+                </div>
               </div>
               {!fixedTasks ? (
                 <Button

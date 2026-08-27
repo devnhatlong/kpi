@@ -50,6 +50,9 @@ import { useScopedAxes } from "@/features/mission-form-config/use-scoped-axes";
 import { useScoreGroupMap } from "@/features/mission-form-config/use-score-groups";
 import {
   createPersonalMissionBatch,
+  deletePersonalMission,
+  fetchMyPersonalMission,
+  personalMissionKeys,
   taskToWriteInput,
   updatePersonalMission,
 } from "@/features/personal-mission/api";
@@ -59,6 +62,7 @@ import {
   outOfRangeColumns,
 } from "@/features/personal-mission/task-column-utils";
 import {
+  canEditPersonalMission,
   createContentEntry,
   createEmptyTask,
   isEmptyTask,
@@ -125,6 +129,14 @@ type PersonalTaskDrawerProps = {
   onOpenChange: (open: boolean) => void;
   /** Sửa 1 nhiệm vụ đã có trên danh sách */
   edit?: PersonalMissionItem | null;
+  /**
+   * Nạp TOÀN BỘ nhiệm vụ của ngày ra sửa, thay cho bảng tổng hợp cũ.
+   *
+   * Chỉ nạp việc còn sửa được (Nháp / Trả lại). Việc đang chờ duyệt hoặc đã
+   * chốt thì server cũng chặn ghi, bày ra đây chỉ để người dùng gõ xong mới
+   * nhận lỗi.
+   */
+  editDay?: boolean;
   /** Ngày báo cáo YYYY-MM-DD (mặc định hôm nay theo server) */
   reportDate?: string;
   /** Lời nhắc hiện ngay dưới tiêu đề - ví dụ nhiệm vụ này sẽ vào ngày nào. */
@@ -143,6 +155,7 @@ export function PersonalTaskDrawer({
   open,
   onOpenChange,
   edit,
+  editDay,
   reportDate,
   notice,
   onSaved,
@@ -265,22 +278,95 @@ export function PersonalTaskDrawer({
     }
   }, [open, contentsError]);
 
+  /*
+    Chế độ sửa cả ngày: nạp mọi nhiệm vụ CÒN SỬA ĐƯỢC của ngày đó.
+
+    Dùng chung khoá SWR với màn danh sách nên mở drawer không tốn thêm lượt gọi
+    nếu màn kia vừa tải xong.
+  */
+  const { data: dayData, isLoading: loadingDay } = useSWR(
+    open && editDay && reportDate
+      ? personalMissionKeys.byDate({ reportDate, page: 1, limit: 100 })
+      : null,
+    () =>
+      fetchMyPersonalMission({ reportDate: reportDate!, page: 1, limit: 100 }),
+    // Không tự nạp lại khi quay lại tab: nạp lại là dựng lại thẻ, mất phần gõ dở.
+    { revalidateOnFocus: false },
+  );
+  const dayItems = useMemo(() => dayData?.data ?? [], [dayData]);
+  const editableDayItems = useMemo(
+    () => dayItems.filter((item) => canEditPersonalMission(item.status)),
+    [dayItems],
+  );
+  /** Việc của ngày nhưng đang khoá - chỉ để nói cho người dùng biết vì sao thiếu. */
+  const lockedCount = dayItems.length - editableDayItems.length;
+
+  /**
+   * Id các việc đã nạp lúc mở. So với lúc lưu để biết người dùng đã bỏ việc nào
+   * ra khỏi phiếu - những việc đó phải xoá thật trên server, không thì bỏ xong
+   * mở lại vẫn thấy y nguyên.
+   */
+  const loadedIdsRef = useRef<string[]>([]);
+  /** Đã dựng thẻ cho lượt mở nào rồi - null khi drawer đóng. */
+  const builtForRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!open) return;
+    // Đóng drawer là xoá chốt, để lượt mở sau dựng lại thẻ từ dữ liệu mới.
+    if (!open) {
+      builtForRef.current = null;
+      return;
+    }
     setSearch("");
-    setEntries(
-      edit
-        ? [
-            {
-              key: `entry-edit-${edit.id}`,
-              axisId: edit.axisId,
-              workContentId: edit.workContentId,
-              tasks: [{ ...edit.task }],
-            },
-          ]
-        : [],
-    );
-  }, [open, edit]);
+
+    if (edit) {
+      setEntries([
+        {
+          key: `entry-edit-${edit.id}`,
+          axisId: edit.axisId,
+          workContentId: edit.workContentId,
+          tasks: [{ ...edit.task }],
+        },
+      ]);
+      loadedIdsRef.current = [];
+      return;
+    }
+
+    if (!editDay) {
+      setEntries([]);
+      loadedIdsRef.current = [];
+      return;
+    }
+
+    // Chờ tải xong mới dựng, kẻo phiếu chớp qua trạng thái trống rồi mới có dữ liệu.
+    if (loadingDay) return;
+
+    /*
+      Dựng ĐÚNG MỘT LẦN cho mỗi lượt mở.
+
+      Danh sách việc là mảng MỚI sau mỗi lần SWR trả dữ liệu, nên thiếu chốt này
+      thì mỗi lượt nạp lại sẽ dựng lại toàn bộ thẻ - xoá sạch những gì người
+      dùng đang gõ dở mà không báo gì.
+    */
+    const stamp = `${reportDate ?? ""}`;
+    if (builtForRef.current === stamp) return;
+    builtForRef.current = stamp;
+
+    // Gom theo nội dung công việc, đúng cách phiếu nhập vốn tổ chức.
+    const byContent = new Map<string, DraftContentEntry>();
+    for (const item of editableDayItems) {
+      const key = `${item.axisId}:${item.workContentId}`;
+      const entry = byContent.get(key) ?? {
+        key: `entry-day-${key}`,
+        axisId: item.axisId,
+        workContentId: item.workContentId,
+        tasks: [],
+      };
+      entry.tasks.push({ ...item.task, itemId: item.id });
+      byContent.set(key, entry);
+    }
+    setEntries([...byContent.values()]);
+    loadedIdsRef.current = editableDayItems.map((item) => item.id);
+  }, [open, edit, editDay, loadingDay, editableDayItems]);
 
   // Thư viện dài hơn màn hình, thẻ vừa thêm dễ nằm ngoài tầm nhìn.
   useEffect(() => {
@@ -538,7 +624,11 @@ export function PersonalTaskDrawer({
       return;
     }
 
-    const payloads: ReturnType<typeof taskToWriteInput>[] = [];
+    /** `itemId` có = việc đã có trên server (PATCH); không có = việc mới (POST). */
+    const payloads: Array<{
+      itemId?: string;
+      input: ReturnType<typeof taskToWriteInput>;
+    }> = [];
 
     for (const entry of entries) {
       const axis = axisById.get(entry.axisId);
@@ -589,9 +679,10 @@ export function PersonalTaskDrawer({
           return;
         }
 
-        payloads.push(
-          taskToWriteInput(entry.axisId, entry.workContentId, task),
-        );
+        payloads.push({
+          itemId: task.itemId,
+          input: taskToWriteInput(entry.axisId, entry.workContentId, task),
+        });
       }
     }
 
@@ -601,7 +692,18 @@ export function PersonalTaskDrawer({
       // lưu xong rồi mới báo lỗi.
       const savedCriteria = (await criteriaSaveRef.current?.()) ?? false;
 
-      if (!payloads.length) {
+      /*
+        Sửa cả ngày mà bỏ SẠCH việc: `payloads` rỗng nhưng vẫn còn việc phải
+        làm - xoá những việc đã nạp lúc mở. Rơi vào nhánh "chẳng có gì để lưu"
+        thì người dùng bỏ hết, bấm lưu, rồi mở lại thấy y nguyên.
+      */
+      const pendingRemoval =
+        editDay &&
+        loadedIdsRef.current.filter(
+          (id) => !payloads.some((row) => row.itemId === id),
+        ).length > 0;
+
+      if (!payloads.length && !pendingRemoval) {
         /*
           Không nhiệm vụ nào mà bảng A cũng không đụng vào: chẳng có gì để lưu.
           Báo thành công ở đây là nói dối, và drawer đóng lại làm người dùng
@@ -620,15 +722,57 @@ export function PersonalTaskDrawer({
       }
 
       if (edit) {
-        await updatePersonalMission(edit.id, payloads[0]!);
+        await updatePersonalMission(edit.id, payloads[0]!.input);
         // Sửa xong là nhiệm vụ quay về chỗ mình, phải gửi lại mới lên cấp trên.
         toast.success(
           wasReturned
             ? "Đã lưu chỉnh sửa. Bấm Gửi lại để nhiệm vụ quay lên cấp trên."
             : "Đã lưu chỉnh sửa.",
         );
+      } else if (editDay) {
+        /*
+          Ba nhóm thao tác trong một lượt lưu, chạy theo đúng thứ tự này:
+
+          1. XOÁ trước - việc người dùng đã bỏ khỏi phiếu. Làm sau cùng thì một
+             lỗi ở bước tạo sẽ để lại việc lẽ ra phải biến mất.
+          2. SỬA việc cũ, tuần tự chứ không Promise.all: lỗi ở việc thứ ba thì
+             hai việc đầu đã lưu vẫn giữ được, và thông báo lỗi chỉ về một việc.
+          3. TẠO việc mới trong một lượt gọi.
+        */
+        const kept = new Set(
+          payloads.map((row) => row.itemId).filter(Boolean) as string[],
+        );
+        const removed = loadedIdsRef.current.filter((id) => !kept.has(id));
+        for (const id of removed) await deletePersonalMission(id);
+
+        const updates = payloads.filter((row) => row.itemId);
+        for (const row of updates) {
+          await updatePersonalMission(row.itemId!, row.input);
+        }
+
+        const creates = payloads.filter((row) => !row.itemId);
+        if (creates.length) {
+          await createPersonalMissionBatch(
+            creates.map((row) => row.input),
+            reportDate,
+          );
+        }
+
+        const parts = [
+          updates.length ? `sửa ${updates.length}` : "",
+          creates.length ? `thêm ${creates.length}` : "",
+          removed.length ? `bỏ ${removed.length}` : "",
+        ].filter(Boolean);
+        toast.success(
+          parts.length
+            ? `Đã lưu báo cáo ngày: ${parts.join(", ")} nhiệm vụ.`
+            : "Đã lưu báo cáo ngày.",
+        );
       } else {
-        await createPersonalMissionBatch(payloads, reportDate);
+        await createPersonalMissionBatch(
+          payloads.map((row) => row.input),
+          reportDate,
+        );
         toast.success(
           payloads.length > 1
             ? `Đã lưu ${payloads.length} nhiệm vụ nháp.`
@@ -662,12 +806,22 @@ export function PersonalTaskDrawer({
               ? wasReturned
                 ? "Sửa nhiệm vụ bị trả lại"
                 : "Sửa nhiệm vụ"
-              : `Nhập nhiệm vụ mới${reportDate ? ` · ${formatDayLabel(reportDate)}` : ""}`}
+              : `${editDay ? "Sửa báo cáo" : "Nhập nhiệm vụ mới"}${
+                  reportDate ? ` · ${formatDayLabel(reportDate)}` : ""
+                }`}
           </SheetTitle>
           <SheetDescription>
             {isEdit
               ? "Các ô nhập lấy theo mẫu nhiệm vụ của trục chứa nội dung công việc này."
-              : "Chọn nội dung công tác ở cột trái, mỗi nội dung hiện một thẻ nhập bên phải. Ô nhập dựng theo mẫu nhiệm vụ của từng trục."}
+              : editDay
+                ? "Sửa thẳng các việc đã khai, thêm nội dung mới ở cột trái, hoặc bỏ việc không dùng. Lưu một lượt là xong."
+                : "Chọn nội dung công tác ở cột trái, mỗi nội dung hiện một thẻ nhập bên phải. Ô nhập dựng theo mẫu nhiệm vụ của từng trục."}
+            {editDay && lockedCount > 0 ? (
+              <span className="mt-1 block">
+                {lockedCount} nhiệm vụ đang chờ duyệt hoặc đã chốt nên không sửa
+                ở đây - dùng nút Cập nhật trên danh sách để theo dõi tiến độ.
+              </span>
+            ) : null}
           </SheetDescription>
         </SheetHeader>
 

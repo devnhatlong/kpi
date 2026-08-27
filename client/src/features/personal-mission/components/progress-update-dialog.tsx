@@ -41,6 +41,7 @@ import { useQualityLevelMap } from "@/features/mission-form-config/use-quality-l
 import { useScoreGroupMap } from "@/features/mission-form-config/use-score-groups";
 import { updatePersonalMissionProgress } from "@/features/personal-mission/api";
 import { AttachmentCell } from "@/features/personal-mission/components/attachment-cell";
+import { CollaboratorPicker } from "@/features/personal-mission/components/collaborator-picker";
 import { ResultFields } from "@/features/personal-mission/components/result-fields";
 import { ReviewScoreSummary } from "@/features/personal-mission/components/review-score-summary";
 import {
@@ -549,10 +550,13 @@ function ChangeLine({
     // Cấp trên sửa nội dung: tên trường (Trục, Nội dung công việc, tên cột của
     // mẫu) cũng nằm ở `detail`.
     content: change.detail || "Nội dung",
+    collaborators: "Cán bộ phối hợp",
   }[change.field];
 
   const show = (raw: string) => {
     if (change.field === "content") return raw.trim() || "(để trống)";
+    // Server ghi sẵn TÊN người, ngăn bằng dấu phẩy; rỗng = chưa có ai.
+    if (change.field === "collaborators") return raw.trim() || "(không có)";
     if (change.field === "result") {
       // Ô tích lưu "1"; ô điểm lưu con số.
       if (!raw.trim()) return "-";
@@ -774,6 +778,14 @@ function ProgressForm({
   const [product, setProduct] = useState(initialProduct);
   const [note, setNote] = useState("");
   const [evidence, setEvidence] = useState<TaskAttachment[]>(initialEvidence);
+  /*
+    Đọc từ `item.collaborators` (có cả tên) chứ không từ `item.task.collaboratorIds`:
+    hai nguồn cùng nội dung, nhưng nguồn này là thứ server vừa trả về sau mỗi
+    lần lưu, nên không lệch khi hộp thoại mở lại mà danh sách vừa đổi.
+  */
+  const [collaboratorIds, setCollaboratorIds] = useState<string[]>(() =>
+    item.collaborators.map((person) => person.userId),
+  );
   /** Giá trị các ô kết quả (Đạt / Không đạt) lúc mở hộp thoại. */
   const resultFields = [...results.scores, ...results.flags];
   const initialResults = Object.fromEntries(
@@ -862,6 +874,7 @@ function ProgressForm({
         note: columns.noteColumn ? note.trim() : undefined,
         product: columns.productColumn ? product : undefined,
         evidence: columns.evidenceColumn ? evidence : undefined,
+        collaboratorIds,
       });
       await onSaved();
       toast.success("Đã cập nhật tiến độ.");
@@ -1076,6 +1089,16 @@ function ProgressForm({
               />
             </div>
           ) : null}
+
+          {/*
+            KHÔNG bọc trong `columns.*`: người phối hợp là trường cố định của hệ
+            thống, không phải cột của mẫu bảng - mẫu nào cũng phải sửa được.
+          */}
+          <CollaboratorPicker
+            value={collaboratorIds}
+            onChange={setCollaboratorIds}
+            disabled={saving || readOnly}
+          />
 
           {columns.evidenceColumn ? (
             <AttachmentCell
@@ -1486,6 +1509,21 @@ export function ProgressUpdateDialog({
                         shown.lastProgressAt
                           ? formatYmd(serverYmd(shown.lastProgressAt))
                           : "Chưa lần nào"
+                      }
+                    />
+                    {/* Người xử lý chính = chủ nhiệm vụ, không phải trường riêng. */}
+                    <MetaFact
+                      label="Người xử lý chính"
+                      value={shown.ownerName}
+                    />
+                    <MetaFact
+                      label="Phối hợp"
+                      value={
+                        shown.collaborators.length
+                          ? shown.collaborators
+                              .map((person) => person.name)
+                              .join(", ")
+                          : null
                       }
                     />
                     <MetaFact label="Đang ở chỗ" value={shown.recipientName} />

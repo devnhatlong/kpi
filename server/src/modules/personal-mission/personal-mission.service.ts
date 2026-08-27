@@ -221,6 +221,10 @@ export class PersonalMissionService {
       );
       const doc = await this.itemModel.create({
         ...(await this.mapContent(dto)),
+        collaborators: await this.resolveCollaborators(
+          dto.collaboratorIds,
+          actor.id,
+        ),
         ownerId: actor.id,
         ownerDepartmentId: actor.departmentId,
         reportDate,
@@ -986,6 +990,55 @@ export class PersonalMissionService {
   async listRecipients(userId: string, q?: string) {
     const data = await this.findRecipientsUp(userId, q);
     return { message: 'OK', data };
+  }
+
+  /**
+   * Cán bộ chọn được làm người phối hợp: đơn vị mình và các đơn vị cấp dưới.
+   *
+   * KHÔNG lọc theo vai trò như `findRecipientsUp`: phối hợp là làm cùng nhau,
+   * không phải trình lên - đội trưởng phối hợp với cán bộ là chuyện bình thường,
+   * chặn theo bậc ở đây là chặn nhầm.
+   *
+   * Không lấy đơn vị cấp trên: người ngoài nhánh mình quản lý thì mình không có
+   * cơ sở để khai thay họ là "có phối hợp".
+   */
+  async listColleagues(userId: string, q?: string) {
+    const me = await this.userModel.findById(userId).select('departmentId');
+    if (!me?.departmentId) return { message: 'OK', data: { people: [] } };
+
+    const departmentIds = await this.departmentSubtreeIds(
+      new Types.ObjectId(String(me.departmentId)),
+    );
+
+    const filter: Record<string, unknown> = {
+      isActive: true,
+      _id: { $ne: me._id },
+      departmentId: { $in: departmentIds },
+    };
+    if (q?.trim()) {
+      const regex = this.likeRegex(q);
+      filter.$or = [{ fullName: regex }, { username: regex }];
+    }
+
+    const found = await this.userModel
+      .find(filter)
+      .select('fullName username rank departmentId')
+      .populate('departmentId', 'code name')
+      .sort({ fullName: 1, username: 1 })
+      .limit(200)
+      .lean();
+
+    const people = found.map((user) => {
+      const dept = user.departmentId as unknown as { name?: string } | null;
+      return {
+        id: String(user._id),
+        fullName: user.fullName?.trim() || user.username,
+        rank: (user as { rank?: string }).rank ?? '',
+        departmentName: dept?.name ?? '',
+      };
+    });
+
+    return { message: 'OK', data: { people } };
   }
 
   /**
@@ -2662,6 +2715,28 @@ export class PersonalMissionService {
         added.join(', '),
       );
     }
+    /*
+      Người phối hợp đổi được ngay trong lượt cập nhật tiến độ: người cùng làm
+      thường chỉ lộ ra lúc chạy việc, bắt quay về form khai lại từ đầu chỉ để
+      thêm một cái tên là vô lý.
+
+      Nhật ký ghi TÊN chứ không ghi id - đọc lại mới biết ai vừa được thêm vào.
+    */
+    if (dto.collaboratorIds !== undefined) {
+      const before = (item.collaborators ?? [])
+        .map((person) => person.name)
+        .join(', ');
+      item.collaborators = await this.resolveCollaborators(
+        dto.collaboratorIds,
+        item.ownerId,
+      );
+      item.markModified('collaborators');
+      pushChange(
+        'collaborators',
+        before,
+        item.collaborators.map((person) => person.name).join(', '),
+      );
+    }
 
     this.appendLog(item, {
       type: 'PROGRESS',
@@ -4029,6 +4104,51 @@ export class PersonalMissionService {
   }
 
   /**
+   * Tra tên cán bộ phối hợp, bỏ id không có thật hoặc tài khoản đã khoá.
+   *
+   * `excludeUserId` là người xử lý chính (chủ nhiệm vụ): tự thêm mình vào danh
+   * sách phối hợp thì tên hiện hai lần trên cùng một dòng, mà cũng chẳng nói
+   * thêm được gì - đã là người khai rồi.
+   *
+   * Bỏ im lặng id không hợp lệ chứ không ném lỗi, giống cách `resolveCatalogValues`
+   * xử lý: người dùng đang lưu nháp cả chục dòng, chặn cả lượt lưu chỉ vì một
+   * tài khoản vừa bị khoá là mất trắng phần vừa gõ.
+   */
+  private async resolveCollaborators(
+    raw: string[] | undefined,
+    excludeUserId: Types.ObjectId,
+  ): Promise<Array<{ userId: Types.ObjectId; name: string }>> {
+    if (!raw?.length) return [];
+
+    const wanted = [
+      ...new Set(
+        raw
+          .map((id) => String(id ?? '').trim())
+          .filter((id) => Types.ObjectId.isValid(id))
+          .filter((id) => id !== String(excludeUserId)),
+      ),
+    ];
+    if (!wanted.length) return [];
+
+    const users = await this.userModel
+      .find({ _id: { $in: wanted.map((id) => new Types.ObjectId(id)) }, isActive: true })
+      .select('fullName username');
+
+    const byId = new Map(users.map((user) => [String(user._id), user]));
+    // Giữ đúng thứ tự người dùng đã chọn, không theo thứ tự Mongo trả về.
+    return wanted.flatMap((id) => {
+      const user = byId.get(id);
+      if (!user) return [];
+      return [
+        {
+          userId: user._id as Types.ObjectId,
+          name: user.fullName?.trim() || user.username,
+        },
+      ];
+    });
+  }
+
+  /**
    * Tra tên cho các id danh mục client gửi lên, bỏ id không có thật.
    * Tra ở cả hai danh mục thay vì suy từ mẫu bảng: mẫu có thể chưa được khoá
    * lúc lưu nháp, còn id thì luôn đủ để biết nó thuộc danh mục nào.
@@ -4128,6 +4248,14 @@ export class PersonalMissionService {
     if (dto.attachments !== undefined) {
       item.attachments = await this.sanitizeAttachments(dto.attachments);
       item.markModified('attachments');
+    }
+    // Cũng thay nguyên danh sách: gửi mảng rỗng là cách gỡ hết người phối hợp.
+    if (dto.collaboratorIds !== undefined) {
+      item.collaborators = await this.resolveCollaborators(
+        dto.collaboratorIds,
+        item.ownerId,
+      );
+      item.markModified('collaborators');
     }
   }
 

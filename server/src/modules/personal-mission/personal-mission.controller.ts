@@ -90,6 +90,19 @@ export class PersonalMissionController {
     return this.personalMissionService.listRecipients(user.uid, q);
   }
 
+  /*
+    Endpoint riêng thay vì dùng /users: danh sách người dùng đòi quyền USER_VIEW
+    mà cán bộ (STAFF) không có - trong khi chính họ là người cần chọn đồng đội
+    lúc khai nhiệm vụ. Đường này chặn bằng EVALUATION_SELF và chỉ trả người
+    trong nhánh đơn vị của người gọi.
+  */
+  @ApiOperation({ summary: 'Cán bộ có thể chọn làm người phối hợp' })
+  @Permissions(Permission.EVALUATION_SELF)
+  @Get('colleagues')
+  colleagues(@CurrentUser() user: JwtPayloadUser, @Query('q') q?: string) {
+    return this.personalMissionService.listColleagues(user.uid, q);
+  }
+
   @ApiOperation({ summary: 'Nhiệm vụ cá nhân của tôi' })
   @Permissions(Permission.EVALUATION_SELF)
   @Get('mine')

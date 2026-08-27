@@ -63,6 +63,13 @@ export type TaskAttachment = {
 export type PersonalTaskDraft = {
   /** client-only id for list keys */
   key: string;
+  /**
+   * Id bản ghi trên server - CHỈ có ở việc nạp từ báo cáo đã lưu.
+   *
+   * Đây là thứ phân biệt "sửa việc cũ" với "thêm việc mới" lúc lưu cả ngày:
+   * có id thì PATCH, không có thì gom vào lượt POST tạo mới.
+   */
+  itemId?: string;
   /** Giá trị mọi cột chữ/số của mẫu bảng, key = FormTemplateColumn.key. */
   fieldValues: Record<string, string>;
   /**
@@ -73,6 +80,8 @@ export type PersonalTaskDraft = {
   catalogValues: Record<string, string>;
   /** Tệp của các cột kiểu "Tệp đính kèm", key = FormTemplateColumn.key. */
   attachments: Record<string, TaskAttachment[]>;
+  /** Id cán bộ phối hợp đã chọn cho việc này. */
+  collaboratorIds: string[];
 };
 
 /** Ô mà một lần cập nhật tiến độ động tới. */
@@ -84,7 +93,9 @@ export type PersonalMissionProgressField =
   /** Ô kết quả của trục chấm theo mục - tên cột nằm ở `detail`. */
   | "result"
   /** Cấp trên sửa một ô nội dung - tên trường nằm ở `detail`. */
-  | "content";
+  | "content"
+  /** Đổi danh sách cán bộ phối hợp - tên người nằm ở `from` / `to`. */
+  | "collaborators";
 
 /**
  * Một ô đổi giá trị. Giá trị là thô: phần trăm và số tệp lưu dạng số trong
@@ -145,6 +156,11 @@ export type PersonalMissionItem = {
   progressLogs: PersonalMissionProgressLog[];
   ownerId?: string;
   ownerName?: string;
+  /**
+   * Cán bộ phối hợp. Người xử lý CHÍNH không nằm ở đây - đó luôn là chủ nhiệm
+   * vụ (`ownerId`), vì nhiệm vụ cá nhân do ai khai thì người đó chịu trách nhiệm.
+   */
+  collaborators: Array<{ userId: string; name: string }>;
   recipientId?: string;
   recipientName?: string;
   sendNote?: string;
@@ -201,6 +217,7 @@ export function createEmptyTask(_index = 1): PersonalTaskDraft {
     fieldValues: {},
     catalogValues: {},
     attachments: {},
+    collaboratorIds: [],
   };
 }
 
@@ -244,5 +261,10 @@ export function isEmptyTask(task: PersonalTaskDraft): boolean {
   const hasFile = Object.values(task.attachments ?? {}).some(
     (files) => files.length > 0,
   );
+  /*
+    Người phối hợp CỐ Ý không tính là "đã gõ gì": chọn người mà chưa khai việc
+    thì vẫn là dòng trống, lưu xuống chỉ ra một nhiệm vụ không tên có người phối
+    hợp. Gõ nội dung vào thì mấy người đã chọn vẫn còn nguyên.
+  */
   return !hasField && !hasCatalog && !hasFile;
 }

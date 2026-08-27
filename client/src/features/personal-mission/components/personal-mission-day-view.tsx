@@ -63,7 +63,6 @@ import {
   isSilent,
   type DayTaskRow,
 } from "@/features/personal-mission/components/day-task-table";
-import { PersonalReportDetailDrawer } from "@/features/personal-mission/components/personal-report-detail-drawer";
 import { PersonalTaskDrawer } from "@/features/personal-mission/components/personal-task-drawer";
 import { ProgressUpdateDialog } from "@/features/personal-mission/components/progress-update-dialog";
 import { SendRecipientDialog } from "@/features/personal-mission/components/send-recipient-dialog";
@@ -229,7 +228,8 @@ export function PersonalMissionDayView({
     null,
   );
   const [progressOpen, setProgressOpen] = useState(false);
-  const [boardOpen, setBoardOpen] = useState(false);
+  /** Drawer nhập đang ở chế độ nạp cả ngày ra sửa. */
+  const [editDay, setEditDay] = useState(false);
   /** null = đang theo khoảng mặc định (tuần này), có giá trị = người dùng tự chọn. */
   const [fromOverride, setFromOverride] = useState<string | null>(null);
   const [toOverride, setToOverride] = useState<string | null>(null);
@@ -380,6 +380,26 @@ export function PersonalMissionDayView({
       silent: rows.filter(isSilent).length,
     };
   }, [rows]);
+
+  /*
+    Ngày báo cáo của các dòng ĐANG HIỆN.
+
+    Danh sách lọc theo KHOẢNG (mặc định là cả tuần) trong khi một báo cáo lại
+    thuộc đúng MỘT NGÀY. Không thể lấy `activeDate` làm ngày sửa: nó là "hôm nay
+    nếu nằm trong khoảng", mà hôm nay có thể chưa khai việc nào trong khi màn
+    hình đang bày đầy việc của hôm qua - bấm sửa ra phiếu trống.
+
+    Đúng một ngày thì mở thẳng ngày đó. Nhiều ngày thì không đoán: đoán sai là
+    người dùng sửa nhầm báo cáo của ngày khác mà không hề biết.
+  */
+  const datesInView = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of rows) {
+      if (row.item.reportDate) set.add(row.item.reportDate);
+    }
+    return [...set].sort();
+  }, [rows]);
+  const editDayTarget = datesInView.length === 1 ? datesInView[0]! : null;
 
   const filtered = useMemo(() => {
     const term = normalizeText(debouncedQuery);
@@ -626,12 +646,14 @@ export function PersonalMissionDayView({
         ? activeDate
         : `${sheet.period}-01`,
     );
-    if (sheet.canEdit || sheet.canUpdate) {
-      setEdit(null);
-      setDrawerOpen(true);
-      return;
-    }
-    setBoardOpen(true);
+    /*
+      Kể cả bảng ĐÃ CHỐT cũng mở phiếu nhập: PersonalCriteriaPanel tự nhận ra
+      trạng thái COMPLETED và bày ở chế độ chỉ đọc. Trước đây nhánh này rẽ sang
+      bảng tổng hợp chỉ vì phiếu nhập bị tưởng là không xem được bảng khoá.
+    */
+    setEdit(null);
+    setEditDay(false);
+    setDrawerOpen(true);
   };
 
   /**
@@ -793,15 +815,39 @@ export function PersonalMissionDayView({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {/* Bảng tổng hợp theo trục - đúng khuôn mẫu nhiệm vụ, để đối chiếu và
-                gửi theo nhóm như màn cũ. */}
+            {/*
+              Sửa cả ngày trên ĐÚNG giao diện lúc nhập, thay cho bảng tổng hợp
+              cũ: bảng đó bày các ô nhập chen trong cột nên tràn ngang, mà lại
+              là bộ ô thứ hai phải nuôi song song với phiếu nhập.
+            */}
+            {/* Cùng kiểu với nút "Gửi báo cáo" bên cạnh: ghost không có nền nên
+                đứng giữa hai nút có nền, nó đọc như một dòng chữ chứ không ra nút. */}
             <Button
-              variant="ghost"
-              onClick={() => setBoardOpen(true)}
-              disabled={rows.length === 0}
+              variant="outline"
+              className="bg-background"
+              onClick={() => {
+                if (!editDayTarget) return;
+                setEdit(null);
+                // Mở đúng ngày của các dòng đang hiện, KHÔNG phải activeDate.
+                setFocusDate(editDayTarget);
+                setEditDay(true);
+                setDrawerOpen(true);
+              }}
+              disabled={!editDayTarget}
+              /* Nói thẳng vì sao bấm không được - nút xám không lý do là chỗ
+                 người dùng đứng lại lâu nhất. */
+              title={
+                rows.length === 0
+                  ? "Khoảng ngày đang chọn chưa có nhiệm vụ nào."
+                  : editDayTarget
+                    ? undefined
+                    : `Danh sách đang gồm ${datesInView.length} ngày. Báo cáo lập theo từng ngày - chọn đúng một ngày ở bộ lọc rồi sửa.`
+              }
             >
               <Table2 className="h-4 w-4" />
-              Bảng tổng hợp
+              {editDayTarget
+                ? `Sửa báo cáo ${formatYmd(editDayTarget)}`
+                : "Sửa cả báo cáo"}
             </Button>
             {/* Gửi được nhiều lượt trong ngày - lượt sau gom nốt việc còn nháp
                 và việc vừa sửa sau khi bị trả lại. */}
@@ -1069,9 +1115,13 @@ export function PersonalMissionDayView({
         open={drawerOpen}
         onOpenChange={(next) => {
           setDrawerOpen(next);
-          if (!next) setFocusDate(null);
+          if (!next) {
+            setFocusDate(null);
+            setEditDay(false);
+          }
         }}
         edit={edit}
+        editDay={editDay}
         reportDate={focusDate ?? activeDate}
         notice={
           !edit && alreadySent
@@ -1079,18 +1129,6 @@ export function PersonalMissionDayView({
             : undefined
         }
         onSaved={async () => {
-          await refreshDay();
-        }}
-      />
-
-      <PersonalReportDetailDrawer
-        open={boardOpen}
-        onOpenChange={(next) => {
-          setBoardOpen(next);
-          if (!next) setFocusDate(null);
-        }}
-        reportDate={boardOpen ? (focusDate ?? activeDate) : null}
-        onChanged={async () => {
           await refreshDay();
         }}
       />

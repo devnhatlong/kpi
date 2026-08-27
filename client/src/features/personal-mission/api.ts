@@ -44,6 +44,8 @@ export type PersonalMissionApiRecord = {
   catalogValues?: Record<string, { id: string; name: string }>;
   fieldValues?: Record<string, string | number>;
   attachments?: Record<string, TaskAttachment[]>;
+  /** Cán bộ phối hợp - server chép sẵn tên để khỏi join. */
+  collaborators?: Array<{ userId?: string | CatalogRef; name?: string }>;
   /** Điểm chỉ huy chấm lại - số chốt khi tính điểm trục. */
   reviewValues?: Record<string, string | number>;
   reviewCatalogValues?: Record<string, { id: string; name: string }>;
@@ -150,6 +152,8 @@ export type PersonalMissionWriteInput = {
   fieldValues?: Record<string, string>;
   /** Tệp của các cột kiểu "Tệp đính kèm", key = khoá cột. */
   attachments?: Record<string, TaskAttachment[]>;
+  /** Id cán bộ phối hợp; KHÔNG gồm người khai - server tự loại. */
+  collaboratorIds?: string[];
 };
 
 export type PersonalMissionReportsQuery = {
@@ -192,6 +196,7 @@ export function mapPersonalMissionFromApi(
 ): PersonalMissionItem {
   const task: PersonalTaskDraft = {
     key: row._id,
+    itemId: row._id,
     // Dropdown cần id; tên do server chép sẵn chỉ dùng cho bảng duyệt.
     catalogValues: Object.fromEntries(
       Object.entries(row.catalogValues ?? {}).map(([key, value]) => [
@@ -206,6 +211,10 @@ export function mapPersonalMissionFromApi(
       ]),
     ),
     attachments: row.attachments ?? {},
+    collaboratorIds: (row.collaborators ?? []).flatMap((item) => {
+      const userId = refId(item.userId);
+      return userId ? [userId] : [];
+    }),
   };
 
   return {
@@ -220,6 +229,13 @@ export function mapPersonalMissionFromApi(
     workContentName: refName(row.workContentId, "Nội dung đã bị xoá"),
     workContentCode: refCode(row.workContentId),
     task,
+    // Bỏ mục thiếu id hoặc thiếu tên: tài khoản bị xoá sau khi nhiệm vụ đã lưu
+    // để lại bản ghi rỗng, bày ra thành một huy hiệu trắng không ai hiểu là gì.
+    collaborators: (row.collaborators ?? []).flatMap((item) => {
+      const userId = refId(item.userId);
+      const name = item.name?.trim();
+      return userId && name ? [{ userId, name }] : [];
+    }),
     reportDate: row.reportDate || undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -293,6 +309,7 @@ export function taskToWriteInput(
         ([, files]) => files.length > 0,
       ),
     ),
+    collaboratorIds: task.collaboratorIds ?? [],
   };
 }
 
@@ -444,6 +461,8 @@ export type PersonalMissionProgressInput = {
    * Trục kiểu này không có cột phần trăm, khai điểm ở đây chính là cập nhật.
    */
   results?: Record<string, string>;
+  /** Bỏ trống = giữ nguyên; mảng rỗng = gỡ hết người phối hợp. */
+  collaboratorIds?: string[];
 };
 
 /**
@@ -747,6 +766,32 @@ export async function fetchPersonalMissionRecipients(q?: string) {
     ),
   );
 }
+
+export type Colleague = {
+  id: string;
+  fullName: string;
+  rank: string;
+  departmentName: string;
+};
+
+/**
+ * Cán bộ chọn được làm người phối hợp - đơn vị mình và cấp dưới.
+ *
+ * Không dùng `/users`: đường đó đòi quyền USER_VIEW mà cán bộ không có, trong
+ * khi chính họ là người cần chọn đồng đội lúc khai nhiệm vụ.
+ */
+export async function fetchColleagues(q?: string) {
+  return unwrapData(
+    api.get<ApiResponse<{ people: Colleague[] }>>(
+      "/personal-mission/colleagues",
+      { params: q?.trim() ? { q: q.trim() } : undefined },
+    ),
+  );
+}
+
+export const colleagueKeys = {
+  all: ["personal-mission", "colleagues"] as const,
+};
 
 /** Cán bộ gửi báo cáo ngày lên cấp trên. */
 export async function submitPersonalMissionReport(
