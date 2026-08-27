@@ -44,6 +44,7 @@ export type AuthUser = {
   email?: string;
   phone?: string;
   position?: string;
+  rank?: string;
   departmentId?: string;
   departmentName?: string | null;
   roleAssignments: AuthRoleAssignment[];

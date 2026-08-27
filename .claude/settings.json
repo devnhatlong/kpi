@@ -200,7 +200,14 @@
       "Bash(rg -o '\\\\-\\\\-background:[^;]+;' .next/static/css/*.css)",
       "Bash(rg -in \"im lặng|silent|silence\" client/src server/src --glob '*.{ts,tsx}')",
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-statcard.js\")",
-      "Bash(grep -o 'bg-emerald-500\\\\\\\\\\\\/[^ {,:]*' .next/static/chunks/0ic_gov3cyhf-.css)"
+      "Bash(grep -o 'bg-emerald-500\\\\\\\\\\\\/[^ {,:]*' .next/static/chunks/0ic_gov3cyhf-.css)",
+      "Bash(rg -ln \"position\" server/src client/src --glob '*.{ts,tsx}')",
+      "Read(//d/client/src/features/organization/components/**)",
+      "PowerShell(cd d:\\\\Project\\\\WebApp\\\\KPI\\\\server; npx eslint src/common/enums/police-rank.enum.ts src/modules/users 2>&1 | Select-String -Pattern \"  error\" | ForEach-Object { \\($_ -split '\\\\s{2,}'\\)[-1] } | Group-Object | Sort-Object Count -Descending | Select-Object Count, Name; \"\"; \"=== co loi nao trong file moi khong ===\"; npx eslint src/common/enums/police-rank.enum.ts 2>&1 | Select-Object -Last 3)",
+      "PowerShell(cd d:\\\\Project\\\\WebApp\\\\KPI\\\\server; npx eslint src/modules/users 2>&1 | Select-String -Pattern \"^D:\" | ForEach-Object { $_.ToString\\(\\).Split\\('\\\\'\\)[-1] }; \"\"; \"=== baseline truoc thay doi ===\"; cd d:\\\\Project\\\\WebApp\\\\KPI; git stash push --quiet -- server/src/modules/users; cd server; npx eslint src/modules/users 2>&1 | Select-Object -Last 2; cd d:\\\\Project\\\\WebApp\\\\KPI; git stash pop --quiet; \"da khoi phuc\")",
+      "PowerShell(cd d:\\\\Project\\\\WebApp\\\\KPI; git stash push --quiet -- server/src/modules/users; cd server; $b = npx eslint src/modules/users 2>&1 | Select-String -Pattern \"problems\"; cd d:\\\\Project\\\\WebApp\\\\KPI; git stash pop --quiet; \"BASELINE: $b\"; cd server; $a = npx eslint src/modules/users 2>&1 | Select-String -Pattern \"problems\"; \"SAU KHI SUA: $a\")",
+      "PowerShell(cd d:\\\\Project\\\\WebApp\\\\KPI; git stash push --quiet -- server/src/modules/users; cd server; $b = npx eslint src/modules/users 2>&1 | Select-String -Pattern \"problems\"; cd d:\\\\Project\\\\WebApp\\\\KPI; git stash pop --quiet; cd server; $a = npx eslint src/modules/users 2>&1 | Select-String -Pattern \"problems\"; \"BASELINE:    $b\"; \"SAU KHI SUA: $a\")",
+      "PowerShell(cd d:\\\\Project\\\\WebApp\\\\KPI\\\\client; npx eslint src/features/organization 2>&1 | Select-String -Pattern \"  error\" | ForEach-Object { \\($_ -split '\\\\s{2,}'\\)[-1] } | Group-Object | Select-Object Count, Name; \"\"; \"=== co loi nao o file toi vua tao/sua khong ===\"; npx eslint src/features/organization/police-rank.ts src/features/organization/excel.ts src/features/organization/types.ts 2>&1 | Select-Object -Last 2)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

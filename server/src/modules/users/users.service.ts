@@ -150,6 +150,7 @@ export class UsersService {
       email: dto.email?.trim().toLowerCase() || undefined,
       phone: dto.phone?.trim() || undefined,
       position: dto.position?.trim() || undefined,
+      rank: dto.rank?.trim() || undefined,
       departmentId,
       roleAssignments,
       isActive: dto.isActive ?? true,
@@ -237,6 +238,9 @@ export class UsersService {
     if (updateUserDto.position !== undefined) {
       user.set('position', updateUserDto.position.trim() || undefined);
     }
+    if (updateUserDto.rank !== undefined) {
+      user.set('rank', updateUserDto.rank.trim() || undefined);
+    }
     if (updateUserDto.departmentId !== undefined) {
       if (!updateUserDto.departmentId) {
         user.set('departmentId', undefined);
@@ -278,6 +282,12 @@ export class UsersService {
     if (dto.position !== undefined) {
       user.set('position', dto.position.trim() || undefined);
     }
+    /*
+      CỐ Ý không có `rank` ở đây. Cấp bậc hàm là chức danh do tổ chức phong,
+      không phải thông tin cá nhân người dùng tự khai - mở đường này ra là ai
+      cũng tự đặt mình thành Đại tướng. Sửa cấp bậc đi qua màn quản trị người
+      dùng, nơi đã chặn bằng quyền.
+    */
     if (dto.email !== undefined) {
       const email = dto.email.trim().toLowerCase();
       if (email) {
@@ -426,6 +436,7 @@ export class UsersService {
           email: row.email?.trim().toLowerCase() || undefined,
           phone: row.phone?.trim() || undefined,
           position: row.position?.trim() || undefined,
+          rank: row.rank?.trim() || undefined,
           departmentId,
           roleAssignments: roleCodes.map((roleCode) => ({
             roleCode,

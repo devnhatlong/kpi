@@ -24,6 +24,7 @@ import {
   roleKeys,
   updateUser,
 } from "@/features/organization/api";
+import { NO_RANK, RANK_OPTIONS } from "@/features/organization/police-rank";
 import type { UserAccount } from "@/features/organization/types";
 import { entityId } from "@/features/organization/types";
 import { getApiErrorMessage } from "@/lib/api-client";
@@ -55,6 +56,7 @@ export function UserFormDialog({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [position, setPosition] = useState("");
+  const [rank, setRank] = useState(NO_RANK);
   const [departmentId, setDepartmentId] = useState(NONE);
   const [roleCodes, setRoleCodes] = useState<string[]>([]);
   const [isActive, setIsActive] = useState(true);
@@ -69,6 +71,7 @@ export function UserFormDialog({
       setEmail(edit.email ?? "");
       setPhone(edit.phone ?? "");
       setPosition(edit.position ?? "");
+      setRank(edit.rank || NO_RANK);
       setDepartmentId(entityId(edit.departmentId) || NONE);
       setRoleCodes((edit.roleAssignments ?? []).map((r) => r.roleCode));
       setIsActive(edit.isActive);
@@ -79,6 +82,7 @@ export function UserFormDialog({
       setEmail("");
       setPhone("");
       setPosition("");
+      setRank(NO_RANK);
       setDepartmentId(NONE);
       setRoleCodes([]);
       setIsActive(true);
@@ -103,7 +107,8 @@ export function UserFormDialog({
         .filter((r) => r.isActive)
         .sort(
           (a, b) =>
-            (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.code.localeCompare(b.code),
+            (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
+            a.code.localeCompare(b.code),
         ),
     [roles],
   );
@@ -139,6 +144,8 @@ export function UserFormDialog({
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
           position: position.trim(),
+          // Chuỗi rỗng = xoá cấp bậc đã đặt; server nhận rỗng cho việc đó.
+          rank: rank === NO_RANK ? "" : rank,
           departmentId: departmentId === NONE ? null : departmentId,
           roleAssignments,
           isActive,
@@ -152,6 +159,7 @@ export function UserFormDialog({
           email: email.trim() || undefined,
           phone: phone.trim() || undefined,
           position: position.trim() || undefined,
+          rank: rank === NO_RANK ? undefined : rank,
           departmentId: departmentId === NONE ? undefined : departmentId,
           roleAssignments,
           isActive,
@@ -171,7 +179,9 @@ export function UserFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{edit ? "Sửa người dùng" : "Thêm người dùng"}</DialogTitle>
+          <DialogTitle>
+            {edit ? "Sửa người dùng" : "Thêm người dùng"}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-5 py-2">
@@ -254,6 +264,21 @@ export function UserFormDialog({
                 searchPlaceholder="Tìm đơn vị..."
               />
             </div>
+            {/*
+              Cấp bậc đứng cạnh Đơn vị chứ không cạnh Chức vụ: cấp bậc đi theo
+              con người, chức vụ đi theo vị trí công tác - để sát nhau thì người
+              nhập dễ điền nhầm cái này sang ô kia.
+            */}
+            <div className="space-y-2">
+              <Label>Cấp bậc</Label>
+              <SearchableSelect
+                value={rank}
+                onValueChange={setRank}
+                options={RANK_OPTIONS}
+                placeholder="Chọn cấp bậc"
+                searchPlaceholder="Tìm cấp bậc..."
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -293,12 +318,20 @@ export function UserFormDialog({
 
           <div className="flex h-9 items-center justify-between rounded-lg border px-3">
             <Label htmlFor="user-active">Đang hoạt động</Label>
-            <Switch id="user-active" checked={isActive} onCheckedChange={setIsActive} />
+            <Switch
+              id="user-active"
+              checked={isActive}
+              onCheckedChange={setIsActive}
+            />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             Hủy
           </Button>
           <Button onClick={submit} disabled={saving}>

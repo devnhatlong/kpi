@@ -9,6 +9,8 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+import { IsPoliceRank } from '@/common/enums/police-rank.enum';
+
 export class ImportUserRowDto {
   @ApiProperty({ example: 'nv01', description: 'Tên đăng nhập' })
   @IsString({ message: 'Tên đăng nhập phải là chuỗi.' })
@@ -33,6 +35,9 @@ export class ImportUserRowDto {
   @IsOptional()
   @IsString({ message: 'Chức vụ phải là chuỗi.' })
   position?: string;
+
+  @IsPoliceRank()
+  rank?: string;
 
   @ApiPropertyOptional({
     example: 'PV01',

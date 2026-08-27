@@ -71,7 +71,10 @@ export function EmployeesView() {
   const { data, isLoading, mutate } = useSWR(userKeys.list(listParams), () =>
     fetchUsersPage(listParams),
   );
-  const { data: departments = [] } = useSWR("departments-for-employees", fetchDepartments);
+  const { data: departments = [] } = useSWR(
+    "departments-for-employees",
+    fetchDepartments,
+  );
 
   const users = data?.data ?? [];
   const meta = data?.meta ?? emptyPaginationMeta(limit);
@@ -127,7 +130,9 @@ export function EmployeesView() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">Người dùng</h1>
+          <h1 className="font-display text-2xl font-semibold tracking-tight">
+            Người dùng
+          </h1>
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
@@ -179,23 +184,32 @@ export function EmployeesView() {
                   <TableHead className="w-14">STT</TableHead>
                   <TableHead className="w-[140px]">Tên đăng nhập</TableHead>
                   <TableHead>Họ tên</TableHead>
+                  <TableHead className="w-[110px]">Cấp bậc</TableHead>
                   <TableHead>Chức vụ</TableHead>
                   <TableHead>Đơn vị</TableHead>
                   <TableHead>Vai trò</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
-                  <TableHead className="w-[100px] text-right">Thao tác</TableHead>
+                  <TableHead className="w-[100px] text-right">
+                    Thao tác
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={9}
+                      className="h-24 text-center text-muted-foreground"
+                    >
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : users.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={9}
+                      className="h-24 text-center text-muted-foreground"
+                    >
                       <div className="inline-flex flex-col items-center gap-2">
                         <Users className="h-8 w-8 opacity-40" />
                         <span>Chưa có người dùng nào.</span>
@@ -215,6 +229,9 @@ export function EmployeesView() {
                         </TableCell>
                         <TableCell className="font-medium">
                           {user.fullName || "-"}
+                        </TableCell>
+                        <TableCell className="text-sm whitespace-nowrap text-muted-foreground">
+                          {user.rank || "-"}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {user.position || "-"}
@@ -240,11 +257,17 @@ export function EmployeesView() {
                         </TableCell>
                         <TableCell>
                           {user.isActive ? (
-                            <Badge variant="outline" className={activeBadgeClass}>
+                            <Badge
+                              variant="outline"
+                              className={activeBadgeClass}
+                            >
                               Hoạt động
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className={inactiveBadgeClass}>
+                            <Badge
+                              variant="outline"
+                              className={inactiveBadgeClass}
+                            >
                               Ngừng
                             </Badge>
                           )}
@@ -302,7 +325,10 @@ export function EmployeesView() {
         onSuccess={() => mutate()}
       />
 
-      <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(open) => !open && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Xoá người dùng?</AlertDialogTitle>

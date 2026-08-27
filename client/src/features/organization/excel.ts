@@ -1,15 +1,26 @@
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
-import type { ImportDepartmentRow, ImportUserRow } from "@/features/organization/types";
+import type {
+  ImportDepartmentRow,
+  ImportUserRow,
+} from "@/features/organization/types";
 
-const UNIT_HEADERS = ["code", "name", "levelCode", "parentCode", "sortOrder", "isActive"] as const;
+const UNIT_HEADERS = [
+  "code",
+  "name",
+  "levelCode",
+  "parentCode",
+  "sortOrder",
+  "isActive",
+] as const;
 const USER_HEADERS = [
   "username",
   "fullName",
   "email",
   "phone",
   "position",
+  "rank",
   "departmentCode",
   "roleCodes",
   "isActive",
@@ -17,10 +28,18 @@ const USER_HEADERS = [
 
 function cellText(value: ExcelJS.CellValue): string {
   if (value == null) return "";
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
     return String(value).trim();
   }
-  if (typeof value === "object" && "text" in value && typeof value.text === "string") {
+  if (
+    typeof value === "object" &&
+    "text" in value &&
+    typeof value.text === "string"
+  ) {
     return value.text.trim();
   }
   if (typeof value === "object" && "result" in value) {
@@ -32,8 +51,10 @@ function cellText(value: ExcelJS.CellValue): string {
 function parseBool(raw: string): boolean | undefined {
   if (!raw) return undefined;
   const v = raw.toLowerCase();
-  if (["1", "true", "yes", "y", "có", "co", "hiển thị", "hien thi"].includes(v)) return true;
-  if (["0", "false", "no", "n", "không", "khong", "ẩn", "an"].includes(v)) return false;
+  if (["1", "true", "yes", "y", "có", "co", "hiển thị", "hien thi"].includes(v))
+    return true;
+  if (["0", "false", "no", "n", "không", "khong", "ẩn", "an"].includes(v))
+    return false;
   return undefined;
 }
 
@@ -75,7 +96,9 @@ export async function downloadUnitsImportTemplate() {
   );
 }
 
-export async function parseUnitsExcel(file: File): Promise<ImportDepartmentRow[]> {
+export async function parseUnitsExcel(
+  file: File,
+): Promise<ImportDepartmentRow[]> {
   const wb = new ExcelJS.Workbook();
   const buffer = await file.arrayBuffer();
   await wb.xlsx.load(buffer);
@@ -138,6 +161,7 @@ export async function downloadUsersImportTemplate() {
     "pv01a@lamdong.bca",
     "0123456789",
     "Trưởng phòng",
+    "Đại tá",
     "PV01",
     "UNIT_ADMIN",
     true,
@@ -148,6 +172,7 @@ export async function downloadUsersImportTemplate() {
     "pv01.pho@lamdong.bca",
     "0123456789",
     "Phó trưởng phòng",
+    "Thượng tá",
     "PV01",
     "VICE_UNIT_ADMIN",
     true,
@@ -158,6 +183,7 @@ export async function downloadUsersImportTemplate() {
     "pv01.cntt@lamdong.bca",
     "0123456789",
     "Đội trưởng",
+    "Thiếu tá",
     "CNTT",
     "MANAGER",
     true,
@@ -168,20 +194,24 @@ export async function downloadUsersImportTemplate() {
     "pv01.nnlong@lamdong.bca",
     "0123456789",
     "Cán bộ",
+    "Đại úy",
     "CNTT",
     "STAFF",
     true,
   ]);
 
+  // Đúng 9 ô, khớp từng cột của USER_HEADERS - thiếu một ô là mọi cột từ đó
+  // trở đi ăn nhầm bề rộng của cột bên trái.
   ws.columns = [
-    { width: 14 },
-    { width: 24 },
-    { width: 24 },
-    { width: 14 },
-    { width: 18 },
-    { width: 14 },
-    { width: 18 },
-    { width: 10 },
+    { width: 14 }, // username
+    { width: 24 }, // fullName
+    { width: 24 }, // email
+    { width: 14 }, // phone
+    { width: 18 }, // position
+    { width: 14 }, // rank
+    { width: 16 }, // departmentCode
+    { width: 18 }, // roleCodes
+    { width: 10 }, // isActive
   ];
 
   const buffer = await wb.xlsx.writeBuffer();
@@ -229,6 +259,9 @@ export async function parseUsersExcel(file: File): Promise<ImportUserRow[]> {
         : undefined,
       position: col("position")
         ? cellText(row.getCell(col("position")!).value) || undefined
+        : undefined,
+      rank: col("rank")
+        ? cellText(row.getCell(col("rank")!).value) || undefined
         : undefined,
       departmentCode: col("departmentcode")
         ? cellText(row.getCell(col("departmentcode")!).value) || undefined

@@ -9,6 +9,8 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+import { IsPoliceRank } from '@/common/enums/police-rank.enum';
 import {
   BooleanNotRequired,
   StringNotRequired,
@@ -47,6 +49,9 @@ export class UpdateUserDto {
 
   @StringNotRequired('Chức vụ', { example: 'Đội trưởng' })
   position?: string;
+
+  @IsPoliceRank()
+  rank?: string;
 
   @StringNotRequired('Mã đơn vị', { example: '507f1f77bcf86cd799439011' })
   departmentId?: string;

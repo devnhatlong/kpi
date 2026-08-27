@@ -6,6 +6,7 @@ export type UpdateProfilePayload = {
   email?: string;
   phone?: string;
   position?: string;
+  rank?: string;
 };
 
 export type ChangePasswordPayload = {
