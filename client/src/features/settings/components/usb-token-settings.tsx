@@ -41,7 +41,7 @@ export function UsbTokenSettings() {
           USB Token
         </h2>
         <p className="text-sm text-muted-foreground">
-          Chứng thư số dùng để ký báo cáo KPI.
+          Chứng thư số dùng để ký báo cáo nhiệm vụ.
         </p>
       </div>
 
@@ -62,9 +62,7 @@ export function UsbTokenSettings() {
               >
                 <div className="inline-flex flex-col items-center gap-2">
                   <Usb className="size-8 opacity-40" />
-                  <span className="text-sm">
-                    Chưa khai báo chứng thư số.
-                  </span>
+                  <span className="text-sm">Chưa khai báo chứng thư số.</span>
                 </div>
               </TableCell>
             </TableRow>

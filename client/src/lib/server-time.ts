@@ -15,7 +15,7 @@ type ServerTimePayload = {
 
 /**
  * Múi giờ nghiệp vụ, do server khai. Giữ nguyên hằng số này làm mặc định cho
- * lần render đầu (trước khi sync xong) - trùng KPI_TIMEZONE bên server.
+ * lần render đầu (trước khi sync xong) - trùng MISSION_TIMEZONE bên server.
  */
 const FALLBACK_TIMEZONE = "Asia/Ho_Chi_Minh";
 
@@ -70,7 +70,8 @@ export function ensureServerTimeSynced(): Promise<void> {
  * Chưa sync thì tạm dùng giờ máy với múi giờ mặc định.
  */
 export function serverDayjs(value?: string | number | Date): Dayjs {
-  const base = value === undefined ? dayjs(Date.now() + offsetMs) : dayjs(value);
+  const base =
+    value === undefined ? dayjs(Date.now() + offsetMs) : dayjs(value);
   return base.tz(timezone);
 }
 

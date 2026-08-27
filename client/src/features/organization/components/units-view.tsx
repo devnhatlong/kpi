@@ -83,8 +83,7 @@ const TREE_LINE_X = 12;
 const TREE_ROW_H = 36;
 const TREE_STUB_LEAF = 8; // nhánh ngang ngắn cho node không có con
 const TREE_STUB_BRANCH = TREE_COL - TREE_LINE_X; // nhánh tới icon +/-
-const TREE_LINE =
-  "pointer-events-none absolute w-px bg-muted-foreground/40";
+const TREE_LINE = "pointer-events-none absolute w-px bg-muted-foreground/40";
 
 function TreeItem({
   node,
@@ -109,8 +108,8 @@ function TreeItem({
   const hasChildren = node.children.length > 0;
   const isOpen = expanded.has(node.id);
   const level = levelOf(node.department);
-  /** Cấp gom nhóm (Khối) - chỉ để gộp các đơn vị bên trong, không nhận KPI. */
-  const isGroup = level?.isKpiUnit === false;
+  /** Cấp gom nhóm (Khối) - chỉ để gộp các đơn vị bên trong, không nhận nhiệm vụ. */
+  const isGroup = level?.isMissionUnit === false;
   const selected = selectedId === node.id;
   const stubWidth = hasChildren ? TREE_STUB_BRANCH : TREE_STUB_LEAF;
   /** Lá sát trục; node có con cách ra để chỗ icon +/- */
@@ -125,7 +124,11 @@ function TreeItem({
         className="group relative inline-flex h-9 cursor-pointer items-center text-left text-sm"
       >
         {contentPad > 0 ? (
-          <span className="inline-block shrink-0" style={{ width: contentPad }} aria-hidden />
+          <span
+            className="inline-block shrink-0"
+            style={{ width: contentPad }}
+            aria-hidden
+          />
         ) : null}
 
         {depth > 0 ? (
@@ -235,11 +238,17 @@ export function UnitsView() {
     error: deptError,
     isLoading: deptLoading,
     mutate: mutateDepts,
-  } = useSWR(departmentKeys.all, fetchDepartments, { revalidateOnFocus: false });
-
-  const { data: levels = [] } = useSWR(departmentKeys.levels, fetchDepartmentLevels, {
+  } = useSWR(departmentKeys.all, fetchDepartments, {
     revalidateOnFocus: false,
   });
+
+  const { data: levels = [] } = useSWR(
+    departmentKeys.levels,
+    fetchDepartmentLevels,
+    {
+      revalidateOnFocus: false,
+    },
+  );
 
   const { data: users = [] } = useSWR(departmentKeys.users, fetchUsers, {
     revalidateOnFocus: false,
@@ -278,19 +287,29 @@ export function UnitsView() {
         : entityId(d.parentId as { _id?: string; id?: string } | null);
     return parentId === effectiveSelectedId;
   });
-  const unitUsers = users.filter((u) => String(u.departmentId ?? "") === effectiveSelectedId);
+  const unitUsers = users.filter(
+    (u) => String(u.departmentId ?? "") === effectiveSelectedId,
+  );
 
-  const childrenTotalPages = Math.max(1, Math.ceil(children.length / childrenLimit));
+  const childrenTotalPages = Math.max(
+    1,
+    Math.ceil(children.length / childrenLimit),
+  );
   const usersTotalPages = Math.max(1, Math.ceil(unitUsers.length / usersLimit));
   const pagedChildren = children.slice(
     (childrenPage - 1) * childrenLimit,
     childrenPage * childrenLimit,
   );
-  const pagedUsers = unitUsers.slice((usersPage - 1) * usersLimit, usersPage * usersLimit);
+  const pagedUsers = unitUsers.slice(
+    (usersPage - 1) * usersLimit,
+    usersPage * usersLimit,
+  );
 
   const selectedLevel = selected ? levelOf(selected) : null;
-  const selectedIsGroup = selectedLevel?.isKpiUnit === false;
-  const crumb = selected ? breadcrumbPath(departments, effectiveSelectedId) : "";
+  const selectedIsGroup = selectedLevel?.isMissionUnit === false;
+  const crumb = selected
+    ? breadcrumbPath(departments, effectiveSelectedId)
+    : "";
 
   useEffect(() => {
     setChildrenPage(1);
@@ -361,7 +380,9 @@ export function UnitsView() {
     <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">Đơn vị</h1>
+          <h1 className="font-display text-2xl font-semibold tracking-tight">
+            Đơn vị
+          </h1>
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
@@ -437,7 +458,9 @@ export function UnitsView() {
             {deptLoading ? (
               <p className="p-4 text-sm text-muted-foreground">Đang tải...</p>
             ) : filteredTree.length === 0 ? (
-              <p className="p-4 text-sm text-muted-foreground">Chưa có đơn vị.</p>
+              <p className="p-4 text-sm text-muted-foreground">
+                Chưa có đơn vị.
+              </p>
             ) : (
               <div className="min-w-max">
                 {filteredTree.map((node, index) => (
@@ -495,12 +518,19 @@ export function UnitsView() {
                       <span>{crumb}</span>
                       <span>·</span>
                       <span>
-                        Mã: <span className="font-medium text-foreground">{selected.code}</span>
+                        Mã:{" "}
+                        <span className="font-medium text-foreground">
+                          {selected.code}
+                        </span>
                       </span>
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => openEdit(selected)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEdit(selected)}
+                    >
                       <Pencil />
                       Sửa
                     </Button>
@@ -517,10 +547,13 @@ export function UnitsView() {
 
                 {selectedIsGroup ? (
                   <div className="mb-5 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                    Đây là <span className="font-medium text-foreground">cấp gom nhóm</span>, không
-                    phải đơn vị thật: không nhận nhiệm vụ KPI và không hiện trong danh sách nơi
-                    nhận. Nhiệm vụ giao thẳng cho các đơn vị bên trong, còn báo cáo vẫn tổng hợp
-                    được theo nhóm này.
+                    Đây là{" "}
+                    <span className="font-medium text-foreground">
+                      cấp gom nhóm
+                    </span>
+                    , không phải đơn vị thật: không nhận nhiệm vụ và không hiện
+                    trong danh sách nơi nhận. Nhiệm vụ giao thẳng cho các đơn vị
+                    bên trong, còn báo cáo vẫn tổng hợp được theo nhóm này.
                   </div>
                 ) : null}
 
@@ -569,7 +602,10 @@ export function UnitsView() {
 
                   <TabsContent value="children" className="space-y-3 pt-3">
                     <div className="flex justify-end">
-                      <Button size="sm" onClick={() => openCreate(effectiveSelectedId)}>
+                      <Button
+                        size="sm"
+                        onClick={() => openCreate(effectiveSelectedId)}
+                      >
                         <Plus />
                         Thêm đơn vị con
                       </Button>
@@ -583,14 +619,20 @@ export function UnitsView() {
                             <TableHead>Tên</TableHead>
                             <TableHead className="w-32">Cấp</TableHead>
                             <TableHead className="w-28">Trạng thái</TableHead>
-                            <TableHead className="w-24 text-right">Thao tác</TableHead>
+                            <TableHead className="w-24 text-right">
+                              Thao tác
+                            </TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {children.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                                Chưa có đơn vị con. Bấm &quot;Thêm đơn vị con&quot;.
+                              <TableCell
+                                colSpan={6}
+                                className="h-24 text-center text-muted-foreground"
+                              >
+                                Chưa có đơn vị con. Bấm &quot;Thêm đơn vị
+                                con&quot;.
                               </TableCell>
                             </TableRow>
                           ) : (
@@ -602,7 +644,11 @@ export function UnitsView() {
                                     {rowIndex(childrenPage, childrenLimit, i)}
                                   </TableCell>
                                   <TableCell>
-                                    <Badge className={levelBadgeClass(childLevel?.rank)}>
+                                    <Badge
+                                      className={levelBadgeClass(
+                                        childLevel?.rank,
+                                      )}
+                                    >
                                       {child.code}
                                     </Badge>
                                   </TableCell>
@@ -610,19 +656,29 @@ export function UnitsView() {
                                     <button
                                       type="button"
                                       className="cursor-pointer font-medium text-primary hover:underline"
-                                      onClick={() => setSelectedId(entityId(child))}
+                                      onClick={() =>
+                                        setSelectedId(entityId(child))
+                                      }
                                     >
                                       {child.name}
                                     </button>
                                   </TableCell>
-                                  <TableCell>{childLevel?.name ?? "-"}</TableCell>
+                                  <TableCell>
+                                    {childLevel?.name ?? "-"}
+                                  </TableCell>
                                   <TableCell>
                                     {child.isActive ? (
-                                      <Badge variant="outline" className={activeBadgeClass}>
+                                      <Badge
+                                        variant="outline"
+                                        className={activeBadgeClass}
+                                      >
                                         Hoạt động
                                       </Badge>
                                     ) : (
-                                      <Badge variant="outline" className={inactiveBadgeClass}>
+                                      <Badge
+                                        variant="outline"
+                                        className={inactiveBadgeClass}
+                                      >
                                         Ngưng
                                       </Badge>
                                     )}
@@ -681,7 +737,10 @@ export function UnitsView() {
                         <TableBody>
                           {unitUsers.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                              <TableCell
+                                colSpan={6}
+                                className="h-24 text-center text-muted-foreground"
+                              >
                                 Chưa có tài khoản thuộc đơn vị này.
                               </TableCell>
                             </TableRow>
@@ -698,11 +757,17 @@ export function UnitsView() {
                                 <TableCell>{user.email || "-"}</TableCell>
                                 <TableCell>
                                   <div className="flex flex-wrap gap-1">
-                                    {(user.roleAssignments ?? []).length === 0 ? (
-                                      <span className="text-muted-foreground">-</span>
+                                    {(user.roleAssignments ?? []).length ===
+                                    0 ? (
+                                      <span className="text-muted-foreground">
+                                        -
+                                      </span>
                                     ) : (
                                       user.roleAssignments.map((r) => (
-                                        <Badge key={`${user.id}-${r.roleCode}`} variant="outline">
+                                        <Badge
+                                          key={`${user.id}-${r.roleCode}`}
+                                          variant="outline"
+                                        >
                                           {r.roleCode}
                                         </Badge>
                                       ))
@@ -711,11 +776,17 @@ export function UnitsView() {
                                 </TableCell>
                                 <TableCell>
                                   {user.isActive ? (
-                                    <Badge variant="outline" className={activeBadgeClass}>
+                                    <Badge
+                                      variant="outline"
+                                      className={activeBadgeClass}
+                                    >
                                       Hoạt động
                                     </Badge>
                                   ) : (
-                                    <Badge variant="outline" className={inactiveBadgeClass}>
+                                    <Badge
+                                      variant="outline"
+                                      className={inactiveBadgeClass}
+                                    >
                                       Ngưng
                                     </Badge>
                                   )}
@@ -763,13 +834,16 @@ export function UnitsView() {
         onSuccess={refresh}
       />
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Xoá đơn vị?</AlertDialogTitle>
             <AlertDialogDescription>
-              Xoá &quot;{deleteTarget?.name}&quot; ({deleteTarget?.code}). Chỉ xoá được khi không
-              còn đơn vị con.
+              Xoá &quot;{deleteTarget?.name}&quot; ({deleteTarget?.code}). Chỉ
+              xoá được khi không còn đơn vị con.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -812,7 +886,9 @@ function StatBox({
       {icon}
       <div>
         <div className="text-xs font-medium opacity-80">{label}</div>
-        <div className="font-display text-lg font-bold leading-tight">{value}</div>
+        <div className="font-display text-lg font-bold leading-tight">
+          {value}
+        </div>
       </div>
     </div>
   );

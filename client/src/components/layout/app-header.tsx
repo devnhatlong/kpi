@@ -18,7 +18,7 @@ export function AppHeader() {
         <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           type="search"
-          placeholder="Tìm kiếm nhân viên, KPI, báo cáo..."
+          placeholder="Tìm kiếm nhân viên, nhiệm vụ, báo cáo..."
           className="h-10 rounded-full border-border/80 bg-muted/40 pl-10 pr-4 shadow-none focus-visible:bg-background"
         />
       </div>
@@ -38,7 +38,10 @@ export function AppHeader() {
           </span>
         </Button>
 
-        <Separator orientation="vertical" className="mx-1 hidden h-8 sm:block" />
+        <Separator
+          orientation="vertical"
+          className="mx-1 hidden h-8 sm:block"
+        />
 
         <UserMenu />
       </div>

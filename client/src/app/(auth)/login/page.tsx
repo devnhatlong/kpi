@@ -3,11 +3,13 @@ import Image from "next/image";
 import { LoginForm } from "@/features/auth/components/LoginForm";
 
 export const metadata: Metadata = {
-  title: "Đăng nhập - Hệ thống chấm điểm KPI Công an tỉnh Lâm Đồng",
-  description: "Đăng nhập vào hệ thống chấm điểm và quản lý KPI cán bộ, chiến sĩ Công an tỉnh Lâm Đồng.",
+  title: "Đăng nhập - Hệ thống chấm điểm nhiệm vụ Công an tỉnh Lâm Đồng",
+  description:
+    "Đăng nhập vào hệ thống chấm điểm và quản lý nhiệm vụ cán bộ, chiến sĩ Công an tỉnh Lâm Đồng.",
   openGraph: {
-    title: "Đăng nhập - KPI Công an tỉnh Lâm Đồng",
-    description: "Hệ thống chấm điểm KPI dành cho lực lượng Công an tỉnh Lâm Đồng.",
+    title: "Đăng nhập - nhiệm vụ Công an tỉnh Lâm Đồng",
+    description:
+      "Hệ thống chấm điểm nhiệm vụ dành cho lực lượng Công an tỉnh Lâm Đồng.",
   },
 };
 
@@ -55,7 +57,7 @@ export default function LoginPage() {
               Công an tỉnh Lâm Đồng
             </div>
             <div className="text-base text-white/80">
-              Hệ thống quản lý và chấm điểm KPI
+              Hệ thống quản lý và chấm điểm nhiệm vụ
             </div>
           </div>
         </div>
@@ -65,22 +67,30 @@ export default function LoginPage() {
             <h1 className="font-display text-5xl font-bold leading-[1.05]">
               Đánh giá hiệu suất
               <br />
-              <span className="text-white/80">công tác <span className="text-yellow-100">minh bạch.</span></span>
+              <span className="text-white/80">
+                công tác <span className="text-yellow-100">minh bạch.</span>
+              </span>
             </h1>
             <p className="mt-5 text-white/80 max-w-xl">
-              Nền tảng chấm điểm KPI giúp cán bộ, chiến sĩ Công an tỉnh Lâm Đồng theo dõi tiến độ
-              nhiệm vụ và nâng cao hiệu quả công tác theo thời gian thực.
+              Nền tảng chấm điểm nhiệm vụ giúp cán bộ, chiến sĩ Công an tỉnh Lâm
+              Đồng theo dõi tiến độ nhiệm vụ và nâng cao hiệu quả công tác theo
+              thời gian thực.
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 max-w-5xl">
             {stats.map(({ title, label, value }) => (
-              <div key={title} className="rounded-3xl bg-white/10 backdrop-blur-md p-7 ring-1 ring-white/15 min-h-[220px] flex flex-col justify-between">
+              <div
+                key={title}
+                className="rounded-3xl bg-white/10 backdrop-blur-md p-7 ring-1 ring-white/15 min-h-[220px] flex flex-col justify-between"
+              >
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.35em] text-white/70 mb-4">
                     {title}
                   </div>
-                  <div className="font-display text-4xl font-bold leading-tight">{value}</div>
+                  <div className="font-display text-4xl font-bold leading-tight">
+                    {value}
+                  </div>
                 </div>
                 <div className="text-sm text-white/70 mt-4">{label}</div>
               </div>
@@ -111,15 +121,17 @@ export default function LoginPage() {
                 Công an tỉnh Lâm Đồng
               </div>
               <div className="text-sm text-muted-foreground">
-                Hệ thống quản lý và chấm điểm KPI
+                Hệ thống quản lý và chấm điểm nhiệm vụ
               </div>
             </div>
           </div>
 
           <div className="mb-8">
-            <h2 className="font-display text-3xl font-bold text-foreground">Chào mừng trở lại</h2>
+            <h2 className="font-display text-3xl font-bold text-foreground">
+              Chào mừng trở lại
+            </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Đăng nhập để chấm điểm và quản lý KPI cán bộ, chiến sĩ.
+              Đăng nhập để chấm điểm và quản lý nhiệm vụ cán bộ, chiến sĩ.
             </p>
           </div>
 

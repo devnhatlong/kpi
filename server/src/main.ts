@@ -18,22 +18,24 @@ async function bootstrap() {
     credentials: true,
   });
 
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true, // xóa các filed dư thừa không có trong DTO
-    forbidNonWhitelisted: true, // báo lỗi nếu có các filed dư thừa không có trong DTO
-    transform: true, // chuyển payload thành instance của DTO
-    // transformOptions: {
-    //   enableImplicitConversion: true, // tự động chuyển đổi các kiểu dữ liệu cơ bản (string, number, boolean) mà không cần sử dụng @Type() trong DTO
-    // },
-  }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true, // xóa các filed dư thừa không có trong DTO
+      forbidNonWhitelisted: true, // báo lỗi nếu có các filed dư thừa không có trong DTO
+      transform: true, // chuyển payload thành instance của DTO
+      // transformOptions: {
+      //   enableImplicitConversion: true, // tự động chuyển đổi các kiểu dữ liệu cơ bản (string, number, boolean) mà không cần sử dụng @Type() trong DTO
+      // },
+    }),
+  );
 
   app.useGlobalInterceptors(new TransformInterceptor());
   app.useGlobalFilters(new AllExceptionFilter());
 
   // Swagger setup
   const config = new DocumentBuilder()
-    .setTitle('KPI API')
-    .setDescription('Xây dựng API cho hệ thống quản lý và chấm điểm KPI')
+    .setTitle('Mission API')
+    .setDescription('Xây dựng API cho hệ thống quản lý và chấm điểm nhiệm vụ')
     .setVersion('1.0')
     .build();
   const documentFactory = () => SwaggerModule.createDocument(app, config);

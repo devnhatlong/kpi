@@ -1,0 +1,589 @@
+import { flattenHeaderGroups } from "@/features/mission-form-config/form-template-utils";
+import type {
+  FormHeaderGroup,
+  FormTemplateColumn,
+  FormTemplateFooter,
+  QualityLevel,
+} from "@/features/mission-form-config/types";
+import type { PersonalTaskDraft } from "@/features/personal-mission/types";
+import { daysBetweenYmd, serverYmd } from "@/lib/server-time";
+
+/**
+ * Vài giá trị rút ra từ một nhiệm vụ để hiện lên danh sách: tên việc, hạn,
+ * tiến độ, chất lượng.
+ *
+ * Mẫu bảng do đơn vị tự cấu hình nên không cột nào chắc chắn tồn tại - rút
+ * theo quy tắc dưới đây rồi chấp nhận "chưa có" thay vì bịa ra cột cứng.
+ */
+export type TaskSummary = {
+  /** Tên việc cán bộ gõ; rỗng khi mẫu không có cột chữ nào có dữ liệu. */
+  title: string;
+  /** Hạn dạng YYYY-MM-DD; rỗng khi mẫu không có cột "Thời hạn hoàn thành". */
+  deadline: string;
+  /** Tiêu đề cột hạn trong mẫu - dùng làm nhãn cột trên danh sách. */
+  deadlineTitle: string;
+  /**
+   * tiến độ (nhóm B) - căn cứ DUY NHẤT cho trạng thái công việc.
+   * null = mẫu không có cột tiến độ hoặc chưa nhập.
+   */
+  progressPercent: number | null;
+  /**
+   * chất lượng (nhóm C) - chỉ để xem.
+   * Tiến độ 100% mà chất lượng 75% là chuyện bình thường, nên KHÔNG được lấy
+   * con số này thay cho tiến độ.
+   */
+  qualityPercent: number | null;
+  /** Ô chỉ huy chấm khác số cán bộ tự chấm - để danh sách nói rõ đã bị sửa. */
+  reviewChanges: Array<{
+    field: "progress" | "quality";
+    /** Tiêu đề cột trong mẫu, ví dụ "Thực tế hoàn thành %". */
+    title: string;
+    /**
+     * Tên nhóm header bọc ngoài cột, ví dụ "tiến độ (B)".
+     * Bắt buộc phải có: mẫu thật đặt hai cột trùng tên "Thực tế hoàn thành %"
+     * cho cả nhóm tiến độ lẫn nhóm chất lượng, nói mỗi tên cột thì không ai
+     * biết con số vừa bị sửa là của nhóm nào.
+     */
+    groupTitle: string;
+    from: number;
+    to: number;
+  }>;
+  /** Có ô nào bị chỉ huy hạ xuống không. */
+  reviewLowered: boolean;
+  /**
+   * Mẫu nhiệm vụ của trục có cột tiến độ / chất lượng hay không.
+   *
+   * Mỗi trục gán một mẫu khác nhau, có trục chấm theo % tiến độ, có trục chỉ
+   * chấm khi chỉ huy chốt. Thiếu cột mà vẫn đọc như "0%" thì danh sách nói sai:
+   * việc đang chạy bình thường bị gắn "Chưa bắt đầu" và "Im lặng N ngày".
+   */
+  tracksProgress: boolean;
+  tracksQuality: boolean;
+};
+
+/** Bộ cột + cây nhóm header + cấu hình công thức của mẫu gán cho trục. */
+type TemplateShape = {
+  columns: FormTemplateColumn[];
+  headerGroups: FormHeaderGroup[];
+  footer?: FormTemplateFooter;
+};
+
+/**
+ * Khoá cột cố định của mẫu mặc định (createDefaultTemplateDraft).
+ * Mẫu tạo từ bộ mặc định lần nào cũng ra đúng khoá này nên khớp được ngay,
+ * khỏi đoán theo tiêu đề.
+ */
+const PROGRESS_COLUMN_KEY = "progress_percent";
+const QUALITY_COLUMN_KEY = "quality_percent";
+const DEADLINE_COLUMN_KEY = "deadline";
+const NOTE_COLUMN_KEY = "note";
+const PRODUCT_COLUMN_KEY = "product";
+
+function normalize(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/đ/g, "d");
+}
+
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, value));
+}
+
+function readNumber(task: PersonalTaskDraft, columnKey: string): number | null {
+  const raw = task.fieldValues?.[columnKey] ?? "";
+  if (!raw.trim()) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? clampPercent(value) : null;
+}
+
+/** Tiêu đề cột kèm tên các nhóm header bọc ngoài nó. */
+function columnLabelPath(
+  column: FormTemplateColumn,
+  groupNameById: Map<string, string>,
+): string {
+  const groups = (column.headerPath ?? [])
+    .map((id) => groupNameById.get(id) ?? "")
+    .filter(Boolean);
+  return normalize([...groups, column.title].join(" "));
+}
+
+/**
+ * Cột mang được một con số phần trăm.
+ *
+ * Hai dạng đều tính: ô số có "%" trong tiêu đề, và ô chọn "Chất lượng thực
+ * hiện" - danh mục đó vốn là các mức 100% / 75% / 50%, nên mẫu hay dùng chính
+ * nó cho cả cột "Thực tế hoàn thành %" của nhóm tiến độ.
+ */
+function isPercentColumn(column: FormTemplateColumn): boolean {
+  if (column.semanticKey === "quality_level") return true;
+  return column.dataType === "number" && column.title.includes("%");
+}
+
+/**
+ * Hai cột phần trăm của nhiệm vụ: tiến độ (nhóm B) và chất lượng (nhóm C).
+ *
+ * Phân biệt bằng khoá cố định của mẫu mặc định trước; không có thì soi từ khoá
+ * "tiến độ" / "chất lượng" trong tiêu đề cột VÀ tên nhóm header bọc ngoài -
+ * mẫu thật hay đặt hai cột trùng tên "Thực tế hoàn thành %", chỉ tên nhóm mới
+ * tách được chúng. Mẫu không nhắc gì thì lấy theo thứ tự bày trên bảng, vì
+ * khuôn nhiệm vụ luôn xếp nhóm B trước nhóm C.
+ */
+function findPercentColumns(template: TemplateShape): {
+  progress?: FormTemplateColumn;
+  quality?: FormTemplateColumn;
+} {
+  const candidates = template.columns.filter(
+    (column) => column.visible && isPercentColumn(column),
+  );
+  if (candidates.length === 0) return {};
+
+  const groupNameById = new Map(
+    flattenHeaderGroups(template.headerGroups ?? []).map((group) => [
+      group.id,
+      group.name,
+    ]),
+  );
+  const byKeyword = (keyword: string) =>
+    candidates.find((column) =>
+      columnLabelPath(column, groupNameById).includes(keyword),
+    );
+
+  let progress =
+    candidates.find((column) => column.key === PROGRESS_COLUMN_KEY) ??
+    byKeyword("tien do");
+  let quality =
+    candidates.find((column) => column.key === QUALITY_COLUMN_KEY) ??
+    byKeyword("chat luong");
+
+  const rest = candidates.filter(
+    (column) => column !== progress && column !== quality,
+  );
+  progress ??= rest.shift();
+  quality ??= rest.shift();
+
+  return { progress, quality };
+}
+
+/**
+ * Giá trị phần trăm của một ô, đọc đúng chỗ theo loại cột: ô chọn thì lấy phần
+ * trăm của mức trong danh mục, ô số thì lấy con số đã gõ.
+ */
+export function readColumnPercent(
+  task: PersonalTaskDraft,
+  column: FormTemplateColumn | undefined,
+  qualityLevelById: Map<string, QualityLevel>,
+): number | null {
+  if (!column) return null;
+  if (column.semanticKey === "quality_level") {
+    const level = qualityLevelById.get(task.catalogValues?.[column.key] ?? "");
+    return level ? clampPercent(level.percent) : null;
+  }
+  return readNumber(task, column.key);
+}
+
+/**
+ * Các cột mà việc theo dõi hằng ngày đụng tới.
+ * Rút một lần ở đây để danh sách và ô "Cập nhật tiến độ" luôn đọc / ghi đúng
+ * cùng một cột.
+ */
+export type TrackingColumns = {
+  titleColumn?: FormTemplateColumn;
+  deadlineColumn?: FormTemplateColumn;
+  /** Cột phần trăm của nhóm "tiến độ (B)" - ô số hoặc ô chọn mức. */
+  progressColumn?: FormTemplateColumn;
+  /** Cột phần trăm của nhóm "chất lượng (C)". */
+  qualityColumn?: FormTemplateColumn;
+  noteColumn?: FormTemplateColumn;
+  /** Sản phẩm dự kiến - khai khi báo cáo kết quả trong ngày. */
+  productColumn?: FormTemplateColumn;
+  /** Tài liệu kiểm chứng - cột kiểu tệp đầu tiên của mẫu. */
+  evidenceColumn?: FormTemplateColumn;
+};
+
+export function trackingColumns(
+  template: TemplateShape | null,
+  task?: PersonalTaskDraft,
+): TrackingColumns {
+  if (!template) return {};
+  const visible = template.columns.filter((column) => column.visible);
+
+  const textColumns = visible.filter(
+    (column) =>
+      column.semanticKey === "custom" &&
+      column.dataType === "text" &&
+      column.key !== NOTE_COLUMN_KEY,
+  );
+  const percent = findPercentColumns(template);
+
+  return {
+    // Tên việc: cột chữ tự do đầu tiên có dữ liệu - trong mẫu mặc định là cột
+    // "Nhiệm vụ", cũng là cột đầu tiên người nhập gõ.
+    titleColumn: task
+      ? (textColumns.find((column) =>
+          (task.fieldValues?.[column.key] ?? "").trim(),
+        ) ?? textColumns[0])
+      : textColumns[0],
+    // Hạn: cột "Thời hạn hoàn thành" của mẫu mặc định, mẫu khác thì cột ngày đầu.
+    deadlineColumn:
+      visible.find(
+        (column) =>
+          column.key === DEADLINE_COLUMN_KEY && column.dataType === "date",
+      ) ?? visible.find((column) => column.dataType === "date"),
+    progressColumn: percent.progress,
+    qualityColumn: percent.quality,
+    noteColumn: visible.find((column) => column.key === NOTE_COLUMN_KEY),
+    productColumn: visible.find(
+      (column) =>
+        column.key === PRODUCT_COLUMN_KEY && column.dataType !== "file",
+    ),
+    evidenceColumn: visible.find((column) => column.dataType === "file"),
+  };
+}
+
+/** Điểm chỉ huy chấm lại, đọc từ chính nhiệm vụ. */
+export type ReviewInput = {
+  values: Record<string, string>;
+  catalogValues: Record<string, string>;
+};
+
+/** Ghép số chỉ huy chấm lên trên số tự chấm để đọc ra giá trị chốt. */
+function withReview(
+  task: PersonalTaskDraft,
+  review: ReviewInput | undefined,
+): PersonalTaskDraft {
+  if (!review) return task;
+  return {
+    ...task,
+    fieldValues: { ...(task.fieldValues ?? {}), ...review.values },
+    catalogValues: { ...(task.catalogValues ?? {}), ...review.catalogValues },
+  };
+}
+
+export function summarizeTask(
+  task: PersonalTaskDraft,
+  template: TemplateShape | null,
+  qualityLevelById: Map<string, QualityLevel>,
+  review?: ReviewInput,
+): TaskSummary {
+  const { titleColumn, deadlineColumn, progressColumn, qualityColumn } =
+    trackingColumns(template, task);
+
+  /*
+    Số hiện lên danh sách là SỐ CHỐT: chỉ huy chấm lại thì lấy số của chỉ huy.
+    Số tự chấm vẫn đọc được từ `task` để so, nhưng không phải thứ đem đi tính.
+  */
+  const final = withReview(task, review);
+  const progressPercent = readColumnPercent(
+    final,
+    progressColumn,
+    qualityLevelById,
+  );
+  const qualityPercent = readColumnPercent(
+    final,
+    qualityColumn,
+    qualityLevelById,
+  );
+
+  const changes: TaskSummary["reviewChanges"] = [];
+  if (review) {
+    const groupNameById = new Map(
+      flattenHeaderGroups(template?.headerGroups ?? []).map((group) => [
+        group.id,
+        group.name,
+      ]),
+    );
+    const pairs = [
+      { field: "progress" as const, column: progressColumn },
+      { field: "quality" as const, column: qualityColumn },
+    ];
+    for (const { field, column } of pairs) {
+      if (!column) continue;
+      const self = readColumnPercent(task, column, qualityLevelById);
+      const scored = readColumnPercent(final, column, qualityLevelById);
+      if (self === null || scored === null || self === scored) continue;
+      changes.push({
+        field,
+        title: column.title,
+        groupTitle: (column.headerPath ?? [])
+          .map((id) => groupNameById.get(id) ?? "")
+          .filter(Boolean)
+          .join(" · "),
+        from: self,
+        to: scored,
+      });
+    }
+  }
+
+  return {
+    title: titleColumn
+      ? (task.fieldValues?.[titleColumn.key] ?? "").trim()
+      : "",
+    deadline: deadlineColumn
+      ? (task.fieldValues?.[deadlineColumn.key] ?? "").trim()
+      : "",
+    deadlineTitle: deadlineColumn?.title ?? "Hạn",
+    progressPercent,
+    qualityPercent,
+    reviewChanges: changes,
+    reviewLowered: changes.some((change) => change.to < change.from),
+    tracksProgress: !!progressColumn,
+    tracksQuality: !!qualityColumn,
+  };
+}
+
+/**
+ * Các ô chỉ huy chấm lại khi chốt hoàn thành.
+ *
+ * Lấy đúng theo CẤU HÌNH CÔNG THỨC của mẫu: `baseColumnKey` là mẫu số (A),
+ * `ratioColumnKeys` là các tử số (B, C...). Mỗi tử số kèm ô phần trăm nằm cùng
+ * nhóm header - đó là cặp "Thực tế hoàn thành % / Điểm tự chấm".
+ * Phải khớp `resolveScoreColumns` bên server, nếu không form chấm một đằng còn
+ * server nhận một nẻo.
+ */
+export type ScoreEntry = {
+  /** Vai trò trong công thức: B, C, D... */
+  role: string;
+  score: FormTemplateColumn;
+  percent?: FormTemplateColumn;
+};
+
+export type ScoreColumns = {
+  /** Cột mẫu số (A) - chỉ đọc, đó là chuẩn đã giao. */
+  base?: FormTemplateColumn;
+  entries: ScoreEntry[];
+};
+
+export function scoreColumns(template: TemplateShape | null): ScoreColumns {
+  const footer = template?.footer;
+  if (!template || !footer?.enabled || !footer.ratioColumnKeys?.length) {
+    return { entries: [] };
+  }
+
+  const visible = template.columns.filter((column) => column.visible);
+  const byKey = new Map(visible.map((column) => [column.key, column]));
+  const percents = visible.filter(isPercentColumn);
+
+  const entries: ScoreEntry[] = [];
+  footer.ratioColumnKeys.forEach((key, index) => {
+    const score = byKey.get(key);
+    if (!score) return;
+    const path = (score.headerPath ?? []).join("/");
+    // Loại chính nó: mẫu có thể lấy thẳng cột "Thực tế hoàn thành %" làm tử số,
+    // lúc đó cột điểm cũng là cột phần trăm - ghép cặp với chính mình thì bảng
+    // vẽ ra hai ô y hệt nhau.
+    const percent = percents.find(
+      (column) =>
+        column.key !== score.key &&
+        (column.headerPath ?? []).join("/") === path,
+    );
+    entries.push({
+      role: String.fromCharCode(66 + index),
+      score,
+      percent,
+    });
+  });
+
+  return {
+    base: footer.baseColumnKey ? byKey.get(footer.baseColumnKey) : undefined,
+    entries,
+  };
+}
+
+/** Trạng thái công việc, suy từ tiến độ chứ không phải từ luồng duyệt. */
+export type WorkState = "NOT_STARTED" | "IN_PROGRESS" | "DONE";
+
+export const WORK_STATE_LABEL: Record<WorkState, string> = {
+  NOT_STARTED: "Chưa bắt đầu",
+  IN_PROGRESS: "Đang thực hiện",
+  DONE: "Xong tiến độ",
+};
+
+export function workState(progressPercent: number | null): WorkState {
+  if (progressPercent === null || progressPercent <= 0) return "NOT_STARTED";
+  return progressPercent >= 100 ? "DONE" : "IN_PROGRESS";
+}
+
+/**
+ * Trạng thái công việc của một dòng, chịu được cả mẫu nhiệm vụ không có cột tiến độ.
+ *
+ * Trục nào có cột tiến độ thì vẫn đọc từ phần trăm như cũ. Trục không có thì
+ * chỉ còn hai căn cứ thật: chỉ huy đã chốt chưa, và cán bộ đã động vào lần nào
+ * chưa - suy "0%" cho những trục đó là bịa ra một con số mẫu không hề có.
+ */
+export function workStateOf(
+  summary: TaskSummary,
+  state: { completed: boolean; touched: boolean; hasResult?: boolean },
+): WorkState {
+  if (summary.tracksProgress) return workState(summary.progressPercent);
+  if (state.completed) return "DONE";
+  // Trục chấm theo mục: khai xong điểm Đạt / tích Không đạt là coi như xong.
+  if (state.hasResult) return "DONE";
+  return state.touched ? "IN_PROGRESS" : "NOT_STARTED";
+}
+
+/**
+ * Bao nhiêu ngày rồi không ai đụng tới tiến độ của việc này.
+ *
+ * Nhận mốc thời gian ISO của server; ngày của mốc đó quy theo MÚI GIỜ SERVER
+ * chứ không theo đồng hồ máy - so theo ngày lịch nên cập nhật lúc 23h hôm qua
+ * thì hôm nay là "im lặng 1 ngày", không phải 0.
+ */
+export function silenceDays(
+  lastTouchedIso: string | undefined,
+  todayYmd: string,
+): number | null {
+  if (!lastTouchedIso) return null;
+  const touchedYmd = serverYmd(lastTouchedIso);
+  const days = daysBetweenYmd(touchedYmd, todayYmd);
+  if (days === null) return null;
+  return days < 0 ? 0 : days;
+}
+
+/** Từ mức này trở lên thì danh sách kêu "im lặng". */
+export const SILENCE_ALERT_DAYS = 3;
+
+export type DeadlineState = {
+  /** Số ngày còn lại; âm là đã trễ. */
+  days: number;
+  label: string;
+  tone: "danger" | "warning" | "muted";
+};
+
+/**
+ * Nhãn "Còn N ngày / Hạn hôm nay / Trễ N ngày" so với ngày hiện tại.
+ * `todayYmd` phải là ngày theo giờ server - đừng truyền ngày của máy người dùng.
+ */
+export function deadlineState(
+  deadline: string,
+  todayYmd: string,
+): DeadlineState | null {
+  if (!deadline) return null;
+
+  const days = daysBetweenYmd(todayYmd, deadline);
+  if (days === null) return null;
+
+  if (days < 0) {
+    return { days, label: `Trễ ${-days} ngày`, tone: "danger" };
+  }
+  if (days === 0) return { days, label: "Hạn hôm nay", tone: "warning" };
+  if (days <= 2) return { days, label: `Còn ${days} ngày`, tone: "warning" };
+  return { days, label: `Còn ${days} ngày`, tone: "muted" };
+}
+
+/**
+ * Các ô "kết quả" của trục chấm theo mục (công thức cộng dồn).
+ *
+ * Trục kiểu này (trục 2) không có cột phần trăm nào: cán bộ khai điểm ở cột
+ * Đạt hoặc tích ô Không đạt - đó chính là thứ thay cho tiến độ. Lấy theo CẤU
+ * HÌNH CÔNG THỨC, phải khớp `resolveResultColumns` bên server.
+ */
+export type ResultColumns = {
+  scores: FormTemplateColumn[];
+  flags: FormTemplateColumn[];
+};
+
+export function resultColumns(template: TemplateShape | null): ResultColumns {
+  if (!template?.columns?.length) return { scores: [], flags: [] };
+
+  const visible = template.columns.filter((column) => column.visible);
+  const footer = template.footer;
+  const flags = visible.filter((column) => column.dataType === "boolean");
+
+  if (footer?.mode === "sum" && footer.ratioColumnKeys?.length) {
+    const keys = new Set(footer.ratioColumnKeys);
+    return {
+      // Cột tự tính do hệ thống điền, cán bộ không gõ được.
+      scores: visible.filter(
+        (column) => keys.has(column.key) && !column.autoValue,
+      ),
+      flags,
+    };
+  }
+
+  /*
+    Mẫu chưa khai công thức mà cũng không có cột phần trăm nào: vẫn là trục
+    chấm theo mục, ô điểm chính là các cột số nhập tay. Suy tạm như vậy để
+    dùng được ngay, không phải chờ admin bật công thức.
+    PHẢI khớp  bên server.
+  */
+  const { progressColumn } = trackingColumns(template);
+  if (progressColumn) return { scores: [], flags: [] };
+  return {
+    scores: visible.filter(
+      (column) => column.dataType === "number" && !column.autoValue,
+    ),
+    flags,
+  };
+}
+
+/** Đã khai kết quả chưa: có điểm ở ô Đạt, hoặc đã tích ô Không đạt. */
+export function hasResult(
+  task: PersonalTaskDraft,
+  columns: ResultColumns,
+): boolean {
+  const scored = columns.scores.some((column) =>
+    (task.fieldValues?.[column.key] ?? "").trim(),
+  );
+  const flagged = columns.flags.some(
+    (column) => (task.fieldValues?.[column.key] ?? "") === "1",
+  );
+  return scored || flagged;
+}
+
+/**
+ * Kết quả của trục chấm theo mục, quy về một hình dạng cho mọi bảng đọc.
+ *
+ * Trục kiểu này không có phần trăm nào, nên bảng nào bày nó cũng chỉ cần đúng
+ * hai thứ: Đạt / Không đạt và điểm của mục. Gom vào đây để màn của cán bộ và
+ * màn của chỉ huy không tự đọc mỗi nơi một kiểu.
+ */
+export type ResultInfo = {
+  /** Cán bộ đã khai kết quả chưa - chưa khai thì không nói Đạt hay Không đạt. */
+  declared: boolean;
+  failed: boolean;
+  /** Điểm chốt: ô nào chỉ huy chấm lại thì lấy của chỉ huy. */
+  score: number | null;
+  /** Điểm cán bộ tự khai, để nói rõ chỉ huy đã sửa bao nhiêu. */
+  selfScore: number | null;
+};
+
+/** Số trong một ô đã lưu; ô trống hoặc không ra số thì coi như chưa có. */
+function numberAt(
+  source: Record<string, string | number> | undefined,
+  key: string,
+): number | null {
+  const raw = source?.[key];
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return null;
+  }
+  const parsed = Number(String(raw).replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function readResultInfo(
+  task: PersonalTaskDraft,
+  columns: ResultColumns,
+  review?: ReviewInput,
+): ResultInfo {
+  const failed = columns.flags.some(
+    (column) =>
+      String(
+        review?.values?.[column.key] ?? task.fieldValues?.[column.key] ?? "",
+      ) === "1",
+  );
+
+  let score: number | null = null;
+  let selfScore: number | null = null;
+  for (const column of columns.scores) {
+    const scored =
+      numberAt(review?.values, column.key) ??
+      numberAt(task.fieldValues, column.key);
+    if (scored !== null) score = (score ?? 0) + scored;
+    const self = numberAt(task.fieldValues, column.key);
+    if (self !== null) selfScore = (selfScore ?? 0) + self;
+  }
+
+  return { declared: hasResult(task, columns), failed, score, selfScore };
+}

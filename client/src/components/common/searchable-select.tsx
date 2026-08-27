@@ -76,7 +76,7 @@ export function SearchableSelect({
         </Button>
       </PopoverTrigger>
       {/*
-        Danh sách rộng hơn ô bấm và cho xuống dòng: nhiệm vụ trong bảng KPI là
+        Danh sách rộng hơn ô bấm và cho xuống dòng: nhiệm vụ trong bảng nhiệm vụ là
         cả đoạn văn, cắt cụt một dòng thì mấy mục đầu giống hệt nhau, không
         phân biệt nổi mục nào với mục nào.
       */}

@@ -8,6 +8,9 @@ export const metadata: Metadata = {
 
 export default function AnalyticsPage() {
   return (
-    <PlaceholderPage title="Phân tích" description="Phân tích xu hướng và hiệu suất KPI." />
+    <PlaceholderPage
+      title="Phân tích"
+      description="Phân tích xu hướng và hiệu suất nhiệm vụ."
+    />
   );
 }

@@ -19,10 +19,10 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata: Metadata = {
   title: {
-    default: "Quản lý KPI - Công an Lâm Đồng",
-    template: "%s - Quản lý KPI",
+    default: "Quản lý nhiệm vụ - Công an Lâm Đồng",
+    template: "%s - Quản lý nhiệm vụ",
   },
-  description: "Hệ thống chấm điểm và quản lý KPI",
+  description: "Hệ thống chấm điểm và quản lý nhiệm vụ",
 };
 
 export default function RootLayout({
@@ -31,9 +31,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="vi" className={`${inter.variable} ${spaceGrotesk.variable}`} suppressHydrationWarning>
+    <html
+      lang="vi"
+      className={`${inter.variable} ${spaceGrotesk.variable}`}
+      suppressHydrationWarning
+    >
       <body>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
           <AuthProvider>
             {children}
             <Toaster richColors position="top-right" />

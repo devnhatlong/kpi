@@ -39,7 +39,7 @@ export function LevelFormDialog({
   const [name, setName] = useState("");
   const [rank, setRank] = useState("1");
   const [isActive, setIsActive] = useState(true);
-  const [isKpiUnit, setIsKpiUnit] = useState(false);
+  const [isMissionUnit, setIsMissionUnit] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -49,13 +49,13 @@ export function LevelFormDialog({
       setName(edit.name);
       setRank(String(edit.rank ?? 1));
       setIsActive(edit.isActive);
-      setIsKpiUnit(edit.isKpiUnit ?? false);
+      setIsMissionUnit(edit.isMissionUnit ?? false);
     } else {
       setCode("");
       setName("");
       setRank("1");
       setIsActive(true);
-      setIsKpiUnit(false);
+      setIsMissionUnit(false);
     }
   }, [open, edit]);
 
@@ -76,7 +76,7 @@ export function LevelFormDialog({
       name: name.trim(),
       rank: rankNum,
       isActive,
-      isKpiUnit,
+      isMissionUnit,
     };
 
     setSaving(true);
@@ -101,7 +101,9 @@ export function LevelFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{edit ? "Sửa cấp đơn vị" : "Thêm cấp đơn vị"}</DialogTitle>
+          <DialogTitle>
+            {edit ? "Sửa cấp đơn vị" : "Thêm cấp đơn vị"}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-5 py-2">
@@ -140,16 +142,22 @@ export function LevelFormDialog({
 
           <div className="flex h-9 items-center justify-between rounded-lg border px-3">
             <Label htmlFor="level-active">Đang hoạt động</Label>
-            <Switch id="level-active" checked={isActive} onCheckedChange={setIsActive} />
+            <Switch
+              id="level-active"
+              checked={isActive}
+              onCheckedChange={setIsActive}
+            />
           </div>
 
           <div className="space-y-2 rounded-lg border p-3">
             <div className="flex items-center justify-between">
-              <Label htmlFor="level-kpi-unit">Là đơn vị nhận KPI</Label>
+              <Label htmlFor="level-mission-unit">
+                Là đơn vị nhận nhiệm vụ
+              </Label>
               <Switch
-                id="level-kpi-unit"
-                checked={isKpiUnit}
-                onCheckedChange={setIsKpiUnit}
+                id="level-mission-unit"
+                checked={isMissionUnit}
+                onCheckedChange={setIsMissionUnit}
               />
             </div>
             <p className="text-xs text-muted-foreground">
@@ -161,7 +169,11 @@ export function LevelFormDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             Hủy
           </Button>
           <Button onClick={submit} disabled={saving}>

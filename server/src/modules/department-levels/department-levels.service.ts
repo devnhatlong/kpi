@@ -21,19 +21,19 @@ const SYSTEM_DEPARTMENT_LEVELS: Array<{
   code: string;
   name: string;
   rank: number;
-  isKpiUnit: boolean;
+  isMissionUnit: boolean;
 }> = [
-  { code: 'CAT', name: 'Công an tỉnh', rank: 1, isKpiUnit: true },
+  { code: 'CAT', name: 'Công an tỉnh', rank: 1, isMissionUnit: true },
   // Khối chỉ để gom nhóm các phòng cho dễ nhìn/dễ tổng hợp, không phải đơn vị
   // thật nên không nhận nhiệm vụ - nhiệm vụ đi thẳng xuống phòng bên trong.
-  { code: 'KHOI', name: 'Khối (gom nhóm)', rank: 2, isKpiUnit: false },
-  { code: 'PHONG', name: 'Cấp phòng', rank: 3, isKpiUnit: true },
-  { code: 'DOI', name: 'Cấp đội', rank: 4, isKpiUnit: true },
-  { code: 'TO', name: 'Cấp tổ', rank: 5, isKpiUnit: true },
-  { code: 'XA', name: 'Cấp xã', rank: 6, isKpiUnit: true },
-  { code: 'PHUONG', name: 'Cấp phường', rank: 7, isKpiUnit: true },
-  { code: 'DON', name: 'Cấp đồn', rank: 8, isKpiUnit: true },
-  { code: 'DACKHU', name: 'Đặc khu', rank: 9, isKpiUnit: true },
+  { code: 'KHOI', name: 'Khối (gom nhóm)', rank: 2, isMissionUnit: false },
+  { code: 'PHONG', name: 'Cấp phòng', rank: 3, isMissionUnit: true },
+  { code: 'DOI', name: 'Cấp đội', rank: 4, isMissionUnit: true },
+  { code: 'TO', name: 'Cấp tổ', rank: 5, isMissionUnit: true },
+  { code: 'XA', name: 'Cấp xã', rank: 6, isMissionUnit: true },
+  { code: 'PHUONG', name: 'Cấp phường', rank: 7, isMissionUnit: true },
+  { code: 'DON', name: 'Cấp đồn', rank: 8, isMissionUnit: true },
+  { code: 'DACKHU', name: 'Đặc khu', rank: 9, isMissionUnit: true },
 ];
 
 @Injectable()
@@ -60,7 +60,7 @@ export class DepartmentLevelsService implements OnModuleInit {
       slug: Helper.slugify(dto.name),
       rank: dto.rank,
       isActive: dto.isActive ?? true,
-      isKpiUnit: dto.isKpiUnit ?? false,
+      isMissionUnit: dto.isMissionUnit ?? false,
     });
 
     return {
@@ -125,8 +125,8 @@ export class DepartmentLevelsService implements OnModuleInit {
     if (dto.isActive !== undefined) {
       level.isActive = dto.isActive;
     }
-    if (dto.isKpiUnit !== undefined) {
-      level.isKpiUnit = dto.isKpiUnit;
+    if (dto.isMissionUnit !== undefined) {
+      level.isMissionUnit = dto.isMissionUnit;
     }
 
     await level.save();
@@ -154,7 +154,7 @@ export class DepartmentLevelsService implements OnModuleInit {
             name: item.name,
             slug: Helper.slugify(item.name),
             isActive: true,
-            isKpiUnit: item.isKpiUnit,
+            isMissionUnit: item.isMissionUnit,
           },
           $set: {
             rank: item.rank,
@@ -163,11 +163,11 @@ export class DepartmentLevelsService implements OnModuleInit {
         { upsert: true },
       );
 
-      // Bản ghi tạo từ trước khi có cờ isKpiUnit thì điền mặc định.
+      // Bản ghi tạo từ trước khi có cờ isMissionUnit thì điền mặc định.
       // Chỉ chạm khi field còn thiếu để không ghi đè lựa chọn của super admin.
       await this.departmentLevelModel.updateOne(
-        { code: item.code, isKpiUnit: { $exists: false } },
-        { $set: { isKpiUnit: item.isKpiUnit } },
+        { code: item.code, isMissionUnit: { $exists: false } },
+        { $set: { isMissionUnit: item.isMissionUnit } },
       );
     }
   }

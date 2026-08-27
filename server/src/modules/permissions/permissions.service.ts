@@ -60,14 +60,14 @@ const SYSTEM_PERMISSIONS: Array<{
     description: 'Quản lý vai trò và gán quyền',
   },
   {
-    code: Permission.KPI_MANAGE,
-    name: 'Quản lý KPI',
-    module: 'kpi',
+    code: Permission.MISSION_MANAGE,
+    name: 'Quản lý nhiệm vụ',
+    module: 'mission',
     sortOrder: 60,
   },
   {
     code: Permission.TASK_ASSIGN,
-    name: 'Giao nhiệm vụ KPI',
+    name: 'Giao nhiệm vụ',
     module: 'task',
     sortOrder: 80,
     description: 'Giao nhiệm vụ xuống đơn vị / cán bộ và giao tiếp xuống',
@@ -146,7 +146,11 @@ export class PermissionsService implements OnModuleInit {
       ];
     }
 
-    const sort = { sortOrder: 1 as const, module: 1 as const, code: 1 as const };
+    const sort = {
+      sortOrder: 1 as const,
+      module: 1 as const,
+      code: 1 as const,
+    };
 
     if (query.all) {
       const data = await this.permissionModel.find(filter).sort(sort);

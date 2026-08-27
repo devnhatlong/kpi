@@ -7,5 +7,10 @@ export const metadata: Metadata = {
 };
 
 export default function ReportsPage() {
-  return <PlaceholderPage title="Báo cáo" description="Xem và xuất báo cáo KPI." />;
+  return (
+    <PlaceholderPage
+      title="Báo cáo"
+      description="Xem và xuất báo cáo nhiệm vụ."
+    />
+  );
 }

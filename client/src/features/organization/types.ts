@@ -1,4 +1,10 @@
-export type { ApiResponse, AuthTokens, ListQueryParams, PaginatedResult, PaginationMeta } from "@/features/auth/types";
+export type {
+  ApiResponse,
+  AuthTokens,
+  ListQueryParams,
+  PaginatedResult,
+  PaginationMeta,
+} from "@/features/auth/types";
 
 export type DepartmentLevel = {
   _id: string;
@@ -7,8 +13,8 @@ export type DepartmentLevel = {
   name: string;
   rank: number;
   isActive: boolean;
-  /** Cấp này nhận KPI (Phòng, Xã...) hay chỉ gom nhóm (Khối). */
-  isKpiUnit?: boolean;
+  /** Cấp này nhận nhiệm vụ (Phòng, Xã...) hay chỉ gom nhóm (Khối). */
+  isMissionUnit?: boolean;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -18,7 +24,7 @@ export type CreateDepartmentLevelInput = {
   name: string;
   rank: number;
   isActive?: boolean;
-  isKpiUnit?: boolean;
+  isMissionUnit?: boolean;
 };
 
 export type UpdateDepartmentLevelInput = {
@@ -26,7 +32,7 @@ export type UpdateDepartmentLevelInput = {
   name?: string;
   rank?: number;
   isActive?: boolean;
-  isKpiUnit?: boolean;
+  isMissionUnit?: boolean;
 };
 
 export type AppPermission = {
@@ -169,7 +175,8 @@ export type UserAccount = {
   email?: string;
   phone?: string;
   position?: string;
-  departmentId?: string | { _id?: string; id?: string; code?: string; name?: string };
+  departmentId?:
+    string | { _id?: string; id?: string; code?: string; name?: string };
   roleAssignments: RoleAssignment[];
   isActive: boolean;
   lastLoginAt?: string | null;
@@ -226,7 +233,9 @@ export type ImportUsersResult = {
   }>;
 };
 
-export function entityId(entity: { _id?: string; id?: string } | string | null | undefined): string {
+export function entityId(
+  entity: { _id?: string; id?: string } | string | null | undefined,
+): string {
   if (!entity) return "";
   if (typeof entity === "string") return entity;
   return String(entity.id ?? entity._id ?? "");

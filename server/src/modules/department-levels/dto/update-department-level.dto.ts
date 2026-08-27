@@ -17,8 +17,8 @@ export class UpdateDepartmentLevelDto {
   @BooleanNotRequired('Trạng thái hoạt động', { example: true })
   isActive?: boolean;
 
-  @BooleanNotRequired('Là cấp đơn vị nhận KPI (Phòng, Xã...)', {
+  @BooleanNotRequired('Là cấp đơn vị nhận nhiệm vụ (Phòng, Xã...)', {
     example: true,
   })
-  isKpiUnit?: boolean;
+  isMissionUnit?: boolean;
 }

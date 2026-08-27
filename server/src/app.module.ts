@@ -15,12 +15,12 @@ import { DepartmentLevelsModule } from './modules/department-levels/department-l
 import { RolesModule } from './modules/roles/roles.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { SystemModule } from './modules/system/system.module';
-import { KpiFormConfigModule } from './modules/kpi-form-config/kpi-form-config.module';
-import { PersonalKpiModule } from './modules/personal-kpi/personal-kpi.module';
+import { MissionFormConfigModule } from './modules/mission-form-config/mission-form-config.module';
+import { PersonalMissionModule } from './modules/personal-mission/personal-mission.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
-import { KpiAssignmentsModule } from './modules/kpi-assignments/kpi-assignments.module';
-import { KpiScopeConfigModule } from './modules/kpi-scope-config/kpi-scope-config.module';
-import { KpiSummaryReportsModule } from './modules/kpi-summary-reports/kpi-summary-reports.module';
+import { MissionAssignmentsModule } from './modules/mission-assignments/mission-assignments.module';
+import { MissionScopeConfigModule } from './modules/mission-scope-config/mission-scope-config.module';
+import { MissionSummaryReportsModule } from './modules/mission-summary-reports/mission-summary-reports.module';
 import { mongooseConfig } from './config/database.config';
 import { JwtModule } from '@nestjs/jwt';
 import type { SignOptions } from 'jsonwebtoken';
@@ -53,11 +53,11 @@ import type { SignOptions } from 'jsonwebtoken';
     RolesModule,
     PermissionsModule,
     SystemModule,
-    KpiFormConfigModule,
-    PersonalKpiModule,
-    KpiSummaryReportsModule,
-    KpiScopeConfigModule,
-    KpiAssignmentsModule,
+    MissionFormConfigModule,
+    PersonalMissionModule,
+    MissionSummaryReportsModule,
+    MissionScopeConfigModule,
+    MissionAssignmentsModule,
     UploadsModule,
   ],
 })

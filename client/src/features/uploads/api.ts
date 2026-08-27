@@ -1,5 +1,5 @@
 import { api } from "@/lib/api-client";
-import type { TaskAttachment } from "@/features/personal-kpi/types";
+import type { TaskAttachment } from "@/features/personal-mission/types";
 
 type ApiEnvelope<T> = { message: string; data: T };
 

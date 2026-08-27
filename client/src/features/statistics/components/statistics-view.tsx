@@ -39,7 +39,7 @@ import {
 import { AxisScoreMeters } from "@/features/statistics/components/axis-score-meters";
 import { DailyTrendChart } from "@/features/statistics/components/daily-trend-chart";
 import { DepartmentPerformance } from "@/features/statistics/components/department-performance";
-import { KpiLeaderboard } from "@/features/statistics/components/kpi-leaderboard";
+import { MissionLeaderboard } from "@/features/statistics/components/mission-leaderboard";
 import { StatTile } from "@/features/statistics/components/stat-tile";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -85,7 +85,7 @@ export function StatisticsView() {
           <p className="text-sm text-muted-foreground">
             {data
               ? `${data.scopeLabel} · ${data.range.fromDate} → ${data.range.toDate}`
-              : "Số liệu tổng hợp từ nhiệm vụ KPI đã ghi nhận."}
+              : "Số liệu tổng hợp từ nhiệm vụ đã ghi nhận."}
           </p>
         </div>
 
@@ -95,7 +95,7 @@ export function StatisticsView() {
           {/* Nút hành động dẫn sang màn nhập, không dựng lối nhập thứ hai ở
               đây - trang này chỉ để đọc số. */}
           <Button asChild variant="outline" className="bg-background">
-            <Link href="/kpi/personal">Nhập KPI cá nhân</Link>
+            <Link href="/mission/personal">Nhập nhiệm vụ cá nhân</Link>
           </Button>
           {data?.canViewUnit ? (
             <Select
@@ -214,7 +214,7 @@ export function StatisticsView() {
               rộng nhất; thanh hiệu suất đơn vị đứng cạnh làm ngữ cảnh. */}
           <div className="grid gap-4 xl:grid-cols-3">
             <div className="xl:col-span-2">
-              <KpiLeaderboard
+              <MissionLeaderboard
                 rows={data.leaderboard}
                 showDepartment={data.scope === "unit"}
               />

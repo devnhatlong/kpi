@@ -4,7 +4,7 @@ import { StatisticsView } from "@/features/statistics/components/statistics-view
 
 export const metadata: Metadata = {
   title: "Thống kê",
-  description: "Điểm KPI theo trục, tiến độ xử lý và phân bố nhiệm vụ.",
+  description: "Điểm nhiệm vụ theo trục, tiến độ xử lý và phân bố nhiệm vụ.",
 };
 
 export default function DashboardPage() {

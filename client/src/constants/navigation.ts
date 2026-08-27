@@ -44,9 +44,9 @@ export type NavItem = {
 
 /**
  * Menu theo đặc tả:
- * - KPI cá nhân: báo cáo bottom-up (Staff/Manager tự khai)
- * - Duyệt KPI cấp dưới: cấp trên nhận & duyệt
- * - KPI cấp trên giao: nhiệm vụ top-down giao xuống
+ * - nhiệm vụ cá nhân: báo cáo bottom-up (Staff/Manager tự khai)
+ * - Duyệt nhiệm vụ cấp dưới: cấp trên nhận & duyệt
+ * - nhiệm vụ cấp trên giao: nhiệm vụ top-down giao xuống
  */
 export const NAV_ITEMS: NavItem[] = [
   {
@@ -55,22 +55,22 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Gauge,
   },
   {
-    title: "KPI cá nhân",
-    href: "/kpi/personal",
+    title: "Nhiệm vụ cá nhân",
+    href: "/mission/personal",
     icon: ClipboardList,
     permissions: [PERM.EVALUATION_SELF],
   },
   {
     // Một mục thôi: màn này vừa theo dõi tiến độ vừa duyệt, tách hai dòng menu
     // cho cùng một việc chỉ làm người dùng phải đoán nên bấm dòng nào.
-    title: "Theo dõi & duyệt KPI",
-    href: "/kpi/received",
+    title: "Theo dõi & duyệt nhiệm vụ",
+    href: "/mission/received",
     icon: Stamp,
     permissions: [PERM.EVALUATION_APPROVE],
   },
   {
-    title: "KPI cấp trên giao",
-    href: "/kpi/assigned",
+    title: "Nhiệm vụ cấp trên giao",
+    href: "/mission/assigned",
     // Bia ngắm: đây là chỉ tiêu được giao xuống, không phải hộp thư đến.
     icon: Target,
     permissions: [PERM.TASK_VIEW],
@@ -85,32 +85,32 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       {
         title: "Tạo báo cáo",
-        href: "/kpi/promote",
+        href: "/mission/promote",
         icon: FileSpreadsheet,
       },
       {
         title: "Duyệt báo cáo",
-        href: "/kpi/promote/incoming",
+        href: "/mission/promote/incoming",
         icon: Inbox,
       },
     ],
   },
   {
-    title: "Giao KPI xuống",
-    href: "/kpi/assign",
+    title: "Giao nhiệm vụ xuống",
+    href: "/mission/assign",
     icon: Trophy,
     permissions: [PERM.TASK_ASSIGN],
   },
   {
     title: "Danh mục",
-    href: "/kpi/catalogs",
+    href: "/mission/catalogs",
     icon: BookMarked,
-    permissions: [PERM.KPI_MANAGE],
+    permissions: [PERM.MISSION_MANAGE],
   },
   {
-    title: "Cấu hình form KPI",
+    title: "Cấu hình form nhiệm vụ",
     icon: FormInput,
-    permissions: [PERM.KPI_MANAGE],
+    permissions: [PERM.MISSION_MANAGE],
     children: [
       {
         /*
@@ -118,23 +118,23 @@ export const NAV_ITEMS: NavItem[] = [
           và khai tiêu chí chung. Ba thứ đó chỉ có nghĩa khi ghép lại thành mẫu
           báo cáo của năm, nên tách ba trang chỉ bắt người cấu hình đi vòng.
         */
-        title: "Mẫu báo cáo KPI",
-        href: "/kpi/form-config",
+        title: "Mẫu báo cáo nhiệm vụ",
+        href: "/mission/form-config",
         icon: Table2,
       },
       {
         title: "Nội dung công việc",
-        href: "/kpi/form-config/work-contents",
+        href: "/mission/form-config/work-contents",
         icon: ListTree,
       },
       {
         title: "Nhiệm vụ",
-        href: "/kpi/form-config/work-tasks",
+        href: "/mission/form-config/work-tasks",
         icon: ClipboardList,
       },
       {
         title: "Nhóm điểm",
-        href: "/kpi/form-config/score-groups",
+        href: "/mission/form-config/score-groups",
         icon: Gauge,
       },
     ],
@@ -171,8 +171,8 @@ export const NAV_ITEMS: NavItem[] = [
         permissions: [PERM.ROLE_ASSIGN],
       },
       {
-        title: "Phân quyền giao KPI",
-        href: "/organization/kpi-scope",
+        title: "Phân quyền giao nhiệm vụ",
+        href: "/organization/mission-scope",
         icon: ShieldCheck,
         permissions: [PERM.SYSTEM_CONFIG],
       },
@@ -195,7 +195,7 @@ export const NAV_ITEMS: NavItem[] = [
 
 /** Đường không nằm trong menu nhưng vẫn phải chặn. */
 const EXTRA_PATH_PERMISSIONS: Record<string, string[]> = {
-  "/kpi/personal/inbox": [PERM.EVALUATION_APPROVE],
+  "/mission/personal/inbox": [PERM.EVALUATION_APPROVE],
 };
 
 /**
@@ -221,7 +221,7 @@ const PATH_PERMISSIONS: Array<[string, string[]]> = (() => {
     entries.push([href, permissions]);
   }
 
-  // Khớp đường dài trước, để /kpi/personal/inbox không bị /kpi/personal nuốt.
+  // Khớp đường dài trước, để /mission/personal/inbox không bị /mission/personal nuốt.
   return entries.sort((a, b) => b[0].length - a[0].length);
 })();
 
@@ -241,6 +241,6 @@ export function pathRequiresPermissions(
 */
 export const SIDEBAR_BRAND = {
   title: "Công an tỉnh Lâm Đồng",
-  subtitle: "Hệ thống quản lý và chấm điểm KPI",
+  subtitle: "Hệ thống quản lý và chấm điểm nhiệm vụ",
   logo: "/icons/logo_cand.png",
 } as const;

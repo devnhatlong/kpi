@@ -72,7 +72,7 @@ export class DepartmentsService {
 
     const sort = { depth: 1 as const, sortOrder: 1 as const, name: 1 as const };
     const populate = [
-      { path: 'levelId', select: 'code name rank isKpiUnit' },
+      { path: 'levelId', select: 'code name rank isMissionUnit' },
       { path: 'parentId', select: 'code name' },
     ];
 
@@ -104,7 +104,7 @@ export class DepartmentsService {
   async findOne(id: string) {
     const department = await this.requireDepartment(id);
     await department.populate([
-      { path: 'levelId', select: 'code name rank isKpiUnit' },
+      { path: 'levelId', select: 'code name rank isMissionUnit' },
       { path: 'parentId', select: 'code name' },
     ]);
     return department;
@@ -150,9 +150,7 @@ export class DepartmentsService {
 
     if (dto.parentId !== undefined) {
       const newParentId =
-        dto.parentId === null || dto.parentId === ''
-          ? undefined
-          : dto.parentId;
+        dto.parentId === null || dto.parentId === '' ? undefined : dto.parentId;
 
       if (newParentId === id) {
         throw new BadRequestException('Đơn vị không thể là cha của chính nó.');
@@ -253,7 +251,7 @@ export class DepartmentsService {
     while (pending.length > 0 && guard-- > 0) {
       let progressed = false;
 
-      for (let i = 0; i < pending.length; ) {
+      for (let i = 0; i < pending.length;) {
         const row = pending[i];
 
         if (!row.code || !row.name) {
@@ -319,9 +317,7 @@ export class DepartmentsService {
           const created = await this.create({
             code: row.code,
             name: row.name,
-            parentId: row.parentCode
-              ? codeToId.get(row.parentCode)
-              : undefined,
+            parentId: row.parentCode ? codeToId.get(row.parentCode) : undefined,
             levelId,
             sortOrder: row.sortOrder,
             isActive: row.isActive,
@@ -356,7 +352,8 @@ export class DepartmentsService {
             row: row.index,
             code: row.code,
             status: 'error',
-            message: 'Không thể resolve đơn vị cha (có thể vòng lặp phụ thuộc).',
+            message:
+              'Không thể resolve đơn vị cha (có thể vòng lặp phụ thuộc).',
           });
         }
         break;

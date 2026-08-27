@@ -42,7 +42,7 @@ const SYSTEM_ROLES: Array<{
     permissions: [
       Permission.USER_VIEW,
       Permission.DEPARTMENT_VIEW,
-      Permission.KPI_MANAGE,
+      Permission.MISSION_MANAGE,
       Permission.TASK_ASSIGN,
       Permission.TASK_VIEW,
       Permission.EVALUATION_SELF,
@@ -60,7 +60,7 @@ const SYSTEM_ROLES: Array<{
     permissions: [
       Permission.USER_VIEW,
       Permission.DEPARTMENT_VIEW,
-      Permission.KPI_MANAGE,
+      Permission.MISSION_MANAGE,
       Permission.TASK_ASSIGN,
       Permission.TASK_VIEW,
       Permission.EVALUATION_SELF,
@@ -80,7 +80,7 @@ const SYSTEM_ROLES: Array<{
     permissions: [
       Permission.USER_VIEW,
       Permission.DEPARTMENT_VIEW,
-      Permission.KPI_MANAGE,
+      Permission.MISSION_MANAGE,
       Permission.TASK_ASSIGN,
       Permission.TASK_VIEW,
       Permission.EVALUATION_SELF,
@@ -145,7 +145,9 @@ export class RolesService implements OnModuleInit {
       throw new BadRequestException('Mã vai trò đã tồn tại.');
     }
 
-    const permissions = (dto.permissions ?? []).map((p) => p.trim().toLowerCase());
+    const permissions = (dto.permissions ?? []).map((p) =>
+      p.trim().toLowerCase(),
+    );
     await this.permissionsService.assertCodesExist(permissions);
 
     const role = await this.roleModel.create({

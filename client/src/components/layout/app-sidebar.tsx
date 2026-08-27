@@ -46,7 +46,7 @@ function collectNavHrefs(items: NavItem[]): string[] {
   return hrefs;
 }
 
-/** Active theo href khớp dài nhất - tránh /kpi/personal sáng khi đang ở /kpi/received. */
+/** Active theo href khớp dài nhất - tránh /mission/personal sáng khi đang ở /mission/received. */
 function isPathActive(pathname: string, href: string, allHrefs: string[]) {
   if (href === "/dashboard") {
     return pathname === "/dashboard";
@@ -70,13 +70,7 @@ function hasActiveChild(pathname: string, item: NavItem, allHrefs: string[]) {
   );
 }
 
-function NavGroup({
-  item,
-  allHrefs,
-}: {
-  item: NavItem;
-  allHrefs: string[];
-}) {
+function NavGroup({ item, allHrefs }: { item: NavItem; allHrefs: string[] }) {
   const pathname = usePathname();
   const { state, isMobile } = useSidebar();
   const Icon = item.icon;
@@ -126,7 +120,11 @@ function NavGroup({
             {item.children.map((child) => {
               const ChildIcon = child.icon;
               return (
-                <DropdownMenuItem key={child.href} asChild className="gap-2.5 rounded-md px-3 py-2.5">
+                <DropdownMenuItem
+                  key={child.href}
+                  asChild
+                  className="gap-2.5 rounded-md px-3 py-2.5"
+                >
                   <Link href={child.href}>
                     <ChildIcon className="size-4 text-muted-foreground" />
                     <span>{child.title}</span>
@@ -193,7 +191,10 @@ export function AppSidebar() {
     const items: NavItem[] = [];
 
     for (const item of NAV_ITEMS) {
-      if (item.permissions?.length && !userHasAnyPermission(user, item.permissions)) {
+      if (
+        item.permissions?.length &&
+        !userHasAnyPermission(user, item.permissions)
+      ) {
         continue;
       }
 

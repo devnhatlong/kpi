@@ -1,0 +1,1067 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import useSWR from "swr";
+import {
+  Building2,
+  CircleCheck,
+  Download,
+  FileText,
+  Loader2,
+  MoreHorizontal,
+  PencilLine,
+  Plus,
+  Send,
+  Trash2,
+  TriangleAlert,
+  Trophy,
+  Undo2,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import { SegmentedTabs } from "@/components/common/segmented-tabs";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useQualityLevelMap } from "@/features/mission-form-config/use-quality-levels";
+import { useAxisTemplates } from "@/features/personal-mission/use-axis-templates";
+import {
+  criterionKeys,
+  fetchCriteriaAll,
+  fetchFormTemplateForCriteria,
+  formTemplateKeys,
+} from "@/features/mission-form-config/api";
+import { entityId, type Criterion } from "@/features/mission-form-config/types";
+import { useScoreGroupMap } from "@/features/mission-form-config/use-score-groups";
+import {
+  addSummaryManualItem,
+  approveSummaryReport,
+  deleteSummaryReport,
+  fetchSummaryReport,
+  returnSummaryReport,
+  removeSummaryManualItem,
+  removeSummaryReportItems,
+  sendSummaryReport,
+  updateSummaryManualItem,
+} from "@/features/mission-summary-report/api";
+import { ManualEntryDialog } from "@/features/mission-summary-report/components/manual-entry-dialog";
+import { mapPersonalMissionFromApi } from "@/features/personal-mission/api";
+import { CriteriaScoreSection } from "@/features/mission-summary-report/components/criteria-score-section";
+import { ProgressUpdateDialog } from "@/features/personal-mission/components/progress-update-dialog";
+import { ReviewerEditDialog } from "@/features/personal-mission/components/reviewer-edit-dialog";
+import { PickCompletedDialog } from "@/features/mission-summary-report/components/pick-completed-dialog";
+import { SummaryEntriesTable } from "@/features/mission-summary-report/components/summary-entries-table";
+import {
+  exportSummaryReportToExcel,
+  type CriteriaExportRow,
+} from "@/features/mission-summary-report/excel";
+import {
+  buildReportContent,
+  groupByAxis,
+  groupByDepartment,
+  type ReportEntry,
+} from "@/features/mission-summary-report/report-entries";
+import {
+  canDecideSummaryReport,
+  canEditSummaryReport,
+  periodLabel,
+  SUMMARY_REPORT_STATUS_LABEL,
+  summaryReportStatusBadgeClass,
+  type SummaryManualItem,
+  type SummaryReportDetail,
+  type SummaryReportRole,
+} from "@/features/mission-summary-report/types";
+import { formatScoreNumber } from "@/features/personal-mission/board-cell";
+import { SendRecipientDialog } from "@/features/personal-mission/components/send-recipient-dialog";
+import { missionTone } from "@/features/personal-mission/status-styles";
+import { getApiErrorMessage } from "@/lib/api-client";
+import { formatServerHm, formatYmd, serverYmd } from "@/lib/server-time";
+import { cn } from "@/lib/utils";
+
+type ViewMode = "axis" | "department" | "flat";
+
+const VIEW_TABS: Array<{ value: ViewMode; label: string }> = [
+  { value: "axis", label: "Theo trục" },
+  { value: "department", label: "Theo đơn vị" },
+  { value: "flat", label: "Danh sách" },
+];
+
+/** Ô số ở đầu báo cáo. */
+function StatCard({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  tone = missionTone.info,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  icon: typeof FileText;
+  tone?: (typeof missionTone)[keyof typeof missionTone];
+}) {
+  /*
+    Bốn ô nằm cùng một hàng lưới nên cao bằng nhau theo ô cao nhất - ô nào có
+    dòng chú thích là kéo cả hàng cao lên. CardContent không tự giãn theo Card,
+    nên không có flex-1 thì nội dung mấy ô còn lại dính mép trên, chừa một
+    khoảng trống dưới đáy.
+  */
+  return (
+    <Card className="flex flex-col border-border/80 shadow-sm">
+      <CardContent className="flex flex-1 items-center gap-3 p-4">
+        <span
+          className={cn(
+            "flex size-9 shrink-0 items-center justify-center rounded-lg",
+            tone.icon,
+          )}
+        >
+          <Icon className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className="text-xl font-semibold tracking-tight tabular-nums">
+            {value}
+          </p>
+          {hint ? (
+            <p className="text-xs text-muted-foreground">{hint}</p>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Một mốc trong nhật ký báo cáo. */
+function LogRow({
+  at,
+  message,
+  byName,
+  tone,
+}: {
+  at: string;
+  message: string;
+  byName: string;
+  tone: string;
+}) {
+  return (
+    <li className="relative pl-6">
+      <span
+        className={cn(
+          "absolute top-1.5 left-0 size-2.5 rounded-full border-2 bg-background",
+          tone,
+        )}
+      />
+      <p className="text-xs text-muted-foreground">
+        {formatYmd(serverYmd(at))} · {formatServerHm(at)}
+        {byName ? ` · ${byName}` : ""}
+      </p>
+      <p className="text-sm">{message}</p>
+    </li>
+  );
+}
+
+type SummaryReportPanelProps = {
+  detail: SummaryReportDetail;
+  loading: boolean;
+  /** Đang xem bản mình lập hay bản cấp dưới trình lên. */
+  role: SummaryReportRole;
+  /** Nạp lại chi tiết + danh sách sau mỗi thay đổi. */
+  onChanged: () => void | Promise<void>;
+  /** Báo cáo vừa bị xoá - cột trái phải bỏ chọn nó đi. */
+  onDeleted: () => void | Promise<void>;
+};
+
+/**
+ * Cột phải: toàn bộ một báo cáo tổng hợp.
+ *
+ * Nhiệm vụ trong báo cáo xem được theo trục, theo đơn vị hoặc dạng danh sách -
+ * cùng một bộ dòng, chỉ khác cách gom. Điểm ở tiêu đề nhóm trục là điểm quy đổi
+ * của trục (tính trên tổng cột), không phải tổng mấy ô "Điểm" bên dưới.
+ */
+export function SummaryReportPanel({
+  detail,
+  loading,
+  role,
+  onChanged,
+  onDeleted,
+}: SummaryReportPanelProps) {
+  const [view, setView] = useState<ViewMode>("axis");
+  const [pickOpen, setPickOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  /* Cấp trên mặc định ở chế độ ĐỌC; bật sửa mới hiện nút thêm / bớt. */
+  const [reviewEdit, setReviewEdit] = useState(false);
+  const [returnReason, setReturnReason] = useState("");
+  /** Dòng tự nhập đang sửa; null = đang thêm mới. */
+  const [manualEditing, setManualEditing] = useState<SummaryManualItem | null>(
+    null,
+  );
+  /** Nhiệm vụ đang mở chi tiết ngay trong báo cáo. */
+  const [taskRow, setTaskRow] = useState<ReportEntry | null>(null);
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [taskEditOpen, setTaskEditOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const report = detail.report;
+  const editable = canEditSummaryReport(report.status, role);
+  const reviewing = role === "REVIEWER";
+  const decidable = reviewing && canDecideSummaryReport(report.status);
+  /** Nút thêm / bớt nhiệm vụ có hiện không. */
+  const canEditNow = editable && (!reviewing || reviewEdit);
+
+  const scoreGroupById = useScoreGroupMap();
+  const qualityLevelById = useQualityLevelMap();
+  /* Cùng khoá SWR với khối A bên dưới nên không tốn thêm lượt gọi. */
+  const criteriaTemplate = useSWR(
+    formTemplateKeys.forCriteria,
+    fetchFormTemplateForCriteria,
+    { revalidateOnFocus: false },
+  );
+  /*
+    Danh mục tiêu chí - cần cho file xuất, để in đủ cả tiêu chí CHƯA chấm kèm
+    điểm tối đa. `criteriaScores` chỉ lưu dòng đã có giá trị, in mỗi nó thì bản
+    in thiếu dòng và tổng trần điểm không còn ra 30. Chung khoá SWR với khối A.
+  */
+  const criteriaCatalog = useSWR(criterionKeys.all, fetchCriteriaAll);
+  /*
+    Nhiệm vụ khoá bộ cột theo phiên bản mẫu lúc gửi, nhưng CÔNG THỨC tính điểm
+    thì lấy theo mẫu đang áp dụng của trục - admin sửa công thức xong phải thấy
+    báo cáo đổi theo, chứ không phải chờ gửi nhiệm vụ mới mới biết mình sửa gì.
+  */
+  const { byAxis } = useAxisTemplates();
+
+  const content = useMemo(
+    () =>
+      buildReportContent(
+        detail.axes,
+        report.manualItems ?? [],
+        { scoreGroups: scoreGroupById, qualityLevels: qualityLevelById },
+        byAxis,
+      ),
+    [detail.axes, report.manualItems, scoreGroupById, qualityLevelById, byAxis],
+  );
+
+  /*
+    Cán bộ có mặt trong báo cáo - đối tượng chấm của khối A ở mức cá nhân.
+    Chỉ lấy từ dòng nhiệm vụ thật: dòng tự nhập chỉ có tên gõ tay, không có tài khoản
+    để gắn điểm vào, mà server thì bắt buộc phải là người có nhiệm vụ trong báo
+    cáo.
+  */
+  const reportPeople = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const entry of content.entries) {
+      // `ownerId` có thể là chuỗi hoặc object đã populate, tuỳ endpoint.
+      const raw = entry.row?.ownerId;
+      const id = typeof raw === "string" ? raw : (raw?._id ?? "");
+      if (!id) continue;
+      if (!byId.has(id)) byId.set(id, entry.ownerName);
+    }
+    return [...byId].map(([id, name]) => ({
+      id,
+      name: name || "Không rõ tên",
+    }));
+  }, [content.entries]);
+
+  /*
+    Điểm khối A của BÁO CÁO chỉ tính bộ của đơn vị. Bộ của từng cán bộ là đánh
+    giá cá nhân - cộng cả vào đây thì 30 điểm nhân lên theo số người.
+  */
+  const criteriaScore = useMemo(() => {
+    /*
+      Cột nào ra điểm của khối A là do CÔNG THỨC của mẫu `forCriteria` khai, y
+      như mỗi trục. Mẫu chưa bật công thức thì khối A không góp điểm nào - đúng
+      hơn là tự đoán một cột số bất kỳ rồi cộng nhầm.
+    */
+    const footer = criteriaTemplate.data?.footer;
+    const keys = footer?.enabled ? footer.ratioColumnKeys : [];
+    if (!keys.length) return 0;
+    return (report.criteriaScores ?? [])
+      .filter((row) => row.subjectType === "DEPARTMENT")
+      .reduce(
+        (sum, row) =>
+          sum +
+          keys.reduce((inner: number, key: string) => {
+            const raw = String(row.fieldValues?.[key] ?? "").trim();
+            const value = Number(raw.replace(",", "."));
+            return inner + (raw && Number.isFinite(value) ? value : 0);
+          }, 0),
+        0,
+      );
+  }, [report.criteriaScores, criteriaTemplate.data]);
+
+  const groups = useMemo(() => {
+    if (view === "department") return groupByDepartment(content.entries);
+    if (view === "flat") {
+      return [
+        {
+          key: "flat",
+          label: "",
+          score: null,
+          maxScore: null,
+          // Xem phẳng thì trộn mọi trục, không có công thức nào áp cho cả bảng.
+          footer: null,
+          entries: content.entries,
+        },
+      ];
+    }
+    return groupByAxis(content.entries, content.axisScores);
+  }, [view, content]);
+
+  /*
+    Bấm một dòng: dòng nhiệm vụ mở đúng hộp thoại chi tiết của nhiệm vụ (số liệu,
+    điểm chỉ huy đã chốt, nhật ký theo ngày); dòng tự nhập mở thẳng form sửa vì
+    nó không có nhiệm vụ nào đứng sau để mà xem.
+  */
+  const openEntry = (entry: ReportEntry) => {
+    if (entry.kind === "MANUAL") {
+      const manual = (report.manualItems ?? []).find(
+        (item) => item._id === entry.manualId,
+      );
+      if (!manual) return;
+      setManualEditing(manual);
+      setManualOpen(true);
+      return;
+    }
+    setTaskRow(entry);
+    setTaskOpen(true);
+  };
+
+  /** Nhiệm vụ đang mở, quy về đúng kiểu của màn nhiệm vụ cá nhân. */
+  const taskItem = useMemo(
+    () => (taskRow?.row ? mapPersonalMissionFromApi(taskRow.row) : null),
+    [taskRow],
+  );
+
+  const removeEntry = async (entry: ReportEntry) => {
+    setBusy(true);
+    try {
+      if (entry.kind === "MANUAL" && entry.manualId) {
+        await removeSummaryManualItem(report._id, entry.manualId);
+      } else if (entry.itemId) {
+        await removeSummaryReportItems(report._id, [entry.itemId]);
+      }
+      toast.success("Đã bỏ nhiệm vụ khỏi báo cáo.");
+      await onChanged();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không bỏ được nhiệm vụ."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doSend = async (payload: { recipientId: string; note?: string }) => {
+    setBusy(true);
+    try {
+      await sendSummaryReport(report._id, payload);
+      toast.success("Đã trình báo cáo lên cấp trên.");
+      setSendOpen(false);
+      await onChanged();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không gửi được báo cáo."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doApprove = async () => {
+    setBusy(true);
+    try {
+      await approveSummaryReport(report._id);
+      toast.success("Đã duyệt báo cáo tổng hợp.");
+      await onChanged();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không duyệt được báo cáo."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doReturn = async () => {
+    const reason = returnReason.trim();
+    if (!reason) {
+      toast.error("Lý do trả lại là bắt buộc.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await returnSummaryReport(report._id, reason);
+      toast.success("Đã trả lại báo cáo cho người lập.");
+      setReturnOpen(false);
+      setReturnReason("");
+      await onChanged();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không trả lại được báo cáo."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doDelete = async () => {
+    setBusy(true);
+    try {
+      await deleteSummaryReport(report._id);
+      toast.success(`Đã xoá "${report.title}".`);
+      setDeleteOpen(false);
+      await onDeleted();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không xoá được báo cáo."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * Dựng khối A cho file xuất: danh mục tiêu chí ghép với điểm ĐƠN VỊ.
+   *
+   * Đi từ danh mục chứ không từ `criteriaScores`: bản lưu chỉ có dòng đã chấm,
+   * in mỗi nó thì bản in thiếu tiêu chí và tổng trần điểm không còn ra 30. Tên
+   * và trần điểm ưu tiên bản ĐÃ CHỤP lúc chấm - danh mục sửa về sau không được
+   * làm méo một báo cáo đã trình.
+   *
+   * Thứ tự đè giống hệt màn hình (xem `CriteriaScoreSection`): trung bình đầu
+   * người nạp trước, điểm chỉ huy đã lưu đè lên. Chỉ in bản đã lưu thì báo cáo
+   * chưa bấm Lưu sẽ ra file trống trong khi màn hình đang hiện đủ số - hai thứ
+   * lệch nhau là lỗi nặng hơn cả việc in ra một con số chưa chốt.
+   */
+  const buildCriteriaExport = (
+    fresh: SummaryReportDetail,
+    catalog: Criterion[],
+    template: typeof criteriaTemplate.data,
+  ) => {
+    if (!template) return undefined;
+
+    const average = new Map(
+      (fresh.criteriaAverage ?? []).map((row) => [row.criterionId, row]),
+    );
+    const saved = new Map(
+      (fresh.report.criteriaScores ?? [])
+        .filter((row) => row.subjectType === "DEPARTMENT")
+        .map((row) => [row.criterionId, row]),
+    );
+    const rows: CriteriaExportRow[] = catalog.map((item) => {
+      const id = entityId(item);
+      const match = saved.get(id);
+      const mean = average.get(id);
+      saved.delete(id);
+      return {
+        criterionId: id,
+        criterionName: match?.criterionName || mean?.criterionName || item.name,
+        criterionNote: item.note ?? "",
+        maxScore: match?.maxScore ?? mean?.maxScore ?? item.maxScore ?? 0,
+        fieldValues: match?.fieldValues ?? mean?.fieldValues ?? {},
+        catalogValues: match?.catalogValues ?? {},
+      };
+    });
+    // Tiêu chí đã chấm rồi mới bị gỡ khỏi danh mục: vẫn phải in, điểm đã vào báo cáo.
+    for (const row of saved.values()) {
+      rows.push({
+        criterionId: row.criterionId,
+        criterionName: row.criterionName,
+        criterionNote: "",
+        maxScore: row.maxScore,
+        fieldValues: row.fieldValues,
+        catalogValues: row.catalogValues,
+      });
+    }
+
+    return { template, rows };
+  };
+
+  /**
+   * File xuất ra phải là số của LÚC BẤM, không phải bản đang nằm trong bộ nhớ
+   * đệm: báo cáo có thể vừa bị cấp trên sửa, hoặc mở từ hôm qua chưa nạp lại.
+   * Nạp lại một lượt rồi mới dựng file; khác với bản trên màn hình thì đồng bộ
+   * luôn màn hình, không để người dùng cầm file lệch với thứ họ đang nhìn.
+   */
+  const doExport = async () => {
+    setExporting(true);
+    try {
+      const fresh = await fetchSummaryReport(report._id);
+      await exportSummaryReportToExcel(
+        fresh.report,
+        fresh.axes,
+        buildCriteriaExport(
+          fresh,
+          criteriaCatalog.data ?? [],
+          criteriaTemplate.data,
+        ),
+      );
+      const stale = fresh.report.updatedAt !== report.updatedAt;
+      if (stale) await onChanged();
+      toast.success(
+        stale
+          ? "Đã xuất file Excel theo số liệu mới nhất - báo cáo trên màn hình cũng vừa được nạp lại."
+          : "Đã xuất file Excel.",
+      );
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không xuất được file."));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="space-y-3 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-display text-xl font-semibold tracking-tight">
+                  {report.title}
+                </h2>
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "font-normal",
+                    summaryReportStatusBadgeClass(report.status),
+                  )}
+                >
+                  {SUMMARY_REPORT_STATUS_LABEL[report.status]}
+                </Badge>
+                {loading ? (
+                  <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                ) : null}
+              </div>
+              {/* Tên đơn vị là danh tính của cả bản báo cáo - để nó to và đậm
+                  hơn hẳn dòng kỳ/ngày đứng cạnh. Không nhắc lại người lập ở đây:
+                  tài khoản thường mang chính tên đơn vị nên hai giá trị trùng
+                  nhau, đọc thành một thứ bị lặp. */}
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <Badge
+                  variant="secondary"
+                  className={cn("text-sm font-bold", missionTone.neutral.soft)}
+                >
+                  {report.scopeName || "Chưa đặt phạm vi"}
+                </Badge>
+                <span>
+                  Kỳ {periodLabel(report.fromDate, report.toDate)} · Tạo{" "}
+                  {formatYmd(serverYmd(report.createdAt))}
+                </span>
+              </div>
+              {/* Tên đơn vị là thứ người đọc tìm trước tiên ở hai dòng này -
+                  "ai đang giữ bản trình" và "ai đã duyệt" - nên để nó đậm,
+                  phần thời gian lùi lại làm nền. */}
+              {report.status === "SENT" && report.sentToName ? (
+                <p className={cn("text-xs", missionTone.warning.text)}>
+                  Đã trình{" "}
+                  <span className="font-semibold">{report.sentToName}</span>
+                  {report.sentAt
+                    ? ` lúc ${formatServerHm(report.sentAt)} ${formatYmd(serverYmd(report.sentAt))}`
+                    : ""}
+                  {" · đang chờ duyệt"}
+                </p>
+              ) : null}
+              {report.status === "APPROVED" ? (
+                <p className={cn("text-xs", missionTone.success.text)}>
+                  <span className="font-semibold">
+                    {report.decidedByName || "Cấp trên"}
+                  </span>{" "}
+                  đã duyệt
+                  {report.decidedAt
+                    ? ` lúc ${formatServerHm(report.decidedAt)} ${formatYmd(serverYmd(report.decidedAt))}`
+                    : ""}
+                </p>
+              ) : null}
+              {/* Duyệt là hết đời bản của cấp dưới. Nói thẳng bước tiếp theo ở
+                  đây, không thì cấp trên ngồi tìm nút "gửi lên trên" không có. */}
+              {reviewing && report.status === "APPROVED" ? (
+                <p className="text-xs text-muted-foreground">
+                  Muốn báo cáo lên cấp trên thì{" "}
+                  <Link
+                    href="/mission/promote"
+                    className="font-medium underline underline-offset-2"
+                  >
+                    lập bản tổng hợp của cấp mình
+                  </Link>{" "}
+                  - các nhiệm vụ trong bản này vẫn chọn lại được.
+                </p>
+              ) : null}
+            </div>
+
+            {/*
+              Một nút chính cho việc chính, phần còn lại vào menu "...". Cấp
+              trên vào đây để QUYẾT, nên "Duyệt" đứng ngoài; xuất file, sửa nội
+              dung, xoá là việc phụ - bày ngang hàng thì nút nào cũng như nút
+              nào, mắt không biết bấm đâu.
+            */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Cấp trên đang giữ bản trình: duyệt hoặc trả lại. Người lập:
+                  trình bản của mình lên. Duyệt xong là hết đời bản đó - cấp
+                  trên muốn báo cáo tiếp thì lập bản của cấp mình. */}
+              {decidable ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-rose-300 bg-background text-rose-600 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-700 dark:border-rose-900 dark:text-rose-400"
+                    disabled={busy}
+                    onClick={() => setReturnOpen(true)}
+                  >
+                    <Undo2 className="size-4" />
+                    Trả lại
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void doApprove()}
+                  >
+                    <CircleCheck className="size-4" />
+                    Duyệt báo cáo
+                  </Button>
+                </>
+              ) : reviewing ? null : editable ? (
+                <Button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setSendOpen(true)}
+                >
+                  <Send className="size-4" />
+                  {report.status === "RETURNED"
+                    ? "Trình lại cấp trên"
+                    : "Gửi lên cấp trên"}
+                </Button>
+              ) : null}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-9"
+                    aria-label="Thao tác khác"
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {/* Cấp trên sửa bản trình phải bật hẳn chế độ sửa: mặc định
+                      là đọc để quyết, không phải để nghịch vào bản của cấp
+                      dưới. */}
+                  {reviewing && canEditSummaryReport(report.status, role) ? (
+                    <DropdownMenuItem
+                      onSelect={() => setReviewEdit((prev) => !prev)}
+                    >
+                      <PencilLine className="size-4" />
+                      {reviewEdit ? "Xong, thôi sửa" : "Sửa nội dung"}
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem
+                    onSelect={() => void doExport()}
+                    disabled={exporting}
+                  >
+                    <Download className="size-4" />
+                    {exporting ? "Đang xuất..." : "Xuất Excel"}
+                  </DropdownMenuItem>
+                  {!reviewing && editable ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() => setDeleteOpen(true)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="size-4" />
+                        Xoá báo cáo
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
+          {/* Đang sửa bản của cấp dưới thì phải nhắc liên tục - sửa xong bấm
+              "Xong" để về lại chế độ đọc. */}
+          {reviewing && reviewEdit ? (
+            <div
+              className={cn(
+                "flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2.5 text-xs",
+                missionTone.warning.soft,
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <PencilLine className="size-4 shrink-0" />
+                Đang sửa bản trình của {report.ownerName || "cấp dưới"} - thêm,
+                bớt nhiệm vụ đều ghi vào nhật ký báo cáo.
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="bg-background"
+                onClick={() => setReviewEdit(false)}
+              >
+                Xong
+              </Button>
+            </div>
+          ) : null}
+
+          {/* Bị trả lại thì lý do phải nằm ngay đầu báo cáo, không bắt người
+              lập đi lục nhật ký mới biết phải sửa gì. */}
+          {report.status === "RETURNED" && report.returnReason ? (
+            <div
+              className={cn(
+                "flex items-start gap-2 rounded-lg border p-2.5 text-xs",
+                missionTone.danger.soft,
+              )}
+            >
+              <Undo2 className="mt-0.5 size-4 shrink-0" />
+              <span>
+                <span className="font-medium">
+                  {report.decidedByName || "Cấp trên"} trả lại
+                  {report.decidedAt
+                    ? ` lúc ${formatServerHm(report.decidedAt)} ${formatYmd(serverYmd(report.decidedAt))}`
+                    : ""}
+                  :{" "}
+                </span>
+                {report.returnReason}
+              </span>
+            </div>
+          ) : null}
+
+          {reviewing && report.sentNote ? (
+            <div
+              className={cn(
+                "flex items-start gap-2 rounded-lg border p-2.5 text-xs",
+                missionTone.info.soft,
+              )}
+            >
+              <Send className="mt-0.5 size-4 shrink-0" />
+              <span>
+                <span>
+                  Lời trình của{" "}
+                  <span className="font-semibold">
+                    {report.ownerName || "cấp dưới"}
+                  </span>
+                  :{" "}
+                </span>
+                {report.sentNote}
+              </span>
+            </div>
+          ) : null}
+
+          {detail.missingCount > 0 ? (
+            <div
+              className={cn(
+                "flex items-start gap-2 rounded-lg border p-2.5 text-xs",
+                missionTone.warning.soft,
+              )}
+            >
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+              {detail.missingCount} nhiệm vụ đã lưu trong báo cáo nhưng không
+              còn trong hệ thống - có thể đã bị xoá sau khi đưa vào đây.
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Nhiệm vụ trong báo cáo"
+          value={String(content.stats.entryCount)}
+          icon={FileText}
+        />
+        <StatCard
+          label="Nhiệm vụ cá nhân / Tự nhập"
+          value={`${content.stats.missionCount} / ${content.stats.manualCount}`}
+          icon={CircleCheck}
+          tone={missionTone.success}
+        />
+        <StatCard
+          label="Tổng điểm đã chốt"
+          value={formatScoreNumber(content.stats.totalScore + criteriaScore)}
+          hint={
+            criteriaScore
+              ? `Gồm ${formatScoreNumber(criteriaScore)} điểm khối A`
+              : content.stats.manualScore
+                ? `Gồm ${formatScoreNumber(content.stats.manualScore)} điểm việc tự nhập`
+                : `Điểm quy đổi của ${content.stats.axisCount} trục`
+          }
+          icon={Trophy}
+          tone={missionTone.warning}
+        />
+        <StatCard
+          label="Đơn vị góp mặt"
+          value={String(content.stats.departmentCount)}
+          icon={Building2}
+          tone={missionTone.neutral}
+        />
+      </div>
+
+      {/* Khối A đứng TRƯỚC bảng nhiệm vụ, đúng thứ tự bản in: A rồi mới tới B. */}
+      <CriteriaScoreSection
+        report={report}
+        people={reportPeople}
+        selfScores={detail.selfCriteriaScores ?? []}
+        averageScores={detail.criteriaAverage ?? []}
+        averageBasis={
+          detail.criteriaAverageBasis ?? {
+            peopleWithSheet: 0,
+            peopleTotal: reportPeople.length,
+          }
+        }
+        editable={canEditNow}
+        onSaved={onChanged}
+      />
+
+      <Card>
+        <CardContent className="space-y-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm font-semibold">Nhiệm vụ trong báo cáo</p>
+              <SegmentedTabs
+                items={VIEW_TABS}
+                value={view}
+                onChange={setView}
+                ariaLabel="Cách xem nhiệm vụ trong báo cáo"
+              />
+            </div>
+            {canEditNow ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="bg-background"
+                  disabled={busy}
+                  onClick={() => setPickOpen(true)}
+                >
+                  <CircleCheck className="size-4" />
+                  Chọn nhiệm vụ hoàn thành
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="bg-background"
+                  disabled={busy}
+                  onClick={() => {
+                    setManualEditing(null);
+                    setManualOpen(true);
+                  }}
+                >
+                  <Plus className="size-4" />
+                  Thêm nhiệm vụ tự nhập
+                </Button>
+              </div>
+            ) : null}
+          </div>
+
+          <SummaryEntriesTable
+            groups={groups}
+            grouped={view !== "flat"}
+            /* Xem theo trục thì tiêu đề nhóm đã nói trục rồi, bỏ cột đi cho
+               gọn; hai cách xem kia không có gì nói thay nên phải giữ. */
+            showAxis={view !== "axis"}
+            editable={canEditNow}
+            onOpen={openEntry}
+            busy={busy}
+            onRemove={(entry) => void removeEntry(entry)}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="space-y-3 p-4">
+          <p className="text-sm font-semibold">Nhật ký báo cáo</p>
+          {report.logs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Chưa có hoạt động nào.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {[...report.logs]
+                .slice()
+                .reverse()
+                .map((log, index) => (
+                  <LogRow
+                    key={`${log.at}-${index}`}
+                    at={log.at}
+                    message={log.message}
+                    byName={log.byName}
+                    tone={
+                      log.type === "SEND"
+                        ? "border-emerald-500"
+                        : log.type === "RECALL"
+                          ? "border-amber-500"
+                          : "border-sky-500"
+                    }
+                  />
+                ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <PickCompletedDialog
+        open={pickOpen}
+        onOpenChange={setPickOpen}
+        reportId={report._id}
+        onAdded={onChanged}
+      />
+
+      <ManualEntryDialog
+        open={manualOpen}
+        onOpenChange={setManualOpen}
+        item={manualEditing}
+        formKey={manualEditing?._id ?? "new"}
+        onSubmit={async (input) => {
+          if (manualEditing) {
+            await updateSummaryManualItem(report._id, manualEditing._id, input);
+          } else {
+            await addSummaryManualItem(report._id, input);
+          }
+          await onChanged();
+        }}
+      />
+
+      {/* Chi tiết một nhiệm vụ ngay trong báo cáo - chỉ đọc, có đường sang
+          form sửa nếu người xem còn quyền sửa báo cáo. */}
+      <ProgressUpdateDialog
+        open={taskOpen}
+        item={taskItem}
+        template={taskRow?.template ?? null}
+        readOnly
+        onOpenChange={setTaskOpen}
+        onSaved={onChanged}
+        onEdit={
+          canEditNow
+            ? () => {
+                setTaskOpen(false);
+                setTaskEditOpen(true);
+              }
+            : undefined
+        }
+      />
+
+      <ReviewerEditDialog
+        open={taskEditOpen}
+        item={taskItem}
+        onOpenChange={setTaskEditOpen}
+        /* Sửa xong nạp lại báo cáo rồi mở lại chi tiết của đúng nhiệm vụ đó. */
+        onSaved={async () => {
+          await onChanged();
+          setTaskOpen(true);
+        }}
+      />
+
+      <SendRecipientDialog
+        open={sendOpen}
+        onOpenChange={setSendOpen}
+        title="Trình báo cáo tổng hợp"
+        description="Chọn cấp trên nhận báo cáo. Trình xong là khoá - sai thì chờ cấp trên trả lại."
+        confirmLabel="Gửi lên cấp trên"
+        submitting={busy}
+        onConfirm={(payload) =>
+          doSend({ recipientId: payload.recipientId, note: payload.note })
+        }
+      />
+
+      <Dialog
+        open={returnOpen}
+        onOpenChange={(open) => {
+          if (!busy) setReturnOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Trả lại báo cáo</DialogTitle>
+            <DialogDescription>
+              Báo cáo quay về chỗ {report.ownerName || "người lập"} ở trạng thái
+              &quot;Bị trả lại&quot;. Lý do hiện ngay đầu báo cáo và trong nhật
+              ký.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="summary-return-reason">
+              Lý do trả lại <span className="text-destructive">*</span>
+            </Label>
+            <Textarea
+              id="summary-return-reason"
+              className="min-h-[88px]"
+              placeholder="Thiếu nhiệm vụ nào, sai số ở đâu..."
+              value={returnReason}
+              maxLength={1000}
+              disabled={busy}
+              onChange={(event) => setReturnReason(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-background"
+              onClick={() => setReturnOpen(false)}
+              disabled={busy}
+            >
+              Huỷ
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void doReturn()}
+              disabled={busy || !returnReason.trim()}
+            >
+              <Undo2 className="size-4" />
+              {busy ? "Đang gửi..." : "Trả lại"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(open) => !busy && setDeleteOpen(open)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Xoá báo cáo tổng hợp</DialogTitle>
+            <DialogDescription>
+              Xoá &quot;{report.title}&quot;? Các nhiệm vụ bên trong không bị
+              ảnh hưởng, chúng quay lại kho để chọn vào báo cáo khác.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-background"
+              onClick={() => setDeleteOpen(false)}
+              disabled={busy}
+            >
+              Huỷ
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void doDelete()}
+              disabled={busy}
+            >
+              {busy ? "Đang xoá..." : "Xoá"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

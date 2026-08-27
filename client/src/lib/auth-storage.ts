@@ -1,5 +1,5 @@
-const ACCESS_TOKEN_KEY = "kpi_access_token";
-const REFRESH_TOKEN_KEY = "kpi_refresh_token";
+const ACCESS_TOKEN_KEY = "mission_access_token";
+const REFRESH_TOKEN_KEY = "mission_refresh_token";
 
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;

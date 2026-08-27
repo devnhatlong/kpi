@@ -57,8 +57,9 @@ export function LevelsView() {
     useListPagination();
 
   const listParams = { page, limit, q: debouncedQuery };
-  const { data, isLoading, mutate } = useSWR(departmentKeys.levelsList(listParams), () =>
-    fetchDepartmentLevelsPage(listParams),
+  const { data, isLoading, mutate } = useSWR(
+    departmentKeys.levelsList(listParams),
+    () => fetchDepartmentLevelsPage(listParams),
   );
 
   const levels = data?.data ?? [];
@@ -94,7 +95,9 @@ export function LevelsView() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">Cấp đơn vị</h1>
+          <h1 className="font-display text-2xl font-semibold tracking-tight">
+            Cấp đơn vị
+          </h1>
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
@@ -133,21 +136,29 @@ export function LevelsView() {
                   <TableHead className="w-[120px]">Mã</TableHead>
                   <TableHead>Tên cấp</TableHead>
                   <TableHead className="w-[100px]">Thứ tự</TableHead>
-                  <TableHead className="w-[150px]">Nhận KPI</TableHead>
+                  <TableHead className="w-[150px]">Nhận nhiệm vụ</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
-                  <TableHead className="w-[100px] text-right">Thao tác</TableHead>
+                  <TableHead className="w-[100px] text-right">
+                    Thao tác
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={7}
+                      className="h-24 text-center text-muted-foreground"
+                    >
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : levels.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={7}
+                      className="h-24 text-center text-muted-foreground"
+                    >
                       <div className="inline-flex flex-col items-center gap-2">
                         <Layers className="h-8 w-8 opacity-40" />
                         <span>Chưa có cấp đơn vị nào.</span>
@@ -161,16 +172,20 @@ export function LevelsView() {
                         {rowIndex(meta.page, meta.limit, index)}
                       </TableCell>
                       <TableCell>
-                        <Badge className={`font-mono ${levelBadgeClass(level.rank)}`}>
+                        <Badge
+                          className={`font-mono ${levelBadgeClass(level.rank)}`}
+                        >
                           {level.code}
                         </Badge>
                       </TableCell>
-                      <TableCell className="font-medium">{level.name}</TableCell>
+                      <TableCell className="font-medium">
+                        {level.name}
+                      </TableCell>
                       <TableCell>{level.rank}</TableCell>
                       <TableCell>
-                        {level.isKpiUnit ? (
+                        {level.isMissionUnit ? (
                           <Badge variant="outline" className={activeBadgeClass}>
-                            Đơn vị nhận KPI
+                            Đơn vị nhận nhiệm vụ
                           </Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">
@@ -184,7 +199,10 @@ export function LevelsView() {
                             Hoạt động
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className={inactiveBadgeClass}>
+                          <Badge
+                            variant="outline"
+                            className={inactiveBadgeClass}
+                          >
                             Ngừng
                           </Badge>
                         )}
@@ -235,7 +253,10 @@ export function LevelsView() {
         onSuccess={() => mutate()}
       />
 
-      <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(open) => !open && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Xoá cấp đơn vị?</AlertDialogTitle>

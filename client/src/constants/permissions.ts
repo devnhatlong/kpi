@@ -14,7 +14,7 @@ export const PERM = {
 
   ROLE_ASSIGN: "role.assign",
 
-  KPI_MANAGE: "kpi.manage",
+  MISSION_MANAGE: "mission.manage",
 
   TASK_ASSIGN: "task.assign",
   TASK_VIEW: "task.view",

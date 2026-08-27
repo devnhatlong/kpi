@@ -5,7 +5,7 @@ export class UpdateProfileDto {
   @StringNotRequired('Họ và tên', { example: 'Nguyễn An' })
   fullName?: string;
 
-  @StringNotRequired('Email', { example: 'an.nguyen@kpi.vn' })
+  @StringNotRequired('Email', { example: 'an.nguyen@mission.vn' })
   email?: string;
 
   @StringNotRequired('Số điện thoại', { example: '0987654321' })

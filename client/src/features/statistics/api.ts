@@ -124,7 +124,7 @@ export async function fetchStatistics(params: StatisticsQuery = {}) {
   if (params.axisId) query.axisId = params.axisId;
 
   return unwrapData(
-    api.get<ApiResponse<Statistics>>("/personal-kpi/statistics", {
+    api.get<ApiResponse<Statistics>>("/personal-mission/statistics", {
       params: query,
     }),
   );

@@ -126,7 +126,7 @@ export function contentMatchesExtension(
     // Java serialization (STREAM_MAGIC + STREAM_VERSION), nên check này chỉ
     // khẳng định "đúng là luồng Java serialize", không khẳng định được đây là
     // bm3 hợp lệ - đủ để chặn đổi đuôi nhầm, không chặn được giả mạo cố ý.
-    // KPI chỉ cất và trả lại nguyên byte, không deserialize, nên không dính
+    // nhiệm vụ chỉ cất và trả lại nguyên byte, không deserialize, nên không dính
     // rủi ro thực thi mã của Java serialization.
     case '.bm3':
       return startsWith(buffer, [0xac, 0xed, 0x00, 0x05]);
