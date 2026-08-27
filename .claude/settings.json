@@ -197,7 +197,10 @@
       "Bash(node _gamut-tmp.js)",
       "Bash(rm -f _gamut-tmp.js)",
       "Bash(rg -no 'bg-\\(blue|indigo|sky|slate|zinc|gray|neutral|violet\\)-\\\\d+\\(/\\\\d+\\)?|from-\\\\w+-\\\\d+|to-\\\\w+-\\\\d+|bg-gradient[\\\\w-]*' personal-task-drawer.tsx)",
-      "Bash(rg -o '\\\\-\\\\-background:[^;]+;' .next/static/css/*.css)"
+      "Bash(rg -o '\\\\-\\\\-background:[^;]+;' .next/static/css/*.css)",
+      "Bash(rg -in \"im lặng|silent|silence\" client/src server/src --glob '*.{ts,tsx}')",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-statcard.js\")",
+      "Bash(grep -o 'bg-emerald-500\\\\\\\\\\\\/[^ {,:]*' .next/static/chunks/0ic_gov3cyhf-.css)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

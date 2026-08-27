@@ -511,9 +511,9 @@ export function DayTaskTable({
                             "font-normal",
                             missionTone.warning.soft,
                           )}
-                          title="Lâu rồi chưa cập nhật tiến độ"
+                          title="Số ngày liên tiếp không ai cập nhật tiến độ việc này"
                         >
-                          Im lặng {row.silence} ngày
+                          {row.silence} ngày chưa cập nhật
                         </Badge>
                       ) : null}
                     </div>

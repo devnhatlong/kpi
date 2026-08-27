@@ -126,7 +126,7 @@ const TABS: Array<{ value: TabValue; label: string }> = [
   { value: "BACKLOG", label: "Đang tồn đọng" },
   { value: "OVERDUE", label: "Trễ hạn" },
   { value: "DUE_SOON", label: "Sắp đến hạn" },
-  { value: "SILENT", label: "Im lặng" },
+  { value: "SILENT", label: "Chưa cập nhật" },
   { value: "AWAITING", label: "Chờ xác nhận" },
   { value: "DONE", label: "Hoàn thành" },
 ];
@@ -256,20 +256,42 @@ type StatCardProps = {
   tone?: { text: string; icon: string };
 };
 
+/**
+ * Cùng một khuôn với thẻ số ở màn Nhiệm vụ cá nhân - hai màn nằm trong cùng
+ * một luồng việc, thẻ số lệch kiểu là mắt phải làm quen lại từ đầu.
+ *
+ * Bỏ được mẹo chèn dòng chú thích rỗng {hint ?? " "} vốn dùng để ép các thẻ cao
+ * bằng nhau: CardContent giờ flex-1 nên tự giãn hết chiều cao thẻ, còn
+ * items-center căn giữa phần chữ - thẻ có chú thích hay không vẫn thẳng hàng.
+ */
 function StatCard({ label, value, hint, icon: Icon, tone }: StatCardProps) {
   return (
-    <Card className="shadow-sm">
-      <CardContent className="space-y-1.5 py-4">
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <div className="flex items-center gap-2">
-          <Icon className={cn("size-5 shrink-0", tone?.text)} />
-          <span
-            className={cn("text-2xl font-semibold tabular-nums", tone?.text)}
+    <Card className="flex flex-col shadow-sm">
+      <CardContent className="flex flex-1 items-center gap-4 p-5">
+        <span
+          className={cn(
+            "flex size-12 shrink-0 items-center justify-center rounded-xl",
+            tone?.icon ?? missionTone.neutral.icon,
+          )}
+        >
+          <Icon className="size-5" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <p
+            className={cn(
+              "font-display text-3xl font-bold leading-tight tabular-nums",
+              tone?.text,
+            )}
           >
             {value}
-          </span>
+          </p>
+          {hint ? (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {hint}
+            </p>
+          ) : null}
         </div>
-        <p className="text-xs text-muted-foreground">{hint ?? " "}</p>
       </CardContent>
     </Card>
   );
@@ -568,7 +590,7 @@ function TrackingTable({
                       variant="secondary"
                       className={cn("font-normal", missionTone.warning.soft)}
                     >
-                      Im lặng {row.silence} ngày
+                      {row.silence} ngày chưa cập nhật
                     </Badge>
                   ) : null}
                 </div>
@@ -916,7 +938,7 @@ export function PersonalMissionTrackingView() {
         <StatCard
           label="Trễ hạn"
           value={String(counts.OVERDUE)}
-          hint={`Im lặng ≥ ${SILENCE_ALERT_DAYS} ngày: ${counts.SILENT}`}
+          hint={`Chưa cập nhật ≥ ${SILENCE_ALERT_DAYS} ngày: ${counts.SILENT}`}
           icon={TriangleAlert}
           tone={missionTone.danger}
         />
@@ -1111,7 +1133,7 @@ export function PersonalMissionTrackingView() {
                             missionTone.warning.soft,
                           )}
                         >
-                          Im lặng {groupSilent}
+                          Chưa cập nhật {groupSilent}
                         </Badge>
                       ) : null}
                       {groupDone > 0 ? (

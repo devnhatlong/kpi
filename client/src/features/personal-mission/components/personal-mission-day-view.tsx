@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   Check,
   ChevronDown,
+  CircleCheck,
   CircleDot,
   ClipboardList,
   MessageSquareWarning,
@@ -161,25 +162,38 @@ type StatCardProps = {
   tone?: { text: string; icon: string };
 };
 
+/**
+ * Icon đứng riêng một bên, chữ dồn hết sang bên kia.
+ *
+ * Kiểu cũ xếp dọc (nhãn trên, icon + số dưới) làm con số - thứ người ta liếc
+ * vào tìm - bị đẩy xuống đáy thẻ và chỉ to bằng dòng chữ thường. Tách thành hai
+ * cột thì số nằm giữa thẻ, phóng lên được cỡ lớn mà thẻ không cao thêm.
+ *
+ * Màu do hộp icon và con số mang, còn nhãn để xám: nhãn tô màu theo tông cảnh
+ * báo thì chữ nhỏ trên nền sáng tụt tương phản, mà cũng chẳng thêm thông tin gì.
+ */
 function StatCard({ label, value, icon: Icon, tone }: StatCardProps) {
   return (
-    <Card className="shadow-sm">
-      <CardContent className="space-y-2 py-4">
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <div className="flex items-center gap-2">
-          <span
+    <Card className="flex flex-col shadow-sm">
+      <CardContent className="flex flex-1 items-center gap-4 p-5">
+        <span
+          className={cn(
+            "flex size-12 shrink-0 items-center justify-center rounded-xl",
+            tone?.icon ?? missionTone.neutral.icon,
+          )}
+        >
+          <Icon className="size-5" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <p
             className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-lg",
-              tone?.icon ?? missionTone.neutral.icon,
+              "font-display text-3xl font-bold leading-tight tabular-nums",
+              tone?.text,
             )}
           >
-            <Icon className="size-4" />
-          </span>
-          <span
-            className={cn("text-2xl font-semibold tabular-nums", tone?.text)}
-          >
             {value}
-          </span>
+          </p>
         </div>
       </CardContent>
     </Card>
@@ -321,8 +335,8 @@ export function PersonalMissionDayView({
           }),
           /*
             Chưa cập nhật lần nào thì tính từ lúc đăng ký nhiệm vụ.
-            Trục không có cột tiến độ thì không có gì để "im lặng": cán bộ
-            không cập nhật tiến độ được, kêu im lặng là kêu oan.
+            Trục không có cột tiến độ thì không đếm ngày: cán bộ có muốn cập
+            nhật cũng không có ô nào để nhập, gắn nhãn "chưa cập nhật" là oan.
           */
           silence: summary.tracksProgress
             ? silenceDays(item.lastProgressAt ?? item.createdAt, todayYmd)
@@ -843,7 +857,12 @@ export function PersonalMissionDayView({
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {/*
+        Thứ tự đọc: tổng số trước, rồi hai trạng thái tiến triển (đang chạy /
+        đã xong), cuối cùng hai thứ cần để mắt (trễ hạn / chưa cập nhật). Xen
+        cảnh báo vào giữa là mắt phải nhảy qua nhảy lại giữa hai nhóm ý.
+      */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
           label="Tổng nhiệm vụ"
           value={counts.ALL}
@@ -856,13 +875,19 @@ export function PersonalMissionDayView({
           tone={missionTone.info}
         />
         <StatCard
+          label="Hoàn thành"
+          value={counts.DONE}
+          icon={CircleCheck}
+          tone={missionTone.success}
+        />
+        <StatCard
           label="Trễ hạn"
           value={counts.overdue}
           icon={TriangleAlert}
           tone={missionTone.danger}
         />
         <StatCard
-          label={`Im lặng ≥ ${SILENCE_ALERT_DAYS} ngày`}
+          label={`Chưa cập nhật ≥ ${SILENCE_ALERT_DAYS} ngày`}
           value={counts.silent}
           icon={MessageSquareWarning}
           tone={missionTone.warning}

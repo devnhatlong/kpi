@@ -739,8 +739,14 @@ export function PersonalTaskDrawer({
                   {/* PHẦN A - một bảng duy nhất, nên mục ở đây cũng chính là nó. */}
                   {showCriteria ? (
                     <div className="space-y-1">
-                      <p className="flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        <span className="grid size-4 place-items-center rounded bg-emerald-500/15 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                      {/*
+                        Huy hiệu nền ĐẶC, nhãn ăn theo màu của phần. Kiểu cũ dùng
+                        nền pha 15% và nhãn xám: hai phần A và B trông giống hệt
+                        nhau, chữ cái trong huy hiệu là thứ duy nhất phân biệt.
+                        Tô màu cả nhãn thì liếc một cái là biết đang ở phần nào.
+                      */}
+                      <p className="flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                        <span className="grid size-4.5 place-items-center rounded bg-emerald-600 text-[10px] font-bold text-white">
                           A
                         </span>
                         Phần tiêu chí chung
@@ -749,14 +755,21 @@ export function PersonalTaskDrawer({
                         type="button"
                         onClick={() => setAxisTab(CRITERIA_TAB)}
                         className={cn(
-                          "flex w-full cursor-pointer items-center gap-2 rounded-lg border-l-2 px-2.5 py-2 text-left transition-colors",
+                          "flex w-full cursor-pointer items-center gap-2 rounded-lg border-l-4 px-2.5 py-2 text-left transition-colors",
                           activeTab === CRITERIA_TAB
-                            ? "border-l-emerald-500 bg-emerald-500/5"
+                            ? "border-l-emerald-600 bg-emerald-500/12"
                             : "border-l-transparent hover:bg-accent/50",
                         )}
                       >
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">
+                          <span
+                            className={cn(
+                              "block truncate text-sm",
+                              activeTab === CRITERIA_TAB
+                                ? "font-semibold text-emerald-800 dark:text-emerald-300"
+                                : "font-medium",
+                            )}
+                          >
                             Tiêu chí chung
                           </span>
                           <span className="block truncate text-xs text-muted-foreground">
@@ -784,8 +797,8 @@ export function PersonalTaskDrawer({
 
                   {/* PHẦN B - bọc các trục, đúng thứ tự bản in. */}
                   {showCriteria && libraryGroups.length ? (
-                    <p className="flex items-center gap-1.5 px-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      <span className="grid size-4 place-items-center rounded bg-primary/15 text-[10px] font-bold text-primary">
+                    <p className="flex items-center gap-1.5 px-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-primary">
+                      <span className="grid size-4.5 place-items-center rounded bg-primary text-[10px] font-bold text-primary-foreground">
                         B
                       </span>
                       Nhiệm vụ công tác
@@ -968,18 +981,27 @@ export function PersonalTaskDrawer({
                             onClick={() => setAxisTab(block.value)}
                             className={cn(
                               "relative cursor-pointer rounded-lg border px-3 pb-2 pt-4 text-left transition-colors",
+                              /*
+                                Thẻ đang mở phải nhìn ra ngay từ xa: nền 5% màu
+                                trước đây gần như bằng nền trắng, phải soi mới
+                                thấy viền đổi. Nay cộng ba tín hiệu chồng lên
+                                nhau - nền 10%, viền đậm gấp đôi, và vòng ring -
+                                nên nó nổi bật kể cả khi nhìn lướt.
+                              */
                               active
-                                ? "border-primary bg-primary/5"
-                                : "hover:border-primary/40 hover:bg-accent/40",
+                                ? "border-primary bg-primary/10 shadow-sm ring-2 ring-primary/25"
+                                : block.filled
+                                  ? "border-emerald-500/45 bg-emerald-500/[0.07] hover:border-emerald-500/70 hover:bg-emerald-500/10"
+                                  : "hover:border-primary/40 hover:bg-accent/40",
                             )}
                           >
                             <span
                               className={cn(
-                                "absolute right-2 top-1 text-[10px] font-medium",
+                                "absolute right-2 top-1 text-[10px] font-semibold",
                                 active
                                   ? "text-primary"
                                   : block.filled
-                                    ? "text-emerald-600 dark:text-emerald-400"
+                                    ? "text-emerald-700 dark:text-emerald-400"
                                     : "text-muted-foreground/70",
                               )}
                             >
@@ -989,7 +1011,14 @@ export function PersonalTaskDrawer({
                                   ? "Đã nhập"
                                   : "Chưa nhập"}
                             </span>
-                            <span className="block truncate text-sm font-medium">
+                            <span
+                              className={cn(
+                                "block truncate text-sm",
+                                active
+                                  ? "font-semibold text-primary"
+                                  : "font-medium",
+                              )}
+                            >
                               {block.tab}
                             </span>
                           </button>
