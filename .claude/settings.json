@@ -252,7 +252,12 @@
       "Bash(rm -f smoke-aggregate.tmp.js)",
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/fix-missing-field.js\")",
       "Bash(grep -n 'ifNull: \\\\['\\\\''$deadlineDate'\\\\''\\\\|ifNull: \\\\['\\\\''$lastTouchedDate'\\\\''' src/modules/personal-mission/personal-mission.service.ts)",
-      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/move-officer-column.js\")"
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/move-officer-column.js\")",
+      "Bash(curl -s -o /dev/null -w \"8080 /api/v1: %{http_code}\\\\n\" --max-time 4 http://localhost:8080/api/v1)",
+      "Bash(curl -s -o /dev/null -w \"auth/logout: %{http_code}\\\\n\" --max-time 5 -X POST http://localhost:8080/api/v1/auth/logout)",
+      "Bash(curl -s --max-time 5 http://localhost:8080/api/v1/auth/me)",
+      "Bash(curl -s -i --max-time 5 -X OPTIONS http://localhost:8080/api/v1/auth/logout -H \"Origin: http://localhost:3000\" -H \"Access-Control-Request-Method: POST\" -H \"Access-Control-Request-Headers: content-type\")",
+      "Bash(curl -s -i --max-time 6 -X POST http://localhost:8080/api/v1/auth/logout -H \"Origin: http://localhost:3000\" -H \"Content-Type: application/json\" -d '{\"refreshToken\":\"khong-hop-le\"}')"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

@@ -384,6 +384,10 @@ export class PersonalMissionService implements OnModuleInit {
         .limit(limit)
         .populate('axisId', 'code name description')
         .populate('workContentId', 'code name description note')
+        // Cột "Cấp trên theo dõi" đọc tên người đang giữ nhiệm vụ, nên phải
+        // populate - thiếu thì client chỉ nhận được id trần và cột nào cũng
+        // hiện dấu gạch, kể cả nhiệm vụ đã gửi lên và đang chờ duyệt.
+        .populate('currentRecipientId', 'fullName username')
         .populate('lastDecidedById', 'fullName username'),
       this.itemModel.countDocuments(filter),
     ]);
@@ -2447,6 +2451,7 @@ export class PersonalMissionService implements OnModuleInit {
       .sort({ axisId: 1, workContentId: 1, createdAt: 1 })
       .populate('axisId', 'code name description')
       .populate('workContentId', 'code name description note')
+      .populate('currentRecipientId', 'fullName username')
       .populate('lastDecidedById', 'fullName username');
 
     /*

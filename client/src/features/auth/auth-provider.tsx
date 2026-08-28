@@ -10,7 +10,11 @@ import {
   type ReactNode,
 } from "react";
 
-import { fetchCurrentUser, loginRequest, logoutRequest } from "@/features/auth/api";
+import {
+  fetchCurrentUser,
+  loginRequest,
+  logoutRequest,
+} from "@/features/auth/api";
 import type { AuthStatus, AuthUser } from "@/features/auth/types";
 import { getAccessToken } from "@/lib/auth-storage";
 import { getApiErrorMessage } from "@/lib/api-client";
@@ -63,8 +67,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await logoutRequest();
     } catch (error) {
-      // Local tokens đã clear trong logoutRequest; nuốt lỗi mạng
-      console.error(getApiErrorMessage(error, "Đăng xuất thất bại."));
+      /*
+        Mất mạng hay server đang tắt thì vẫn coi là đăng xuất xong: token đã bị
+        xoá trong `logoutRequest`, và `finally` bên dưới dọn nốt phiên trên máy.
+        Phần chưa làm được chỉ là báo cho server thu hồi refresh token.
+
+        Dùng `console.warn` chứ KHÔNG dùng `console.error`: lớp phủ lỗi của
+        Next bắt mọi `console.error` và bung ra một hộp đỏ kín màn hình, khiến
+        một tình huống đã xử lý gọn trông như ứng dụng vừa sập.
+      */
+      console.warn(
+        `Không báo được cho server khi đăng xuất (${getApiErrorMessage(
+          error,
+          "lỗi mạng",
+        )}). Phiên trên máy này đã được xoá.`,
+      );
     } finally {
       setUser(null);
       setStatus("unauthenticated");
