@@ -53,7 +53,7 @@ export function DynamicColumnCell({
   if (column.autoValue) {
     return (
       <span className="text-sm text-muted-foreground tabular-nums">
-        {value || "—"}
+        {value || "-"}
       </span>
     );
   }
@@ -82,6 +82,19 @@ export function DynamicColumnCell({
           ))}
         </SelectContent>
       </Select>
+    );
+  }
+
+  /*
+    Cột tệp chưa nối được chỗ tải lên. Bày rõ là chưa hỗ trợ, KHÔNG rơi xuống ô
+    chữ như trước - ô chữ ở đây mời người dùng gõ tên tệp vào một cột đáng lẽ
+    giữ tệp thật, và cái đó đi thẳng lên báo cáo của cấp trên.
+  */
+  if (column.dataType === "file") {
+    return (
+      <span className="text-xs text-muted-foreground">
+        Đính kèm ở bảng nhập
+      </span>
     );
   }
 

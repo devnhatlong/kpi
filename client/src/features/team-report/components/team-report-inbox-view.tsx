@@ -530,17 +530,17 @@ function TeamReportDayDetailDialog({
           taskId: row.taskId,
           ...(catalog
             ? {
-                catalogValues: {
-                  ...(current.catalogValues ?? {}),
-                  [column.key]: next,
-                },
-              }
+              catalogValues: {
+                ...(current.catalogValues ?? {}),
+                [column.key]: next,
+              },
+            }
             : {
-                fieldValues: {
-                  ...(current.fieldValues ?? {}),
-                  [column.key]: next,
-                },
-              }),
+              fieldValues: {
+                ...(current.fieldValues ?? {}),
+                [column.key]: next,
+              },
+            }),
         },
       };
     });
@@ -687,7 +687,7 @@ function TeamReportDayDetailDialog({
                 {day.edits.map((edit, index) => (
                   <li key={index}>
                     {edit.byName}: {edit.field} {edit.from || "trống"} →{" "}
-                    {edit.to || "trống"} — {edit.reason}
+                    {edit.to || "trống"} - {edit.reason}
                   </li>
                 ))}
               </ul>

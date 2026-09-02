@@ -312,7 +312,7 @@ export function TeamReportSheetView() {
               <Lock className="size-4 text-muted-foreground" />
               <span>
                 Báo cáo ngày {formatYmd(reportDate)} đã gửi lên cấp trên
-                {day.sentByName ? ` (${day.sentByName})` : ""} —{" "}
+                {day.sentByName ? ` (${day.sentByName})` : ""} -{" "}
                 {TEAM_REPORT_STATUS_LABEL[day.status]}.
               </span>
               {day.returnReason ? (
@@ -638,7 +638,7 @@ export function TeamReportSheetView() {
             <DialogTitle>Xoá nhiệm vụ</DialogTitle>
             <DialogDescription>
               Xoá hẳn &ldquo;{deleting?.name}&rdquo; khỏi bảng. Nhiệm vụ đã nằm
-              trong báo cáo đã gửi thì không xoá được — dùng nút dừng.
+              trong báo cáo đã gửi thì không xoá được - dùng nút dừng.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

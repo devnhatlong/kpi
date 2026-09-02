@@ -65,22 +65,82 @@ export type TeamReportCatalogItem = {
   maxScore?: number;
   percent?: number;
   workContentId?: string;
+  /** Nội dung công việc thuộc trục nào - dùng để lọc theo trục đang chọn. */
+  axisId?: string;
   note?: string;
 };
 
 export type TeamReportCatalogs = Record<string, TeamReportCatalogItem[]>;
+
+/**
+ * Danh mục đã thu hẹp theo ngữ cảnh của chính nhiệm vụ đang mở.
+ *
+ * Nội dung công việc chỉ trong TRỤC đã chọn, nhiệm vụ mẫu chỉ trong NỘI DUNG đã
+ * chọn. Bày cả danh mục thì người dùng chọn được thứ server sẽ chặn - hoá ra
+ * bắt họ đoán mục nào thuộc đâu.
+ */
+export function narrowCatalogs(
+  catalogs: TeamReportCatalogs,
+  scope: { axisId: string; workContentId: string },
+): TeamReportCatalogs {
+  const narrowed: TeamReportCatalogs = { ...catalogs };
+
+  if (catalogs.work_content) {
+    narrowed.work_content = scope.axisId
+      ? catalogs.work_content.filter((item) => item.axisId === scope.axisId)
+      : [];
+  }
+  if (catalogs.work_task) {
+    narrowed.work_task = scope.workContentId
+      ? catalogs.work_task.filter(
+          (item) => item.workContentId === scope.workContentId,
+        )
+      : [];
+  }
+  return narrowed;
+}
 
 /** Cột này lấy giá trị từ danh mục nào; null = ô gõ tay. */
 export function catalogOfColumn(column: TeamReportColumn): string | null {
   return catalogOfSemantic(column.semanticKey);
 }
 
-/** Cột thật sự bày ra bảng: đang bật, và không phải cột nội dung tự chép. */
+/**
+ * Cột thật sự bày ra bảng.
+ *
+ * Bỏ cột `stt`: đó là số thứ tự dòng, bảng tự có rồi - bày ra thành một ô trống
+ * không ai điền được mà vẫn chiếm chỗ.
+ */
 export function inputColumns(
   template: TeamReportTemplate | null | undefined,
 ): TeamReportColumn[] {
-  return (template?.columns ?? []).filter((column) => column.visible);
+  return (template?.columns ?? []).filter(
+    (column) => column.visible && column.semanticKey !== "stt",
+  );
 }
+
+/**
+ * Mẫu có sẵn cột "Nội dung công việc" hay không.
+ *
+ * Có thì chính cột đó là chỗ phân loại, bảng KHÔNG vẽ thêm ô chọn riêng - hai ô
+ * cùng một việc đứng cạnh nhau là người dùng không biết điền ô nào.
+ */
+export function workContentColumnOf(
+  template: TeamReportTemplate | null | undefined,
+): TeamReportColumn | undefined {
+  return inputColumns(template).find(
+    (column) => column.semanticKey === "work_content",
+  );
+}
+
+/** Nhiệm vụ đang ở bước nào của việc phân loại. */
+export type TaskReadiness = "UNCLASSIFIED" | "IN_PROGRESS" | "READY";
+
+export const READINESS_LABEL: Record<TaskReadiness, string> = {
+  UNCLASSIFIED: "Chưa phân loại",
+  IN_PROGRESS: "Đang hoàn thiện",
+  READY: "Sẵn sàng gửi",
+};
 
 export type TeamReportAxis = {
   _id: string;
@@ -175,6 +235,42 @@ export function finalCatalogValue(
   key: string,
 ): CatalogValue | undefined {
   return task.reviewCatalogValues?.[key] ?? task.catalogValues?.[key];
+}
+
+/**
+ * Các ô BẮT BUỘC của mẫu mà nhiệm vụ còn bỏ trống.
+ *
+ * Bỏ qua cột hệ thống tự tính: người dùng không gõ được vào đó nên đòi họ điền
+ * là đòi một thứ không có cách nào làm.
+ */
+export function missingRequiredColumns(
+  task: TeamReportTask,
+  template: TeamReportTemplate | null | undefined,
+): TeamReportColumn[] {
+  return inputColumns(template).filter((column) => {
+    if (!column.required || column.autoValue) return false;
+    const filled = catalogOfColumn(column)
+      ? !!finalCatalogValue(task, column.key)
+      : String(finalFieldValue(task, column.key) ?? "").trim() !== "";
+    return !filled;
+  });
+}
+
+/**
+ * Nhiệm vụ đã sẵn sàng gửi chưa.
+ *
+ * Chưa có trục hoặc chưa có nội dung công việc thì vẫn là "chưa phân loại" - đó
+ * là hai thứ quyết định nhiệm vụ được cộng vào đâu, thiếu là cấp trên nhận về
+ * không biết xếp vào mục nào.
+ */
+export function readinessOf(
+  task: TeamReportTask,
+  template: TeamReportTemplate | null | undefined,
+): TaskReadiness {
+  if (!refId(task.axisId) || !refId(task.workContentId)) return "UNCLASSIFIED";
+  return missingRequiredColumns(task, template).length
+    ? "IN_PROGRESS"
+    : "READY";
 }
 
 /** Cấp trên đã chấm lại ô này chưa. */

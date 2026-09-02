@@ -364,6 +364,7 @@ export class TeamReportService {
         task.reviewValues = {};
         task.reviewCatalogValues = {};
         await this.stampTemplate(task);
+        await this.prefillFromEntry(task);
       }
     }
 
@@ -982,9 +983,65 @@ export class TeamReportService {
         );
       }
       catalogValues[key] = { id, name };
+
+      /*
+        Cột "Nội dung công việc" của mẫu CHÍNH LÀ phân loại của nhiệm vụ.
+
+        Đồng bộ ngược lên trường cứng `workContentId` chứ không để hai nơi giữ
+        hai giá trị: chỗ đếm "đã phân loại hết chưa" và chỗ gom nhóm đều đọc
+        trường cứng, mà người dùng lại chọn ở cột của mẫu.
+      */
+      if (column.semanticKey === 'work_content') {
+        task.workContentId = await this.requireWorkContentOfAxis(
+          id,
+          task.axisId,
+        );
+      }
     }
 
     return { fieldValues, catalogValues };
+  }
+
+  /**
+   * Điền sẵn vào mẫu những gì giai đoạn 1 đã khai.
+   *
+   * Mẫu của trục đã có sẵn cột tên nhiệm vụ và cột hạn, mà bảng nhập trong ngày
+   * cũng hỏi đúng hai thứ đó - không điền sẵn thì người phân loại phải gõ lại y
+   * nguyên, và hai chỗ dễ lệch nhau.
+   *
+   * Chỉ là ĐIỀN SẴN cho tiện, không phải nguồn giá trị: đoán sai cột thì người
+   * dùng sửa đè lên, không hỏng gì. Vì vậy dùng luật đơn giản, đúng cách mà màn
+   * nhập của bản nghiệp vụ cũ đang dò cột.
+   */
+  private async prefillFromEntry(task: TeamReportTaskDocument) {
+    const template = await this.templateOfTask(task);
+    if (!template) return;
+
+    const visible = template.columns.filter(
+      (column) => column.visible && !column.autoValue,
+    );
+    const fieldValues = { ...(task.fieldValues ?? {}) };
+
+    // Tên việc: cột chữ tự do đầu tiên - trong mẫu mặc định đó là cột "Nhiệm vụ".
+    const titleColumn = visible.find(
+      (column) =>
+        column.semanticKey === 'custom' &&
+        column.dataType === 'text' &&
+        column.key !== 'note',
+    );
+    if (titleColumn && task.name) fieldValues[titleColumn.key] = task.name;
+
+    // Hạn: cột khoá 'deadline', mẫu khác thì cột ngày đầu tiên.
+    const deadlineColumn =
+      visible.find(
+        (column) => column.key === 'deadline' && column.dataType === 'date',
+      ) ?? visible.find((column) => column.dataType === 'date');
+    if (deadlineColumn && task.deadline) {
+      fieldValues[deadlineColumn.key] = task.deadline;
+    }
+
+    task.fieldValues = fieldValues;
+    task.markModified('fieldValues');
   }
 
   /**
@@ -1034,6 +1091,25 @@ export class TeamReportService {
     }
 
     const result: Record<string, Array<{ _id: string; name: string }>> = {};
+    /*
+      Nội dung công việc cũng là một danh mục cột chọn.
+
+      Trả kèm `axisId` để màn nhập lọc lại theo trục đang chọn: bày cả 12 nội
+      dung của mọi trục thì người dùng chọn nhầm, mà server lại chặn - hoá ra
+      bắt họ đoán xem mục nào thuộc trục nào.
+    */
+    if (needed.has('work_content')) {
+      result.work_content = (
+        await this.workContentModel
+          .find({ isActive: true })
+          .select('name axisId')
+          .sort({ sortOrder: 1, code: 1 })
+      ).map((row) => ({
+        _id: String(row._id),
+        name: row.name,
+        axisId: String(row.axisId),
+      }));
+    }
     if (needed.has('work_task')) {
       result.work_task = (
         await this.workTaskModel

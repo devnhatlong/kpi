@@ -2,7 +2,17 @@
 
 import { useMemo, useState } from "react";
 import useSWR from "swr";
-import { CircleCheck, Lock, Send, TriangleAlert } from "lucide-react";
+import {
+  Check,
+  CircleCheck,
+  ClipboardList,
+  Info,
+  Loader2,
+  Lock,
+  Search,
+  Send,
+  TriangleAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -24,15 +35,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
   classifyTeamReportTask,
   fetchTeamReportClassify,
@@ -43,54 +47,74 @@ import {
 import { DynamicColumnCell } from "@/features/team-report/components/dynamic-column-cell";
 import { TeamReportDayPicker } from "@/features/team-report/components/team-report-day-picker";
 import {
+  READINESS_LABEL,
   TEAM_REPORT_STATUS_LABEL,
   catalogOfColumn,
   finalCatalogValue,
   finalFieldValue,
   inputColumns,
   isColumnReviewed,
+  missingRequiredColumns,
+  narrowCatalogs,
+  readinessOf,
   refId,
+  workContentColumnOf,
+  type TaskReadiness,
   type TeamReportAxis,
   type TeamReportCatalogs,
-  type TeamReportColumn,
   type TeamReportTask,
   type TeamReportTemplate,
   type TeamReportWorkContent,
 } from "@/features/team-report/types";
-import { getApiErrorMessage } from "@/lib/api-client";
 import { useServerTime } from "@/hooks/use-server-time";
-import { formatYmd, serverYmd } from "@/lib/server-time";
+import { getApiErrorMessage } from "@/lib/api-client";
+import { formatServerHm, formatYmd, serverYmd } from "@/lib/server-time";
+import { cn } from "@/lib/utils";
 
 const REFRESH_MS = 8000;
+
+const READINESS_CLASS: Record<TaskReadiness, string> = {
+  UNCLASSIFIED:
+    "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200",
+  IN_PROGRESS:
+    "border-sky-300 bg-sky-100 text-sky-900 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200",
+  READY:
+    "border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+};
+
+type QueueFilter = "ALL" | TaskReadiness;
 
 /**
  * Giai đoạn 2 - phân loại theo TRỤC rồi chấm theo bộ cột của trục đó.
  *
- * Chọn trục là quyết định luôn bộ cột: mỗi trục dùng một mẫu bảng do quản trị
- * cấu hình sẵn, nên bảng ở đây không có cột cố định nào ngoài Trục và Nội dung
- * công việc - phần còn lại dựng từ chính cấu hình đó.
+ * Làm MỘT nhiệm vụ mỗi lần chứ không bày cả bảng: mẫu của một trục có thể tới
+ * hơn chục cột, xếp ngang thành bảng thì phải cuộn ngang và cột cuối khuất hẳn
+ * khỏi màn hình. Xếp dọc từng nhiệm vụ thì nhìn thấy trọn biểu mẫu.
  *
- * Lưu ngay từng ô thay vì gom lại một nút "Lưu tất cả": bảng này cũng chung một
- * tài khoản với cả đội, gom lại thì một lượt lưu có thể đè lên phần người khác
- * vừa sửa ở dòng khác.
+ * Vẫn gửi theo NGÀY như đã chốt: hàng đợi bên trái chỉ để biết còn nhiệm vụ nào
+ * chưa xong, không phải để gửi lẻ từng cái.
  */
 export function TeamReportClassifyView() {
   /*
-    Mọi thứ dính tới ngày đều chờ ĐỒNG BỘ GIỜ SERVER xong.
-
-    `serverYmd()` trả về giờ MÁY khi chưa đồng bộ, nên khởi tạo state bằng nó ở
-    lần render đầu là chốt cứng một ngày có thể sai - máy lệch múi giờ hoặc lệch
-    đồng hồ sẽ mở nhầm bảng của hôm khác, mà cả đội dùng chung một tài khoản nên
-    hai người ngồi cạnh nhau lại thấy hai ngày.
-
-    Vì vậy giữ "ngày người dùng đã chọn" (null = chưa chọn) rồi suy ra ngày đang
-    xem từ hôm nay, và không gọi API trước khi `ready`.
+    Mọi thứ dính tới ngày đều chờ ĐỒNG BỘ GIỜ SERVER xong. `serverYmd()` trả giờ
+    MÁY khi chưa đồng bộ, nên khởi tạo state bằng nó là chốt cứng một ngày có
+    thể sai - mà cả đội chung một tài khoản nên hai người sẽ thấy hai ngày.
   */
   const { ready } = useServerTime();
   const today = serverYmd();
   const [pickedDate, setPickedDate] = useState<string | null>(null);
   const reportDate = pickedDate ?? today;
+
+  const [pickedTaskId, setPickedTaskId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<QueueFilter>("ALL");
+  const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  /*
+    Màn này TỰ LƯU: đổi ô nào là gửi ngay ô đó. Nhưng tự lưu mà không báo gì thì
+    người dùng không biết đã xong hay chưa, và dễ ngồi tìm nút "Lưu" không tồn
+    tại. Giữ mốc lưu gần nhất để hiện ngay cạnh tiêu đề.
+  */
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [note, setNote] = useState("");
@@ -116,31 +140,54 @@ export function TeamReportClassifyView() {
   const canSubmit = data?.canSubmit ?? false;
   const editable = ready && !locked && reportDate === today;
 
+  const templateOf = (task: TeamReportTask) => {
+    const axisId = refId(task.axisId);
+    return axisId ? (templates[axisId] ?? null) : null;
+  };
+
+  /** Trạng thái từng nhiệm vụ, tính một lần cho cả hàng đợi lẫn bảng tổng quan. */
+  const rows = useMemo(
+    () =>
+      tasks.map((task) => ({
+        task,
+        template: templateOf(task),
+        readiness: readinessOf(task, templateOf(task)),
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tasks, templates],
+  );
+
+  const visible = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    return rows.filter(
+      (row) =>
+        (filter === "ALL" || row.readiness === filter) &&
+        (!term || row.task.name.toLowerCase().includes(term)),
+    );
+  }, [rows, filter, query]);
+
   /*
-    Gom theo TRỤC: mỗi trục một bộ cột riêng nên không thể xếp chung một bảng.
-    Nhóm "chưa chọn trục" đứng đầu vì đó là việc còn phải làm.
+    Suy ra nhiệm vụ đang mở thay vì giữ trong state rồi đồng bộ bằng effect: bảng
+    tự nạp lại mỗi vài giây, mà nhiệm vụ đang chọn có thể vừa bị người khác đóng.
+    Suy ra thì luôn trỏ vào một dòng còn tồn tại.
   */
-  const groups = useMemo(() => {
-    const byAxis = new Map<string, TeamReportTask[]>();
-    for (const task of tasks) {
-      const key = refId(task.axisId);
-      byAxis.set(key, [...(byAxis.get(key) ?? []), task]);
+  const selected =
+    rows.find((row) => row.task._id === pickedTaskId) ?? visible[0] ?? rows[0];
+
+  const counts = useMemo(() => {
+    const byReadiness: Record<TaskReadiness, number> = {
+      UNCLASSIFIED: 0,
+      IN_PROGRESS: 0,
+      READY: 0,
+    };
+    const byAxis = new Map<string, number>();
+    for (const row of rows) {
+      byReadiness[row.readiness] += 1;
+      const axisId = refId(row.task.axisId);
+      if (axisId) byAxis.set(axisId, (byAxis.get(axisId) ?? 0) + 1);
     }
-    return [...byAxis.entries()]
-      .sort(([left], [right]) => {
-        if (!left) return -1;
-        if (!right) return 1;
-        const a = axes.find((axis) => axis._id === left)?.sortOrder ?? 0;
-        const b = axes.find((axis) => axis._id === right)?.sortOrder ?? 0;
-        return a - b;
-      })
-      .map(([axisId, rows]) => ({
-        axisId,
-        axis: axes.find((axis) => axis._id === axisId) ?? null,
-        template: axisId ? (templates[axisId] ?? null) : null,
-        rows,
-      }));
-  }, [tasks, axes, templates]);
+    return { byReadiness, byAxis };
+  }, [rows]);
 
   const patch = async (
     task: TeamReportTask,
@@ -150,11 +197,14 @@ export function TeamReportClassifyView() {
     try {
       await classifyTeamReportTask(task._id, input);
       await mutate();
+      setSavedAt(formatServerHm(Date.now()));
     } catch (error) {
       const status = (error as { response?: { status?: number } })?.response
         ?.status;
       if (status === 409) {
-        toast.error("Dòng này vừa được người khác sửa. Đã tải lại bản mới.");
+        toast.error(
+          "Nhiệm vụ này vừa được người khác sửa. Đã tải lại bản mới.",
+        );
       } else {
         toast.error(getApiErrorMessage(error, "Không lưu được."));
       }
@@ -188,112 +238,121 @@ export function TeamReportClassifyView() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Báo cáo ngày của đội · {formatYmd(reportDate)}
+          </p>
           <h1 className="font-display text-2xl font-semibold tracking-tight">
             Phân loại &amp; gửi
           </h1>
           <p className="text-sm text-muted-foreground">
-            Chọn trục cho từng nhiệm vụ — bảng chấm hiện đúng bộ cột mà quản trị
-            đã cấu hình cho trục đó.
+            Chọn trục cho từng nhiệm vụ, hoàn thiện đúng biểu mẫu của trục đó,
+            rồi gửi cả bảng ngày lên cấp trên.
           </p>
         </div>
 
-        <Button
-          type="button"
-          disabled={!editable || !canSubmit}
-          onClick={() => {
-            setNote("");
-            setCloseIds(new Set());
-            setSendOpen(true);
-          }}
-          title={
-            canSubmit
-              ? undefined
-              : "Còn nhiệm vụ chưa phân loại - phân loại hết mới gửi được"
-          }
-        >
-          <Send className="size-4" />
-          Gửi lên cấp trên
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <TeamReportDayPicker
+            value={reportDate}
+            onChange={setPickedDate}
+            today={today}
+          />
+          <Button
+            type="button"
+            disabled={!editable || !canSubmit}
+            onClick={() => {
+              setNote("");
+              setCloseIds(new Set());
+              setSendOpen(true);
+            }}
+            title={
+              canSubmit
+                ? undefined
+                : "Còn nhiệm vụ chưa phân loại - phân loại hết mới gửi được"
+            }
+          >
+            <Send className="size-4" />
+            Gửi báo cáo ngày
+          </Button>
+        </div>
       </div>
 
-      <Card className="shadow-sm">
-        <CardContent className="space-y-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <TeamReportDayPicker
-              value={reportDate}
-              onChange={setPickedDate}
-              today={today}
-            />
-
-            {data ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary" className="font-normal">
-                  {tasks.length} nhiệm vụ
-                </Badge>
-                {data.unclassified ? (
-                  <Badge
-                    variant="secondary"
-                    className="gap-1 border-amber-300 bg-amber-100 font-normal text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
-                  >
-                    <TriangleAlert className="size-3" />
-                    {data.unclassified} chưa phân loại
-                  </Badge>
-                ) : (
-                  <Badge
-                    variant="secondary"
-                    className="gap-1 border-emerald-300 bg-emerald-100 font-normal text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
-                  >
-                    <CircleCheck className="size-3" />
-                    Đã phân loại hết
-                  </Badge>
-                )}
-              </div>
-            ) : null}
-          </div>
-
-          {locked && data?.day ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
-              <Lock className="size-4 text-muted-foreground" />
-              <span>
-                Đã gửi ngày {formatYmd(reportDate)} —{" "}
-                {TEAM_REPORT_STATUS_LABEL[data.day.status]}.
-              </span>
-              {data.day.returnReason ? (
-                <span className="text-destructive">
-                  Lý do trả lại: {data.day.returnReason}
-                </span>
-              ) : null}
-            </div>
+      {locked && data?.day ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
+          <Lock className="size-4 text-muted-foreground" />
+          <span>
+            Đã gửi ngày {formatYmd(reportDate)} -{" "}
+            {TEAM_REPORT_STATUS_LABEL[data.day.status]}.
+          </span>
+          {data.day.returnReason ? (
+            <span className="text-destructive">
+              Lý do trả lại: {data.day.returnReason}
+            </span>
           ) : null}
+        </div>
+      ) : null}
 
-          {isLoading && !tasks.length ? (
-            <div className="rounded-md border p-10 text-center text-sm text-muted-foreground">
-              Đang tải...
-            </div>
-          ) : null}
+      {!locked && reportDate !== today ? (
+        <div className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground">
+          Đang xem lại ngày {formatYmd(reportDate)}. Chỉ bảng của hôm nay mới
+          phân loại và gửi được.
+        </div>
+      ) : null}
 
-          {!isLoading && !tasks.length ? (
-            <div className="rounded-md border p-10 text-center text-sm text-muted-foreground">
-              Chưa có nhiệm vụ nào của ngày này.
-            </div>
-          ) : null}
+      {isLoading && !tasks.length ? (
+        <div className="rounded-md border p-10 text-center text-sm text-muted-foreground">
+          Đang tải...
+        </div>
+      ) : null}
 
-          {groups.map((group) => (
-            <AxisGroupTable
-              key={group.axisId || "__unclassified__"}
-              axis={group.axis}
-              template={group.template}
-              rows={group.rows}
+      {!isLoading && !tasks.length ? (
+        <div className="rounded-md border p-10 text-center text-sm text-muted-foreground">
+          Chưa có nhiệm vụ nào của ngày này.
+        </div>
+      ) : null}
+
+      {tasks.length ? (
+        <div className="grid gap-4 xl:grid-cols-[19rem_minmax(0,1fr)_17rem]">
+          <TaskQueue
+            rows={visible}
+            total={rows.length}
+            selectedId={selected?.task._id ?? null}
+            filter={filter}
+            query={query}
+            counts={counts.byReadiness}
+            onFilter={setFilter}
+            onQuery={setQuery}
+            onPick={setPickedTaskId}
+          />
+
+          {selected ? (
+            <TaskDetailPanel
+              task={selected.task}
+              template={selected.template}
+              readiness={selected.readiness}
               axes={axes}
               contents={contents}
+              templates={templates}
               catalogs={catalogs}
-              disabled={!editable}
-              busyId={busyId}
+              saving={busyId === selected.task._id}
+              savedAt={savedAt}
+              disabled={!editable || busyId === selected.task._id}
               onPatch={patch}
             />
-          ))}
-        </CardContent>
-      </Card>
+          ) : (
+            <Card className="shadow-sm">
+              <CardContent className="p-10 text-center text-sm text-muted-foreground">
+                Không có nhiệm vụ nào khớp bộ lọc.
+              </CardContent>
+            </Card>
+          )}
+
+          <DaySummary
+            counts={counts.byReadiness}
+            byAxis={counts.byAxis}
+            axes={axes}
+          />
+        </div>
+      ) : null}
 
       <Dialog open={sendOpen} onOpenChange={setSendOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -370,229 +429,514 @@ export function TeamReportClassifyView() {
   );
 }
 
-type AxisGroupTableProps = {
-  axis: TeamReportAxis | null;
+// ============================================================= hàng đợi
+
+type QueueRow = {
+  task: TeamReportTask;
   template: TeamReportTemplate | null;
-  rows: TeamReportTask[];
+  readiness: TaskReadiness;
+};
+
+type TaskQueueProps = {
+  rows: QueueRow[];
+  total: number;
+  selectedId: string | null;
+  filter: QueueFilter;
+  query: string;
+  counts: Record<TaskReadiness, number>;
+  onFilter: (next: QueueFilter) => void;
+  onQuery: (next: string) => void;
+  onPick: (id: string) => void;
+};
+
+/** Danh sách nhiệm vụ trong ngày, chọn một cái để mở biểu mẫu bên phải. */
+function TaskQueue({
+  rows,
+  total,
+  selectedId,
+  filter,
+  query,
+  counts,
+  onFilter,
+  onQuery,
+  onPick,
+}: TaskQueueProps) {
+  return (
+    <Card className="shadow-sm xl:sticky xl:top-4 xl:self-start">
+      <CardContent className="space-y-3 py-4">
+        <div className="space-y-1">
+          <h2 className="font-display text-sm font-semibold">
+            Hàng đợi nhiệm vụ
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            {total} nhiệm vụ trong ngày · chọn một nhiệm vụ để xử lý
+          </p>
+        </div>
+
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(event) => onQuery(event.target.value)}
+            placeholder="Tìm nhiệm vụ..."
+            className="bg-background pl-8"
+          />
+        </div>
+
+        <SegmentedTabs
+          ariaLabel="Lọc theo trạng thái"
+          value={filter}
+          onChange={onFilter}
+          items={[
+            { value: "ALL" as const, label: `Tất cả (${total})` },
+            {
+              value: "UNCLASSIFIED" as const,
+              label: `Chưa phân loại (${counts.UNCLASSIFIED})`,
+            },
+            {
+              value: "IN_PROGRESS" as const,
+              label: `Đang hoàn thiện (${counts.IN_PROGRESS})`,
+            },
+            { value: "READY" as const, label: `Sẵn sàng (${counts.READY})` },
+          ]}
+          className="flex-wrap"
+        />
+
+        <div className="max-h-[32rem] space-y-1.5 overflow-y-auto">
+          {rows.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Không có nhiệm vụ nào khớp.
+            </p>
+          ) : null}
+
+          {rows.map(({ task, readiness }) => (
+            <button
+              key={task._id}
+              type="button"
+              onClick={() => onPick(task._id)}
+              className={cn(
+                "w-full cursor-pointer rounded-md border p-2.5 text-left transition-colors",
+                task._id === selectedId
+                  ? "border-primary bg-primary/5"
+                  : "hover:bg-muted/60",
+              )}
+            >
+              <div className="line-clamp-2 break-words text-sm font-medium">
+                {task.name}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {task.deadline
+                    ? `Hạn ${formatYmd(task.deadline)}`
+                    : "Không đặt hạn"}
+                </span>
+                <Badge
+                  variant="secondary"
+                  className={cn("font-normal", READINESS_CLASS[readiness])}
+                >
+                  {READINESS_LABEL[readiness]}
+                </Badge>
+              </div>
+            </button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ======================================================= nhiệm vụ đang làm
+
+type TaskDetailPanelProps = {
+  task: TeamReportTask;
+  template: TeamReportTemplate | null;
+  readiness: TaskReadiness;
   axes: TeamReportAxis[];
   contents: TeamReportWorkContent[];
+  templates: Record<string, TeamReportTemplate | null>;
   catalogs: TeamReportCatalogs;
+  /** Đang gửi một thay đổi lên server. */
+  saving: boolean;
+  /** Giờ lưu gần nhất trong phiên này; null = chưa lưu lần nào. */
+  savedAt: string | null;
   disabled: boolean;
-  busyId: string | null;
   onPatch: (task: TeamReportTask, input: TeamReportClassifyInput) => void;
 };
 
 /**
- * Một bảng cho một trục.
+ * Biểu mẫu của MỘT nhiệm vụ, xếp dọc.
  *
- * Mỗi trục một bộ cột khác nhau nên phải tách bảng: nhét chung thì hàng tiêu đề
- * phải là hợp của mọi trục, và dòng nào cũng thừa quá nửa số cột trống trơn.
+ * Ghép `version` vào khoá để React dựng lại các ô khi nhiệm vụ thật sự đổi: ô
+ * nhập giữ bản nháp cục bộ, mà state cục bộ thì không tự nhận giá trị mới khi
+ * props đổi.
  */
-function AxisGroupTable({
-  axis,
-  template,
-  rows,
-  axes,
-  contents,
-  catalogs,
-  disabled,
-  busyId,
-  onPatch,
-}: AxisGroupTableProps) {
-  const columns = inputColumns(template);
-
+function TaskDetailPanel(props: TaskDetailPanelProps) {
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="font-display text-sm font-semibold">
-          {axis ? axis.name : "Chưa chọn trục"}
-        </h2>
-        <Badge variant="secondary" className="font-normal">
-          {rows.length} nhiệm vụ
-        </Badge>
-        {axis && !template ? (
-          <Badge
-            variant="secondary"
-            className="gap-1 border-amber-300 bg-amber-100 font-normal text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
-          >
-            <TriangleAlert className="size-3" />
-            Trục này chưa được gán mẫu bảng
-          </Badge>
-        ) : null}
-        {template ? (
-          <span className="text-xs text-muted-foreground">
-            Mẫu: {template.name} (bản {template.version})
-          </span>
-        ) : null}
-      </div>
-
-      <div className="overflow-x-auto rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="min-w-[240px]">Nhiệm vụ</TableHead>
-              <TableHead className="w-[180px]">Trục</TableHead>
-              <TableHead className="w-[220px]">Nội dung công việc</TableHead>
-              {columns.map((column) => (
-                <TableHead
-                  key={column.key}
-                  style={{ minWidth: Math.max(120, column.width) }}
-                >
-                  {column.title}
-                  {column.required ? (
-                    <span className="text-destructive"> *</span>
-                  ) : null}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((task) => (
-              <ClassifyRow
-                /*
-                  Khoá kèm số bản: các ô giữ bản nháp cục bộ, mà state cục bộ thì
-                  không tự nhận giá trị mới khi props đổi. Gắn version vào khoá là
-                  dòng được dựng lại đúng lúc nội dung thật sự đổi - tức khi người
-                  khác vừa sửa chính dòng này.
-                */
-                key={`${task._id}:${task.version}`}
-                task={task}
-                axes={axes}
-                contents={contents}
-                columns={columns}
-                catalogs={catalogs}
-                disabled={disabled || busyId === task._id}
-                onPatch={onPatch}
-              />
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
+    <TaskDetailBody
+      key={`${props.task._id}:${props.task.version}`}
+      {...props}
+    />
   );
 }
 
-type ClassifyRowProps = {
-  task: TeamReportTask;
-  axes: TeamReportAxis[];
-  contents: TeamReportWorkContent[];
-  columns: TeamReportColumn[];
-  catalogs: TeamReportCatalogs;
-  disabled: boolean;
-  onPatch: (task: TeamReportTask, input: TeamReportClassifyInput) => void;
-};
-
-function ClassifyRow({
+function TaskDetailBody({
   task,
+  template,
+  readiness,
   axes,
   contents,
-  columns,
+  templates,
   catalogs,
+  saving,
+  savedAt,
   disabled,
   onPatch,
-}: ClassifyRowProps) {
+}: TaskDetailPanelProps) {
   const axisId = refId(task.axisId);
   const contentId = refId(task.workContentId);
+  const columns = inputColumns(template);
+  /* Mẫu chưa khai cột "Nội dung công việc" thì màn phải tự vẽ ô chọn, kẻo không
+     có chỗ nào phân loại và cả bảng không gửi đi được. */
+  const ownWorkContent = !workContentColumnOf(template);
+  const missing = missingRequiredColumns(task, template);
 
-  /* Nội dung công việc chỉ trong trục đã chọn - server cũng chặn, nhưng không
-     bày ra thì không ai chọn nhầm ngay từ đầu. */
   const options = useMemo(
     () => contents.filter((content) => content.axisId === axisId),
     [contents, axisId],
   );
 
+  /* Danh mục của các ô chọn phải theo đúng trục và nội dung đang chọn, kẻo bày
+     ra thứ server sẽ chặn ngay khi bấm. */
+  const scopedCatalogs = useMemo(
+    () => narrowCatalogs(catalogs, { axisId, workContentId: contentId }),
+    [catalogs, axisId, contentId],
+  );
+
+  /** Việc kế tiếp phải làm - nói thẳng thay vì để người dùng tự dò. */
+  const nextStep = !axisId
+    ? "Chọn một trục để mở đúng biểu mẫu của nhiệm vụ này."
+    : !template
+      ? "Trục này chưa được gán mẫu bảng. Báo quản trị bổ sung mẫu."
+      : !contentId
+        ? "Chọn nội dung công việc mà nhiệm vụ này thuộc về."
+        : missing.length
+          ? `Còn ${missing.length} ô bắt buộc chưa điền: ${missing
+            .map((column) => column.title)
+            .join(", ")}.`
+          : "Đã đủ. Nhiệm vụ này sẵn sàng đi trong báo cáo ngày.";
+
   return (
-    <TableRow className={task.isOpen ? undefined : "opacity-60"}>
-      <TableCell className="max-w-[320px] whitespace-normal break-words align-middle">
-        <div className="font-medium">{task.name}</div>
-        <div className="text-xs text-muted-foreground tabular-nums">
-          Khai ngày {formatYmd(task.createdDate)}
-          {task.deadline ? ` · hạn ${formatYmd(task.deadline)}` : ""}
-        </div>
-      </TableCell>
-
-      <TableCell className="align-middle">
-        <Select
-          value={axisId || "__none__"}
-          disabled={disabled}
-          onValueChange={(value) =>
-            onPatch(task, {
-              version: task.version,
-              axisId: value === "__none__" ? null : value,
-            })
-          }
-        >
-          <SelectTrigger className="w-full bg-background">
-            <SelectValue placeholder="Chọn trục" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Chưa chọn</SelectItem>
-            {axes.map((item) => (
-              <SelectItem key={item._id} value={item._id}>
-                {item.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </TableCell>
-
-      <TableCell className="align-middle">
-        <Select
-          value={contentId || "__none__"}
-          disabled={disabled || !axisId}
-          onValueChange={(value) =>
-            onPatch(task, {
-              version: task.version,
-              workContentId: value === "__none__" ? null : value,
-            })
-          }
-        >
-          <SelectTrigger className="w-full bg-background">
-            <SelectValue placeholder={axisId ? "Chọn" : "Chọn trục trước"} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Chưa chọn</SelectItem>
-            {options.map((content) => (
-              <SelectItem key={content._id} value={content._id}>
-                {content.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </TableCell>
-
-      {columns.map((column) => {
-        const catalog = catalogOfColumn(column);
-        const value = catalog
-          ? (finalCatalogValue(task, column.key)?.id ?? "")
-          : String(finalFieldValue(task, column.key) ?? "");
-
-        return (
-          <TableCell key={column.key} className="align-middle">
-            <DynamicColumnCell
-              column={column}
-              value={value}
-              catalogs={catalogs}
-              disabled={disabled}
-              onCommit={(next) =>
-                onPatch(task, {
-                  version: task.version,
-                  ...(catalog
-                    ? { catalogValues: { [column.key]: next } }
-                    : { fieldValues: { [column.key]: next } }),
-                })
-              }
-            />
-            {/* Ô đang bày là số CHỐT. Cấp trên chấm lại thì nói rõ, kẻo đội
-                tưởng đó là số mình khai. */}
-            {isColumnReviewed(task, column.key) ? (
-              <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                Cấp trên chấm lại
-              </div>
+    <Card className="shadow-sm">
+      <CardContent className="space-y-5 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <ClipboardList className="size-5" />
+            </span>
+            <div className="min-w-0 space-y-1">
+              <h2 className="break-words font-display text-lg font-semibold">
+                {task.name}
+              </h2>
+              <p className="text-xs text-muted-foreground tabular-nums">
+                Khai ngày {formatYmd(task.createdDate)}
+                {task.deadline ? ` · hạn ${formatYmd(task.deadline)}` : ""}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Tự lưu nên phải nói rõ đã lưu chưa - không có nút Lưu nào cả. */}
+            {saving ? (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" />
+                Đang lưu
+              </span>
+            ) : savedAt ? (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Check className="size-3 text-emerald-600" />
+                Đã lưu lúc {savedAt}
+              </span>
             ) : null}
-          </TableCell>
-        );
-      })}
-    </TableRow>
+            <Badge
+              variant="secondary"
+              className={cn("font-normal", READINESS_CLASS[readiness])}
+            >
+              {READINESS_LABEL[readiness]}
+            </Badge>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
+          <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <span>
+            {nextStep}{" "}
+            <span className="text-muted-foreground">
+              Mỗi ô tự lưu ngay khi chọn hoặc rời ô, không cần bấm Lưu.
+            </span>
+          </span>
+        </div>
+
+        {/* -------------------------------------------- 1. chọn trục */}
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="font-display text-sm font-semibold">
+              1. Chọn trục áp dụng
+            </h3>
+            <span className="text-xs font-medium text-destructive">
+              Bắt buộc
+            </span>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {axes.map((axis) => (
+              <AxisCard
+                key={axis._id}
+                axis={axis}
+                template={templates[axis._id] ?? null}
+                active={axis._id === axisId}
+                disabled={disabled}
+                onPick={() =>
+                  onPatch(task, { version: task.version, axisId: axis._id })
+                }
+              />
+            ))}
+          </div>
+        </section>
+
+        {/* ------------------------------- 2. nội dung theo biểu mẫu */}
+        {axisId ? (
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-display text-sm font-semibold">
+                2. Nội dung nhiệm vụ
+              </h3>
+              {template ? (
+                <span className="text-xs text-muted-foreground">
+                  Mẫu: {template.name} (bản {template.version})
+                </span>
+              ) : (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "gap-1 font-normal",
+                    READINESS_CLASS.UNCLASSIFIED,
+                  )}
+                >
+                  <TriangleAlert className="size-3" />
+                  Trục chưa có mẫu bảng
+                </Badge>
+              )}
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {ownWorkContent ? (
+                <Field label="Nội dung công việc" required>
+                  <Select
+                    value={contentId || "__none__"}
+                    disabled={disabled}
+                    onValueChange={(value) =>
+                      onPatch(task, {
+                        version: task.version,
+                        workContentId: value === "__none__" ? null : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full bg-background">
+                      <SelectValue placeholder="Chọn" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Chưa chọn</SelectItem>
+                      {options.map((content) => (
+                        <SelectItem key={content._id} value={content._id}>
+                          {content.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              ) : null}
+
+              {columns.map((column) => {
+                const catalog = catalogOfColumn(column);
+                const value = catalog
+                  ? (finalCatalogValue(task, column.key)?.id ?? "")
+                  : String(finalFieldValue(task, column.key) ?? "");
+
+                return (
+                  <Field
+                    key={column.key}
+                    label={column.title}
+                    required={column.required}
+                    /* Ô chữ dài và ô tệp chiếm cả hàng - ép vào nửa hàng thì
+                       nội dung bị cắt ngắn ngay lúc đang gõ. */
+                    wide={
+                      column.dataType === "text" || column.dataType === "file"
+                    }
+                    hint={
+                      isColumnReviewed(task, column.key)
+                        ? "Cấp trên đã chấm lại ô này"
+                        : undefined
+                    }
+                  >
+                    <DynamicColumnCell
+                      column={column}
+                      value={value}
+                      catalogs={scopedCatalogs}
+                      disabled={disabled}
+                      onCommit={(next) =>
+                        onPatch(task, {
+                          version: task.version,
+                          ...(catalog
+                            ? { catalogValues: { [column.key]: next } }
+                            : { fieldValues: { [column.key]: next } }),
+                        })
+                      }
+                    />
+                  </Field>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Field({
+  label,
+  required,
+  wide,
+  hint,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  wide?: boolean;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn("space-y-1.5", wide && "sm:col-span-2")}>
+      <label className="block text-sm font-medium">
+        {label}
+        {required ? <span className="text-destructive"> *</span> : null}
+      </label>
+      {children}
+      {hint ? (
+        <p className="text-xs text-amber-700 dark:text-amber-400">{hint}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Một trục để chọn, kèm những gì mẫu của nó thật sự khai.
+ *
+ * Chỉ nói điều đọc được từ cấu hình (điểm tối đa của trục, số cột, có chấm tỉ
+ * lệ hay không) - đặt nhãn tự nghĩ ra thì đến lúc quản trị đổi mẫu là nhãn nói
+ * một đằng, bảng bày một nẻo.
+ */
+function AxisCard({
+  axis,
+  template,
+  active,
+  disabled,
+  onPick,
+}: {
+  axis: TeamReportAxis;
+  template: TeamReportTemplate | null;
+  active: boolean;
+  disabled: boolean;
+  onPick: () => void;
+}) {
+  const columns = inputColumns(template);
+  const hints = [
+    axis.maxScore > 0 ? `${axis.maxScore} điểm` : "",
+    columns.some((column) => column.semanticKey === "quality_level")
+      ? "chấm theo tỉ lệ"
+      : "",
+    columns.some((column) => column.dataType === "boolean")
+      ? "đạt / không đạt"
+      : "",
+    template ? `${columns.length} ô nhập` : "chưa có mẫu",
+  ].filter(Boolean);
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onPick}
+      className={cn(
+        "cursor-pointer rounded-md border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+        active ? "border-primary bg-primary/5" : "hover:bg-muted/60",
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="break-words text-sm font-medium">{axis.name}</span>
+        {active ? (
+          <CircleCheck className="mt-0.5 size-4 shrink-0 text-primary" />
+        ) : null}
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">{hints.join(" · ")}</p>
+    </button>
+  );
+}
+
+// ========================================================= tổng quan ngày
+
+function DaySummary({
+  counts,
+  byAxis,
+  axes,
+}: {
+  counts: Record<TaskReadiness, number>;
+  byAxis: Map<string, number>;
+  axes: TeamReportAxis[];
+}) {
+  return (
+    <Card className="shadow-sm xl:sticky xl:top-4 xl:self-start">
+      <CardContent className="space-y-4 py-4">
+        <h2 className="font-display text-sm font-semibold">
+          Tổng quan hôm nay
+        </h2>
+
+        <div className="space-y-2.5">
+          {(["UNCLASSIFIED", "IN_PROGRESS", "READY"] as const).map((key) => (
+            <div key={key} className="flex items-baseline justify-between">
+              <span className="text-sm text-muted-foreground">
+                {READINESS_LABEL[key]}
+              </span>
+              <span className="font-display text-xl font-semibold tabular-nums">
+                {counts[key]}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-1.5 border-t pt-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            Đã xếp theo trục
+          </p>
+          {axes.map((axis) => (
+            <div
+              key={axis._id}
+              className="flex items-center justify-between gap-2 text-sm"
+            >
+              <span className="min-w-0 truncate">{axis.name}</span>
+              <span className="tabular-nums text-muted-foreground">
+                {byAxis.get(axis._id) ?? 0}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Nhắc lại luật gửi ngay tại chỗ người dùng đang đứng - đây là chỗ hay
+            bị hiểu nhầm nhất giữa hai bản nghiệp vụ. */}
+        <p className="rounded-md border bg-muted/40 p-2.5 text-xs text-muted-foreground">
+          Cả bảng ngày gửi trong một lượt. Phân loại xong hết thì nút{" "}
+          <strong>Gửi báo cáo ngày</strong> mới bật.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
