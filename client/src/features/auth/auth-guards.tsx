@@ -43,7 +43,10 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-function canAccessPath(pathname: string, user: AuthUser | null | undefined): boolean {
+function canAccessPath(
+  pathname: string,
+  user: AuthUser | null | undefined,
+): boolean {
   const required = pathRequiresPermissions(pathname);
   if (!required) return true;
   return userHasAnyPermission(user, required);
@@ -53,13 +56,16 @@ function canAccessPath(pathname: string, user: AuthUser | null | undefined): boo
  * Chặn trang theo quyền khai trong NAV_ITEMS. Chỉ là lớp điều hướng cho đỡ vào
  * trang rồi ăn 403 - server vẫn tự kiểm tra ở mọi request.
  */
-export function RestrictRoutesByPermission({ children }: { children: ReactNode }) {
+export function RestrictRoutesByPermission({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const { user, status } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
-  const blocked =
-    status === "authenticated" && !canAccessPath(pathname, user);
+  const blocked = status === "authenticated" && !canAccessPath(pathname, user);
 
   useEffect(() => {
     if (!blocked) return;

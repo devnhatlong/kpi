@@ -42,6 +42,7 @@ import { missionTone } from "@/features/personal-mission/status-styles";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { currentWeekRange, serverYmd } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
+import { DatePickerInput } from "@/components/common/date-picker-input";
 
 const STEPS = [
   { key: "info", label: "Thông tin", icon: FileText },
@@ -290,20 +291,20 @@ export function CreateReportWizard({
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="wizard-from">Từ ngày</Label>
-                  <Input
+                  <DatePickerInput
                     id="wizard-from"
-                    type="date"
                     value={fromDate}
-                    onChange={(event) => setFromDate(event.target.value)}
+                    onChange={setFromDate}
+                    placeholder="Chọn từ ngày"
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="wizard-to">Đến ngày</Label>
-                  <Input
+                  <DatePickerInput
                     id="wizard-to"
-                    type="date"
                     value={toDate}
-                    onChange={(event) => setToDate(event.target.value)}
+                    onChange={setToDate}
+                    placeholder="Chọn đến ngày"
                   />
                 </div>
               </div>

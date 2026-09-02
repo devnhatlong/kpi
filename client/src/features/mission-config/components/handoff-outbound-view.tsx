@@ -52,6 +52,7 @@ import {
 } from "../types";
 import { useWorkingUnit } from "../use-working-unit";
 import { WorkingUnitSelect } from "./working-unit-select";
+import { DatePickerInput } from "@/components/common/date-picker-input";
 
 function relationName(value: object | string | undefined | null): string {
   if (!value) return "-";
@@ -338,12 +339,10 @@ export function HandoffOutboundView() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Hạn</Label>
-                <Input
-                  type="date"
+                <DatePickerInput
                   value={form.dueDate}
-                  onChange={(e) =>
-                    setForm((s) => ({ ...s, dueDate: e.target.value }))
-                  }
+                  onChange={(next) => setForm((s) => ({ ...s, dueDate: next }))}
+                  placeholder="Không đặt hạn"
                 />
               </div>
               <div className="space-y-2">

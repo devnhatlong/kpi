@@ -1,6 +1,8 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BookMarked,
+  CalendarCheck,
+  ClipboardPen,
   ClipboardList,
   FileSpreadsheet,
   FormInput,
@@ -53,6 +55,36 @@ export const NAV_ITEMS: NavItem[] = [
     title: "Thống kê",
     href: "/dashboard",
     icon: Gauge,
+  },
+  /*
+    Bản nghiệp vụ MỚI - báo cáo ngày cấp đội, chạy song song với các mục cũ.
+
+    Dùng mã quyền riêng (TEAM_REPORT_*) nên đơn vị nào chưa chuyển sang bản mới
+    thì không thấy nhóm này, và ngược lại - bật bản mới không làm mất mục cũ.
+  */
+  {
+    title: "Báo cáo ngày của đội",
+    icon: CalendarCheck,
+    children: [
+      {
+        title: "Bảng nhiệm vụ ngày",
+        href: "/team-report/sheet",
+        icon: ClipboardPen,
+        permissions: [PERM.TEAM_REPORT_ENTRY],
+      },
+      {
+        title: "Phân loại & gửi",
+        href: "/team-report/classify",
+        icon: Table2,
+        permissions: [PERM.TEAM_REPORT_ENTRY],
+      },
+      {
+        title: "Duyệt báo cáo ngày",
+        href: "/team-report/incoming",
+        icon: Stamp,
+        permissions: [PERM.TEAM_REPORT_REVIEW],
+      },
+    ],
   },
   {
     title: "Nhiệm vụ cá nhân",

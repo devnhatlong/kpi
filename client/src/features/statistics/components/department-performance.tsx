@@ -47,7 +47,10 @@ export function DepartmentPerformance({
               const width = Math.max(0, Math.min(1, ratio)) * 100;
 
               return (
-                <li key={dept.departmentId ?? dept.name} className="space-y-1.5">
+                <li
+                  key={dept.departmentId ?? dept.name}
+                  className="space-y-1.5"
+                >
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="min-w-0 truncate text-sm font-medium">
                       {dept.name}

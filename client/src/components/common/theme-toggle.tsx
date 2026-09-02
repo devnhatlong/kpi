@@ -49,9 +49,15 @@ export function ThemeToggle() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[10rem]">
-        <DropdownMenuItem onClick={() => setTheme("light")}>Sáng</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("dark")}>Tối</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("system")}>Theo hệ thống</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("light")}>
+          Sáng
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("dark")}>
+          Tối
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("system")}>
+          Theo hệ thống
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

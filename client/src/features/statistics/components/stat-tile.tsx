@@ -3,7 +3,8 @@ import { ArrowDown, ArrowUp, Minus, type LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
-export type StatTileTone = "neutral" | "info" | "warning" | "danger" | "success";
+export type StatTileTone =
+  "neutral" | "info" | "warning" | "danger" | "success";
 
 /**
  * Màu ở đây luôn đi kèm nhãn chữ và biểu tượng, không bao giờ là kênh thông tin
@@ -12,7 +13,8 @@ export type StatTileTone = "neutral" | "info" | "warning" | "danger" | "success"
 const toneClass: Record<StatTileTone, string> = {
   neutral: "bg-muted text-muted-foreground",
   info: "bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400",
-  warning: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400",
+  warning:
+    "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400",
   danger: "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400",
   success:
     "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400",

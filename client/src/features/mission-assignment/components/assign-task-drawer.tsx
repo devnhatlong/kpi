@@ -77,6 +77,7 @@ import {
 } from "@/features/mission-assignment/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { DatePickerInput } from "@/components/common/date-picker-input";
 
 type AssignTaskDrawerProps = {
   open: boolean;
@@ -587,11 +588,12 @@ export function AssignTaskDrawer({
                     targets={targets}
                   />
                 </div>
-                <Input
-                  type="date"
-                  className="h-8 w-[160px]"
+                <DatePickerInput
+                  className="w-[190px]"
+                  triggerClassName="h-8"
                   value={bulkDeadline}
-                  onChange={(e) => setBulkDeadline(e.target.value)}
+                  onChange={setBulkDeadline}
+                  placeholder="Hạn chung"
                 />
                 <Button
                   type="button"
@@ -920,18 +922,18 @@ export function AssignTaskDrawer({
                                           />
                                         </TableCell>
                                         <TableCell>
-                                          <Input
-                                            type="date"
-                                            className="h-8"
+                                          <DatePickerInput
+                                            triggerClassName="h-8"
                                             value={task.deadline}
-                                            onChange={(e) =>
+                                            onChange={(next) =>
                                               patchTask(
                                                 axis.key,
                                                 content.key,
                                                 task.key,
-                                                { deadline: e.target.value },
+                                                { deadline: next },
                                               )
                                             }
+                                            placeholder="Hạn"
                                           />
                                         </TableCell>
                                         <TableCell>

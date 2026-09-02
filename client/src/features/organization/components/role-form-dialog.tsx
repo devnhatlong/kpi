@@ -83,7 +83,9 @@ export function RoleFormDialog({
 
   const togglePermission = (permissionCode: string, checked: boolean) => {
     setPermissions((prev) =>
-      checked ? [...prev, permissionCode] : prev.filter((p) => p !== permissionCode),
+      checked
+        ? [...prev, permissionCode]
+        : prev.filter((p) => p !== permissionCode),
     );
   };
 
@@ -176,7 +178,11 @@ export function RoleFormDialog({
             <div className="flex h-full items-end">
               <div className="flex h-9 w-full items-center justify-between rounded-lg border px-3">
                 <Label htmlFor="role-active">Đang hoạt động</Label>
-                <Switch id="role-active" checked={isActive} onCheckedChange={setIsActive} />
+                <Switch
+                  id="role-active"
+                  checked={isActive}
+                  onCheckedChange={setIsActive}
+                />
               </div>
             </div>
           </div>
@@ -218,7 +224,11 @@ export function RoleFormDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             Hủy
           </Button>
           <Button onClick={submit} disabled={saving}>

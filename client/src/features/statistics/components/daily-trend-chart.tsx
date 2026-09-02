@@ -2,13 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Table as TableIcon, LineChart as LineChartIcon } from "lucide-react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -117,16 +111,35 @@ export function DailyTrendChart({ daily }: { daily: StatisticsDailyPoint[] }) {
             </Table>
           </div>
         ) : (
-          <ChartContainer config={chartConfig} className="aspect-auto h-[280px] w-full">
+          <ChartContainer
+            config={chartConfig}
+            className="aspect-auto h-[280px] w-full"
+          >
             <AreaChart data={rows} margin={{ left: 4, right: 12, top: 8 }}>
               <defs>
                 <linearGradient id="fill-sent" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--color-sent)" stopOpacity={0.28} />
-                  <stop offset="100%" stopColor="var(--color-sent)" stopOpacity={0.02} />
+                  <stop
+                    offset="0%"
+                    stopColor="var(--color-sent)"
+                    stopOpacity={0.28}
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor="var(--color-sent)"
+                    stopOpacity={0.02}
+                  />
                 </linearGradient>
                 <linearGradient id="fill-completed" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--color-completed)" stopOpacity={0.28} />
-                  <stop offset="100%" stopColor="var(--color-completed)" stopOpacity={0.02} />
+                  <stop
+                    offset="0%"
+                    stopColor="var(--color-completed)"
+                    stopOpacity={0.28}
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor="var(--color-completed)"
+                    stopOpacity={0.02}
+                  />
                 </linearGradient>
               </defs>
               {/* Lưới mảnh, liền nét, chỉ kẻ ngang - kẻ ô vuông là nhiễu. */}

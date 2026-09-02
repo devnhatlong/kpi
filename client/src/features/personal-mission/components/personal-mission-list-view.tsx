@@ -45,6 +45,7 @@ import { useServerTime } from "@/hooks/use-server-time";
 import { emptyPaginationMeta, rowIndex } from "@/lib/pagination";
 import { serverDayjs } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
+import { DatePickerInput } from "@/components/common/date-picker-input";
 
 const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: "ALL", label: "Tất cả trạng thái" },
@@ -187,28 +188,26 @@ export function PersonalMissionListView() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="from-date">Từ ngày</Label>
-              <Input
+              <DatePickerInput
                 id="from-date"
-                type="date"
-                className="bg-background"
                 value={fromDate}
-                onChange={(e) => {
-                  setFromDate(e.target.value);
+                onChange={(next) => {
+                  setFromDate(next);
                   setPage(1);
                 }}
+                placeholder="Từ ngày"
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="to-date">Đến ngày</Label>
-              <Input
+              <DatePickerInput
                 id="to-date"
-                type="date"
-                className="bg-background"
                 value={toDate}
-                onChange={(e) => {
-                  setToDate(e.target.value);
+                onChange={(next) => {
+                  setToDate(next);
                   setPage(1);
                 }}
+                placeholder="Đến ngày"
               />
             </div>
             <div className="space-y-2">

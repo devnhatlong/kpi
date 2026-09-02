@@ -15,7 +15,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { createPermission, updatePermission } from "@/features/organization/api";
+import {
+  createPermission,
+  updatePermission,
+} from "@/features/organization/api";
 import type { AppPermission } from "@/features/organization/types";
 import { entityId } from "@/features/organization/types";
 import { getApiErrorMessage } from "@/lib/api-client";
@@ -164,12 +167,20 @@ export function PermissionFormDialog({
 
           <div className="flex h-9 items-center justify-between rounded-lg border px-3">
             <Label htmlFor="perm-active">Đang hoạt động</Label>
-            <Switch id="perm-active" checked={isActive} onCheckedChange={setIsActive} />
+            <Switch
+              id="perm-active"
+              checked={isActive}
+              onCheckedChange={setIsActive}
+            />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             Hủy
           </Button>
           <Button onClick={submit} disabled={saving}>

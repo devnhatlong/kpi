@@ -91,6 +91,20 @@ const SYSTEM_PERMISSIONS: Array<{
     sortOrder: 110,
   },
   {
+    code: Permission.TEAM_REPORT_ENTRY,
+    name: 'Nhập báo cáo ngày của đội',
+    module: 'team_report',
+    sortOrder: 115,
+    description: 'Nhập, phân loại và gửi báo cáo ngày lên cấp phòng',
+  },
+  {
+    code: Permission.TEAM_REPORT_REVIEW,
+    name: 'Duyệt báo cáo ngày của đội',
+    module: 'team_report',
+    sortOrder: 120,
+    description: 'Duyệt, chỉnh số và gộp báo cáo ngày của các đội',
+  },
+  {
     code: Permission.SYSTEM_CONFIG,
     name: 'Cấu hình hệ thống',
     module: 'system',

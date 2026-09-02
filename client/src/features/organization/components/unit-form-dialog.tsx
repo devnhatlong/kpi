@@ -15,7 +15,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { createDepartment, updateDepartment } from "@/features/organization/api";
+import {
+  createDepartment,
+  updateDepartment,
+} from "@/features/organization/api";
 import type {
   CreateDepartmentInput,
   Department,
@@ -58,8 +61,14 @@ export function UnitFormDialog({
     if (edit) {
       setCode(edit.code);
       setName(edit.name);
-      setLevelId(entityId(edit.levelId as { _id?: string; id?: string } | string) || NONE);
-      setParentId(entityId(edit.parentId as { _id?: string; id?: string } | string) || NONE);
+      setLevelId(
+        entityId(edit.levelId as { _id?: string; id?: string } | string) ||
+          NONE,
+      );
+      setParentId(
+        entityId(edit.parentId as { _id?: string; id?: string } | string) ||
+          NONE,
+      );
       setSortOrder(String(edit.sortOrder ?? 0));
       setIsActive(edit.isActive);
     } else {
@@ -202,14 +211,22 @@ export function UnitFormDialog({
             <div className="flex h-full items-end">
               <div className="flex h-9 w-full items-center justify-between rounded-lg border px-3">
                 <Label htmlFor="unit-active">Đang hoạt động</Label>
-                <Switch id="unit-active" checked={isActive} onCheckedChange={setIsActive} />
+                <Switch
+                  id="unit-active"
+                  checked={isActive}
+                  onCheckedChange={setIsActive}
+                />
               </div>
             </div>
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             Hủy
           </Button>
           <Button onClick={submit} disabled={saving}>

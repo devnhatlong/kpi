@@ -44,7 +44,11 @@ function PasswordField({ id, label, value, onChange }: PasswordFieldProps) {
           className="absolute right-0 top-0 flex h-9 w-9 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
           aria-label={visible ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
         >
-          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          {visible ? (
+            <EyeOff className="h-4 w-4" />
+          ) : (
+            <Eye className="h-4 w-4" />
+          )}
         </button>
       </div>
     </div>
@@ -118,7 +122,8 @@ export function SecuritySettings() {
           {saving ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
         </Button>
         <p className="text-xs text-muted-foreground">
-          Sau khi đổi mật khẩu, mọi thiết bị sẽ bị đăng xuất và bạn cần đăng nhập lại.
+          Sau khi đổi mật khẩu, mọi thiết bị sẽ bị đăng xuất và bạn cần đăng
+          nhập lại.
         </p>
       </div>
     </div>

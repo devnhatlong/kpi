@@ -59,8 +59,9 @@ export function PermissionsView() {
     useListPagination();
 
   const listParams = { page, limit, q: debouncedQuery };
-  const { data, isLoading, mutate } = useSWR(permissionKeys.list(listParams), () =>
-    fetchPermissionsPage(listParams),
+  const { data, isLoading, mutate } = useSWR(
+    permissionKeys.list(listParams),
+    () => fetchPermissionsPage(listParams),
   );
 
   const permissions = data?.data ?? [];
@@ -96,7 +97,9 @@ export function PermissionsView() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">Quyền</h1>
+          <h1 className="font-display text-2xl font-semibold tracking-tight">
+            Quyền
+          </h1>
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
@@ -138,19 +141,27 @@ export function PermissionsView() {
                   <TableHead className="w-[80px]">Thứ tự</TableHead>
                   <TableHead className="w-[110px]">Loại</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
-                  <TableHead className="w-[100px] text-right">Thao tác</TableHead>
+                  <TableHead className="w-[100px] text-right">
+                    Thao tác
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={8}
+                      className="h-24 text-center text-muted-foreground"
+                    >
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : permissions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={8}
+                      className="h-24 text-center text-muted-foreground"
+                    >
                       <div className="inline-flex flex-col items-center gap-2">
                         <KeyRound className="h-8 w-8 opacity-40" />
                         <span>Chưa có quyền nào.</span>
@@ -164,7 +175,9 @@ export function PermissionsView() {
                         {rowIndex(meta.page, meta.limit, index)}
                       </TableCell>
                       <TableCell>
-                        <Badge className={`font-mono ${codeBadgeClass(permission.code)}`}>
+                        <Badge
+                          className={`font-mono ${codeBadgeClass(permission.code)}`}
+                        >
                           {permission.code}
                         </Badge>
                       </TableCell>
@@ -195,7 +208,10 @@ export function PermissionsView() {
                             Hoạt động
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className={inactiveBadgeClass}>
+                          <Badge
+                            variant="outline"
+                            className={inactiveBadgeClass}
+                          >
                             Ngừng
                           </Badge>
                         )}
@@ -247,7 +263,10 @@ export function PermissionsView() {
         onSuccess={() => mutate()}
       />
 
-      <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(open) => !open && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Xoá quyền?</AlertDialogTitle>

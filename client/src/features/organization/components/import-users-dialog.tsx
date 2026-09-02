@@ -28,7 +28,10 @@ import {
   downloadUsersImportTemplate,
   parseUsersExcel,
 } from "@/features/organization/excel";
-import type { ImportUserRow, ImportUsersResult } from "@/features/organization/types";
+import type {
+  ImportUserRow,
+  ImportUsersResult,
+} from "@/features/organization/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 
 type ImportUsersDialogProps = {
@@ -77,7 +80,9 @@ export function ImportUsersDialog({
       const data = await importUsers(rows);
       setResult(data);
       toast.success(
-        data.summary.created > 0 ? "Import hoàn tất." : "Không có người dùng mới.",
+        data.summary.created > 0
+          ? "Import hoàn tất."
+          : "Không có người dùng mới.",
       );
       if (data.summary.created > 0) onSuccess();
     } catch (error) {
@@ -99,14 +104,14 @@ export function ImportUsersDialog({
         <DialogHeader>
           <DialogTitle>Import người dùng từ Excel</DialogTitle>
           <DialogDescription>
-            Cột bắt buộc: <code>username</code>. Tuỳ chọn:{" "}
-            <code>fullName</code>, <code>email</code>, <code>phone</code>,{" "}
-            <code>position</code>, <code>departmentCode</code>,{" "}
-            <code>roleCodes</code> (cách nhau bởi dấu phẩy), <code>isActive</code>.
+            Cột bắt buộc: <code>username</code>. Tuỳ chọn: <code>fullName</code>
+            , <code>email</code>, <code>phone</code>, <code>position</code>,{" "}
+            <code>departmentCode</code>, <code>roleCodes</code> (cách nhau bởi
+            dấu phẩy), <code>isActive</code>.
             <br />
-            <code>departmentCode</code> điền mã <strong>đơn vị trực tiếp</strong>: ai
-            thuộc đội thì điền mã đội, phòng cấp trên hệ thống tự suy ra theo cây đơn
-            vị.
+            <code>departmentCode</code> điền mã{" "}
+            <strong>đơn vị trực tiếp</strong>: ai thuộc đội thì điền mã đội,
+            phòng cấp trên hệ thống tự suy ra theo cây đơn vị.
           </DialogDescription>
         </DialogHeader>
 
@@ -154,7 +159,9 @@ export function ImportUsersDialog({
                 {rows.slice(0, 50).map((row, i) => (
                   <TableRow key={`${row.username}-${i}`}>
                     <TableCell>{i + 1}</TableCell>
-                    <TableCell className="font-medium">{row.username}</TableCell>
+                    <TableCell className="font-medium">
+                      {row.username}
+                    </TableCell>
                     <TableCell>{row.fullName || "-"}</TableCell>
                     <TableCell>{row.position || "-"}</TableCell>
                     <TableCell>{row.departmentCode || "-"}</TableCell>
@@ -175,7 +182,9 @@ export function ImportUsersDialog({
           <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
             <div className="flex flex-wrap gap-2 text-sm">
               <Badge>Tạo mới: {result.summary.created}</Badge>
-              <Badge variant="secondary">Bỏ qua: {result.summary.skipped}</Badge>
+              <Badge variant="secondary">
+                Bỏ qua: {result.summary.skipped}
+              </Badge>
               <Badge variant="destructive">Lỗi: {result.summary.errors}</Badge>
             </div>
             {result.results.filter((r) => r.status === "error").length > 0 && (
@@ -206,7 +215,9 @@ export function ImportUsersDialog({
             Đóng
           </Button>
           <Button onClick={runImport} disabled={!rows.length || importing}>
-            {importing ? "Đang import..." : `Import ${rows.length || ""} người dùng`}
+            {importing
+              ? "Đang import..."
+              : `Import ${rows.length || ""} người dùng`}
           </Button>
         </DialogFooter>
       </DialogContent>

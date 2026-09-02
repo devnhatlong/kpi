@@ -40,7 +40,9 @@ export function LoginForm() {
       toast.success("Đăng nhập thành công.");
       router.replace(resolvePostLoginPath(searchParams.get("next"), user));
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Tài khoản hoặc mật khẩu không đúng."));
+      toast.error(
+        getApiErrorMessage(error, "Tài khoản hoặc mật khẩu không đúng."),
+      );
     } finally {
       setLoading(false);
     }
@@ -54,7 +56,10 @@ export function LoginForm() {
     >
       <div className="space-y-5">
         <div>
-          <label htmlFor="username" className="text-sm font-medium text-foreground">
+          <label
+            htmlFor="username"
+            className="text-sm font-medium text-foreground"
+          >
             Tên đăng nhập
           </label>
           <div className="mt-2 relative">
@@ -73,7 +78,10 @@ export function LoginForm() {
         </div>
 
         <div>
-          <label htmlFor="password" className="text-sm font-medium text-foreground">
+          <label
+            htmlFor="password"
+            className="text-sm font-medium text-foreground"
+          >
             Mật khẩu
           </label>
           <div className="mt-2 relative">
@@ -94,13 +102,20 @@ export function LoginForm() {
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
               aria-label={showPwd ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
             >
-              {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showPwd ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
             </button>
           </div>
         </div>
 
         <label className="flex items-center gap-2 text-sm text-muted-foreground select-none">
-          <input type="checkbox" className="h-4 w-4 rounded border-border accent-[color:var(--primary)]" />
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-border accent-[color:var(--primary)]"
+          />
           Ghi nhớ đăng nhập trong 30 ngày
         </label>
 
@@ -108,7 +123,10 @@ export function LoginForm() {
           type="submit"
           disabled={loading}
           className="w-full h-11 rounded-lg font-medium text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-70"
-          style={{ background: "var(--gradient-hero)", boxShadow: "var(--shadow-elegant)" }}
+          style={{
+            background: "var(--gradient-hero)",
+            boxShadow: "var(--shadow-elegant)",
+          }}
         >
           {loading ? "Đang đăng nhập..." : "Đăng nhập"}
         </button>
@@ -118,7 +136,9 @@ export function LoginForm() {
             <div className="w-full border-t border-border" />
           </div>
           <div className="relative flex justify-center">
-            <span className="bg-card px-3 text-xs text-muted-foreground">hoặc tiếp tục với</span>
+            <span className="bg-card px-3 text-xs text-muted-foreground">
+              hoặc tiếp tục với
+            </span>
           </div>
         </div>
 

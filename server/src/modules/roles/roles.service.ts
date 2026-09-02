@@ -27,86 +27,94 @@ const SYSTEM_ROLES: Array<{
   sortOrder: number;
   permissions: string[];
 }> = [
-    {
-      code: RoleCode.SUPER_ADMIN,
-      name: 'Quản trị hệ thống',
-      sortOrder: 10,
-      permissions: ALL_PERMISSIONS,
-    },
-    {
-      // Cấp cao nhất của chuỗi nghiệp vụ: nhận báo cáo tổng hợp từ các đơn vị,
-      // duyệt và chốt. Không có quyền cấu hình hệ thống - việc đó của SUPER_ADMIN.
-      code: RoleCode.CAT_ADMIN,
-      name: 'Công an tỉnh',
-      sortOrder: 15,
-      permissions: [
-        Permission.USER_VIEW,
-        Permission.DEPARTMENT_VIEW,
-        Permission.MISSION_MANAGE,
-        Permission.TASK_ASSIGN,
-        Permission.TASK_VIEW,
-        Permission.EVALUATION_SELF,
-        Permission.EVALUATION_APPROVE,
-      ],
-    },
-    {
-      code: RoleCode.UNIT_ADMIN,
-      name: 'Trưởng phòng, trưởng xã',
-      sortOrder: 20,
-      // Không có ROLE_ASSIGN / USER_MANAGE: hai quyền đó chưa bị giới hạn theo
-      // phạm vi đơn vị nên cấp cho quản trị đơn vị là họ tự gán được vai trò
-      // SUPER_ADMIN cho chính mình. DEPARTMENT_MANAGE cũng vậy - xoá được đơn vị
-      // của bất kỳ nhánh nào. Chỉ mở lại khi các route đó chặn theo cây đơn vị.
-      permissions: [
-        Permission.USER_VIEW,
-        Permission.DEPARTMENT_VIEW,
-        Permission.MISSION_MANAGE,
-        Permission.TASK_ASSIGN,
-        Permission.TASK_VIEW,
-        Permission.EVALUATION_SELF,
-        Permission.EVALUATION_APPROVE,
-      ],
-    },
-    {
-      /*
+  {
+    code: RoleCode.SUPER_ADMIN,
+    name: 'Quản trị hệ thống',
+    sortOrder: 10,
+    permissions: ALL_PERMISSIONS,
+  },
+  {
+    // Cấp cao nhất của chuỗi nghiệp vụ: nhận báo cáo tổng hợp từ các đơn vị,
+    // duyệt và chốt. Không có quyền cấu hình hệ thống - việc đó của SUPER_ADMIN.
+    code: RoleCode.CAT_ADMIN,
+    name: 'Công an tỉnh',
+    sortOrder: 15,
+    permissions: [
+      Permission.USER_VIEW,
+      Permission.DEPARTMENT_VIEW,
+      Permission.MISSION_MANAGE,
+      Permission.TASK_ASSIGN,
+      Permission.TASK_VIEW,
+      Permission.EVALUATION_SELF,
+      Permission.EVALUATION_APPROVE,
+      Permission.TEAM_REPORT_REVIEW,
+    ],
+  },
+  {
+    code: RoleCode.UNIT_ADMIN,
+    name: 'Trưởng phòng, trưởng xã',
+    sortOrder: 20,
+    // Không có ROLE_ASSIGN / USER_MANAGE: hai quyền đó chưa bị giới hạn theo
+    // phạm vi đơn vị nên cấp cho quản trị đơn vị là họ tự gán được vai trò
+    // SUPER_ADMIN cho chính mình. DEPARTMENT_MANAGE cũng vậy - xoá được đơn vị
+    // của bất kỳ nhánh nào. Chỉ mở lại khi các route đó chặn theo cây đơn vị.
+    permissions: [
+      Permission.USER_VIEW,
+      Permission.DEPARTMENT_VIEW,
+      Permission.MISSION_MANAGE,
+      Permission.TASK_ASSIGN,
+      Permission.TASK_VIEW,
+      Permission.EVALUATION_SELF,
+      Permission.EVALUATION_APPROVE,
+      Permission.TEAM_REPORT_REVIEW,
+    ],
+  },
+  {
+    /*
         Phó đứng thay trưởng khi trưởng vắng, nên giữ ĐÚNG bộ quyền của trưởng -
         cắt bớt là mỗi lần trưởng đi vắng công việc của phòng đứng lại. Khác biệt
         giữa phó và trưởng nằm ở bậc báo cáo (ROLE_LADDER), không nằm ở quyền
         thao tác: phó vẫn phải trình báo cáo lên trưởng.
       */
-      code: RoleCode.VICE_UNIT_ADMIN,
-      name: 'Phó phòng, phó xã',
-      sortOrder: 25,
-      permissions: [
-        Permission.USER_VIEW,
-        Permission.DEPARTMENT_VIEW,
-        Permission.MISSION_MANAGE,
-        Permission.TASK_ASSIGN,
-        Permission.TASK_VIEW,
-        Permission.EVALUATION_SELF,
-        Permission.EVALUATION_APPROVE,
-      ],
-    },
-    {
-      code: RoleCode.MANAGER,
-      name: 'Đội trưởng',
-      sortOrder: 30,
-      permissions: [
-        Permission.USER_VIEW,
-        Permission.DEPARTMENT_VIEW,
-        Permission.TASK_ASSIGN,
-        Permission.TASK_VIEW,
-        Permission.EVALUATION_SELF,
-        Permission.EVALUATION_APPROVE,
-      ],
-    },
-    {
-      code: RoleCode.STAFF,
-      name: 'Cán bộ',
-      sortOrder: 40,
-      permissions: [Permission.TASK_VIEW, Permission.EVALUATION_SELF],
-    },
-  ];
+    code: RoleCode.VICE_UNIT_ADMIN,
+    name: 'Phó phòng, phó xã',
+    sortOrder: 25,
+    permissions: [
+      Permission.USER_VIEW,
+      Permission.DEPARTMENT_VIEW,
+      Permission.MISSION_MANAGE,
+      Permission.TASK_ASSIGN,
+      Permission.TASK_VIEW,
+      Permission.EVALUATION_SELF,
+      Permission.EVALUATION_APPROVE,
+      Permission.TEAM_REPORT_REVIEW,
+    ],
+  },
+  {
+    code: RoleCode.MANAGER,
+    name: 'Đội trưởng',
+    sortOrder: 30,
+    permissions: [
+      Permission.USER_VIEW,
+      Permission.DEPARTMENT_VIEW,
+      Permission.TASK_ASSIGN,
+      Permission.TASK_VIEW,
+      Permission.EVALUATION_SELF,
+      Permission.EVALUATION_APPROVE,
+      /*
+          Tài khoản của đội cũng chính là nơi cả đội nhập báo cáo ngày - bản
+          nghiệp vụ mới không có tài khoản riêng cho từng cán bộ.
+        */
+      Permission.TEAM_REPORT_ENTRY,
+    ],
+  },
+  {
+    code: RoleCode.STAFF,
+    name: 'Cán bộ',
+    sortOrder: 40,
+    permissions: [Permission.TASK_VIEW, Permission.EVALUATION_SELF],
+  },
+];
 
 /**
  * Tên cũ của vai trò hệ thống, để đổi sang tên nghiệp vụ đúng cách gọi trong
@@ -125,17 +133,61 @@ const LEGACY_ROLE_NAMES: Record<string, string[]> = {
   [RoleCode.STAFF]: ['Staff', 'Cán bộ'],
 };
 
+/**
+ * Quyền THÊM MỚI theo thời gian, cấp cho vai trò hệ thống đã nằm sẵn trong CSDL.
+ *
+ * `seedSystemRoles` ghi `permissions` bằng `$setOnInsert`, nên bổ sung quyền
+ * vào SYSTEM_ROLES ở trên chỉ có tác dụng với cơ sở dữ liệu trắng. Bản đã chạy
+ * thật thì không bao giờ nhận được quyền mới nếu không có đoạn này.
+ */
+const GRANTED_PERMISSIONS: Array<{ code: string; roles: RoleCode[] }> = [
+  {
+    code: Permission.TEAM_REPORT_ENTRY,
+    roles: [RoleCode.MANAGER],
+  },
+  {
+    code: Permission.TEAM_REPORT_REVIEW,
+    roles: [RoleCode.UNIT_ADMIN, RoleCode.VICE_UNIT_ADMIN, RoleCode.CAT_ADMIN],
+  },
+];
+
 @Injectable()
 export class RolesService implements OnModuleInit {
   constructor(
     @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
     @Inject(forwardRef(() => PermissionsService))
     private readonly permissionsService: PermissionsService,
-  ) { }
+  ) {}
 
   async onModuleInit() {
     await this.permissionsService.seedSystemPermissions();
     await this.seedSystemRoles();
+    await this.grantNewSystemPermissions();
+  }
+
+  /**
+   * Cấp các quyền mới cho vai trò hệ thống đã tồn tại.
+   *
+   * Dùng `$addToSet` từng mã một chứ KHÔNG ghi đè cả danh sách: quản trị viên
+   * có thể đã chủ động gỡ bớt quyền của một vai trò, ghi đè là xoá mất lựa chọn
+   * đó mỗi lần khởi động.
+   */
+  private async grantNewSystemPermissions() {
+    for (const grant of GRANTED_PERMISSIONS) {
+      await this.roleModel.updateMany(
+        { code: { $in: grant.roles }, isSystem: true },
+        { $addToSet: { permissions: grant.code } },
+      );
+    }
+    // SUPER_ADMIN khai quyền bằng danh sách đầy đủ nên phải bù riêng.
+    await this.roleModel.updateOne(
+      { code: RoleCode.SUPER_ADMIN, isSystem: true },
+      {
+        $addToSet: {
+          permissions: { $each: GRANTED_PERMISSIONS.map((g) => g.code) },
+        },
+      },
+    );
   }
 
   async create(dto: CreateRoleDto) {

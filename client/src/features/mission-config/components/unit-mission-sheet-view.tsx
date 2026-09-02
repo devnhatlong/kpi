@@ -65,6 +65,7 @@ import {
 import { useWorkingUnit } from "../use-working-unit";
 import { TaskAssignmentGrid } from "./task-assignment-grid";
 import { WorkingUnitSelect } from "./working-unit-select";
+import { DatePickerInput } from "@/components/common/date-picker-input";
 
 type SourceFilter = "all" | "province" | "handoff" | "own";
 
@@ -654,12 +655,12 @@ export function UnitMissionSheetView() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Hạn hoàn thành</Label>
-                <Input
-                  type="date"
+                <DatePickerInput
                   value={taskForm.dueDate}
-                  onChange={(e) =>
-                    setTaskForm((s) => ({ ...s, dueDate: e.target.value }))
+                  onChange={(next) =>
+                    setTaskForm((s) => ({ ...s, dueDate: next }))
                   }
+                  placeholder="Không đặt hạn"
                 />
               </div>
               <div className="space-y-2">

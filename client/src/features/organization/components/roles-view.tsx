@@ -41,7 +41,11 @@ import {
   inactiveBadgeClass,
   systemBadgeClass,
 } from "@/features/organization/badge-styles";
-import { deleteRole, fetchRolesPage, roleKeys } from "@/features/organization/api";
+import {
+  deleteRole,
+  fetchRolesPage,
+  roleKeys,
+} from "@/features/organization/api";
 import { RoleFormDialog } from "@/features/organization/components/role-form-dialog";
 import type { Role } from "@/features/organization/types";
 import { entityId } from "@/features/organization/types";
@@ -91,7 +95,9 @@ export function RolesView() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">Vai trò</h1>
+          <h1 className="font-display text-2xl font-semibold tracking-tight">
+            Vai trò
+          </h1>
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
@@ -133,19 +139,27 @@ export function RolesView() {
                   <TableHead className="w-[80px]">Thứ tự</TableHead>
                   <TableHead className="w-[110px]">Loại</TableHead>
                   <TableHead className="w-[120px]">Trạng thái</TableHead>
-                  <TableHead className="w-[100px] text-right">Thao tác</TableHead>
+                  <TableHead className="w-[100px] text-right">
+                    Thao tác
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={8}
+                      className="h-24 text-center text-muted-foreground"
+                    >
                       Đang tải...
                     </TableCell>
                   </TableRow>
                 ) : roles.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={8}
+                      className="h-24 text-center text-muted-foreground"
+                    >
                       <div className="inline-flex flex-col items-center gap-2">
                         <Shield className="h-8 w-8 opacity-40" />
                         <span>Chưa có vai trò nào.</span>
@@ -159,13 +173,17 @@ export function RolesView() {
                         {rowIndex(meta.page, meta.limit, index)}
                       </TableCell>
                       <TableCell>
-                        <Badge className={`font-mono ${codeBadgeClass(role.code)}`}>
+                        <Badge
+                          className={`font-mono ${codeBadgeClass(role.code)}`}
+                        >
                           {role.code}
                         </Badge>
                       </TableCell>
                       <TableCell className="font-medium">{role.name}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">{role.permissions?.length ?? 0}</Badge>
+                        <Badge variant="outline">
+                          {role.permissions?.length ?? 0}
+                        </Badge>
                       </TableCell>
                       <TableCell>{role.sortOrder ?? 0}</TableCell>
                       <TableCell>
@@ -181,7 +199,10 @@ export function RolesView() {
                             Hoạt động
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className={inactiveBadgeClass}>
+                          <Badge
+                            variant="outline"
+                            className={inactiveBadgeClass}
+                          >
                             Ngừng
                           </Badge>
                         )}
@@ -233,7 +254,10 @@ export function RolesView() {
         onSuccess={() => mutate()}
       />
 
-      <AlertDialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(open) => !open && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Xoá vai trò?</AlertDialogTitle>

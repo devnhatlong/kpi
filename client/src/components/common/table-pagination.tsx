@@ -29,7 +29,11 @@ export function TablePagination({
   const to = Math.min(page * limit, total);
 
   const pageSizeOptions = useMemo(
-    () => PAGE_SIZE_OPTIONS.map((size) => ({ value: String(size), label: String(size) })),
+    () =>
+      PAGE_SIZE_OPTIONS.map((size) => ({
+        value: String(size),
+        label: String(size),
+      })),
     [],
   );
 
@@ -41,7 +45,9 @@ export function TablePagination({
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground whitespace-nowrap">Mỗi trang</span>
+          <span className="text-sm text-muted-foreground whitespace-nowrap">
+            Mỗi trang
+          </span>
           <SearchableSelect
             value={String(limit)}
             onValueChange={(value) => onLimitChange(Number(value))}

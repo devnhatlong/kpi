@@ -22,6 +22,10 @@ export const PERM = {
   EVALUATION_SELF: "evaluation.self",
   EVALUATION_APPROVE: "evaluation.approve",
 
+  /* Bản nghiệp vụ mới - báo cáo ngày cấp đội. */
+  TEAM_REPORT_ENTRY: "team_report.entry",
+  TEAM_REPORT_REVIEW: "team_report.review",
+
   SYSTEM_CONFIG: "system.config",
 } as const;
 

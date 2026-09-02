@@ -24,8 +24,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { importDepartments } from "@/features/organization/api";
-import { downloadUnitsImportTemplate, parseUnitsExcel } from "@/features/organization/excel";
-import type { ImportDepartmentRow, ImportDepartmentsResult } from "@/features/organization/types";
+import {
+  downloadUnitsImportTemplate,
+  parseUnitsExcel,
+} from "@/features/organization/excel";
+import type {
+  ImportDepartmentRow,
+  ImportDepartmentsResult,
+} from "@/features/organization/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 
 type ImportUnitsDialogProps = {
@@ -34,7 +40,11 @@ type ImportUnitsDialogProps = {
   onSuccess: () => void;
 };
 
-export function ImportUnitsDialog({ open, onOpenChange, onSuccess }: ImportUnitsDialogProps) {
+export function ImportUnitsDialog({
+  open,
+  onOpenChange,
+  onSuccess,
+}: ImportUnitsDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ImportDepartmentRow[]>([]);
   const [result, setResult] = useState<ImportDepartmentsResult | null>(null);
@@ -69,7 +79,9 @@ export function ImportUnitsDialog({ open, onOpenChange, onSuccess }: ImportUnits
     try {
       const data = await importDepartments(rows);
       setResult(data);
-      toast.success(data.summary.created > 0 ? "Import hoàn tất." : "Không có đơn vị mới.");
+      toast.success(
+        data.summary.created > 0 ? "Import hoàn tất." : "Không có đơn vị mới.",
+      );
       if (data.summary.created > 0) onSuccess();
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Import thất bại."));
@@ -91,8 +103,9 @@ export function ImportUnitsDialog({ open, onOpenChange, onSuccess }: ImportUnits
           <DialogTitle>Import đơn vị từ Excel</DialogTitle>
           <DialogDescription>
             Cột bắt buộc: <code>code</code>, <code>name</code>. Tuỳ chọn:{" "}
-            <code>parentCode</code>, <code>levelCode</code>, <code>sortOrder</code>,{" "}
-            <code>isActive</code>. Mã đã tồn tại sẽ được bỏ qua.
+            <code>parentCode</code>, <code>levelCode</code>,{" "}
+            <code>sortOrder</code>, <code>isActive</code>. Mã đã tồn tại sẽ được
+            bỏ qua.
           </DialogDescription>
         </DialogHeader>
 
@@ -159,7 +172,9 @@ export function ImportUnitsDialog({ open, onOpenChange, onSuccess }: ImportUnits
           <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
             <div className="flex flex-wrap gap-2 text-sm">
               <Badge>Tạo mới: {result.summary.created}</Badge>
-              <Badge variant="secondary">Bỏ qua: {result.summary.skipped}</Badge>
+              <Badge variant="secondary">
+                Bỏ qua: {result.summary.skipped}
+              </Badge>
               <Badge variant="destructive">Lỗi: {result.summary.errors}</Badge>
             </div>
             {result.results.filter((r) => r.status === "error").length > 0 && (
@@ -190,7 +205,9 @@ export function ImportUnitsDialog({ open, onOpenChange, onSuccess }: ImportUnits
             Đóng
           </Button>
           <Button onClick={runImport} disabled={!rows.length || importing}>
-            {importing ? "Đang import..." : `Import ${rows.length || ""} đơn vị`}
+            {importing
+              ? "Đang import..."
+              : `Import ${rows.length || ""} đơn vị`}
           </Button>
         </DialogFooter>
       </DialogContent>

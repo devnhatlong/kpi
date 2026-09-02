@@ -1,11 +1,30 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+} from "lucide-react";
 import { DayButton, DayPicker, getDefaultClassNames } from "react-day-picker";
 
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
+
+/**
+ * Tên thứ và tháng bằng tiếng Việt.
+ *
+ * Viết thẳng ở đây thay vì cài thêm gói locale: máy triển khai không có
+ * internet nên thêm phụ thuộc là thêm một thứ phải mang theo, mà ở đây chỉ cần
+ * đúng hai mảng chữ. Không có bộ này thì lịch hiện "Mon Tue Wed" và
+ * "September 2026" - đọc lệch hẳn với phần còn lại của phần mềm.
+ */
+const VI_WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+
+function viMonthLabel(date: Date, withYear: boolean): string {
+  const month = `Tháng ${date.getMonth() + 1}`;
+  return withYear ? `${month} ${date.getFullYear()}` : month;
+}
 
 function Calendar({
   className,
@@ -32,12 +51,17 @@ function Calendar({
       )}
       captionLayout={captionLayout}
       formatters={{
-        formatMonthDropdown: (date) => date.toLocaleString("default", { month: "short" }),
+        formatCaption: (date) => viMonthLabel(date, true),
+        formatMonthDropdown: (date) => viMonthLabel(date, false),
+        formatWeekdayName: (date) => VI_WEEKDAYS[date.getDay()] ?? "",
         ...formatters,
       }}
       classNames={{
         root: cn("w-fit", defaultClassNames.root),
-        months: cn("relative flex flex-col gap-4 md:flex-row", defaultClassNames.months),
+        months: cn(
+          "relative flex flex-col gap-4 md:flex-row",
+          defaultClassNames.months,
+        ),
         month: cn("flex w-full flex-col gap-4", defaultClassNames.month),
         nav: cn(
           "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1",
@@ -65,7 +89,10 @@ function Calendar({
           "has-focus:border-ring border-input shadow-xs has-focus:ring-ring/50 has-focus:ring-[3px] relative rounded-md border",
           defaultClassNames.dropdown_root,
         ),
-        dropdown: cn("bg-popover absolute inset-0 opacity-0", defaultClassNames.dropdown),
+        dropdown: cn(
+          "bg-popover absolute inset-0 opacity-0",
+          defaultClassNames.dropdown,
+        ),
         caption_label: cn(
           "select-none font-medium",
           captionLayout === "label"
@@ -80,7 +107,10 @@ function Calendar({
           defaultClassNames.weekday,
         ),
         week: cn("mt-2 flex w-full", defaultClassNames.week),
-        week_number_header: cn("w-(--cell-size) select-none", defaultClassNames.week_number_header),
+        week_number_header: cn(
+          "w-(--cell-size) select-none",
+          defaultClassNames.week_number_header,
+        ),
         week_number: cn(
           "text-muted-foreground select-none text-[0.8rem]",
           defaultClassNames.week_number,
@@ -89,7 +119,10 @@ function Calendar({
           "group/day relative aspect-square h-full w-full select-none p-0 text-center [&:first-child[data-selected=true]_button]:rounded-l-md [&:last-child[data-selected=true]_button]:rounded-r-md",
           defaultClassNames.day,
         ),
-        range_start: cn("bg-accent rounded-l-md", defaultClassNames.range_start),
+        range_start: cn(
+          "bg-accent rounded-l-md",
+          defaultClassNames.range_start,
+        ),
         range_middle: cn("rounded-none", defaultClassNames.range_middle),
         range_end: cn("bg-accent rounded-r-md", defaultClassNames.range_end),
         today: cn(
@@ -100,24 +133,43 @@ function Calendar({
           "text-muted-foreground aria-selected:text-muted-foreground",
           defaultClassNames.outside,
         ),
-        disabled: cn("text-muted-foreground opacity-50", defaultClassNames.disabled),
+        disabled: cn(
+          "text-muted-foreground opacity-50",
+          defaultClassNames.disabled,
+        ),
         hidden: cn("invisible", defaultClassNames.hidden),
         ...classNames,
       }}
       components={{
         Root: ({ className, rootRef, ...props }) => {
-          return <div data-slot="calendar" ref={rootRef} className={cn(className)} {...props} />;
+          return (
+            <div
+              data-slot="calendar"
+              ref={rootRef}
+              className={cn(className)}
+              {...props}
+            />
+          );
         },
         Chevron: ({ className, orientation, ...props }) => {
           if (orientation === "left") {
-            return <ChevronLeftIcon className={cn("size-4", className)} {...props} />;
+            return (
+              <ChevronLeftIcon className={cn("size-4", className)} {...props} />
+            );
           }
 
           if (orientation === "right") {
-            return <ChevronRightIcon className={cn("size-4", className)} {...props} />;
+            return (
+              <ChevronRightIcon
+                className={cn("size-4", className)}
+                {...props}
+              />
+            );
           }
 
-          return <ChevronDownIcon className={cn("size-4", className)} {...props} />;
+          return (
+            <ChevronDownIcon className={cn("size-4", className)} {...props} />
+          );
         },
         DayButton: CalendarDayButton,
         WeekNumber: ({ children, ...props }) => {
