@@ -21,6 +21,7 @@ import {
   ClassifyTeamReportTaskDto,
   CloseTeamReportTaskDto,
   CreateTeamReportTaskDto,
+  ReopenTeamReportTaskDto,
   DecideTeamReportDayDto,
   PromoteTeamReportDto,
   ReviewTeamReportDayDto,
@@ -89,7 +90,7 @@ export class TeamReportController {
     return this.teamReportService.classifyTask(user.uid, id, dto);
   }
 
-  @ApiOperation({ summary: 'Dừng một nhiệm vụ giữa chừng' })
+  @ApiOperation({ summary: 'Đóng một nhiệm vụ: xong, hoặc dừng giữa chừng' })
   @Permissions(Permission.TEAM_REPORT_ENTRY)
   @Patch('tasks/:id/close')
   closeTask(
@@ -98,6 +99,17 @@ export class TeamReportController {
     @Body() dto: CloseTeamReportTaskDto,
   ) {
     return this.teamReportService.closeTask(user.uid, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Mở lại một nhiệm vụ đã đóng' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Patch('tasks/:id/reopen')
+  reopenTask(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: ReopenTeamReportTaskDto,
+  ) {
+    return this.teamReportService.reopenTask(user.uid, id, dto);
   }
 
   @ApiOperation({ summary: 'Xoá một nhiệm vụ chưa từng gửi đi' })

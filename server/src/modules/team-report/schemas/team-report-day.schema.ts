@@ -44,6 +44,10 @@ export class TeamReportDayRow {
   @Prop({ trim: true, default: '' })
   deadline!: string;
 
+  /** Sản phẩm đội khai ở GĐ1 - chép sang để cấp trên đọc mà không phải tra lại. */
+  @Prop({ trim: true, default: '' })
+  product!: string;
+
   @Prop({ type: Types.ObjectId, ref: Axis.name, default: null })
   axisId!: Types.ObjectId | null;
 

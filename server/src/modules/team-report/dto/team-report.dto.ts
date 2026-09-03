@@ -31,7 +31,7 @@ export class TeamReportEvidenceDto {
   name?: string;
 }
 
-/** Giai đoạn 1: bốn trường bất kỳ ai trong đội cũng gõ được. */
+/** Giai đoạn 1: những trường bất kỳ ai trong đội cũng gõ được. */
 export class CreateTeamReportTaskDto {
   @ApiProperty()
   @IsString()
@@ -42,6 +42,12 @@ export class CreateTeamReportTaskDto {
   @IsOptional()
   @IsString()
   deadline?: string;
+
+  @ApiPropertyOptional({ description: 'Sản phẩm phải ra, ô chữ tự do' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  product?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -116,7 +122,13 @@ export class ClassifyTeamReportTaskDto {
   catalogValues?: Record<string, string>;
 }
 
-/** Đội chủ động dừng một việc giữa chừng. */
+/**
+ * Đóng một nhiệm vụ - hai tình huống khác hẳn nhau.
+ *
+ * `done = true`: làm xong. Không hỏi lý do, vì "xong" đã là lý do.
+ * `done = false`: dừng giữa chừng. BẮT BUỘC nêu lý do - cấp trên phải đọc được
+ * vì sao một việc đang chạy lại thôi không làm nữa.
+ */
 export class CloseTeamReportTaskDto {
   @ApiProperty({ description: 'Số bản đang cầm' })
   @Type(() => Number)
@@ -124,10 +136,25 @@ export class CloseTeamReportTaskDto {
   @Min(1)
   version!: number;
 
-  @ApiProperty({ description: 'Vì sao dừng - bắt buộc' })
+  @ApiPropertyOptional({ description: 'true = đã hoàn thành; false = dừng dở' })
+  @IsOptional()
+  @IsBoolean()
+  done?: boolean;
+
+  @ApiPropertyOptional({ description: 'Bắt buộc khi dừng giữa chừng' })
+  @IsOptional()
   @IsString()
   @MaxLength(500)
-  reason!: string;
+  reason?: string;
+}
+
+/** Mở lại một nhiệm vụ đã đóng nhầm. */
+export class ReopenTeamReportTaskDto {
+  @ApiProperty({ description: 'Số bản đang cầm' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  version!: number;
 }
 
 export class TeamReportSheetQueryDto {
@@ -155,16 +182,6 @@ export class SubmitTeamReportDayDto {
   @IsString()
   @MaxLength(1000)
   note?: string;
-
-  /**
-   * Các việc coi như đã xong trong lượt này - gửi xong thì đóng lại, ngày mai
-   * không hiện nữa. Bỏ trống = không đóng việc nào.
-   */
-  @ApiPropertyOptional({ description: 'Việc đóng lại trong lượt gửi này' })
-  @IsOptional()
-  @IsArray()
-  @IsMongoId({ each: true })
-  closeTaskIds?: string[];
 }
 
 export class TeamReportInboxQueryDto {

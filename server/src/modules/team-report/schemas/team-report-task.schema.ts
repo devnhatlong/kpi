@@ -90,6 +90,16 @@ export class TeamReportTask {
   deadline!: string;
 
   /**
+   * Sản phẩm phải ra của nhiệm vụ - "Kế hoạch số 12", "Báo cáo chuyên đề"...
+   *
+   * Ô chữ tự do chứ không lấy từ danh mục: sản phẩm là thứ đội tự đặt ra lúc
+   * khai, chưa biết nhiệm vụ thuộc trục nào nên cũng chưa có danh mục nào để
+   * chiếu vào.
+   */
+  @Prop({ trim: true, default: '' })
+  product!: string;
+
+  /**
    * Điểm chuẩn do đội tự khai ở GĐ1.
    *
    * Lúc này chưa biết nhiệm vụ thuộc nội dung công việc nào nên chưa có dải

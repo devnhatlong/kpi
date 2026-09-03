@@ -19,6 +19,7 @@ import type {
   TeamReportColumn,
 } from "@/features/team-report/types";
 import { catalogOfColumn } from "@/features/team-report/types";
+import { cn } from "@/lib/utils";
 
 type DynamicColumnCellProps = {
   column: TeamReportColumn;
@@ -27,9 +28,21 @@ type DynamicColumnCellProps = {
   /** Danh mục cho cột kiểu chọn, do server gửi kèm bảng phân loại. */
   catalogs: TeamReportCatalogs;
   disabled?: boolean;
+  /**
+   * Server vừa từ chối giá trị đang nằm trong ô này.
+   *
+   * Viền đỏ ngay tại ô chứ không chỉ báo trên góc màn: biểu mẫu của một trục có
+   * hơn chục ô, đọc "Cột Điểm phải trong 0-50" rồi phải tự dò xem ô nào là ô
+   * Điểm thì lỗi nằm xa chỗ phải sửa.
+   */
+  invalid?: boolean;
   /** Gọi khi giá trị thật sự chốt - rời ô với cột gõ, chọn xong với dropdown. */
   onCommit: (next: string) => void;
 };
+
+/** Viền đỏ dùng chung cho mọi kiểu ô, kể cả ô chọn của Radix. */
+const INVALID_CLASS =
+  "border-destructive ring-1 ring-destructive/30 focus-visible:ring-destructive";
 
 /**
  * Một ô nhập dựng theo cấu hình cột của quản trị.
@@ -46,6 +59,7 @@ export function DynamicColumnCell({
   value,
   catalogs,
   disabled,
+  invalid,
   onCommit,
 }: DynamicColumnCellProps) {
   const catalog = catalogOfColumn(column);
@@ -66,7 +80,10 @@ export function DynamicColumnCell({
         disabled={disabled}
         onValueChange={(next) => onCommit(next === "__none__" ? "" : next)}
       >
-        <SelectTrigger className="w-full bg-background">
+        <SelectTrigger
+          aria-invalid={invalid}
+          className={cn("w-full bg-background", invalid && INVALID_CLASS)}
+        >
           <SelectValue placeholder="Chọn" />
         </SelectTrigger>
         <SelectContent>
@@ -104,6 +121,8 @@ export function DynamicColumnCell({
         checked={value === "1"}
         disabled={disabled}
         aria-label={column.title}
+        aria-invalid={invalid}
+        className={cn(invalid && INVALID_CLASS)}
         onCheckedChange={(checked) => onCommit(checked ? "1" : "")}
       />
     );
@@ -114,6 +133,7 @@ export function DynamicColumnCell({
       column={column}
       value={value}
       disabled={disabled}
+      invalid={invalid}
       onCommit={onCommit}
     />
   );
@@ -130,12 +150,18 @@ function FreeTextCell({
   column,
   value,
   disabled,
+  invalid,
   onCommit,
 }: Omit<DynamicColumnCellProps, "catalogs">) {
   const [draft, setDraft] = useState(value);
 
+  /*
+    So với `value` để không gửi lại khi rời ô mà không sửa gì. Nhưng nếu server
+    vừa từ chối ô này thì `value` vẫn là số cũ còn `draft` là số bị từ chối -
+    người dùng sửa rồi rời ô vẫn phải gửi, nên khi đang lỗi thì gửi vô điều kiện.
+  */
   const commit = () => {
-    if (draft === value) return;
+    if (!invalid && draft === value) return;
     onCommit(draft);
   };
 
@@ -145,6 +171,8 @@ function FreeTextCell({
         value={draft}
         disabled={disabled}
         step="any"
+        aria-invalid={invalid}
+        className={cn(invalid && INVALID_CLASS)}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
       />
@@ -162,6 +190,7 @@ function FreeTextCell({
         disabled={disabled}
         onChange={onCommit}
         placeholder={column.title}
+        triggerClassName={cn(invalid && INVALID_CLASS)}
       />
     );
   }
@@ -170,7 +199,8 @@ function FreeTextCell({
     <Input
       value={draft}
       disabled={disabled}
-      className="bg-background"
+      aria-invalid={invalid}
+      className={cn("bg-background", invalid && INVALID_CLASS)}
       placeholder={column.title}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}

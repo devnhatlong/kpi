@@ -64,6 +64,7 @@ import {
   ClassifyTeamReportTaskDto,
   CloseTeamReportTaskDto,
   CreateTeamReportTaskDto,
+  ReopenTeamReportTaskDto,
   DecideTeamReportDayDto,
   PromoteTeamReportDto,
   ReviewTeamReportDayDto,
@@ -152,7 +153,10 @@ export class TeamReportService {
       $or: [{ isOpen: true }, { closedDate: reportDate }],
     };
     if (query.q?.trim()) {
-      filter.name = { $regex: this.likeRegex(query.q) };
+      const like = { $regex: this.likeRegex(query.q) };
+      /* Đi vào `$and` chứ không đặt thẳng: `$or` ở trên đang giữ điều kiện
+         còn-mở/đóng-đúng-ngày, thêm một `$or` nữa ở cùng tầng là đè mất nó. */
+      filter.$and = [{ $or: [{ name: like }, { product: like }] }];
     }
 
     const [tasks, day] = await Promise.all([
@@ -191,6 +195,7 @@ export class TeamReportService {
       departmentId: actor.departmentId,
       name,
       deadline: this.optionalDate(dto.deadline),
+      product: dto.product?.trim() ?? '',
       standardScore: dto.standardScore ?? null,
       evidence: this.mapEvidence(dto.evidence),
       createdDate: today,
@@ -205,6 +210,7 @@ export class TeamReportService {
     const actor = await this.requireActor(userId);
     const task = await this.requireOwnTask(actor, id);
     await this.assertDayEditable(actor.departmentId, serverDateYmd());
+    this.assertClosedNotEdited(task);
     this.assertVersion(task, dto.version);
 
     const name = dto.name.trim();
@@ -212,8 +218,15 @@ export class TeamReportService {
 
     task.name = name;
     task.deadline = this.optionalDate(dto.deadline);
+    task.product = dto.product?.trim() ?? '';
     task.standardScore = dto.standardScore ?? null;
     if (dto.evidence) task.evidence = this.mapEvidence(dto.evidence);
+
+    /* Đẩy luôn sang bộ cột của mẫu nếu nhiệm vụ đã chọn trục. Bảng nhập là nguồn
+       của tên / hạn / sản phẩm, nên sửa ở đây mà bảng chấm vẫn giữ số cũ là hai
+       màn nói hai chuyện khác nhau về cùng một nhiệm vụ. */
+    await this.syncEntryColumns(task);
+
     task.version += 1;
     await task.save();
 
@@ -244,23 +257,72 @@ export class TeamReportService {
     return { message: 'Đã xoá nhiệm vụ.', data: { id } };
   }
 
-  /** Đội chủ động dừng một việc giữa chừng, phải nêu lý do. */
+  /**
+   * Đóng một nhiệm vụ: làm xong, hoặc dừng giữa chừng.
+   *
+   * Đóng có hiệu lực NGAY, không chờ tới lượt gửi. Nhiệm vụ đóng hôm nay vẫn
+   * nằm trong bảng của hôm nay (xem bộ lọc `closedDate === reportDate`), chỉ
+   * biến mất từ ngày mai - nên đánh dấu sớm không làm mất nó khỏi báo cáo.
+   *
+   * Nhờ vậy không phải gom việc "đánh dấu đã xong" vào một danh sách tích lúc
+   * gửi: một ngày vài chục nhiệm vụ thì danh sách đó không ai dò nổi.
+   */
   async closeTask(userId: string, id: string, dto: CloseTeamReportTaskDto) {
     const actor = await this.requireActor(userId);
     const task = await this.requireOwnTask(actor, id);
     this.assertVersion(task, dto.version);
 
-    const reason = dto.reason.trim();
-    if (!reason) throw new BadRequestException('Lý do dừng là bắt buộc.');
+    const done = dto.done === true;
+    const reason = dto.reason?.trim() ?? '';
+    if (!done && !reason) {
+      throw new BadRequestException(
+        'Dừng giữa chừng thì phải nêu lý do. Làm xong thì đánh dấu hoàn thành.',
+      );
+    }
 
     task.isOpen = false;
     task.closedDate = serverDateYmd();
-    task.closedReason = reason;
+    task.closedReason = done ? '' : reason;
     task.version += 1;
-    this.appendEdit(task, actor, 'isOpen', 'đang làm', 'dừng', reason);
+    this.appendEdit(
+      task,
+      actor,
+      'Tình trạng',
+      'đang làm',
+      done ? 'hoàn thành' : 'dừng giữa chừng',
+      done ? 'Đội đánh dấu đã xong' : reason,
+    );
     await task.save();
 
-    return { message: 'Đã dừng nhiệm vụ.', data: task };
+    return {
+      message: done ? 'Đã đánh dấu hoàn thành.' : 'Đã dừng nhiệm vụ.',
+      data: task,
+    };
+  }
+
+  /**
+   * Mở lại một nhiệm vụ đã đóng.
+   *
+   * Đóng có hiệu lực ngay nên bấm nhầm là mất luôn khỏi bảng ngày mai - phải có
+   * đường lùi, không thì cách duy nhất là khai lại một dòng mới.
+   */
+  async reopenTask(userId: string, id: string, dto: ReopenTeamReportTaskDto) {
+    const actor = await this.requireActor(userId);
+    const task = await this.requireOwnTask(actor, id);
+    this.assertVersion(task, dto.version);
+
+    if (task.isOpen) {
+      throw new BadRequestException('Nhiệm vụ này đang mở.');
+    }
+
+    task.isOpen = true;
+    task.closedDate = '';
+    task.closedReason = '';
+    task.version += 1;
+    this.appendEdit(task, actor, 'Tình trạng', 'đã đóng', 'đang làm', '');
+    await task.save();
+
+    return { message: 'Đã mở lại nhiệm vụ.', data: task };
   }
 
   // ================================================= giai đoạn 2: phân loại
@@ -349,6 +411,7 @@ export class TeamReportService {
     const actor = await this.requireActor(userId);
     const task = await this.requireOwnTask(actor, id);
     await this.assertDayEditable(actor.departmentId, serverDateYmd());
+    this.assertClosedNotEdited(task);
     this.assertVersion(task, dto.version);
 
     if (dto.axisId !== undefined) {
@@ -364,7 +427,7 @@ export class TeamReportService {
         task.reviewValues = {};
         task.reviewCatalogValues = {};
         await this.stampTemplate(task);
-        await this.prefillFromEntry(task);
+        await this.syncEntryColumns(task);
       }
     }
 
@@ -377,10 +440,13 @@ export class TeamReportService {
     if (dto.fieldValues || dto.catalogValues) {
       await this.stampTemplate(task);
       const template = await this.templateOfTask(task);
-      const merged = await this.applyColumnValues(task, template, {
-        fieldValues: dto.fieldValues,
-        catalogValues: dto.catalogValues,
-      });
+      const merged = await this.applyColumnValues(
+        task,
+        template,
+        { fieldValues: dto.fieldValues, catalogValues: dto.catalogValues },
+        // Đội đang tự phân loại - cột sản phẩm / tên / hạn ghi ngược lên GĐ1.
+        true,
+      );
       task.fieldValues = merged.fieldValues;
       task.catalogValues = merged.catalogValues;
       task.markModified('fieldValues');
@@ -440,9 +506,10 @@ export class TeamReportService {
       );
     }
 
-    const closeIds = new Set((dto.closeTaskIds ?? []).map(String));
+    /* Đóng việc đã là hành động riêng ngay trên màn phân loại, nên tới đây
+       chỉ việc chép lại trạng thái đang có - không còn danh sách tích lúc gửi. */
     const rows: TeamReportDayRow[] = tasks.map((task) =>
-      this.snapshotOf(task, closeIds.has(String(task._id))),
+      this.snapshotOf(task, !task.isOpen),
     );
 
     const recipientDepartmentId = await this.resolveRecipientDepartment(
@@ -489,20 +556,6 @@ export class TeamReportService {
         );
       }
       throw error;
-    }
-
-    // Đóng những việc đội đánh dấu đã xong - từ mai chúng không hiện lại nữa.
-    if (closeIds.size) {
-      await this.taskModel.updateMany(
-        {
-          _id: { $in: [...closeIds].map((id) => new Types.ObjectId(id)) },
-          departmentId: actor.departmentId,
-        },
-        {
-          $set: { isOpen: false, closedDate: reportDate },
-          $inc: { version: 1 },
-        },
-      );
     }
 
     return {
@@ -768,6 +821,7 @@ export class TeamReportService {
         taskId: row.taskId,
         name: row.name,
         deadline: row.deadline,
+        product: row.product,
         axisId: row.axisId,
         axisName: row.axisName,
         workContentId: row.workContentId,
@@ -929,6 +983,17 @@ export class TeamReportService {
       fieldValues?: Record<string, string | number>;
       catalogValues?: Record<string, string>;
     },
+    /*
+      Có ghi ngược lên trường giai đoạn 1 hay không.
+
+      Bật khi CHÍNH ĐỘI đang phân loại: cột "Sản phẩm" của mẫu và ô sản phẩm ở
+      bảng nhập là một thứ, sửa bên nào cũng phải sang bên kia.
+
+      TẮT khi cấp trên chấm lại: số cấp trên chỉnh nằm riêng ở `reviewValues` để
+      còn đối chiếu với số đội khai. Ghi ngược ở đó là xoá mất chính cái mình
+      đang muốn đối chiếu.
+    */
+    syncEntryFields = false,
   ) {
     const fieldValues = { ...(task.fieldValues ?? {}) };
     const catalogValues = { ...(task.catalogValues ?? {}) };
@@ -939,11 +1004,24 @@ export class TeamReportService {
         .filter((column) => column.visible)
         .map((column) => [column.key, column]),
     );
+    /*
+      Ba cột này là bản sao của trường giai đoạn 1. Đội sửa ở bảng chấm thì phải
+      ghi NGƯỢC lên trường gốc, không thì lần sau ai đó lưu bảng nhập là
+      `syncEntryColumns` chép đè lại giá trị cũ và thứ vừa gõ biến mất.
+    */
+    const entryKeys = syncEntryFields
+      ? this.entryColumnKeys(template)
+      : ({} as ReturnType<typeof this.entryColumnKeys>);
 
     for (const [key, raw] of Object.entries(input.fieldValues ?? {})) {
       const column = byKey.get(key);
       if (!column || column.autoValue) continue;
       const value = String(raw ?? '').trim();
+
+      if (key === entryKeys.product) task.product = value;
+      else if (key === entryKeys.deadline) task.deadline = value;
+      else if (key === entryKeys.title && value) task.name = value;
+
       if (!value) {
         delete fieldValues[key];
         continue;
@@ -1003,42 +1081,67 @@ export class TeamReportService {
   }
 
   /**
-   * Điền sẵn vào mẫu những gì giai đoạn 1 đã khai.
+   * Cột nào của mẫu là bản sao của trường giai đoạn 1 nào.
    *
-   * Mẫu của trục đã có sẵn cột tên nhiệm vụ và cột hạn, mà bảng nhập trong ngày
-   * cũng hỏi đúng hai thứ đó - không điền sẵn thì người phân loại phải gõ lại y
-   * nguyên, và hai chỗ dễ lệch nhau.
-   *
-   * Chỉ là ĐIỀN SẴN cho tiện, không phải nguồn giá trị: đoán sai cột thì người
-   * dùng sửa đè lên, không hỏng gì. Vì vậy dùng luật đơn giản, đúng cách mà màn
-   * nhập của bản nghiệp vụ cũ đang dò cột.
+   * Một chỗ khai duy nhất cho CẢ HAI CHIỀU: bảng nhập ghi xuống cột, và người
+   * phân loại gõ vào cột thì ghi ngược lên bảng nhập. Hai chiều mà dò cột theo
+   * hai luật riêng thì chỉ cần lệch một cột là giá trị chạy vòng quanh rồi mất.
    */
-  private async prefillFromEntry(task: TeamReportTaskDocument) {
-    const template = await this.templateOfTask(task);
-    if (!template) return;
-
+  private entryColumnKeys(template: ResolvedTemplate | null) {
+    if (!template) return {};
     const visible = template.columns.filter(
       (column) => column.visible && !column.autoValue,
     );
-    const fieldValues = { ...(task.fieldValues ?? {}) };
 
-    // Tên việc: cột chữ tự do đầu tiên - trong mẫu mặc định đó là cột "Nhiệm vụ".
-    const titleColumn = visible.find(
+    /* Sản phẩm: CHỈ nhận đúng cột khoá 'product'. Không đoán theo tiêu đề - đoán
+       trúng cột khác là đè mất thứ người ta đã gõ. */
+    const product = visible.find(
+      (column) => column.key === 'product' && column.dataType === 'text',
+    );
+
+    /*
+      Tên việc: cột chữ tự do đầu tiên - ở mẫu mặc định đó là cột "Nhiệm vụ".
+      PHẢI loại cột sản phẩm ra: mẫu Trục 2 không có cột tên việc dạng chữ (tên
+      lấy từ danh mục), nên cột chữ tự do đầu tiên của nó chính là "Sản phẩm" -
+      không loại thì tên nhiệm vụ bị ghi đè lên ô sản phẩm.
+    */
+    const title = visible.find(
       (column) =>
         column.semanticKey === 'custom' &&
         column.dataType === 'text' &&
-        column.key !== 'note',
+        column.key !== 'note' &&
+        column.key !== product?.key,
     );
-    if (titleColumn && task.name) fieldValues[titleColumn.key] = task.name;
 
-    // Hạn: cột khoá 'deadline', mẫu khác thì cột ngày đầu tiên.
-    const deadlineColumn =
-      visible.find(
-        (column) => column.key === 'deadline' && column.dataType === 'date',
-      ) ?? visible.find((column) => column.dataType === 'date');
-    if (deadlineColumn && task.deadline) {
-      fieldValues[deadlineColumn.key] = task.deadline;
-    }
+    const deadline = visible.find(
+      (column) => column.key === 'deadline' && column.dataType === 'date',
+    );
+
+    return {
+      product: product?.key,
+      title: title?.key,
+      deadline: deadline?.key,
+    };
+  }
+
+  /**
+   * Chép những gì giai đoạn 1 đã khai vào đúng cột của mẫu.
+   *
+   * Mẫu của trục đã có sẵn cột tên nhiệm vụ, cột hạn và cột sản phẩm, mà bảng
+   * nhập trong ngày cũng hỏi đúng ba thứ đó. Chạy lại mỗi lần giai đoạn 1 đổi,
+   * chứ không phải chỉ điền một lần lúc chọn trục: chỉ điền một lần thì ai gõ
+   * sản phẩm sau khi đã chọn trục sẽ thấy ô bên bảng chấm trống mãi.
+   */
+  private async syncEntryColumns(task: TeamReportTaskDocument) {
+    const template = await this.templateOfTask(task);
+    if (!template) return;
+
+    const keys = this.entryColumnKeys(template);
+    const fieldValues = { ...(task.fieldValues ?? {}) };
+
+    if (keys.product) fieldValues[keys.product] = task.product ?? '';
+    if (keys.title && task.name) fieldValues[keys.title] = task.name;
+    if (keys.deadline) fieldValues[keys.deadline] = task.deadline ?? '';
 
     task.fieldValues = fieldValues;
     task.markModified('fieldValues');
@@ -1237,6 +1340,23 @@ export class TeamReportService {
     };
   }
 
+  /**
+   * Việc đã chốt thì không sửa nữa - phải mở lại trước.
+   *
+   * Chặn ở server chứ không chỉ khoá ô trên màn: khoá ô chỉ là chuyện bày biện,
+   * một tab mở sẵn từ trước lúc đóng vẫn gửi được lượt lưu như thường.
+   *
+   * KHÔNG áp cho `closeTask`/`reopenTask` (đó chính là đường mở ra), cũng không
+   * áp cho cấp trên chấm lại: cấp trên đọc bản đã trình, mà việc đóng trước khi
+   * gửi là chuyện bình thường.
+   */
+  private assertClosedNotEdited(task: TeamReportTaskDocument) {
+    if (task.isOpen) return;
+    throw new BadRequestException(
+      'Nhiệm vụ đã chốt nên không sửa được. Bấm "Mở lại" nếu cần sửa tiếp.',
+    );
+  }
+
   private async requireOwnTask(actor: Actor, id: string) {
     const task = await this.taskModel.findOne({
       _id: this.requireObjectId(id, 'Nhiệm vụ'),
@@ -1318,6 +1438,7 @@ export class TeamReportService {
       taskId: task._id,
       name: task.name,
       deadline: task.deadline,
+      product: task.product ?? '',
       axisId: axis?._id ?? null,
       axisName: axis?.name ?? '',
       workContentId: content?._id ?? null,

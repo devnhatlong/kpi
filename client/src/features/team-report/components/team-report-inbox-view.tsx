@@ -530,17 +530,17 @@ function TeamReportDayDetailDialog({
           taskId: row.taskId,
           ...(catalog
             ? {
-              catalogValues: {
-                ...(current.catalogValues ?? {}),
-                [column.key]: next,
-              },
-            }
+                catalogValues: {
+                  ...(current.catalogValues ?? {}),
+                  [column.key]: next,
+                },
+              }
             : {
-              fieldValues: {
-                ...(current.fieldValues ?? {}),
-                [column.key]: next,
-              },
-            }),
+                fieldValues: {
+                  ...(current.fieldValues ?? {}),
+                  [column.key]: next,
+                },
+              }),
         },
       };
     });
@@ -639,6 +639,14 @@ function TeamReportDayDetailDialog({
                         <TableRow key={row.taskId}>
                           <TableCell className="max-w-[340px] whitespace-normal break-words align-middle">
                             <div className="font-medium">{row.name}</div>
+                            {/* Sản phẩm nằm cùng ô với tên việc chứ không thêm
+                                cột: bảng này đã gánh cả bộ cột của mẫu, thêm
+                                cột nữa là đẩy phần chấm ra khỏi màn hình. */}
+                            {row.product ? (
+                              <div className="text-xs text-muted-foreground">
+                                Sản phẩm: {row.product}
+                              </div>
+                            ) : null}
                             <div className="text-xs text-muted-foreground tabular-nums">
                               {row.deadline
                                 ? `Hạn ${formatYmd(row.deadline)}`

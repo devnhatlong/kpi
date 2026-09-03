@@ -1,8 +1,18 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
-import { Lock, Pencil, Plus, RefreshCw, Square, Trash2, X } from "lucide-react";
+import {
+  Lock,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Square,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +41,7 @@ import {
   createTeamReportTask,
   deleteTeamReportTask,
   fetchTeamReportSheet,
+  reopenTeamReportTask,
   teamReportKeys,
   updateTeamReportTask,
 } from "@/features/team-report/api";
@@ -60,6 +71,7 @@ const REFRESH_MS = 5000;
 type Draft = {
   name: string;
   deadline: string;
+  product: string;
   standardScore: string;
   /** Số bản lúc mở ra sửa - gửi kèm để server biết mình đang cầm bản nào. */
   version: number;
@@ -68,6 +80,7 @@ type Draft = {
 const emptyDraft = (): Draft => ({
   name: "",
   deadline: "",
+  product: "",
   standardScore: "",
   version: 0,
 });
@@ -76,6 +89,7 @@ function draftOf(task: TeamReportTask): Draft {
   return {
     name: task.name,
     deadline: task.deadline,
+    product: task.product ?? "",
     standardScore:
       task.standardScore === null ? "" : String(task.standardScore),
     version: task.version,
@@ -123,9 +137,31 @@ export function TeamReportSheetView() {
   const [closeReason, setCloseReason] = useState("");
   const [deleting, setDeleting] = useState<TeamReportTask | null>(null);
 
+  /*
+    Tìm kiếm chạy Ở SERVER (`q` soi cả tên nhiệm vụ lẫn sản phẩm), nên giữ hai
+    state: `query` là thứ đang gõ, `search` là thứ đã chốt để gọi API. Gọi theo
+    từng phím gõ thì mỗi ký tự một lượt mạng, mà bảng lại tự nạp lại 5 giây một
+    lần - hai thứ chồng lên nhau là bảng nhấp nháy liên tục.
+  */
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    if (debounce.current) clearTimeout(debounce.current);
+    debounce.current = setTimeout(() => setSearch(next.trim()), 300);
+  };
+
+  const clearQuery = () => {
+    if (debounce.current) clearTimeout(debounce.current);
+    setQuery("");
+    setSearch("");
+  };
+
   const { data, isLoading, mutate, isValidating } = useSWR(
-    ready ? teamReportKeys.sheet(reportDate, "") : null,
-    () => fetchTeamReportSheet({ reportDate }),
+    ready ? teamReportKeys.sheet(reportDate, search) : null,
+    () => fetchTeamReportSheet({ reportDate, q: search }),
     {
       // Tự nạp lại để thấy dòng người khác vừa thêm.
       refreshInterval: REFRESH_MS,
@@ -174,10 +210,14 @@ export function TeamReportSheetView() {
       await createTeamReportTask({
         name,
         deadline: newDraft.deadline || undefined,
+        product: newDraft.product.trim() || undefined,
         standardScore: toNumberOrNull(newDraft.standardScore),
       });
       setNewDraft(emptyDraft());
       setAdding(false);
+      /* Bỏ bộ lọc: dòng vừa thêm rất có thể không khớp từ đang tìm, giữ nguyên
+         thì thêm xong lại không thấy đâu và tưởng là hỏng. */
+      clearQuery();
       await mutate();
       toast.success("Đã thêm nhiệm vụ.");
     } catch (error) {
@@ -198,6 +238,7 @@ export function TeamReportSheetView() {
       await updateTeamReportTask(task._id, {
         name,
         deadline: draft.deadline || undefined,
+        product: draft.product.trim() || undefined,
         standardScore: toNumberOrNull(draft.standardScore),
         version: draft.version,
       });
@@ -230,6 +271,20 @@ export function TeamReportSheetView() {
       toast.success("Đã dừng nhiệm vụ.");
     } catch (error) {
       await handleError(error, "Không dừng được nhiệm vụ.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  /** Đường lùi cho lần bấm nhầm - không hỏi lại, vì mở lại chẳng mất gì. */
+  const reopen = async (task: TeamReportTask) => {
+    setBusyId(task._id);
+    try {
+      await reopenTeamReportTask(task._id, { version: task.version });
+      await mutate();
+      toast.success("Đã mở lại nhiệm vụ.");
+    } catch (error) {
+      await handleError(error, "Không mở lại được nhiệm vụ.");
     } finally {
       setBusyId(null);
     }
@@ -285,15 +340,41 @@ export function TeamReportSheetView() {
       <Card className="shadow-sm">
         <CardContent className="space-y-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <TeamReportDayPicker
-              value={reportDate}
-              onChange={setPickedDate}
-              today={today}
-            />
+            <div className="flex flex-1 flex-wrap items-center gap-2">
+              <TeamReportDayPicker
+                value={reportDate}
+                onChange={setPickedDate}
+                today={today}
+              />
+
+              <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
+                <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(event) => changeQuery(event.target.value)}
+                  placeholder="Tìm theo nhiệm vụ hoặc sản phẩm..."
+                  className="bg-background pl-8 pr-8"
+                />
+                {query ? (
+                  <button
+                    type="button"
+                    aria-label="Xoá tìm kiếm"
+                    onClick={clearQuery}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="size-4" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {/* Đang tìm thì con số là số dòng KHỚP, không phải cả ngày - nói
+                  rõ ra, kẻo đọc nhầm là cả ngày chỉ có bấy nhiêu việc. */}
               <Badge variant="secondary" className="font-normal">
-                {tasks.length} nhiệm vụ
+                {search
+                  ? `Khớp ${tasks.length} nhiệm vụ`
+                  : `${tasks.length} nhiệm vụ`}
               </Badge>
               {data?.unclassified ? (
                 <Badge
@@ -334,7 +415,8 @@ export function TeamReportSheetView() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[320px]">Nhiệm vụ</TableHead>
+                  <TableHead className="min-w-[280px]">Nhiệm vụ</TableHead>
+                  <TableHead className="min-w-[200px]">Sản phẩm</TableHead>
                   <TableHead className="w-[150px]">Hạn hoàn thành</TableHead>
                   <TableHead className="w-[120px]">Điểm chuẩn</TableHead>
                   <TableHead className="w-[180px]">Phân loại</TableHead>
@@ -348,7 +430,7 @@ export function TeamReportSheetView() {
                 {isLoading && !tasks.length ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="h-28 text-center text-muted-foreground"
                     >
                       Đang tải...
@@ -359,10 +441,23 @@ export function TeamReportSheetView() {
                 {!isLoading && !tasks.length && !adding ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="h-28 text-center text-muted-foreground"
                     >
-                      Chưa có nhiệm vụ nào của ngày này.
+                      {search ? (
+                        <>
+                          Không có nhiệm vụ nào khớp &ldquo;{search}&rdquo;.{" "}
+                          <button
+                            type="button"
+                            onClick={clearQuery}
+                            className="cursor-pointer font-medium text-primary underline-offset-4 hover:underline"
+                          >
+                            Xoá tìm kiếm
+                          </button>
+                        </>
+                      ) : (
+                        "Chưa có nhiệm vụ nào của ngày này."
+                      )}
                     </TableCell>
                   </TableRow>
                 ) : null}
@@ -381,6 +476,16 @@ export function TeamReportSheetView() {
                             onChange={(e) =>
                               setDraft({ ...draft, name: e.target.value })
                             }
+                            className="bg-background"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={draft.product}
+                            onChange={(e) =>
+                              setDraft({ ...draft, product: e.target.value })
+                            }
+                            placeholder="Sản phẩm phải ra"
                             className="bg-background"
                           />
                         </TableCell>
@@ -448,6 +553,11 @@ export function TeamReportSheetView() {
                           </div>
                         ) : null}
                       </TableCell>
+                      <TableCell className="max-w-[280px] whitespace-normal break-words align-middle text-sm">
+                        {task.product || (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                       <TableCell className="align-middle tabular-nums">
                         {task.deadline ? formatYmd(task.deadline) : "-"}
                       </TableCell>
@@ -481,19 +591,34 @@ export function TeamReportSheetView() {
                             <Pencil className="size-4" />
                             Sửa
                           </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-label="Dừng nhiệm vụ"
-                            title="Dừng nhiệm vụ giữa chừng"
-                            disabled={busy || !task.isOpen}
-                            onClick={() => {
-                              setClosing(task);
-                              setCloseReason("");
-                            }}
-                          >
-                            <Square className="size-4" />
-                          </Button>
+                          {/* Đóng có hiệu lực ngay, nên bấm nhầm phải lùi được
+                              ngay tại đây - không bắt khai lại một dòng mới. */}
+                          {task.isOpen ? (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label="Dừng nhiệm vụ"
+                              title="Dừng nhiệm vụ giữa chừng"
+                              disabled={busy}
+                              onClick={() => {
+                                setClosing(task);
+                                setCloseReason("");
+                              }}
+                            >
+                              <Square className="size-4" />
+                            </Button>
+                          ) : (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label="Mở lại nhiệm vụ"
+                              title="Mở lại nhiệm vụ"
+                              disabled={busy}
+                              onClick={() => void reopen(task)}
+                            >
+                              <Undo2 className="size-4" />
+                            </Button>
+                          )}
                           <Button
                             size="icon"
                             variant="ghost"
@@ -519,6 +644,16 @@ export function TeamReportSheetView() {
                         value={newDraft.name}
                         onChange={(e) =>
                           setNewDraft({ ...newDraft, name: e.target.value })
+                        }
+                        className="bg-background"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        placeholder="Sản phẩm phải ra"
+                        value={newDraft.product}
+                        onChange={(e) =>
+                          setNewDraft({ ...newDraft, product: e.target.value })
                         }
                         className="bg-background"
                       />

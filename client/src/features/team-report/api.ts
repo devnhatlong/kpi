@@ -65,6 +65,8 @@ export function fetchTeamReportSheet(params: {
 export type TeamReportTaskInput = {
   name: string;
   deadline?: string;
+  /** Sản phẩm phải ra - ô chữ tự do, đội tự đặt lúc khai. */
+  product?: string;
   standardScore?: number | null;
 };
 
@@ -95,13 +97,32 @@ export function deleteTeamReportTask(id: string) {
   );
 }
 
+/**
+ * Đóng một nhiệm vụ. Có hiệu lực NGAY, không chờ tới lượt gửi.
+ *
+ * `done: true` là làm xong - không hỏi lý do. Không có `done` thì bắt buộc
+ * `reason`: dừng một việc đang chạy là chuyện cấp trên cần đọc được vì sao.
+ *
+ * Việc đóng hôm nay vẫn nằm trong bảng hôm nay, chỉ vắng mặt từ ngày mai - nên
+ * đánh dấu sớm không làm nó rơi khỏi báo cáo đang soạn.
+ */
 export function closeTeamReportTask(
   id: string,
-  input: { version: number; reason: string },
+  input: { version: number; done?: boolean; reason?: string },
 ) {
   return unwrapData(
     api.patch<ApiResponse<TeamReportTask>>(
       `/team-report/tasks/${id}/close`,
+      input,
+    ),
+  );
+}
+
+/** Đường lùi cho lần bấm nhầm - đóng có hiệu lực ngay nên phải mở lại được. */
+export function reopenTeamReportTask(id: string, input: { version: number }) {
+  return unwrapData(
+    api.patch<ApiResponse<TeamReportTask>>(
+      `/team-report/tasks/${id}/reopen`,
       input,
     ),
   );
@@ -145,11 +166,16 @@ export function classifyTeamReportTask(
   );
 }
 
+/**
+ * Gửi cả bảng ngày.
+ *
+ * Không mang theo danh sách việc cần đóng: đóng là hành động riêng, làm ngay
+ * trên từng nhiệm vụ. Một ngày vài chục nhiệm vụ thì không ai dò nổi một danh
+ * sách tích ở bước cuối.
+ */
 export function submitTeamReportDay(input: {
   reportDate: string;
   note?: string;
-  /** Việc coi như xong - gửi xong thì đóng, ngày mai không hiện lại. */
-  closeTaskIds?: string[];
 }) {
   return unwrapData(
     api.post<ApiResponse<{ dayId: string; rowCount: number }>>(

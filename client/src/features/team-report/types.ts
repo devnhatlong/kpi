@@ -190,9 +190,11 @@ export type TeamReportTask = {
   _id: string;
   departmentId: string;
 
-  /* giai đoạn 1 - bốn trường ai trong đội cũng gõ được */
+  /* giai đoạn 1 - những trường ai trong đội cũng gõ được */
   name: string;
   deadline: string;
+  /** Sản phẩm phải ra: "Kế hoạch số 12", "Báo cáo chuyên đề"... Ô chữ tự do. */
+  product: string;
   standardScore: number | null;
   evidence: TeamReportEvidence[];
 
@@ -288,6 +290,7 @@ export type TeamReportDayRow = {
   taskId: string;
   name: string;
   deadline: string;
+  product: string;
   axisId: Ref;
   axisName: string;
   workContentId: Ref;
