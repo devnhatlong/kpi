@@ -67,7 +67,6 @@ export type TeamReportTaskInput = {
   deadline?: string;
   /** Sản phẩm phải ra - ô chữ tự do, đội tự đặt lúc khai. */
   product?: string;
-  standardScore?: number | null;
 };
 
 export function createTeamReportTask(input: TeamReportTaskInput) {

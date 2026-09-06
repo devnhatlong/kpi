@@ -7,7 +7,6 @@ import {
   IsIn,
   IsInt,
   IsMongoId,
-  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -48,13 +47,6 @@ export class CreateTeamReportTaskDto {
   @IsString()
   @MaxLength(500)
   product?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  standardScore?: number | null;
 
   @ApiPropertyOptional({ type: [TeamReportEvidenceDto] })
   @IsOptional()

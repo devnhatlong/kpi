@@ -46,7 +46,6 @@ import {
   updateTeamReportTask,
 } from "@/features/team-report/api";
 import { DatePickerInput } from "@/components/common/date-picker-input";
-import { NumberInput } from "@/features/team-report/components/number-input";
 import { TeamReportDayPicker } from "@/features/team-report/components/team-report-day-picker";
 import {
   TEAM_REPORT_STATUS_LABEL,
@@ -68,11 +67,17 @@ import { cn } from "@/lib/utils";
 const REFRESH_MS = 5000;
 
 /** Bản nháp đang gõ của một dòng. */
+/*
+  Bản nháp CHỈ có ba trường: giai đoạn 1 là khai việc, không chấm điểm.
+
+  Điểm nằm trọn trong bộ cột của mẫu ở tab Phân loại (nhóm điểm, điểm, tỉ lệ
+  hoàn thành) và do chỉ huy chấm. Để thêm một ô điểm ở đây là tạo ra con số thứ
+  hai không ai dùng, lại lệch với điểm thật.
+*/
 type Draft = {
   name: string;
   deadline: string;
   product: string;
-  standardScore: string;
   /** Số bản lúc mở ra sửa - gửi kèm để server biết mình đang cầm bản nào. */
   version: number;
 };
@@ -81,7 +86,6 @@ const emptyDraft = (): Draft => ({
   name: "",
   deadline: "",
   product: "",
-  standardScore: "",
   version: 0,
 });
 
@@ -90,18 +94,8 @@ function draftOf(task: TeamReportTask): Draft {
     name: task.name,
     deadline: task.deadline,
     product: task.product ?? "",
-    standardScore:
-      task.standardScore === null ? "" : String(task.standardScore),
     version: task.version,
   };
-}
-
-/** Ô số để trống nghĩa là CHƯA khai, khác hẳn với khai 0. */
-function toNumberOrNull(raw: string): number | null {
-  const value = raw.trim();
-  if (!value) return null;
-  const parsed = Number(value.replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /**
@@ -211,7 +205,6 @@ export function TeamReportSheetView() {
         name,
         deadline: newDraft.deadline || undefined,
         product: newDraft.product.trim() || undefined,
-        standardScore: toNumberOrNull(newDraft.standardScore),
       });
       setNewDraft(emptyDraft());
       setAdding(false);
@@ -239,7 +232,6 @@ export function TeamReportSheetView() {
         name,
         deadline: draft.deadline || undefined,
         product: draft.product.trim() || undefined,
-        standardScore: toNumberOrNull(draft.standardScore),
         version: draft.version,
       });
       stopEditing();
@@ -418,7 +410,6 @@ export function TeamReportSheetView() {
                   <TableHead className="min-w-[280px]">Nhiệm vụ</TableHead>
                   <TableHead className="min-w-[200px]">Sản phẩm</TableHead>
                   <TableHead className="w-[150px]">Hạn hoàn thành</TableHead>
-                  <TableHead className="w-[120px]">Điểm chuẩn</TableHead>
                   <TableHead className="w-[180px]">Phân loại</TableHead>
                   <TableHead className="w-[110px]">Tình trạng</TableHead>
                   <TableHead className="w-[170px] text-right">
@@ -430,7 +421,7 @@ export function TeamReportSheetView() {
                 {isLoading && !tasks.length ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={6}
                       className="h-28 text-center text-muted-foreground"
                     >
                       Đang tải...
@@ -441,7 +432,7 @@ export function TeamReportSheetView() {
                 {!isLoading && !tasks.length && !adding ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={6}
                       className="h-28 text-center text-muted-foreground"
                     >
                       {search ? (
@@ -498,19 +489,6 @@ export function TeamReportSheetView() {
                             placeholder="Không đặt hạn"
                           />
                         </TableCell>
-                        <TableCell>
-                          <NumberInput
-                            min={0}
-                            step="any"
-                            value={draft.standardScore}
-                            onChange={(e) =>
-                              setDraft({
-                                ...draft,
-                                standardScore: e.target.value,
-                              })
-                            }
-                          />
-                        </TableCell>
                         <TableCell
                           colSpan={2}
                           className="text-sm text-muted-foreground"
@@ -560,9 +538,6 @@ export function TeamReportSheetView() {
                       </TableCell>
                       <TableCell className="align-middle tabular-nums">
                         {task.deadline ? formatYmd(task.deadline) : "-"}
-                      </TableCell>
-                      <TableCell className="align-middle tabular-nums">
-                        {task.standardScore ?? "-"}
                       </TableCell>
                       <TableCell className="align-middle text-sm">
                         {refName(task.workContentId) || (
@@ -665,20 +640,6 @@ export function TeamReportSheetView() {
                           setNewDraft({ ...newDraft, deadline: next })
                         }
                         placeholder="Không đặt hạn"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <NumberInput
-                        min={0}
-                        step="any"
-                        placeholder="0"
-                        value={newDraft.standardScore}
-                        onChange={(e) =>
-                          setNewDraft({
-                            ...newDraft,
-                            standardScore: e.target.value,
-                          })
-                        }
                       />
                     </TableCell>
                     <TableCell

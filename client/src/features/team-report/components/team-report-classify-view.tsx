@@ -6,11 +6,13 @@ import {
   Ban,
   Check,
   CheckCheck,
+  ChevronRight,
   CircleCheck,
   ClipboardList,
   Info,
   Loader2,
   Lock,
+  Rows3,
   Search,
   Send,
   TriangleAlert,
@@ -37,6 +39,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
@@ -66,6 +76,7 @@ import {
   type TaskReadiness,
   type TeamReportAxis,
   type TeamReportCatalogs,
+  type TeamReportColumn,
   type TeamReportTask,
   type TeamReportTemplate,
   type TeamReportWorkContent,
@@ -94,6 +105,49 @@ const READINESS_CLASS: Record<TaskReadiness, string> = {
  * "còn cái nào phải đụng tới nữa không".
  */
 type QueueFilter = "ALL" | TaskReadiness | "CLOSED";
+
+/**
+ * Hai cách nhìn cùng một bảng ngày.
+ *
+ * `DETAIL` - mỗi lần một nhiệm vụ, thấy trọn biểu mẫu của trục. Hợp lúc khai
+ * một việc còn trống nhiều ô.
+ *
+ * `TABLE` - cả ngày trên một bảng, sửa tại chỗ. Hợp lúc đã khai gần xong và chỉ
+ * cần rà: gán trục cho mấy dòng còn thiếu, đối chiếu hạn giữa các dòng, xem còn
+ * dòng nào chưa đủ. Ở dạng nhiệm vụ thì những việc đó phải bấm qua từng dòng.
+ */
+type ViewMode = "DETAIL" | "TABLE";
+
+/**
+ * Ba chế độ cột của dạng bảng.
+ *
+ * `ALL_COLUMNS` - gộp cột của mọi mẫu đang có mặt trong bảng, trùng khoá thì
+ * nhập làm một. Ô nào không thuộc mẫu của chính dòng đó thì để gạch ngang. Nhờ
+ * vậy điền được TẤT CẢ ngay trên bảng mà không phải lọc theo trục trước, và
+ * trong thực tế nhiều trục dùng chung một mẫu nên bảng không rộng như tưởng.
+ *
+ * `COMPACT_COLUMNS` - chỉ trục và nội dung công việc, để rà nhanh xem còn dòng
+ * nào chưa gán.
+ *
+ * Một id trục - lọc còn các dòng của trục đó và bày trọn mẫu của nó, không dòng
+ * nào có ô gạch ngang.
+ */
+const ALL_COLUMNS = "ALL";
+const COMPACT_COLUMNS = "COMPACT";
+
+/**
+ * Ghim cột đầu và cột cuối của dạng bảng.
+ *
+ * Bộ cột gộp có thể tới hai chục cột, cuộn sang phải một đoạn là không còn biết
+ * đang sửa dòng nào, mà nút thao tác thì nằm tít cuối. Ghim tên nhiệm vụ bên
+ * trái và cụm nút bên phải thì cuộn bao xa vẫn giữ được hai mốc đó.
+ *
+ * Nền phải ĐỤC hoàn toàn, không dùng `bg-muted/50` như các ô khác: ô trong suốt
+ * thì phần bảng cuộn qua bên dưới hiện xuyên lên. Viền ở mép ghim là ranh giới
+ * cố ý, cho thấy rõ chỗ nào đứng yên chỗ nào chạy.
+ */
+const STICKY_HEAD = "sticky z-20 bg-muted";
+const STICKY_CELL = "sticky z-10 bg-card group-hover:bg-muted/50";
 
 /**
  * Khoá của một lỗi ô: nhiệm vụ nào, BẢN nào, cột nào.
@@ -131,6 +185,8 @@ export function TeamReportClassifyView() {
   const reportDate = pickedDate ?? today;
 
   const [pickedTaskId, setPickedTaskId] = useState<string | null>(null);
+  const [mode, setMode] = useState<ViewMode>("DETAIL");
+  const [columnSet, setColumnSet] = useState<string>(ALL_COLUMNS);
   const [filter, setFilter] = useState<QueueFilter>("ALL");
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -415,6 +471,33 @@ export function TeamReportClassifyView() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <SegmentedTabs
+            ariaLabel="Cách xem bảng ngày"
+            value={mode}
+            onChange={setMode}
+            items={[
+              {
+                value: "DETAIL" as const,
+                label: (
+                  <span className="flex items-center gap-1.5">
+                    <ClipboardList className="size-4" />
+                    Dạng nhiệm vụ
+                  </span>
+                ),
+                title: "Mỗi lần một nhiệm vụ, thấy trọn biểu mẫu",
+              },
+              {
+                value: "TABLE" as const,
+                label: (
+                  <span className="flex items-center gap-1.5">
+                    <Rows3 className="size-4" />
+                    Dạng bảng
+                  </span>
+                ),
+                title: "Cả ngày trên một bảng, sửa tại chỗ",
+              },
+            ]}
+          />
           <TeamReportDayPicker
             value={reportDate}
             onChange={setPickedDate}
@@ -473,7 +556,41 @@ export function TeamReportClassifyView() {
         </div>
       ) : null}
 
-      {tasks.length ? (
+      {tasks.length && mode === "TABLE" ? (
+        <TaskTableView
+          rows={visible}
+          total={rows.length}
+          closedCount={counts.closed}
+          counts={counts.byReadiness}
+          filter={filter}
+          query={query}
+          axes={axes}
+          contents={contents}
+          templates={templates}
+          catalogs={catalogs}
+          cellErrors={cellErrors}
+          columnSet={columnSet}
+          busyId={busyId}
+          savedAt={savedAt}
+          editable={editable}
+          onColumnSet={setColumnSet}
+          onFilter={setFilter}
+          onQuery={setQuery}
+          onPatch={patch}
+          onOpen={(id) => {
+            setPickedTaskId(id);
+            setMode("DETAIL");
+          }}
+          onMarkDone={markDone}
+          onReopen={reopen}
+          onStop={(task) => {
+            setStopReason("");
+            setStopping(task);
+          }}
+        />
+      ) : null}
+
+      {tasks.length && mode === "DETAIL" ? (
         <div className="grid gap-4 xl:grid-cols-[19rem_minmax(0,1fr)_17rem]">
           <TaskQueue
             rows={visible}
@@ -812,6 +929,647 @@ function QueueList({
         </Button>
       ) : null}
     </div>
+  );
+}
+
+// ============================================================ dạng bảng
+
+type TaskTableProps = {
+  rows: QueueRow[];
+  total: number;
+  closedCount: number;
+  counts: Record<TaskReadiness, number>;
+  filter: QueueFilter;
+  query: string;
+  axes: TeamReportAxis[];
+  contents: TeamReportWorkContent[];
+  templates: Record<string, TeamReportTemplate | null>;
+  catalogs: TeamReportCatalogs;
+  cellErrors: Record<string, string>;
+  columnSet: string;
+  busyId: string | null;
+  savedAt: string | null;
+  editable: boolean;
+  onColumnSet: (next: string) => void;
+  onFilter: (next: QueueFilter) => void;
+  onQuery: (next: string) => void;
+  onPatch: (task: TeamReportTask, input: TeamReportClassifyInput) => void;
+  onOpen: (taskId: string) => void;
+  onMarkDone: (task: TeamReportTask) => void;
+  onReopen: (task: TeamReportTask) => void;
+  onStop: (task: TeamReportTask) => void;
+};
+
+/**
+ * Cả ngày trên một bảng, sửa ngay tại ô.
+ *
+ * Vẫn TỰ LƯU từng ô như dạng nhiệm vụ, không có nút "Lưu thay đổi": gom lại một
+ * nút lưu chung nghĩa là phải giữ bản nháp của mấy chục dòng trong màn hình, mà
+ * cả đội gõ chung một bảng nên bản nháp đó lỗi thời ngay khi người bên cạnh sửa
+ * một dòng - lưu một lượt là đè mất phần của họ.
+ *
+ * Gửi vẫn theo NGÀY, một lượt cho cả bảng: dạng bảng chỉ đổi cách nhìn, không
+ * đổi luật gửi.
+ */
+function TaskTableView({
+  rows,
+  total,
+  closedCount,
+  counts,
+  filter,
+  query,
+  axes,
+  contents,
+  templates,
+  catalogs,
+  cellErrors,
+  columnSet,
+  busyId,
+  savedAt,
+  editable,
+  onColumnSet,
+  onFilter,
+  onQuery,
+  onPatch,
+  onOpen,
+  onMarkDone,
+  onReopen,
+  onStop,
+}: TaskTableProps) {
+  const axis = axes.find((item) => item._id === columnSet) ?? null;
+
+  /* Chọn một trục thì bảng chỉ còn các dòng của trục đó - bày cột chuyên biệt
+     của trục này lên những dòng thuộc trục khác là bày một hàng ô vô nghĩa. */
+  const shown = useMemo(
+    () =>
+      axis ? rows.filter((row) => refId(row.task.axisId) === axis._id) : rows,
+    [rows, axis],
+  );
+
+  /**
+   * Bộ cột của thân bảng.
+   *
+   * Chế độ "mọi cột" GỘP cột của các mẫu đang có mặt trong bảng, trùng khoá thì
+   * nhập làm một. Nhờ vậy điền được tất cả ngay trên bảng mà không phải lọc theo
+   * trục trước - và vì nhiều trục dùng chung một mẫu nên bảng không rộng như
+   * tưởng. Ô nào không thuộc mẫu của chính dòng đó thì để gạch ngang.
+   *
+   * Gộp theo mẫu ĐANG CÓ MẶT chứ không gộp hết mọi mẫu trên hệ thống: gộp hết
+   * thì lọc còn vài dòng mà bảng vẫn rộng bằng cả bốn trục cộng lại.
+   *
+   * Bỏ cột "Nội dung công việc" của mẫu vì bảng đã có một cột cứng cho nó - cùng
+   * một thứ hiện hai lần trên một hàng là không biết điền ô nào.
+   */
+  const extraColumns = useMemo(() => {
+    if (columnSet === COMPACT_COLUMNS) return [];
+
+    const sources = axis
+      ? [templates[axis._id] ?? null]
+      : axes
+          .filter((item) =>
+            shown.some((row) => refId(row.task.axisId) === item._id),
+          )
+          .map((item) => templates[item._id] ?? null);
+
+    const seen = new Set<string>();
+    const merged: TeamReportColumn[] = [];
+    for (const source of sources) {
+      for (const column of inputColumns(source)) {
+        if (column.semanticKey === "work_content") continue;
+        if (seen.has(column.key)) continue;
+        seen.add(column.key);
+        merged.push(column);
+      }
+    }
+    return merged;
+  }, [columnSet, axis, axes, templates, shown]);
+
+  return (
+    <Card className="shadow-sm">
+      <CardContent className="space-y-4 py-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="space-y-1">
+            <h2 className="font-display text-sm font-semibold">
+              Bảng nhiệm vụ theo hàng
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {axis
+                ? `${shown.length} nhiệm vụ thuộc ${axis.name} · đang bày trọn mẫu của trục này`
+                : columnSet === COMPACT_COLUMNS
+                  ? "Chỉ trục và nội dung công việc · để rà nhanh dòng nào chưa gán"
+                  : `Gộp cột của mọi mẫu đang có trong bảng · ô gạch ngang là cột không thuộc mẫu của dòng đó`}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {savedAt ? (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Check className="size-3 text-emerald-600" />
+                Đã lưu lúc {savedAt}
+              </span>
+            ) : null}
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Bộ cột đang hiện</p>
+              <Select value={columnSet} onValueChange={onColumnSet}>
+                <SelectTrigger className="w-56 bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_COLUMNS}>Tất cả · mọi cột</SelectItem>
+                  <SelectItem value={COMPACT_COLUMNS}>
+                    Tất cả · rút gọn
+                  </SelectItem>
+                  {axes.map((item) => (
+                    <SelectItem key={item._id} value={item._id}>
+                      {item.name}
+                      {templates[item._id] ? "" : " (chưa có mẫu)"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => onQuery(event.target.value)}
+              placeholder="Tìm nhiệm vụ..."
+              className="bg-background pl-8"
+            />
+          </div>
+          <SegmentedTabs
+            ariaLabel="Lọc theo trạng thái"
+            value={filter}
+            onChange={onFilter}
+            items={[
+              { value: "ALL" as const, label: `Tất cả (${total})` },
+              {
+                value: "UNCLASSIFIED" as const,
+                label: `Chưa phân loại (${counts.UNCLASSIFIED})`,
+              },
+              {
+                value: "IN_PROGRESS" as const,
+                label: `Đang hoàn thiện (${counts.IN_PROGRESS})`,
+              },
+              { value: "READY" as const, label: `Sẵn sàng (${counts.READY})` },
+              { value: "CLOSED" as const, label: `Đã đóng (${closedCount})` },
+            ]}
+            className="flex-wrap"
+          />
+        </div>
+
+        <div className="overflow-x-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {/*
+                  Cột để RỘNG và cho cuộn ngang, không bóp cho vừa màn hình:
+                  bóp lại thì nhãn trạng thái gãy làm ba dòng và mỗi hàng cao gấp
+                  đôi, cả bảng đọc còn mệt hơn là kéo ngang.
+                */}
+                <TableHead
+                  className={cn(
+                    "min-w-[280px]",
+                    STICKY_HEAD,
+                    "left-0 border-r",
+                  )}
+                >
+                  Nhiệm vụ
+                </TableHead>
+                <TableHead className="min-w-[180px]">Trục</TableHead>
+                <TableHead className="min-w-[240px]">
+                  Nội dung công việc
+                </TableHead>
+                {extraColumns.map((column) => (
+                  <TableHead
+                    key={column.key}
+                    className="whitespace-nowrap"
+                    style={{ minWidth: Math.max(190, column.width) }}
+                  >
+                    {column.title}
+                  </TableHead>
+                ))}
+                <TableHead className="min-w-[150px] whitespace-nowrap">
+                  Trạng thái
+                </TableHead>
+                <TableHead
+                  className={cn(
+                    "min-w-[190px] whitespace-nowrap text-right",
+                    STICKY_HEAD,
+                    "right-0 border-l",
+                  )}
+                >
+                  Thao tác
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            {/* Khoá theo bộ lọc để dựng lại thân bảng: số hàng đang bày là
+                state cục bộ, đổi bộ lọc mà giữ nguyên thì lần lọc mới mở ra
+                giữa chừng. */}
+            <TaskTableBody
+              key={`${columnSet}:${filter}:${query.trim().toLowerCase()}`}
+              rows={shown}
+              columns={extraColumns}
+              axes={axes}
+              contents={contents}
+              catalogs={catalogs}
+              cellErrors={cellErrors}
+              busyId={busyId}
+              editable={editable}
+              onPatch={onPatch}
+              onOpen={onOpen}
+              onMarkDone={onMarkDone}
+              onReopen={onReopen}
+              onStop={onStop}
+            />
+          </Table>
+        </div>
+
+        <p className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+          <Info className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            Mỗi ô tự lưu ngay khi chọn hoặc rời ô - không có nút lưu chung.
+            {axis || columnSet === ALL_COLUMNS
+              ? " Bấm Mở để xem trọn biểu mẫu của một nhiệm vụ."
+              : " Chọn “Tất cả · mọi cột” hoặc một trục ở ô Bộ cột để chấm ngay trên bảng."}
+          </span>
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Thân bảng, bày dần từng mẻ.
+ *
+ * Mỗi hàng mang vài ô chọn của Radix - dựng hết một lượt cho một ngày vài trăm
+ * nhiệm vụ thì mỗi lần bảng tự nạp lại là ngần ấy ô phải so lại, gõ vào ô tìm
+ * kiếm bắt đầu giật. Nặng hơn hàng đợi bên dạng nhiệm vụ nhiều, nên phải bày
+ * dần y như vậy.
+ */
+function TaskTableBody({
+  rows,
+  columns,
+  axes,
+  contents,
+  catalogs,
+  cellErrors,
+  busyId,
+  editable,
+  onPatch,
+  onOpen,
+  onMarkDone,
+  onReopen,
+  onStop,
+}: {
+  rows: QueueRow[];
+  columns: TeamReportColumn[];
+  axes: TeamReportAxis[];
+  contents: TeamReportWorkContent[];
+  catalogs: TeamReportCatalogs;
+  cellErrors: Record<string, string>;
+  busyId: string | null;
+  editable: boolean;
+  onPatch: (task: TeamReportTask, input: TeamReportClassifyInput) => void;
+  onOpen: (taskId: string) => void;
+  onMarkDone: (task: TeamReportTask) => void;
+  onReopen: (task: TeamReportTask) => void;
+  onStop: (task: TeamReportTask) => void;
+}) {
+  const [shown, setShown] = useState(QUEUE_PAGE);
+  const rest = rows.length - shown;
+  const span = 5 + columns.length;
+
+  return (
+    <TableBody>
+      {rows.length === 0 ? (
+        <TableRow>
+          <TableCell
+            colSpan={span}
+            className="h-28 text-center text-muted-foreground"
+          >
+            Không có nhiệm vụ nào khớp.
+          </TableCell>
+        </TableRow>
+      ) : null}
+
+      {rows.slice(0, shown).map((row) => (
+        <TaskTableRow
+          key={`${row.task._id}:${row.task.version}`}
+          row={row}
+          axes={axes}
+          contents={contents}
+          catalogs={catalogs}
+          cellErrors={cellErrors}
+          columns={columns}
+          busy={busyId === row.task._id}
+          editable={editable}
+          onPatch={onPatch}
+          onOpen={onOpen}
+          onMarkDone={onMarkDone}
+          onReopen={onReopen}
+          onStop={onStop}
+        />
+      ))}
+
+      {rest > 0 ? (
+        <TableRow>
+          <TableCell colSpan={span} className="p-0">
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full rounded-none"
+              onClick={() => setShown((current) => current + QUEUE_PAGE)}
+            >
+              Xem thêm {Math.min(rest, QUEUE_PAGE)} nhiệm vụ (còn {rest})
+            </Button>
+          </TableCell>
+        </TableRow>
+      ) : null}
+    </TableBody>
+  );
+}
+
+/**
+ * Một hàng của dạng bảng.
+ *
+ * Ghép `version` vào khoá ở chỗ gọi để React dựng lại hàng khi dữ liệu thật sự
+ * đổi - ô nhập giữ bản nháp cục bộ nên không tự nhận giá trị mới theo props.
+ */
+function TaskTableRow({
+  row,
+  axes,
+  contents,
+  catalogs,
+  cellErrors,
+  columns,
+  busy,
+  editable,
+  onPatch,
+  onOpen,
+  onMarkDone,
+  onReopen,
+  onStop,
+}: {
+  row: QueueRow;
+  axes: TeamReportAxis[];
+  contents: TeamReportWorkContent[];
+  catalogs: TeamReportCatalogs;
+  cellErrors: Record<string, string>;
+  columns: TeamReportColumn[];
+  busy: boolean;
+  editable: boolean;
+  onPatch: (task: TeamReportTask, input: TeamReportClassifyInput) => void;
+  onOpen: (taskId: string) => void;
+  onMarkDone: (task: TeamReportTask) => void;
+  onReopen: (task: TeamReportTask) => void;
+  onStop: (task: TeamReportTask) => void;
+}) {
+  const { task, readiness } = row;
+  const axisId = refId(task.axisId);
+  const contentId = refId(task.workContentId);
+  /* Việc đã chốt thì khoá y như bên dạng nhiệm vụ - một luật, hai chỗ nhìn. */
+  const disabled = !editable || busy || !task.isOpen;
+  /* Riêng nút đóng/mở lại KHÔNG theo `isOpen`, không thì việc đã đóng không còn
+     đường nào mở ra. */
+  const lifecycleDisabled = !editable || busy;
+
+  /* Cột của CHÍNH mẫu dòng này, tra theo khoá. Đầu bảng là bộ cột đã gộp của
+     nhiều mẫu nên khoá nào không có ở đây thì dòng này để trống. */
+  const ownColumns = useMemo(
+    () =>
+      new Map(inputColumns(row.template).map((column) => [column.key, column])),
+    [row.template],
+  );
+
+  const contentOptions = contents.filter(
+    (content) => content.axisId === axisId,
+  );
+  const scopedCatalogs = narrowCatalogs(catalogs, {
+    axisId,
+    workContentId: contentId,
+  });
+
+  return (
+    <TableRow className={cn("group", !task.isOpen && "opacity-60")}>
+      <TableCell
+        className={cn(
+          "max-w-[360px] whitespace-normal break-words align-middle",
+          STICKY_CELL,
+          "left-0 border-r",
+        )}
+      >
+        <div className="font-medium">{task.name}</div>
+        <div className="text-xs text-muted-foreground tabular-nums">
+          {task.deadline ? `Hạn ${formatYmd(task.deadline)}` : "Không đặt hạn"}
+          {task.product ? ` · ${task.product}` : ""}
+        </div>
+      </TableCell>
+
+      <TableCell className="align-middle">
+        <Select
+          value={axisId || "__none__"}
+          disabled={disabled}
+          onValueChange={(value) =>
+            onPatch(task, {
+              version: task.version,
+              axisId: value === "__none__" ? null : value,
+            })
+          }
+        >
+          <SelectTrigger className="w-full bg-background">
+            <SelectValue placeholder="Chưa gán" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Chưa gán</SelectItem>
+            {axes.map((item) => (
+              <SelectItem key={item._id} value={item._id}>
+                {item.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </TableCell>
+
+      <TableCell className="align-middle">
+        <Select
+          value={contentId || "__none__"}
+          disabled={disabled || !axisId}
+          onValueChange={(value) =>
+            onPatch(task, {
+              version: task.version,
+              workContentId: value === "__none__" ? null : value,
+            })
+          }
+        >
+          <SelectTrigger className="w-full bg-background">
+            <SelectValue placeholder={axisId ? "Chọn" : "Chọn trục trước"} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Chưa chọn</SelectItem>
+            {contentOptions.map((content) => (
+              <SelectItem key={content._id} value={content._id}>
+                {content.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </TableCell>
+
+      {columns.map((merged) => {
+        /*
+          Cột trên đầu bảng là bộ ĐÃ GỘP của nhiều mẫu, nên phải tra lại theo mẫu
+          của chính dòng này: cùng một khoá ở mẫu khác có thể khác kiểu dữ liệu
+          hay khác danh mục, dựng ô theo định nghĩa của mẫu khác là ô sai kiểu và
+          server chặn ngay khi lưu.
+        */
+        const column = ownColumns.get(merged.key);
+        if (!column) {
+          return (
+            <TableCell
+              key={merged.key}
+              className="align-middle text-center text-muted-foreground"
+              /* Nói rõ vì sao trống, kẻo tưởng là chưa điền. */
+              title={
+                axisId
+                  ? "Mẫu của trục này không có cột đó"
+                  : "Chọn trục trước để mở các ô của mẫu"
+              }
+            >
+              &mdash;
+            </TableCell>
+          );
+        }
+
+        const catalog = catalogOfColumn(column);
+        const value = catalog
+          ? (finalCatalogValue(task, column.key)?.id ?? "")
+          : String(finalFieldValue(task, column.key) ?? "");
+        const error = cellErrors[cellErrorKey(task, column.key)];
+
+        return (
+          <TableCell key={merged.key} className="align-middle">
+            <DynamicColumnCell
+              column={column}
+              value={value}
+              catalogs={scopedCatalogs}
+              invalid={!!error}
+              disabled={disabled}
+              onCommit={(next) =>
+                onPatch(task, {
+                  version: task.version,
+                  ...(catalog
+                    ? { catalogValues: { [column.key]: next } }
+                    : { fieldValues: { [column.key]: next } }),
+                })
+              }
+            />
+            {/* Bảng ngang chật, nên chỉ một dòng ngắn dưới ô - viền đỏ đã chỉ
+                đúng chỗ rồi, chi tiết đọc ở dạng nhiệm vụ. */}
+            {error ? (
+              <p className="mt-1 text-xs text-destructive">{error}</p>
+            ) : null}
+          </TableCell>
+        );
+      })}
+
+      <TableCell className="align-middle">
+        <div className="flex flex-col items-start gap-1">
+          {/* `whitespace-nowrap`: nhãn dài như "Chưa phân loại" mà cho xuống
+              dòng thì gãy làm ba và hàng cao gấp đôi. */}
+          <Badge
+            variant="secondary"
+            className={cn(
+              "whitespace-nowrap font-normal",
+              READINESS_CLASS[readiness],
+            )}
+          >
+            {READINESS_LABEL[readiness]}
+          </Badge>
+          {task.isOpen ? null : (
+            <Badge
+              variant="outline"
+              className="gap-1 whitespace-nowrap font-normal"
+            >
+              <Check className="size-3" />
+              {task.closedReason ? "Đã dừng" : "Đã xong"}
+            </Badge>
+          )}
+        </div>
+      </TableCell>
+
+      <TableCell
+        className={cn(
+          "text-right align-middle",
+          STICKY_CELL,
+          "right-0 border-l",
+        )}
+      >
+        {/*
+          Đóng / mở lại cũng phải làm được ngay trên bảng - dạng bảng là để rà
+          cả ngày, mà cứ phải bấm Mở vào từng dòng chỉ để đánh dấu xong thì đúng
+          cái việc dạng bảng sinh ra để tránh.
+
+          Dùng nút biểu tượng kèm `title` như bảng nhập ngày: ba nút có chữ đầy
+          đủ thì riêng cột thao tác đã rộng hơn cả cột nhiệm vụ.
+        */}
+        <div className="inline-flex items-center gap-1">
+          {task.isOpen ? (
+            <>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="Dừng giữa chừng"
+                title="Dừng giữa chừng - phải nêu lý do"
+                className="text-destructive hover:text-destructive"
+                disabled={lifecycleDisabled}
+                onClick={() => onStop(task)}
+              >
+                <Ban className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="Đánh dấu đã xong"
+                title="Đánh dấu đã xong - từ mai không hiện lại"
+                disabled={lifecycleDisabled}
+                onClick={() => onMarkDone(task)}
+              >
+                <CheckCheck className="size-4" />
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label="Mở lại nhiệm vụ"
+              title="Mở lại để sửa tiếp"
+              disabled={lifecycleDisabled}
+              onClick={() => onReopen(task)}
+            >
+              <Undo2 className="size-4" />
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="bg-background"
+            onClick={() => onOpen(task._id)}
+          >
+            Mở
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
   );
 }
 

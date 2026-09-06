@@ -99,15 +99,13 @@ export class TeamReportTask {
   @Prop({ trim: true, default: '' })
   product!: string;
 
-  /**
-   * Điểm chuẩn do đội tự khai ở GĐ1.
-   *
-   * Lúc này chưa biết nhiệm vụ thuộc nội dung công việc nào nên chưa có dải
-   * nhóm điểm để chiếu - phải gõ tay. Sang GĐ2 phân loại xong mới đối chiếu lại
-   * được với dải của nhóm điểm.
-   */
-  @Prop({ type: Number, default: null })
-  standardScore!: number | null;
+  /*
+    KHÔNG có điểm chuẩn ở giai đoạn 1.
+
+    Đội khai việc, chỉ huy mới chấm - mà điểm thì đã có sẵn trong bộ cột của mẫu
+    (nhóm điểm, điểm, tỉ lệ hoàn thành) ở giai đoạn 2. Bắt đội gõ một con số ở
+    bước khai chỉ tạo ra một điểm thứ hai không ai dùng, lại lệch với điểm thật.
+  */
 
   @Prop({ type: [TeamReportEvidenceSchema], default: [] })
   evidence!: TeamReportEvidence[];

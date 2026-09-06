@@ -195,7 +195,7 @@ export type TeamReportTask = {
   deadline: string;
   /** Sản phẩm phải ra: "Kế hoạch số 12", "Báo cáo chuyên đề"... Ô chữ tự do. */
   product: string;
-  standardScore: number | null;
+  /* Không có điểm ở đây: điểm nằm trong bộ cột của mẫu ở giai đoạn 2. */
   evidence: TeamReportEvidence[];
 
   /* giai đoạn 2 - trục quyết định bộ cột, giá trị đi theo khoá cột */

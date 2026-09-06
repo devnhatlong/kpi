@@ -196,7 +196,6 @@ export class TeamReportService {
       name,
       deadline: this.optionalDate(dto.deadline),
       product: dto.product?.trim() ?? '',
-      standardScore: dto.standardScore ?? null,
       evidence: this.mapEvidence(dto.evidence),
       createdDate: today,
       isOpen: true,
@@ -219,7 +218,6 @@ export class TeamReportService {
     task.name = name;
     task.deadline = this.optionalDate(dto.deadline);
     task.product = dto.product?.trim() ?? '';
-    task.standardScore = dto.standardScore ?? null;
     if (dto.evidence) task.evidence = this.mapEvidence(dto.evidence);
 
     /* Đẩy luôn sang bộ cột của mẫu nếu nhiệm vụ đã chọn trục. Bảng nhập là nguồn
@@ -1529,36 +1527,6 @@ export class TeamReportService {
   private async workContentName(id: Types.ObjectId) {
     const content = await this.workContentModel.findById(id).select('name');
     return content?.name ?? '';
-  }
-
-  /**
-   * Điểm chuẩn ngoài dải của nhóm điểm thì CHẶN.
-   *
-   * Cảnh báo suông thì con số sai vẫn đi lên tới tỉnh, mà tới đó mới phát hiện
-   * là phải trả ngược cả chuỗi. Dải do quản trị khai sẵn nên chặn ở đây không
-   * làm ai kẹt.
-   */
-  private async assertScoreInRange(task: TeamReportTaskDocument) {
-    if (task.standardScore === null || !task.workContentId) return;
-
-    const content = await this.workContentModel
-      .findById(task.workContentId)
-      .select('scoreGroupId');
-    if (!content?.scoreGroupId) return;
-
-    const group = await this.scoreGroupModel
-      .findById(content.scoreGroupId)
-      .select('name minScore maxScore');
-    if (!group) return;
-
-    if (
-      task.standardScore < group.minScore ||
-      task.standardScore > group.maxScore
-    ) {
-      throw new BadRequestException(
-        `Điểm chuẩn phải nằm trong ${group.minScore}-${group.maxScore} của nhóm "${group.name}".`,
-      );
-    }
   }
 
   private mapEvidence(list: CreateTeamReportTaskDto['evidence']) {
