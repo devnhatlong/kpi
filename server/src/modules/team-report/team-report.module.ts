@@ -47,6 +47,10 @@ import {
   TeamReportUnitDay,
   TeamReportUnitDaySchema,
 } from './schemas/team-report-unit-day.schema';
+import {
+  TeamReportSummary,
+  TeamReportSummarySchema,
+} from './schemas/team-report-summary.schema';
 import { TeamReportController } from './team-report.controller';
 import { TeamReportService } from './team-report.service';
 
@@ -63,6 +67,7 @@ import { TeamReportService } from './team-report.service';
       { name: TeamReportTask.name, schema: TeamReportTaskSchema },
       { name: TeamReportDay.name, schema: TeamReportDaySchema },
       { name: TeamReportUnitDay.name, schema: TeamReportUnitDaySchema },
+      { name: TeamReportSummary.name, schema: TeamReportSummarySchema },
       { name: User.name, schema: UserSchema },
       { name: Role.name, schema: RoleSchema },
       { name: Department.name, schema: DepartmentSchema },

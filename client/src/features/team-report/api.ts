@@ -1,11 +1,16 @@
 import type { ApiResponse } from "@/features/auth/types";
 import { api, unwrapData, unwrapPaginated } from "@/lib/api-client";
 import type {
+  TeamReportAxisScore,
   TeamReportCatalogs,
   TeamReportClassifyBoard,
   TeamReportDay,
   TeamReportDayStatus,
+  TeamReportPeriod,
+  TeamReportRecipient,
   TeamReportSheet,
+  TeamReportSummary,
+  TeamReportSummaryCandidates,
   TeamReportTask,
   TeamReportTemplate,
   TeamReportUnitDay,
@@ -44,6 +49,19 @@ export const teamReportKeys = {
       params.limit ?? 20,
     ] as const,
   day: (id: string) => ["team-report", "day", id] as const,
+  summaries: (status: string, page: number) =>
+    ["team-report", "summaries", status, page] as const,
+  summaryInbox: (status: string, page: number) =>
+    ["team-report", "summary-inbox", status, page] as const,
+  summary: (id: string) => ["team-report", "summary", id] as const,
+  summaryCandidates: (
+    fromDate: string,
+    toDate: string,
+    q: string,
+    scope: "PERIOD" | "ALL" = "PERIOD",
+  ) =>
+    ["team-report", "summary-candidates", fromDate, toDate, q, scope] as const,
+  recipients: () => ["team-report", "recipients"] as const,
 };
 
 // ------------------------------------------------------ giai đoạn 1: nhập thô
@@ -234,6 +252,7 @@ export type TeamReportDayDetail = {
   /** Tra bằng "<id mẫu>:<phiên bản>" - mỗi dòng đóng dấu phiên bản riêng. */
   templates: Record<string, TeamReportTemplate>;
   catalogs: TeamReportCatalogs;
+  axisScores: TeamReportAxisScore[];
 };
 
 export function fetchTeamReportDay(id: string) {
@@ -274,6 +293,214 @@ export function decideTeamReportDay(
       `/team-report/days/${id}/decide`,
       input,
     ),
+  );
+}
+
+// ------------------------------------------------------- báo cáo tổng hợp
+
+export function fetchTeamReportSummaryCandidates(params: {
+  fromDate: string;
+  toDate: string;
+  q?: string;
+  /** `ALL` = cả kho của đội, mỗi việc kèm cờ `inPeriod`. Mặc định chỉ trong kỳ. */
+  scope?: "PERIOD" | "ALL";
+}) {
+  return unwrapData(
+    api.get<ApiResponse<TeamReportSummaryCandidates>>(
+      "/team-report/summary/candidates",
+      {
+        params: {
+          fromDate: params.fromDate,
+          toDate: params.toDate,
+          ...(params.q?.trim() ? { q: params.q.trim() } : {}),
+          ...(params.scope ? { scope: params.scope } : {}),
+        },
+      },
+    ),
+  );
+}
+
+/**
+ * Điểm của một tập nhiệm vụ đang tích, CHƯA lập báo cáo.
+ *
+ * Để cân nhắc trước khi chốt: thêm bớt vài việc rồi nhìn tổng điểm đổi theo.
+ * Server tính bằng đúng công thức của bản đã lập, nên con số xem trước chính là
+ * con số sẽ ra.
+ */
+export function previewTeamReportSummaryScore(taskIds: string[]) {
+  return unwrapData(
+    api.post<ApiResponse<{ axisScores: TeamReportAxisScore[] }>>(
+      "/team-report/summary/preview",
+      { taskIds },
+    ),
+  ).then((data) => data.axisScores);
+}
+
+export function fetchTeamReportRecipients(q?: string) {
+  return unwrapData(
+    api.get<ApiResponse<{ people: TeamReportRecipient[] }>>(
+      "/team-report/summary/recipients",
+      { params: q?.trim() ? { q: q.trim() } : {} },
+    ),
+  ).then((data) => data.people);
+}
+
+export function fetchTeamReportSummaries(query: {
+  status?: TeamReportDayStatus | "";
+  page?: number;
+  limit?: number;
+}) {
+  return unwrapPaginated(
+    api.get<ApiResponse<TeamReportSummary[]>>("/team-report/summary", {
+      params: {
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+        ...(query.status ? { status: query.status } : {}),
+      },
+    }),
+  );
+}
+
+/**
+ * Lập một bản tổng hợp ở dạng nháp.
+ *
+ * `taskIds` là tập chọn tay - khoảng ngày chỉ dùng để lọc kho cho dễ nhìn, đưa
+ * việc nào vào báo cáo vẫn là quyết định của người lập.
+ */
+export function createTeamReportSummary(input: {
+  title: string;
+  period: TeamReportPeriod;
+  fromDate: string;
+  toDate: string;
+  taskIds: string[];
+  note?: string;
+}) {
+  return unwrapData(
+    api.post<ApiResponse<TeamReportSummary>>("/team-report/summary", input),
+  );
+}
+
+export function sendTeamReportSummary(
+  id: string,
+  input: { recipientId: string; note?: string },
+) {
+  return unwrapData(
+    api.post<ApiResponse<TeamReportSummary>>(
+      `/team-report/summary/${id}/send`,
+      input,
+    ),
+  );
+}
+
+export type TeamReportSummaryDetail = {
+  summary: TeamReportSummary;
+  templates: Record<string, TeamReportTemplate>;
+  catalogs: TeamReportCatalogs;
+  /** Điểm từng trục, do server tính theo công thức khai trong mẫu. */
+  axisScores: TeamReportAxisScore[];
+};
+
+export function fetchTeamReportSummary(id: string) {
+  return unwrapData(
+    api.get<ApiResponse<TeamReportSummaryDetail>>(`/team-report/summary/${id}`),
+  );
+}
+
+/**
+ * Hộp đến bản tổng hợp của cấp trên.
+ *
+ * Đường riêng chứ không dùng chung với danh sách của đội: server gác hai đầu
+ * bằng hai quyền khác nhau (đội có ENTRY, cấp trên có REVIEW), gọi nhầm đường
+ * là nhận 403 chứ không phải danh sách rỗng.
+ */
+export function fetchTeamReportSummaryInbox(query: {
+  status?: TeamReportDayStatus | "";
+  page?: number;
+  limit?: number;
+}) {
+  return unwrapPaginated(
+    api.get<ApiResponse<TeamReportSummary[]>>("/team-report/summary/incoming", {
+      params: {
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+        ...(query.status ? { status: query.status } : {}),
+      },
+    }),
+  );
+}
+
+export function fetchIncomingTeamReportSummary(id: string) {
+  return unwrapData(
+    api.get<ApiResponse<TeamReportSummaryDetail>>(
+      `/team-report/summary/incoming/${id}`,
+    ),
+  );
+}
+
+export function decideTeamReportSummary(
+  id: string,
+  input: { decision: "APPROVE" | "RETURN"; reason?: string },
+) {
+  return unwrapData(
+    api.post<ApiResponse<TeamReportSummary>>(
+      `/team-report/summary/${id}/decide`,
+      input,
+    ),
+  );
+}
+
+/**
+ * Đội chấm lại một dòng ngay trên bản tổng hợp CÒN NHÁP.
+ *
+ * Ghi thẳng vào nhiệm vụ sống rồi chụp lại dòng, nên số ở đây và số ở bảng ngày
+ * luôn là một. Bản đã trình thì server chặn - lúc đó chỉ cấp trên chỉnh được.
+ */
+export function editTeamReportSummaryRows(
+  id: string,
+  rows: TeamReportReviewRow[],
+) {
+  return unwrapData(
+    api.patch<ApiResponse<TeamReportSummary>>(
+      `/team-report/summary/${id}/rows`,
+      { rows },
+    ),
+  );
+}
+
+/**
+ * Thêm / bớt nhiệm vụ của một bản đã lập.
+ *
+ * Gộp hai danh sách vào một lượt gọi: đổi tập nhiệm vụ xong server phải chụp
+ * lại toàn bộ dòng, gọi hai lượt là chụp hai lần và giữa hai lượt bản đang dở.
+ */
+export function changeTeamReportSummaryTasks(
+  id: string,
+  input: { add?: string[]; remove?: string[] },
+) {
+  return unwrapData(
+    api.patch<ApiResponse<TeamReportSummary>>(
+      `/team-report/summary/${id}/tasks`,
+      input,
+    ),
+  );
+}
+
+/** Cấp trên chỉnh số trên bản đã nhận - số của họ nằm riêng để đối chiếu. */
+export function reviewTeamReportSummary(
+  id: string,
+  input: { reason: string; rows: TeamReportReviewRow[] },
+) {
+  return unwrapData(
+    api.patch<ApiResponse<TeamReportSummary>>(
+      `/team-report/summary/${id}/review`,
+      input,
+    ),
+  );
+}
+
+export function deleteTeamReportSummary(id: string) {
+  return unwrapData(
+    api.delete<ApiResponse<{ id: string }>>(`/team-report/summary/${id}`),
   );
 }
 

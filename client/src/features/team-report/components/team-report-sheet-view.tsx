@@ -46,6 +46,10 @@ import {
   updateTeamReportTask,
 } from "@/features/team-report/api";
 import { DatePickerInput } from "@/components/common/date-picker-input";
+import {
+  CLOSED_DONE_CLASS,
+  CLOSED_STOPPED_CLASS,
+} from "@/features/team-report/status-styles";
 import { TeamReportDayPicker } from "@/features/team-report/components/team-report-day-picker";
 import {
   TEAM_REPORT_STATUS_LABEL,
@@ -260,7 +264,11 @@ export function TeamReportSheetView() {
       setClosing(null);
       setCloseReason("");
       await mutate();
-      toast.success("Đã dừng nhiệm vụ.");
+      /* Dòng biến mất ngay sau khi dừng - nói rõ nó đi đâu, không thì người
+         dùng tưởng vừa xoá nhầm. */
+      toast.success(
+        "Đã dừng nhiệm vụ. Dòng này rời bảng hôm nay; mở lại ở tab Phân loại.",
+      );
     } catch (error) {
       await handleError(error, "Không dừng được nhiệm vụ.");
     } finally {
@@ -306,7 +314,9 @@ export function TeamReportSheetView() {
           </h1>
           <p className="text-sm text-muted-foreground">
             Cả đội cùng nhập vào bảng này. Bảng tự làm mới nên thấy ngay dòng
-            người khác vừa thêm.
+            người khác vừa thêm. Việc đánh dấu xong sẽ rời bảng - cần hiện lại
+            thì vào tab <strong>Phân loại &amp; gửi</strong>, mục{" "}
+            <strong>Đã đóng</strong>, bấm Mở lại.
           </p>
         </div>
 
@@ -547,8 +557,24 @@ export function TeamReportSheetView() {
                         )}
                       </TableCell>
                       <TableCell className="align-middle">
-                        <Badge variant="secondary" className="font-normal">
-                          {task.isOpen ? "Đang làm" : "Đã đóng"}
+                        {/* Cùng bảng màu với tab Phân loại - một nhãn hai màu ở
+                            hai màn thì người dùng tưởng hai trạng thái khác. */}
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            "whitespace-nowrap font-normal",
+                            task.isOpen
+                              ? ""
+                              : task.closedReason
+                                ? CLOSED_STOPPED_CLASS
+                                : CLOSED_DONE_CLASS,
+                          )}
+                        >
+                          {task.isOpen
+                            ? "Đang làm"
+                            : task.closedReason
+                              ? "Đã dừng"
+                              : "Đã xong"}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right align-middle">

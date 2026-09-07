@@ -16,6 +16,7 @@ import {
 } from 'class-validator';
 
 import { TEAM_REPORT_DAY_STATUSES } from '../schemas/team-report-day.schema';
+import { TEAM_REPORT_PERIODS } from '../schemas/team-report-summary.schema';
 
 /** Tệp kiểm chứng gửi kèm - id lấy từ module tải tệp dùng chung. */
 export class TeamReportEvidenceDto {
@@ -176,6 +177,137 @@ export class SubmitTeamReportDayDto {
   note?: string;
 }
 
+// ==================================================== báo cáo tổng hợp của đội
+
+/** Kho nhiệm vụ để tích chọn vào một bản tổng hợp. */
+export class TeamReportSummaryCandidatesQueryDto {
+  @ApiProperty({ description: 'Đầu kỳ YYYY-MM-DD' })
+  @IsString()
+  fromDate!: string;
+
+  @ApiProperty({ description: 'Cuối kỳ YYYY-MM-DD' })
+  @IsString()
+  toDate!: string;
+
+  @ApiPropertyOptional({ description: 'Tìm theo tên nhiệm vụ hoặc sản phẩm' })
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  /*
+    PERIOD: chỉ việc còn sống trong kỳ - dùng lúc LẬP bản, vì lúc đó khoảng ngày
+    chính là thứ người dùng vừa chọn để khoanh vùng.
+
+    ALL: cả kho của đội, mỗi việc kèm cờ `inPeriod`. Dùng lúc THÊM vào bản đã
+    lập: thêm việc ngoài kỳ là quyền của người lập (server chỉ đòi việc phải sẵn
+    sàng), nên hộp chọn không được giấu mất chúng.
+  */
+  @ApiPropertyOptional({ enum: ['PERIOD', 'ALL'], default: 'PERIOD' })
+  @IsOptional()
+  @IsIn(['PERIOD', 'ALL'])
+  scope?: 'PERIOD' | 'ALL';
+}
+
+/**
+ * Lập một bản tổng hợp.
+ *
+ * `taskIds` là tập CHỌN TAY, không suy ra từ khoảng ngày: khoảng ngày chỉ để lọc
+ * ra kho cho dễ nhìn, còn đưa việc nào vào báo cáo là quyết định của người lập.
+ */
+export class CreateTeamReportSummaryDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(300)
+  title!: string;
+
+  @ApiProperty({ enum: TEAM_REPORT_PERIODS })
+  @IsIn([...TEAM_REPORT_PERIODS])
+  period!: string;
+
+  @ApiProperty({ description: 'Đầu kỳ YYYY-MM-DD' })
+  @IsString()
+  fromDate!: string;
+
+  @ApiProperty({ description: 'Cuối kỳ YYYY-MM-DD' })
+  @IsString()
+  toDate!: string;
+
+  @ApiProperty({ description: 'Nhiệm vụ đưa vào báo cáo' })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsMongoId({ each: true })
+  taskIds!: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
+/**
+ * Thêm / bớt nhiệm vụ của một bản đã lập.
+ *
+ * Hai danh sách trong một lượt gọi chứ không tách hai endpoint: đổi tập nhiệm
+ * vụ xong phải chụp lại toàn bộ dòng, gọi hai lượt là chụp lại hai lần và giữa
+ * hai lượt bản đang ở trạng thái dở dang.
+ */
+export class ChangeTeamReportSummaryTasksDto {
+  @ApiPropertyOptional({ description: 'Nhiệm vụ đưa thêm vào báo cáo' })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true })
+  add?: string[];
+
+  @ApiPropertyOptional({ description: 'Nhiệm vụ gỡ khỏi báo cáo' })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true })
+  remove?: string[];
+}
+
+/** Xem trước điểm của một tập nhiệm vụ, chưa lập báo cáo nào. */
+export class PreviewTeamReportSummaryDto {
+  @ApiProperty({ description: 'Nhiệm vụ đang tích chọn' })
+  @IsArray()
+  @IsMongoId({ each: true })
+  taskIds!: string[];
+}
+
+/** Trình một bản tổng hợp lên cấp trên đã chọn. */
+export class SendTeamReportSummaryDto {
+  @ApiProperty({ description: 'Người cấp trên nhận bản này' })
+  @IsMongoId()
+  recipientId!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
+export class TeamReportSummaryListQueryDto {
+  @ApiPropertyOptional({ enum: TEAM_REPORT_DAY_STATUSES })
+  @IsOptional()
+  @IsIn([...TEAM_REPORT_DAY_STATUSES])
+  status?: string;
+
+  @ApiPropertyOptional({ minimum: 1, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+}
+
 export class TeamReportInboxQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
@@ -246,6 +378,25 @@ export class ReviewTeamReportDayDto {
   @IsString()
   @MaxLength(500)
   reason!: string;
+}
+
+/**
+ * Đội chấm lại một dòng ngay trên bản tổng hợp CÒN NHÁP.
+ *
+ * Khai SAU `ReviewEditRowDto` vì `@ApiProperty({ type: [...] })` chạy ngay lúc
+ * nạp module - tham chiếu một lớp khai bên dưới là lỗi TDZ, server không khởi
+ * động nổi.
+ *
+ * Không có `reason` như bên cấp trên chỉnh: đây là đội sửa bản của chính mình,
+ * chưa trình đi đâu - bắt khai lý do cho việc tự sửa nháp là thủ tục thừa.
+ */
+export class EditTeamReportSummaryDto {
+  @ApiProperty({ type: [ReviewEditRowDto] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => ReviewEditRowDto)
+  rows!: ReviewEditRowDto[];
 }
 
 export class DecideTeamReportDayDto {

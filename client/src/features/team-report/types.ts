@@ -133,6 +133,41 @@ export function workContentColumnOf(
   );
 }
 
+/**
+ * Cột của mẫu vốn là BẢN SAO của trường giai đoạn 1.
+ *
+ * Bảng chỉ đọc bày sẵn tên việc, sản phẩm và hạn ở ô đầu dòng, nên bày lại
+ * chúng dưới dạng cột nữa là mỗi thứ hiện hai lần trên cùng một hàng.
+ *
+ * Luật dò PHẢI khớp `entryColumnKeys` bên server - hai bên hiểu khác nhau thì
+ * chỗ này ẩn cột A trong khi server ghi vào cột B.
+ */
+export function entryColumnKeys(
+  template: TeamReportTemplate | null | undefined,
+): Set<string> {
+  const visible = inputColumns(template).filter((column) => !column.autoValue);
+
+  const product = visible.find(
+    (column) => column.key === "product" && column.dataType === "text",
+  );
+  const title = visible.find(
+    (column) =>
+      column.semanticKey === "custom" &&
+      column.dataType === "text" &&
+      column.key !== "note" &&
+      column.key !== product?.key,
+  );
+  const deadline = visible.find(
+    (column) => column.key === "deadline" && column.dataType === "date",
+  );
+
+  return new Set(
+    [product?.key, title?.key, deadline?.key].filter(
+      (key): key is string => !!key,
+    ),
+  );
+}
+
 /** Nhiệm vụ đang ở bước nào của việc phân loại. */
 export type TaskReadiness = "UNCLASSIFIED" | "IN_PROGRESS" | "READY";
 
@@ -355,4 +390,125 @@ export type TeamReportClassifyBoard = TeamReportSheet & {
   catalogs: TeamReportCatalogs;
   /** Phân loại hết mới gửi được - cấp trên không cộng được dòng chưa rõ thuộc đâu. */
   canSubmit: boolean;
+  /** Điểm từng trục của bảng hôm nay - đội thấy trước khi gửi. */
+  axisScores: TeamReportAxisScore[];
+};
+
+// ------------------------------------------------------- báo cáo tổng hợp
+
+/** Kỳ của báo cáo - chỉ là nhãn, phạm vi thật nằm ở `fromDate`/`toDate`. */
+export type TeamReportPeriod =
+  "DAY" | "WEEK" | "MONTH" | "QUARTER" | "YEAR" | "CUSTOM";
+
+export const TEAM_REPORT_PERIOD_LABEL: Record<TeamReportPeriod, string> = {
+  DAY: "Trong ngày",
+  WEEK: "Trong tuần",
+  MONTH: "Trong tháng",
+  QUARTER: "Trong quý",
+  YEAR: "Trong năm",
+  CUSTOM: "Tự chọn",
+};
+
+/**
+ * Bản tổng hợp: một tập nhiệm vụ CHỌN TAY trải trên nhiều ngày, trình lên một
+ * người cấp trên cụ thể.
+ *
+ * Khác bản ngày ở hai chỗ: phạm vi do người lập chọn chứ không phải trọn một
+ * ngày, và người nhận do người lập chỉ định chứ không suy từ cây đơn vị.
+ */
+export type TeamReportSummary = {
+  _id: string;
+  departmentId: Ref;
+  title: string;
+  period: TeamReportPeriod;
+  fromDate: string;
+  toDate: string;
+  rows: TeamReportDayRow[];
+  status: TeamReportDayStatus;
+  recipientId: Ref;
+  recipientName: string;
+  sentByName: string;
+  sentAt: string | null;
+  note: string;
+  decidedByName: string;
+  decidedAt: string | null;
+  returnReason: string;
+  edits: TeamReportEdit[];
+  createdAt?: string;
+};
+
+/** Một dòng trong kho để tích chọn. */
+export type TeamReportSummaryCandidate = {
+  task: TeamReportTask;
+  /** Đã nằm trong một bản ĐÃ TRÌNH - chỉ để cảnh báo, không chặn chọn lại. */
+  alreadySent: boolean;
+  /** Còn sống trong kỳ của bản không. Chỉ khác `true` khi quét cả kho (`ALL`). */
+  inPeriod?: boolean;
+};
+
+export type TeamReportSummaryCandidates = {
+  fromDate: string;
+  toDate: string;
+  tasks: TeamReportSummaryCandidate[];
+  /** Tổng số việc trong kỳ, kể cả việc chưa đủ điều kiện. */
+  scanned: number;
+  notReady: number;
+  truncated: boolean;
+};
+
+/**
+ * Điểm của một trục - dòng tổng cuối bảng, và con số thật sự vào bảng điểm.
+ *
+ * Server tính, client chỉ bày: công thức phải có đúng MỘT chỗ định nghĩa, không
+ * thì bảng hiện một số mà bản đã trình lưu một số khác.
+ */
+/**
+ * Một thành phần của công thức điểm trục.
+ *
+ * `role` là nhãn A / B / C như trên mẫu giấy: A là mẫu số, B C D... là các tử
+ * số. Server gán nhãn chứ client không tự đoán - đổi công thức mà client đoán
+ * theo thứ tự cột là bảng ghi một đằng, điểm tính một nẻo.
+ */
+export type TeamReportFormulaPart = {
+  role: string;
+  key: string;
+  title: string;
+  total: number | null;
+};
+
+export type TeamReportFormula = {
+  mode: "ratio" | "sum";
+  base: TeamReportFormulaPart | null;
+  parts: TeamReportFormulaPart[];
+};
+
+export type TeamReportAxisScore = {
+  axisId: string;
+  axisName: string;
+  maxScore: number;
+  taskCount: number;
+  /** Khoá "<id mẫu>:<phiên bản>" để bày dòng tổng dưới đúng bộ cột. */
+  templateKey: string;
+  /** null = trục chưa bật công thức, không có dòng tổng nào để bày. */
+  formula: TeamReportFormula | null;
+  /** Tổng từng cột số, khoá theo khoá cột. Cột chưa ai nhập thì vắng mặt. */
+  columnTotals: Record<string, number>;
+  /** Tỉ lệ đạt 0-1; null = chưa đủ dữ liệu để chia. */
+  axisScore: number | null;
+  /** Điểm quy đổi = tỉ lệ × điểm tối đa của trục. */
+  convertedScore: number | null;
+};
+
+/** Số điểm gọn mắt - bỏ đuôi 0 thừa, không hiện 0.87500000000001. */
+export function formatScore(value: number, maxDigits = 2): string {
+  return new Intl.NumberFormat("vi-VN", {
+    maximumFractionDigits: maxDigits,
+  }).format(value);
+}
+
+export type TeamReportRecipient = {
+  id: string;
+  fullName: string;
+  departmentId: string | null;
+  departmentName: string;
 };

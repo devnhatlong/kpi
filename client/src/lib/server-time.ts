@@ -124,6 +124,34 @@ export function currentWeekRange(): { from: string; to: string } {
   };
 }
 
+/** Tháng đang chạy theo giờ server, từ mùng 1 tới ngày cuối tháng. */
+export function currentMonthRange(): { from: string; to: string } {
+  const now = serverDayjs();
+  return {
+    from: now.startOf("month").format("YYYY-MM-DD"),
+    to: now.endOf("month").format("YYYY-MM-DD"),
+  };
+}
+
+/** Quý đang chạy theo giờ server - quý I là tháng 1-3. */
+export function currentQuarterRange(): { from: string; to: string } {
+  const now = serverDayjs();
+  const start = now.month(Math.floor(now.month() / 3) * 3).startOf("month");
+  return {
+    from: start.format("YYYY-MM-DD"),
+    to: start.add(2, "month").endOf("month").format("YYYY-MM-DD"),
+  };
+}
+
+/** Năm đang chạy theo giờ server. */
+export function currentYearRange(): { from: string; to: string } {
+  const now = serverDayjs();
+  return {
+    from: now.startOf("year").format("YYYY-MM-DD"),
+    to: now.endOf("year").format("YYYY-MM-DD"),
+  };
+}
+
 /** Giờ:phút của một mốc thời gian, theo múi giờ server. */
 export function formatServerHm(value: string | number | Date): string {
   return serverDayjs(value).format("HH:mm");

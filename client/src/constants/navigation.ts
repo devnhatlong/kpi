@@ -5,6 +5,7 @@ import {
   ClipboardPen,
   ClipboardList,
   FileSpreadsheet,
+  FileStack,
   FormInput,
   Gauge,
   Inbox,
@@ -63,7 +64,7 @@ export const NAV_ITEMS: NavItem[] = [
     thì không thấy nhóm này, và ngược lại - bật bản mới không làm mất mục cũ.
   */
   {
-    title: "Báo cáo ngày của đội",
+    title: "Báo cáo ngày",
     icon: CalendarCheck,
     children: [
       {
@@ -82,6 +83,34 @@ export const NAV_ITEMS: NavItem[] = [
         title: "Duyệt báo cáo ngày",
         href: "/team-report/incoming",
         icon: Stamp,
+        permissions: [PERM.TEAM_REPORT_REVIEW],
+      },
+    ],
+  },
+  {
+    /*
+      Nhóm riêng, hai mục con - dựng đúng như nhóm "Báo cáo tổng hợp" của bản
+      nghiệp vụ cũ ngay bên dưới: lập bản và duyệt bản là hai việc khác nhau,
+      nhét chung một trang rồi bắt gạt qua lại thì vào từ menu không biết mình
+      đang đứng ở đâu.
+
+      Chỉ khác nguồn dữ liệu: bản này gom nhiệm vụ từ BẢNG NGÀY CỦA ĐỘI, không
+      đụng gì tới collection của bản cũ.
+    */
+    title: "Báo cáo tổng hợp",
+    icon: FileStack,
+    permissions: [PERM.TEAM_REPORT_ENTRY, PERM.TEAM_REPORT_REVIEW],
+    children: [
+      {
+        title: "Tạo báo cáo",
+        href: "/team-report/summary",
+        icon: FileStack,
+        permissions: [PERM.TEAM_REPORT_ENTRY],
+      },
+      {
+        title: "Duyệt báo cáo",
+        href: "/team-report/summary/incoming",
+        icon: Inbox,
         permissions: [PERM.TEAM_REPORT_REVIEW],
       },
     ],
@@ -107,26 +136,26 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Target,
     permissions: [PERM.TASK_VIEW],
   },
-  {
-    // Hai ngăn tách thành hai mục con: bản mình lập và bản cấp dưới trình lên
-    // là hai việc khác nhau, gộp một trang rồi bắt người dùng gạt qua lại thì
-    // không ai biết mình đang đứng ở đâu khi vào từ menu.
-    title: "Báo cáo tổng hợp",
-    icon: FileSpreadsheet,
-    permissions: [PERM.EVALUATION_APPROVE],
-    children: [
-      {
-        title: "Tạo báo cáo",
-        href: "/mission/promote",
-        icon: FileSpreadsheet,
-      },
-      {
-        title: "Duyệt báo cáo",
-        href: "/mission/promote/incoming",
-        icon: Inbox,
-      },
-    ],
-  },
+  // {
+  //   // Hai ngăn tách thành hai mục con: bản mình lập và bản cấp dưới trình lên
+  //   // là hai việc khác nhau, gộp một trang rồi bắt người dùng gạt qua lại thì
+  //   // không ai biết mình đang đứng ở đâu khi vào từ menu.
+  //   title: "Báo cáo tổng hợp",
+  //   icon: FileSpreadsheet,
+  //   permissions: [PERM.EVALUATION_APPROVE],
+  //   children: [
+  //     {
+  //       title: "Tạo báo cáo",
+  //       href: "/mission/promote",
+  //       icon: FileSpreadsheet,
+  //     },
+  //     {
+  //       title: "Duyệt báo cáo",
+  //       href: "/mission/promote/incoming",
+  //       icon: Inbox,
+  //     },
+  //   ],
+  // },
   {
     title: "Giao nhiệm vụ xuống",
     href: "/mission/assign",

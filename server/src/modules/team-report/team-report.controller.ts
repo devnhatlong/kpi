@@ -18,17 +18,24 @@ import { PermissionsGuard } from '@/common/guards/permissions.guard';
 import type { JwtPayloadUser } from '@/common/interfaces/jwt-payload-user.interface';
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import {
+  ChangeTeamReportSummaryTasksDto,
   ClassifyTeamReportTaskDto,
   CloseTeamReportTaskDto,
+  CreateTeamReportSummaryDto,
   CreateTeamReportTaskDto,
+  EditTeamReportSummaryDto,
+  PreviewTeamReportSummaryDto,
   ReopenTeamReportTaskDto,
   DecideTeamReportDayDto,
   PromoteTeamReportDto,
   ReviewTeamReportDayDto,
+  SendTeamReportSummaryDto,
   SubmitTeamReportDayDto,
   TeamReportClassifyQueryDto,
   TeamReportInboxQueryDto,
   TeamReportSheetQueryDto,
+  TeamReportSummaryCandidatesQueryDto,
+  TeamReportSummaryListQueryDto,
   UpdateTeamReportTaskDto,
 } from './dto/team-report.dto';
 import { TeamReportService } from './team-report.service';
@@ -139,6 +146,158 @@ export class TeamReportController {
     @Body() dto: SubmitTeamReportDayDto,
   ) {
     return this.teamReportService.submitDay(user.uid, dto);
+  }
+
+  // ------------------------------------------- báo cáo tổng hợp theo kỳ
+
+  /*
+    Các route 'summary/...' cụ thể phải đứng TRÊN 'summary/:id', không thì Nest
+    khớp 'summary/candidates' vào ':id' và trả "không tìm thấy báo cáo".
+  */
+
+  @ApiOperation({ summary: 'Nhiệm vụ sẵn sàng trong kỳ, để tích chọn' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Get('summary/candidates')
+  summaryCandidates(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: TeamReportSummaryCandidatesQueryDto,
+  ) {
+    return this.teamReportService.summaryCandidates(user.uid, query);
+  }
+
+  @ApiOperation({ summary: 'Cấp trên chọn được để nhận bản tổng hợp' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Get('summary/recipients')
+  summaryRecipients(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query('q') q?: string,
+  ) {
+    return this.teamReportService.summaryRecipients(user.uid, q);
+  }
+
+  @ApiOperation({ summary: 'Bản tổng hợp cấp dưới trình lên đơn vị tôi' })
+  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  @Get('summary/incoming')
+  summaryInbox(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: TeamReportSummaryListQueryDto,
+  ) {
+    return this.teamReportService.summaryInbox(user.uid, query);
+  }
+
+  /*
+    Cấp trên có đường ĐỌC riêng chứ không dùng chung 'summary/:id' với đội:
+    PermissionsGuard đòi ĐỦ mọi quyền khai trên route, nên một route gắn cả
+    ENTRY lẫn REVIEW sẽ chặn hết cả hai bên - phòng không có ENTRY, đội không
+    có REVIEW. Hai đường, mỗi đường một quyền.
+  */
+  @ApiOperation({ summary: 'Chi tiết một bản tổng hợp trình tới đơn vị tôi' })
+  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  @Get('summary/incoming/:id')
+  incomingSummaryDetail(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+  ) {
+    return this.teamReportService.summaryDetail(user.uid, id);
+  }
+
+  @ApiOperation({ summary: 'Duyệt hoặc trả lại một bản tổng hợp' })
+  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  @Post('summary/:id/decide')
+  decideSummary(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: DecideTeamReportDayDto,
+  ) {
+    return this.teamReportService.decideSummary(user.uid, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Báo cáo tổng hợp đội đã lập' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Get('summary')
+  listSummaries(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: TeamReportSummaryListQueryDto,
+  ) {
+    return this.teamReportService.listSummaries(user.uid, query);
+  }
+
+  @ApiOperation({ summary: 'Xem trước điểm của một tập nhiệm vụ đang tích' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Post('summary/preview')
+  previewSummaryScore(
+    @CurrentUser() user: JwtPayloadUser,
+    @Body() dto: PreviewTeamReportSummaryDto,
+  ) {
+    return this.teamReportService.previewSummaryScore(user.uid, dto);
+  }
+
+  @ApiOperation({ summary: 'Lập một bản tổng hợp (nháp)' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Post('summary')
+  createSummary(
+    @CurrentUser() user: JwtPayloadUser,
+    @Body() dto: CreateTeamReportSummaryDto,
+  ) {
+    return this.teamReportService.createSummary(user.uid, dto);
+  }
+
+  @ApiOperation({ summary: 'Đội chấm lại một dòng trên bản tổng hợp còn nháp' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Patch('summary/:id/rows')
+  editSummaryRows(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: EditTeamReportSummaryDto,
+  ) {
+    return this.teamReportService.editSummaryRows(user.uid, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Đội thêm / bớt nhiệm vụ của một bản tổng hợp' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Patch('summary/:id/tasks')
+  changeSummaryTasks(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: ChangeTeamReportSummaryTasksDto,
+  ) {
+    return this.teamReportService.changeSummaryTasks(user.uid, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Cấp trên chỉnh số trên bản tổng hợp đã nhận' })
+  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  @Patch('summary/:id/review')
+  reviewSummary(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: ReviewTeamReportDayDto,
+  ) {
+    return this.teamReportService.reviewSummary(user.uid, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Trình bản tổng hợp lên cấp trên đã chọn' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Post('summary/:id/send')
+  sendSummary(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: SendTeamReportSummaryDto,
+  ) {
+    return this.teamReportService.sendSummary(user.uid, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Chi tiết một bản tổng hợp' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Get('summary/:id')
+  summaryDetail(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
+    return this.teamReportService.summaryDetail(user.uid, id);
+  }
+
+  @ApiOperation({ summary: 'Xoá một bản tổng hợp còn ở dạng nháp' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Delete('summary/:id')
+  deleteSummary(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
+    return this.teamReportService.deleteSummary(user.uid, id);
   }
 
   // ------------------------------------------------------ cấp trên duyệt

@@ -42,6 +42,7 @@ import {
 } from '@/modules/mission-form-config/schemas/criterion.schema';
 import {
   catalogOfSemantic,
+  computeAutoValue,
   FormTemplate,
   FormTemplateColumn,
   FormTemplateDocument,
@@ -61,20 +62,37 @@ import {
   TeamReportUnitDayDocument,
 } from './schemas/team-report-unit-day.schema';
 import {
+  TeamReportSummary,
+  TeamReportSummaryDocument,
+  type TeamReportPeriod,
+} from './schemas/team-report-summary.schema';
+import {
+  ChangeTeamReportSummaryTasksDto,
   ClassifyTeamReportTaskDto,
   CloseTeamReportTaskDto,
+  CreateTeamReportSummaryDto,
   CreateTeamReportTaskDto,
+  EditTeamReportSummaryDto,
+  PreviewTeamReportSummaryDto,
   ReopenTeamReportTaskDto,
   DecideTeamReportDayDto,
   PromoteTeamReportDto,
   ReviewTeamReportDayDto,
+  SendTeamReportSummaryDto,
   SubmitTeamReportDayDto,
   TeamReportClassifyQueryDto,
   TeamReportInboxQueryDto,
   TeamReportSheetQueryDto,
+  TeamReportSummaryCandidatesQueryDto,
+  TeamReportSummaryListQueryDto,
   UpdateTeamReportTaskDto,
 } from './dto/team-report.dto';
 import { isYmd, serverDateYmd } from './team-report.time';
+import {
+  computeAxisFooter,
+  describeFooter,
+  type ScoreCatalogs,
+} from './team-report.score';
 
 /**
  * Bộ cột của một mẫu, đã rút gọn còn đúng thứ bảng cần để dựng.
@@ -92,6 +110,15 @@ type ResolvedTemplate = {
   footer?: unknown;
 };
 
+/**
+ * Trần dòng cho kho nhiệm vụ của báo cáo tổng hợp.
+ *
+ * Không phân trang vì tích chọn chỉ có nghĩa khi nhìn được cả kỳ một lượt; trần
+ * này chỉ để một kỳ bất thường không kéo về vài nghìn dòng. Chạm trần thì báo
+ * `truncated` để người dùng thu hẹp kỳ lại, chứ không cắt im lặng.
+ */
+const SUMMARY_CANDIDATES_MAX = 500;
+
 /** Người đang thao tác - luôn là tài khoản dùng chung của một đơn vị. */
 type Actor = {
   id: Types.ObjectId;
@@ -108,6 +135,8 @@ export class TeamReportService {
     private readonly dayModel: Model<TeamReportDayDocument>,
     @InjectModel(TeamReportUnitDay.name)
     private readonly unitDayModel: Model<TeamReportUnitDayDocument>,
+    @InjectModel(TeamReportSummary.name)
+    private readonly summaryModel: Model<TeamReportSummaryDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
     @InjectModel(Department.name)
@@ -139,18 +168,26 @@ export class TeamReportService {
    * Gồm mọi việc CÒN MỞ, không riêng việc khai hôm nay: việc chưa xong phải tự
    * hiện lại để đội cập nhật tiến độ, không bắt khai lại một dòng mới mỗi ngày.
    *
-   * Việc đã đóng vẫn hiện nếu nó đóng ĐÚNG ngày đang xem - mở lại bảng hôm qua
-   * mà mất những việc chốt hôm qua thì bảng đó không còn khớp báo cáo đã gửi.
+   * Đánh dấu xong là RỜI BẢNG NGAY, không chờ sang ngày mai. Bảng này là danh
+   * sách việc đang phải làm; để việc đã xong nằm lại đó thì mỗi ngày một dài
+   * thêm, mà đội chỉ cần nhìn phần còn phải làm. Muốn nó hiện lại thì vào tab
+   * Phân loại bỏ đánh dấu xong - ở đó việc đã đóng vẫn còn (tab "Đã đóng").
+   *
+   * Riêng NGÀY CŨ thì vẫn thấy việc đóng đúng hôm đó: bảng hôm qua là bản đã
+   * chốt, mất những việc chốt hôm qua thì nó không còn khớp báo cáo đã gửi.
    */
   async sheet(userId: string, query: TeamReportSheetQueryDto) {
     const actor = await this.requireActor(userId);
     const reportDate = this.requireDate(query.reportDate);
+    const today = serverDateYmd();
 
     const filter: Record<string, unknown> = {
       departmentId: actor.departmentId,
       // Việc khai sau ngày đang xem thì chưa tồn tại vào hôm đó.
       createdDate: { $lte: reportDate },
-      $or: [{ isOpen: true }, { closedDate: reportDate }],
+      ...(reportDate === today
+        ? { isOpen: true }
+        : { $or: [{ isOpen: true }, { closedDate: reportDate }] }),
     };
     if (query.q?.trim()) {
       const like = { $regex: this.likeRegex(query.q) };
@@ -373,10 +410,31 @@ export class TeamReportService {
 
     const unclassified = tasks.filter((task) => !task.workContentId).length;
 
+    /* Điểm trục ngay trên màn phân loại: đội phải thấy mình đang được bao nhiêu
+       TRƯỚC khi gửi, không phải chờ cấp trên mở ra mới biết. */
+    const axisScores = await this.axisScoresOf(
+      tasks.map((task) => ({
+        axisId: this.axisIdOf(task) || null,
+        formTemplateId: task.formTemplateId,
+        formTemplateVersion: task.formTemplateVersion,
+        fieldValues: task.fieldValues,
+        catalogValues: task.catalogValues,
+        reviewValues: task.reviewValues,
+        reviewCatalogValues: task.reviewCatalogValues,
+      })),
+      Object.fromEntries(
+        Object.values(templates)
+          .filter((template): template is ResolvedTemplate => !!template)
+          .map((template) => [`${template._id}:${template.version}`, template]),
+      ),
+      catalogs,
+    );
+
     return {
       message: 'OK',
       data: {
         reportDate,
+        axisScores,
         locked: !!day && day.status !== 'RETURNED',
         day,
         tasks,
@@ -438,17 +496,27 @@ export class TeamReportService {
     if (dto.fieldValues || dto.catalogValues) {
       await this.stampTemplate(task);
       const template = await this.templateOfTask(task);
+      const before = this.snapshotValues(task, template);
       const merged = await this.applyColumnValues(
         task,
         template,
         { fieldValues: dto.fieldValues, catalogValues: dto.catalogValues },
         // Đội đang tự phân loại - cột sản phẩm / tên / hạn ghi ngược lên GĐ1.
-        true,
+        { syncEntryFields: true },
       );
-      task.fieldValues = merged.fieldValues;
+      /* Tính lại ô tự chấm NGAY trong lượt này: đổi phần trăm hay đổi điểm gốc
+         thì điểm quy đổi phải đổi theo cùng lúc, không thì bảng bày một con số
+         thuộc về lần chấm trước. */
+      task.fieldValues = await this.computeAutoColumns(
+        template,
+        merged.fieldValues,
+        merged.catalogValues,
+      );
       task.catalogValues = merged.catalogValues;
       task.markModified('fieldValues');
       task.markModified('catalogValues');
+      // Đội tự chấm cũng vào nhật ký - trace được thì phải trace được cả hai bên.
+      this.logValueChanges(task, template, before, actor, '');
     }
 
     task.version += 1;
@@ -633,8 +701,9 @@ export class TeamReportService {
     }
 
     const catalogs = await this.catalogsForTemplates(Object.values(templates));
+    const axisScores = await this.axisScoresOf(day.rows, templates, catalogs);
 
-    return { message: 'OK', data: { day, templates, catalogs } };
+    return { message: 'OK', data: { day, templates, catalogs, axisScores } };
   }
 
   /**
@@ -724,6 +793,37 @@ export class TeamReportService {
         this.appendEdit(day, actor, label, before, to, reason);
         this.appendEdit(task, actor, label, before, to, reason);
         changed += 1;
+      }
+
+      /*
+        Cấp trên chỉnh điểm gốc hay mức phần trăm thì ô tự chấm cũng phải đổi
+        theo - không tính lại là bản đã trình mang một con số thuộc về lần chấm
+        trước, mà nó lại là con số cấp tỉnh đọc.
+
+        Tính trên giá trị CHỐT (số đội khai đã ghép số cấp trên chỉnh), rồi ghi
+        vào cả bản chụp lẫn `reviewValues` - hai nơi phải khớp nhau.
+      */
+      const finalField = { ...(task.fieldValues ?? {}), ...task.reviewValues };
+      const finalCatalog = {
+        ...(task.catalogValues ?? {}),
+        ...task.reviewCatalogValues,
+      };
+      const recomputed = await this.computeAutoColumns(
+        template,
+        finalField,
+        finalCatalog,
+      );
+      for (const column of template.columns) {
+        if (!column.autoValue) continue;
+        const value = recomputed[column.key] ?? '';
+        if (String(row.fieldValues?.[column.key] ?? '') === String(value)) {
+          continue;
+        }
+        row.fieldValues = { ...(row.fieldValues ?? {}), [column.key]: value };
+        task.reviewValues = {
+          ...(task.reviewValues ?? {}),
+          [column.key]: value,
+        };
       }
 
       task.markModified('reviewValues');
@@ -981,18 +1081,27 @@ export class TeamReportService {
       fieldValues?: Record<string, string | number>;
       catalogValues?: Record<string, string>;
     },
-    /*
-      Có ghi ngược lên trường giai đoạn 1 hay không.
-
-      Bật khi CHÍNH ĐỘI đang phân loại: cột "Sản phẩm" của mẫu và ô sản phẩm ở
-      bảng nhập là một thứ, sửa bên nào cũng phải sang bên kia.
-
-      TẮT khi cấp trên chấm lại: số cấp trên chỉnh nằm riêng ở `reviewValues` để
-      còn đối chiếu với số đội khai. Ghi ngược ở đó là xoá mất chính cái mình
-      đang muốn đối chiếu.
-    */
-    syncEntryFields = false,
+    options: {
+      /**
+       * Ghi ngược lên trường giai đoạn 1 hay không.
+       *
+       * Bật khi người sửa đang chấm chính nhiệm vụ đó: cột "Sản phẩm" của mẫu
+       * và ô sản phẩm ở bảng nhập là một thứ, sửa bên nào cũng phải sang bên
+       * kia.
+       */
+      syncEntryFields?: boolean;
+      /**
+       * Bỏ qua ràng buộc "điểm phải nằm trong dải của nhóm điểm".
+       *
+       * Bật cho CẤP TRÊN chấm lại: họ là người quyết cuối cùng, chặn họ ở một
+       * dải do danh mục khai sẵn là chặn đúng người có thẩm quyền sửa. Đội tự
+       * khai thì vẫn giữ ràng buộc - bắt lỗi sớm ngay lúc gõ vẫn tốt hơn để số
+       * sai đi lên tới tỉnh.
+       */
+      skipRangeCheck?: boolean;
+    } = {},
   ) {
+    const { syncEntryFields = false, skipRangeCheck = false } = options;
     const fieldValues = { ...(task.fieldValues ?? {}) };
     const catalogValues = { ...(task.catalogValues ?? {}) };
     if (!template) return { fieldValues, catalogValues };
@@ -1029,7 +1138,14 @@ export class TeamReportService {
         if (!Number.isFinite(parsed)) {
           throw new BadRequestException(`Cột "${column.title}" phải là số.`);
         }
-        await this.assertNumberInRange(template, column, parsed, catalogValues);
+        if (!skipRangeCheck) {
+          await this.assertNumberInRange(
+            template,
+            column,
+            parsed,
+            catalogValues,
+          );
+        }
         fieldValues[key] = parsed;
         continue;
       }
@@ -1076,6 +1192,153 @@ export class TeamReportService {
     }
 
     return { fieldValues, catalogValues };
+  }
+
+  /**
+   * Điểm từng trục của một tập dòng.
+   *
+   * Gom theo TRỤC chứ không theo mẫu: Trục 1, 3, 4 dùng chung một mẫu, gom theo
+   * mẫu là ba trục dồn thành một khối và ra một con số không thuộc trục nào.
+   *
+   * Bộ cột thì lấy theo PHIÊN BẢN MỚI NHẤT trong số các dòng của trục đó - quản
+   * trị sửa mẫu giữa kỳ thì các dòng mang hai phiên bản, mà dòng tổng chỉ có
+   * một hàng nên phải chọn một bộ tiêu đề.
+   */
+  private async axisScoresOf(
+    rows: Array<{
+      axisId: Types.ObjectId | string | null;
+      formTemplateId: Types.ObjectId | string | null;
+      formTemplateVersion: number | null;
+      fieldValues?: Record<string, string | number> | null;
+      catalogValues?: Record<string, { id: string; name: string }> | null;
+      reviewValues?: Record<string, string | number> | null;
+      reviewCatalogValues?: Record<string, { id: string; name: string }> | null;
+    }>,
+    templates: Record<string, ResolvedTemplate>,
+    catalogs: ScoreCatalogs,
+  ) {
+    const byAxis = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const id = row.axisId ? String(row.axisId) : '';
+      if (!id) continue;
+      byAxis.set(id, [...(byAxis.get(id) ?? []), row]);
+    }
+    if (!byAxis.size) return [];
+
+    const axes = await this.axisModel
+      .find({
+        _id: { $in: [...byAxis.keys()].map((id) => new Types.ObjectId(id)) },
+      })
+      .select('code name maxScore sortOrder')
+      .sort({ sortOrder: 1, code: 1 });
+
+    return axes.map((axis) => {
+      const axisRows = byAxis.get(String(axis._id)) ?? [];
+
+      let key = '';
+      let version = -1;
+      for (const row of axisRows) {
+        if (!row.formTemplateId) continue;
+        const rowVersion = row.formTemplateVersion ?? 1;
+        if (rowVersion > version) {
+          version = rowVersion;
+          key = `${String(row.formTemplateId)}:${rowVersion}`;
+        }
+      }
+      const template = templates[key] ?? null;
+
+      const totals = computeAxisFooter(
+        axisRows,
+        template?.columns ?? [],
+        template?.footer as never,
+        axis.maxScore ?? 0,
+        catalogs,
+      );
+
+      return {
+        axisId: String(axis._id),
+        axisName: axis.name,
+        maxScore: axis.maxScore ?? 0,
+        taskCount: axisRows.length,
+        /** Khoá mẫu để client bày dòng tổng dưới đúng bộ cột. */
+        templateKey: key,
+        /** Diễn giải công thức - để bảng ghi được "[(B/A)+(C/A)] / 2" như mẫu giấy. */
+        formula: describeFooter(
+          template?.columns ?? [],
+          template?.footer as never,
+          totals.columnTotals,
+        ),
+        ...totals,
+      };
+    });
+  }
+
+  /**
+   * Tính lại các ô `autoValue` - "Điểm tự chấm" và những cột cùng loại.
+   *
+   * Cột tự tính KHÔNG nhận giá trị client gửi lên (`applyColumnValues` bỏ qua
+   * chúng), nên nếu không có chỗ nào tính thì ô đó trống vĩnh viễn: chọn xong
+   * phần trăm mà điểm vẫn là dấu gạch.
+   *
+   * Công thức lấy từ CẤU HÌNH của cột (`kind`, `percentColumnKey`,
+   * `baseColumnKey`) chứ không đoán theo tiêu đề, và dùng chung hàm
+   * `computeAutoValue` với bản nghiệp vụ cũ - hai bản ra hai con số khác nhau
+   * cho cùng một mẫu là hỏng hơn cả không tính.
+   *
+   * Trả về bộ giá trị MỚI, không sửa tại chỗ: chỗ gọi có nơi ghi vào nhiệm vụ
+   * sống, có nơi ghi vào bản chụp của cấp trên.
+   */
+  private async computeAutoColumns(
+    template: ResolvedTemplate | null,
+    fieldValues: Record<string, string | number>,
+    catalogValues: Record<string, { id: string; name: string }>,
+  ): Promise<Record<string, string | number>> {
+    const autos = (template?.columns ?? []).filter(
+      (column) => column.visible && column.autoValue,
+    );
+    if (!autos.length) return fieldValues;
+
+    const percentIds = new Set<string>();
+    for (const column of autos) {
+      const id = catalogValues[column.autoValue!.percentColumnKey]?.id;
+      if (id) percentIds.add(id);
+    }
+    const levels = percentIds.size
+      ? await this.qualityLevelModel
+          .find({
+            _id: { $in: [...percentIds].map((id) => new Types.ObjectId(id)) },
+          })
+          .select('percent')
+      : [];
+    const percentById = new Map(
+      levels.map((row) => [String(row._id), row.percent] as const),
+    );
+
+    const next = { ...fieldValues };
+    for (const column of autos) {
+      const auto = column.autoValue!;
+      const percentId = catalogValues[auto.percentColumnKey]?.id ?? '';
+      const percent = percentId ? (percentById.get(percentId) ?? null) : null;
+
+      const rawBase = next[auto.baseColumnKey];
+      const base =
+        rawBase === undefined ||
+        rawBase === null ||
+        String(rawBase).trim() === ''
+          ? null
+          : Number(rawBase);
+
+      const value = computeAutoValue(
+        auto.kind,
+        percent,
+        base !== null && Number.isFinite(base) ? base : null,
+      );
+      /* Thiếu đầu vào thì BỎ TRỐNG chứ không ghi 0: ô hiện 0 đọc ra thành "đã
+         chấm 0 điểm", khác hẳn nghĩa "chưa chấm". */
+      if (value === null) delete next[column.key];
+      else next[column.key] = value;
+    }
+    return next;
   }
 
   /**
@@ -1319,7 +1582,910 @@ export class TeamReportService {
     return content._id;
   }
 
+  // ======================================== báo cáo tổng hợp theo kỳ của đội
+
+  /**
+   * Kho nhiệm vụ để tích chọn vào một bản tổng hợp.
+   *
+   * Chỉ trả việc ĐÃ SẴN SÀNG: đủ trục, đủ nội dung công việc, và không còn ô bắt
+   * buộc nào của mẫu bỏ trống. Bày cả việc dở dang thì người lập phải tự đoán
+   * dòng nào đủ điều kiện, mà đoán sai là báo cáo trình lên thiếu số.
+   *
+   * Không phân trang: tích chọn chỉ có nghĩa khi nhìn được cả kỳ một lượt. Chặn
+   * bằng trần dòng và báo `truncated` thay vì cắt trang.
+   */
+  async summaryCandidates(
+    userId: string,
+    query: TeamReportSummaryCandidatesQueryDto,
+  ) {
+    const actor = await this.requireActor(userId);
+    const { fromDate, toDate } = this.requirePeriod(
+      query.fromDate,
+      query.toDate,
+    );
+
+    /*
+      Một nhiệm vụ thuộc về kỳ nếu nó CÒN SỐNG trong kỳ đó: khai trước lúc kỳ
+      kết thúc, và chưa đóng hoặc đóng trong kỳ. Đây đúng là luật của bảng ngày,
+      chỉ nới từ một ngày thành một khoảng.
+    */
+    /** Việc có còn sống trong kỳ không - luật của bảng ngày, nới ra một khoảng. */
+    const inPeriod = (task: TeamReportTaskDocument) =>
+      task.createdDate <= toDate &&
+      (task.isOpen || (task.closedDate ?? '') >= fromDate);
+
+    const all = query.scope === 'ALL';
+    const filter: Record<string, unknown> = {
+      departmentId: actor.departmentId,
+      ...(all
+        ? {}
+        : {
+            createdDate: { $lte: toDate },
+            $or: [{ isOpen: true }, { closedDate: { $gte: fromDate } }],
+          }),
+    };
+    if (query.q?.trim()) {
+      const like = { $regex: this.likeRegex(query.q) };
+      filter.$and = [{ $or: [{ name: like }, { product: like }] }];
+    }
+
+    const tasks = await this.taskModel
+      .find(filter)
+      /* Quét cả kho thì việc MỚI phải sống sót qua trần: cắt mất việc vừa khai
+         hôm qua để giữ lại việc từ năm ngoái là vô lý. Quét trong kỳ thì gom
+         theo trục cho dễ nhìn, vì kỳ đã đủ hẹp. */
+      .sort(
+        all
+          ? { createdDate: -1, axisId: 1, createdAt: -1 }
+          : { axisId: 1, workContentId: 1, createdDate: -1, createdAt: 1 },
+      )
+      .limit(SUMMARY_CANDIDATES_MAX)
+      .populate('axisId', 'code name sortOrder')
+      .populate('workContentId', 'code name');
+
+    const templates = await this.templatesByAxis([
+      ...new Set(tasks.map((task) => this.axisIdOf(task)).filter(Boolean)),
+    ]);
+
+    /* Việc đã nằm trong một bản ĐÃ TRÌNH thì đánh dấu, KHÔNG loại bỏ: một việc
+       kéo dài cả tháng nằm trong cả bản tuần lẫn bản tháng là chuyện bình
+       thường. Người lập cần biết để khỏi trình trùng ngoài ý muốn, chứ không
+       phải bị chặn. */
+    const sentTaskIds = new Set(
+      (
+        await this.summaryModel
+          .find({
+            departmentId: actor.departmentId,
+            status: { $ne: 'DRAFT' },
+          })
+          .select('rows.taskId')
+      ).flatMap((summary) =>
+        (summary.rows ?? []).map((row) => String(row.taskId)),
+      ),
+    );
+
+    const ready = tasks.filter((task) =>
+      this.isTaskReady(task, templates[this.axisIdOf(task)] ?? null),
+    );
+
+    return {
+      message: 'OK',
+      data: {
+        fromDate,
+        toDate,
+        tasks: ready.map((task) => ({
+          task,
+          alreadySent: sentTaskIds.has(String(task._id)),
+          inPeriod: inPeriod(task),
+        })),
+        /** Tổng số việc trong kỳ, kể cả việc chưa sẵn sàng - để nói rõ đã lọc. */
+        scanned: tasks.length,
+        notReady: tasks.length - ready.length,
+        truncated: tasks.length >= SUMMARY_CANDIDATES_MAX,
+      },
+    };
+  }
+
+  /**
+   * Cấp trên chọn được để nhận bản tổng hợp.
+   *
+   * Tự dò trong module này chứ không gọi sang `personal-mission`: hai bản nghiệp
+   * vụ phải gỡ rời được, mà một lời gọi chéo là đủ để dính vào nhau.
+   *
+   * Lấy MỌI cấp trên trong nhánh có quyền duyệt, không dừng ở cấp gần nhất như
+   * bản ngày - bản tổng hợp là người lập tự quyết trình cho ai.
+   */
+  async summaryRecipients(userId: string, q?: string) {
+    const actor = await this.requireActor(userId);
+    const department = await this.departmentModel
+      .findById(actor.departmentId)
+      .select('ancestors');
+    const ancestors = department?.ancestors ?? [];
+    if (!ancestors.length) return { message: 'OK', data: { people: [] } };
+
+    const reviewerRoles = await this.roleModel
+      .find({ permissions: Permission.TEAM_REPORT_REVIEW, isActive: true })
+      .select('code');
+    if (!reviewerRoles.length) return { message: 'OK', data: { people: [] } };
+
+    const filter: Record<string, unknown> = {
+      isActive: true,
+      departmentId: { $in: [...ancestors].reverse() },
+      'roleAssignments.roleCode': {
+        $in: reviewerRoles.map((role) => role.code),
+      },
+    };
+    if (q?.trim()) {
+      const like = { $regex: this.likeRegex(q) };
+      filter.$or = [{ fullName: like }, { username: like }];
+    }
+
+    const found = await this.userModel
+      .find(filter)
+      .select('fullName username departmentId')
+      .populate('departmentId', 'code name')
+      .sort({ fullName: 1, username: 1 })
+      .limit(200);
+
+    return {
+      message: 'OK',
+      data: {
+        people: found.map((user) => {
+          const dept = user.departmentId as unknown as {
+            _id?: Types.ObjectId;
+            name?: string;
+          } | null;
+          return {
+            id: String(user._id),
+            fullName: user.fullName?.trim() || user.username,
+            departmentId: dept?._id ? String(dept._id) : null,
+            departmentName: dept?.name ?? '',
+          };
+        }),
+      },
+    };
+  }
+
+  /**
+   * Xem trước điểm của một TẬP NHIỆM VỤ, chưa lập báo cáo nào.
+   *
+   * Để người lập cân nhắc trước khi chốt: tích thêm bớt vài việc rồi nhìn tổng
+   * điểm đổi theo. Không có nó thì phải lập bản, xem điểm, xoá đi, lập lại.
+   *
+   * Dùng LẠI đúng `axisScoresOf` của bản đã lập - xem trước mà tính bằng công
+   * thức khác thì con số xem trước là con số không có thật.
+   */
+  async previewSummaryScore(userId: string, dto: PreviewTeamReportSummaryDto) {
+    const actor = await this.requireActor(userId);
+    const ids = [...new Set(dto.taskIds)].map((id) =>
+      this.requireObjectId(id, 'Nhiệm vụ'),
+    );
+    if (!ids.length) {
+      return { message: 'OK', data: { axisScores: [] } };
+    }
+
+    const tasks = await this.taskModel
+      .find({ _id: { $in: ids }, departmentId: actor.departmentId })
+      .populate('axisId', 'code name');
+
+    const templates = await this.templatesOfRows(
+      tasks.map((task) => ({
+        formTemplateId: task.formTemplateId,
+        formTemplateVersion: task.formTemplateVersion,
+      })) as never,
+    );
+    const catalogs = await this.catalogsForTemplates(Object.values(templates));
+    const axisScores = await this.axisScoresOf(
+      tasks.map((task) => ({
+        axisId: this.axisIdOf(task) || null,
+        formTemplateId: task.formTemplateId,
+        formTemplateVersion: task.formTemplateVersion,
+        fieldValues: task.fieldValues,
+        catalogValues: task.catalogValues,
+        reviewValues: task.reviewValues,
+        reviewCatalogValues: task.reviewCatalogValues,
+      })),
+      templates,
+      catalogs,
+    );
+
+    return { message: 'OK', data: { axisScores } };
+  }
+
+  /** Lập một bản tổng hợp ở trạng thái nháp - chưa đi đâu cả. */
+  async createSummary(userId: string, dto: CreateTeamReportSummaryDto) {
+    const actor = await this.requireActor(userId);
+    const { fromDate, toDate } = this.requirePeriod(dto.fromDate, dto.toDate);
+    const title = dto.title.trim();
+    if (!title) throw new BadRequestException('Tên báo cáo là bắt buộc.');
+
+    const ids = [...new Set(dto.taskIds)].map((id) =>
+      this.requireObjectId(id, 'Nhiệm vụ'),
+    );
+    const tasks = await this.taskModel
+      .find({ _id: { $in: ids }, departmentId: actor.departmentId })
+      .populate('axisId', 'code name')
+      .populate('workContentId', 'code name');
+
+    /* Đếm lại thay vì tin danh sách gửi lên: id lạ hoặc id của đội khác lọt vào
+       thì báo cáo thiếu dòng mà không ai biết. */
+    if (tasks.length !== ids.length) {
+      throw new BadRequestException(
+        'Một số nhiệm vụ không thuộc đơn vị bạn hoặc không còn tồn tại.',
+      );
+    }
+
+    const templates = await this.templatesByAxis([
+      ...new Set(tasks.map((task) => this.axisIdOf(task)).filter(Boolean)),
+    ]);
+    const notReady = tasks.filter(
+      (task) => !this.isTaskReady(task, templates[this.axisIdOf(task)] ?? null),
+    );
+    if (notReady.length) {
+      throw new BadRequestException(
+        `Còn ${notReady.length} nhiệm vụ chưa sẵn sàng: ${notReady
+          .map((task) => task.name)
+          .slice(0, 3)
+          .join(', ')}.`,
+      );
+    }
+
+    const summary = await this.summaryModel.create({
+      departmentId: actor.departmentId,
+      title,
+      period: dto.period as TeamReportPeriod,
+      fromDate,
+      toDate,
+      rows: tasks.map((task) => this.snapshotOf(task, !task.isOpen)),
+      status: 'DRAFT' as const,
+      note: dto.note?.trim() ?? '',
+    });
+
+    return {
+      message: `Đã lập báo cáo với ${tasks.length} nhiệm vụ.`,
+      data: summary,
+    };
+  }
+
+  /**
+   * Trình bản tổng hợp lên cấp trên đã chọn.
+   *
+   * Chụp LẠI nhiệm vụ ngay lúc trình chứ không dùng bản chụp lúc lập: từ lúc lập
+   * tới lúc trình đội vẫn chấm tiếp, trình đi con số của mấy hôm trước thì cấp
+   * trên duyệt một thứ không còn đúng.
+   */
+  async sendSummary(userId: string, id: string, dto: SendTeamReportSummaryDto) {
+    const actor = await this.requireActor(userId);
+    const summary = await this.requireOwnSummary(actor, id);
+
+    if (summary.status !== 'DRAFT' && summary.status !== 'RETURNED') {
+      throw new BadRequestException('Báo cáo này đã trình rồi.');
+    }
+
+    const recipient = await this.requireSummaryRecipient(
+      actor,
+      dto.recipientId,
+    );
+
+    const tasks = await this.taskModel
+      .find({
+        _id: { $in: summary.rows.map((row) => row.taskId) },
+        departmentId: actor.departmentId,
+      })
+      .populate('axisId', 'code name')
+      .populate('workContentId', 'code name');
+    if (!tasks.length) {
+      throw new BadRequestException('Báo cáo không còn nhiệm vụ nào để trình.');
+    }
+
+    summary.rows = tasks.map((task) => this.snapshotOf(task, !task.isOpen));
+    summary.status = 'PENDING';
+    summary.recipientId = recipient.id;
+    summary.recipientName = recipient.name;
+    summary.recipientDepartmentId = recipient.departmentId;
+    summary.sentById = actor.id;
+    summary.sentByName = actor.name;
+    summary.sentAt = new Date();
+    summary.returnReason = '';
+    if (dto.note?.trim()) summary.note = dto.note.trim();
+    this.appendEdit(
+      summary,
+      actor,
+      'Trạng thái',
+      'nháp',
+      `đã trình ${recipient.name}`,
+      '',
+    );
+    await summary.save();
+
+    return {
+      message: `Đã trình báo cáo lên ${recipient.name}.`,
+      data: summary,
+    };
+  }
+
+  /** Danh sách bản tổng hợp đội đã lập. */
+  async listSummaries(userId: string, query: TeamReportSummaryListQueryDto) {
+    const actor = await this.requireActor(userId);
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const filter: Record<string, unknown> = {
+      departmentId: actor.departmentId,
+    };
+    if (query.status) filter.status = query.status;
+
+    const [rows, total] = await Promise.all([
+      this.summaryModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      this.summaryModel.countDocuments(filter),
+    ]);
+
+    return buildPaginatedResponse(rows, total, page, limit, 'OK');
+  }
+
+  /**
+   * Hộp đến bản tổng hợp của cấp trên.
+   *
+   * Lọc theo ĐƠN VỊ nhận chứ không theo đúng người được chọn: cả phòng dùng
+   * chung tài khoản, mà kể cả khi không thì trưởng phòng đi vắng vẫn phải có
+   * người mở ra duyệt. Lọc theo cá nhân là báo cáo kẹt trong một tài khoản.
+   * Tên người được trình đích danh vẫn lưu ở `recipientName` để biết ai được
+   * nhắm tới.
+   */
+  async summaryInbox(userId: string, query: TeamReportSummaryListQueryDto) {
+    const actor = await this.requireActor(userId);
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const filter: Record<string, unknown> = {
+      recipientDepartmentId: actor.departmentId,
+      // Bản nháp của đội chưa trình đi thì cấp trên không được thấy.
+      status: { $ne: 'DRAFT' },
+    };
+    if (query.status) filter.status = query.status;
+
+    const [rows, total] = await Promise.all([
+      this.summaryModel
+        .find(filter)
+        .sort({ sentAt: -1, createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('departmentId', 'code name'),
+      this.summaryModel.countDocuments(filter),
+    ]);
+
+    return buildPaginatedResponse(rows, total, page, limit, 'OK');
+  }
+
+  /** Đội lập đọc được bản của mình; cấp trên đọc được bản trình tới đơn vị mình. */
+  async summaryDetail(userId: string, id: string) {
+    const actor = await this.requireActor(userId);
+    const summary = await this.requireVisibleSummary(actor, id);
+    const templates = await this.templatesOfRows(summary.rows);
+    const catalogs = await this.catalogsForTemplates(Object.values(templates));
+    const axisScores = await this.axisScoresOf(
+      summary.rows,
+      templates,
+      catalogs,
+    );
+    return {
+      message: 'OK',
+      data: { summary, templates, catalogs, axisScores },
+    };
+  }
+
+  /** Cấp trên duyệt hoặc trả lại một bản tổng hợp. */
+  async decideSummary(userId: string, id: string, dto: DecideTeamReportDayDto) {
+    const actor = await this.requireActor(userId);
+    const summary = await this.summaryModel.findById(
+      this.requireObjectId(id, 'Báo cáo'),
+    );
+    if (!summary) throw new NotFoundException('Không tìm thấy báo cáo.');
+    if (
+      String(summary.recipientDepartmentId ?? '') !== String(actor.departmentId)
+    ) {
+      throw new ForbiddenException('Báo cáo này không trình tới đơn vị bạn.');
+    }
+    if (summary.status === 'DRAFT') {
+      throw new BadRequestException('Báo cáo này chưa được trình lên.');
+    }
+    if (summary.status === 'APPROVED') {
+      throw new BadRequestException('Báo cáo đã được duyệt.');
+    }
+
+    if (dto.decision === 'RETURN') {
+      const reason = dto.reason?.trim() ?? '';
+      if (!reason) throw new BadRequestException('Lý do trả lại là bắt buộc.');
+      summary.status = 'RETURNED';
+      summary.returnReason = reason;
+    } else {
+      summary.status = 'APPROVED';
+      summary.returnReason = '';
+    }
+    summary.decidedById = actor.id;
+    summary.decidedByName = actor.name;
+    summary.decidedAt = new Date();
+    this.appendEdit(
+      summary,
+      actor,
+      'Trạng thái',
+      'đã trình',
+      dto.decision === 'RETURN' ? 'trả lại' : 'đã duyệt',
+      dto.reason?.trim() ?? '',
+    );
+    await summary.save();
+
+    return {
+      message: dto.decision === 'RETURN' ? 'Đã trả lại.' : 'Đã duyệt.',
+      data: summary,
+    };
+  }
+
+  /**
+   * Đội chấm lại ngay trên bản tổng hợp - CHỈ khi bản còn nháp.
+   *
+   * Ghi thẳng vào NHIỆM VỤ SỐNG rồi chụp lại dòng, không sửa riêng bản chụp:
+   * bản nháp chưa trình đi đâu nên nhiệm vụ vẫn là nguồn duy nhất. Sửa riêng
+   * bản chụp là con số ở đây một đằng, bảng ngày một nẻo, không ai biết bên nào
+   * đúng.
+   *
+   * Đã trình rồi thì đội hết quyền: bản đó cấp trên đang cầm, đổi số dưới tay
+   * họ mà không ai báo là chuyện khác hẳn.
+   */
+  async editSummaryRows(
+    userId: string,
+    id: string,
+    dto: EditTeamReportSummaryDto,
+  ) {
+    const actor = await this.requireActor(userId);
+    const summary = await this.requireOwnSummary(actor, id);
+    /*
+      Sửa được khi bản CHƯA TRÌNH, hoặc BỊ TRẢ LẠI.
+
+      Bị trả lại đúng là lúc đội cần sửa nhất - cấp trên vừa nói thiếu chỗ nào
+      thì phải chữa được rồi trình lại. Chặn ở đó thì đường duy nhất là lập một
+      bản mới, mà lý do trả lại lại nằm ở bản cũ.
+    */
+    if (summary.status !== 'DRAFT' && summary.status !== 'RETURNED') {
+      throw new BadRequestException(
+        'Báo cáo đang chờ cấp trên duyệt nên đội không sửa được. Chờ duyệt hoặc chờ trả lại.',
+      );
+    }
+
+    const inSummary = new Set(summary.rows.map((row) => String(row.taskId)));
+    let changed = 0;
+
+    for (const patch of dto.rows) {
+      if (!inSummary.has(patch.taskId)) {
+        throw new BadRequestException(
+          'Có nhiệm vụ không nằm trong báo cáo này.',
+        );
+      }
+      const task = await this.requireOwnTask(actor, patch.taskId);
+      // Cùng một luật với tab Phân loại: việc đã chốt thì phải mở lại đã.
+      this.assertClosedNotEdited(task);
+
+      const template = await this.templateOfTask(task);
+      const before = this.snapshotValues(task, template);
+      const merged = await this.applyColumnValues(
+        task,
+        template,
+        { fieldValues: patch.fieldValues, catalogValues: patch.catalogValues },
+        // Đội tự chấm nên cột sản phẩm / tên / hạn ghi ngược lên giai đoạn 1.
+        { syncEntryFields: true },
+      );
+      task.fieldValues = await this.computeAutoColumns(
+        template,
+        merged.fieldValues,
+        merged.catalogValues,
+      );
+      task.catalogValues = merged.catalogValues;
+      task.markModified('fieldValues');
+      task.markModified('catalogValues');
+      // Đội sửa cũng vào nhật ký của cả nhiệm vụ lẫn báo cáo - trace được hết.
+      changed += this.logValueChanges(
+        task,
+        template,
+        before,
+        actor,
+        '',
+        summary,
+      );
+      task.version += 1;
+      await task.save();
+    }
+
+    /* Chụp lại TOÀN BỘ dòng chứ không chỉ dòng vừa sửa: rẻ như nhau mà không
+       phải lo dòng nào lỡ lệch với nhiệm vụ. */
+    const tasks = await this.taskModel
+      .find({
+        _id: { $in: summary.rows.map((row) => row.taskId) },
+        departmentId: actor.departmentId,
+      })
+      .populate('axisId', 'code name')
+      .populate('workContentId', 'code name');
+    summary.rows = tasks.map((task) => this.snapshotOf(task, !task.isOpen));
+    await summary.save();
+
+    return { message: `Đã chấm lại ${changed} nhiệm vụ.`, data: summary };
+  }
+
+  /**
+   * Thêm / bớt nhiệm vụ của một bản đã lập.
+   *
+   * Chỉ ĐỘI làm, và chỉ khi bản chưa trình hoặc bị trả lại - cùng luật với sửa
+   * điểm. Đội là người quyết bản báo cáo gồm những việc gì; cấp trên thấy thiếu
+   * thì trả lại kèm lý do, chứ không tự bốc thêm việc vào bản của đội.
+   *
+   * Nhiệm vụ thêm vào phải SẴN SÀNG như lúc lập, không thì bản trình lên có
+   * dòng thiếu số mà kho ban đầu đã lọc ra rồi.
+   */
+  async changeSummaryTasks(
+    userId: string,
+    id: string,
+    dto: ChangeTeamReportSummaryTasksDto,
+  ) {
+    const actor = await this.requireActor(userId);
+    const summary = await this.requireOwnSummary(actor, id);
+    if (summary.status !== 'DRAFT' && summary.status !== 'RETURNED') {
+      throw new BadRequestException(
+        'Báo cáo đang chờ cấp trên duyệt nên đội không đổi được danh sách nhiệm vụ.',
+      );
+    }
+
+    const current = new Set(summary.rows.map((row) => String(row.taskId)));
+    const removing = new Set(dto.remove ?? []);
+    const adding = (dto.add ?? []).filter((taskId) => !current.has(taskId));
+
+    if (adding.length) {
+      const ids = adding.map((taskId) =>
+        this.requireObjectId(taskId, 'Nhiệm vụ'),
+      );
+      const tasks = await this.taskModel
+        .find({ _id: { $in: ids }, departmentId: actor.departmentId })
+        .populate('axisId', 'code name');
+      if (tasks.length !== ids.length) {
+        throw new BadRequestException(
+          'Một số nhiệm vụ không thuộc đơn vị bạn hoặc không còn tồn tại.',
+        );
+      }
+
+      const templates = await this.templatesByAxis([
+        ...new Set(tasks.map((task) => this.axisIdOf(task)).filter(Boolean)),
+      ]);
+      const notReady = tasks.filter(
+        (task) =>
+          !this.isTaskReady(task, templates[this.axisIdOf(task)] ?? null),
+      );
+      if (notReady.length) {
+        throw new BadRequestException(
+          `Còn ${notReady.length} nhiệm vụ chưa sẵn sàng: ${notReady
+            .map((task) => task.name)
+            .slice(0, 3)
+            .join(', ')}.`,
+        );
+      }
+      for (const task of tasks) current.add(String(task._id));
+    }
+
+    for (const taskId of removing) current.delete(taskId);
+    if (!current.size) {
+      throw new BadRequestException(
+        'Báo cáo phải còn ít nhất một nhiệm vụ. Muốn bỏ hết thì xoá cả bản.',
+      );
+    }
+
+    /* Chụp lại TOÀN BỘ theo tập mới - vừa gọn vừa không phải lo dòng cũ lệch
+       với nhiệm vụ sau khi đội chấm thêm. */
+    const tasks = await this.taskModel
+      .find({
+        _id: { $in: [...current].map((taskId) => new Types.ObjectId(taskId)) },
+        departmentId: actor.departmentId,
+      })
+      .populate('axisId', 'code name')
+      .populate('workContentId', 'code name');
+    summary.rows = tasks.map((task) => this.snapshotOf(task, !task.isOpen));
+
+    if (adding.length) {
+      this.appendEdit(
+        summary,
+        actor,
+        'Danh sách nhiệm vụ',
+        '',
+        `thêm ${adding.length} nhiệm vụ`,
+        '',
+      );
+    }
+    if (removing.size) {
+      this.appendEdit(
+        summary,
+        actor,
+        'Danh sách nhiệm vụ',
+        '',
+        `bỏ ${removing.size} nhiệm vụ`,
+        '',
+      );
+    }
+    await summary.save();
+
+    return {
+      message: `Báo cáo còn ${summary.rows.length} nhiệm vụ.`,
+      data: summary,
+    };
+  }
+
+  /**
+   * Cấp trên chỉnh số trên bản tổng hợp đã nhận.
+   *
+   * Giống hệt cách chỉnh trên báo cáo ngày: ghi giá trị chốt vào bản chụp, và
+   * ghi vào `reviewValues` của nhiệm vụ sống để đối chiếu - số đội khai vẫn còn
+   * nguyên bên cạnh.
+   */
+  async reviewSummary(userId: string, id: string, dto: ReviewTeamReportDayDto) {
+    const actor = await this.requireActor(userId);
+    const reason = dto.reason?.trim() ?? '';
+    if (!reason) throw new BadRequestException('Lý do chỉnh là bắt buộc.');
+
+    const summary = await this.summaryModel.findById(
+      this.requireObjectId(id, 'Báo cáo'),
+    );
+    if (!summary) throw new NotFoundException('Không tìm thấy báo cáo.');
+    if (
+      String(summary.recipientDepartmentId ?? '') !== String(actor.departmentId)
+    ) {
+      throw new ForbiddenException('Báo cáo này không trình tới đơn vị bạn.');
+    }
+    /*
+      CHỈ bản đang chờ duyệt.
+
+      Trả lại rồi là trao bóng cho đội - đội đang sửa để trình lại, mà cấp trên
+      cũng sửa cùng lúc thì hai bên ghi đè nhau trên cùng một dòng. Mỗi trạng
+      thái đúng một bên được ghi.
+    */
+    if (summary.status !== 'PENDING') {
+      throw new BadRequestException(
+        summary.status === 'RETURNED'
+          ? 'Bản này đã trả lại cho đội - chờ đội sửa và trình lại.'
+          : 'Chỉ chỉnh được bản đang chờ duyệt.',
+      );
+    }
+
+    const byTaskId = new Map(
+      summary.rows.map((row) => [String(row.taskId), row]),
+    );
+    let changed = 0;
+
+    for (const patch of dto.rows ?? []) {
+      const row = byTaskId.get(patch.taskId);
+      if (!row) continue;
+
+      const task = await this.taskModel.findOne({
+        _id: this.requireObjectId(patch.taskId, 'Nhiệm vụ'),
+        departmentId: summary.departmentId,
+      });
+      if (!task) {
+        throw new BadRequestException(
+          `Không tìm thấy nhiệm vụ "${row.name}" để ghi giá trị đã chỉnh.`,
+        );
+      }
+      const template = await this.templateOfTask(task);
+      if (!template) {
+        throw new BadRequestException(
+          `Nhiệm vụ "${row.name}" chưa gắn mẫu bảng nên không chỉnh được.`,
+        );
+      }
+      /*
+        Ghi THẲNG vào nhiệm vụ gốc, không để riêng ở `reviewValues`.
+
+        Để riêng thì mỗi lần đọc phải ghép hai lớp, mà chỗ nào quên ghép là ra
+        số cũ: chính vì vậy mà kiểm dải điểm từng đọc nhầm nhóm điểm cũ trong
+        khi cấp trên đã đổi sang nhóm khác. Một chỗ giữ giá trị, ai sửa cũng ghi
+        vào đó - còn "ai đổi gì" thì tra ở NHẬT KÝ, không phải tra bằng cách so
+        hai lớp giá trị.
+
+        Cấp trên chấm tự do, không chặn theo dải nhóm điểm: họ là người quyết
+        cuối cùng.
+      */
+      const before = this.snapshotValues(task, template);
+      const merged = await this.applyColumnValues(
+        task,
+        template,
+        { fieldValues: patch.fieldValues, catalogValues: patch.catalogValues },
+        { syncEntryFields: true, skipRangeCheck: true },
+      );
+      task.fieldValues = await this.computeAutoColumns(
+        template,
+        merged.fieldValues,
+        merged.catalogValues,
+      );
+      task.catalogValues = merged.catalogValues;
+      task.markModified('fieldValues');
+      task.markModified('catalogValues');
+
+      changed += this.logValueChanges(
+        task,
+        template,
+        before,
+        actor,
+        reason,
+        summary,
+      );
+
+      task.version += 1;
+      await task.save();
+
+      // Bản chụp phải khớp nhiệm vụ sau khi sửa, kể cả ô tự tính vừa đổi theo.
+      const fresh = await this.taskModel
+        .findById(task._id)
+        .populate('axisId', 'code name')
+        .populate('workContentId', 'code name');
+      if (fresh) {
+        const snapshot = this.snapshotOf(fresh, !fresh.isOpen);
+        row.name = snapshot.name;
+        row.deadline = snapshot.deadline;
+        row.product = snapshot.product;
+        row.fieldValues = snapshot.fieldValues;
+        row.catalogValues = snapshot.catalogValues;
+      }
+    }
+
+    if (!changed) {
+      throw new BadRequestException('Không có giá trị nào thay đổi.');
+    }
+
+    summary.markModified('rows');
+    await summary.save();
+
+    return { message: `Đã chỉnh ${changed} giá trị.`, data: summary };
+  }
+
+  async deleteSummary(userId: string, id: string) {
+    const actor = await this.requireActor(userId);
+    const summary = await this.requireOwnSummary(actor, id);
+    if (summary.status !== 'DRAFT') {
+      throw new BadRequestException('Chỉ xoá được bản còn ở dạng nháp.');
+    }
+    await summary.deleteOne();
+    return { message: 'Đã xoá báo cáo.', data: { id } };
+  }
+
   // ==================================================================== nội bộ
+
+  /** Đầu kỳ không được sau cuối kỳ, và cả hai phải đúng dạng ngày. */
+  private requirePeriod(from: string, to: string) {
+    const fromDate = this.requireDate(from);
+    const toDate = this.requireDate(to);
+    if (fromDate > toDate) {
+      throw new BadRequestException('Đầu kỳ phải trước hoặc bằng cuối kỳ.');
+    }
+    return { fromDate, toDate };
+  }
+
+  /**
+   * Id trục dạng chuỗi, dùng được cả khi `axisId` đã populate thành tài liệu.
+   *
+   * Sau `populate` thì trường này là một Document chứ không còn là ObjectId -
+   * đây đúng là cái bẫy đã làm hỏng vài chỗ trước đây, nên tách hẳn ra một chỗ.
+   */
+  private axisIdOf(task: TeamReportTaskDocument): string {
+    const axis = task.axisId;
+    if (!axis) return '';
+    const populated = axis as unknown as { _id?: Types.ObjectId };
+    return populated._id ? String(populated._id) : String(axis);
+  }
+
+  /**
+   * Nhiệm vụ đã đủ điều kiện đi vào báo cáo chưa.
+   *
+   * Cùng một luật với nhãn "Sẵn sàng gửi" trên màn phân loại: đủ trục, đủ nội
+   * dung công việc, và mọi ô BẮT BUỘC của mẫu đều có giá trị. Bỏ qua cột hệ
+   * thống tự tính - người dùng không gõ được vào đó nên đòi họ điền là đòi một
+   * thứ không có cách nào làm.
+   */
+  private isTaskReady(
+    task: TeamReportTaskDocument,
+    template: ResolvedTemplate | null,
+  ): boolean {
+    if (!task.axisId || !task.workContentId) return false;
+    if (!template) return false;
+
+    for (const column of template.columns) {
+      if (!column.visible || !column.required || column.autoValue) continue;
+      if (column.semanticKey === 'stt') continue;
+
+      const filled = catalogOfSemantic(column.semanticKey)
+        ? !!(
+            task.reviewCatalogValues?.[column.key] ??
+            task.catalogValues?.[column.key]
+          )
+        : String(
+            task.reviewValues?.[column.key] ??
+              task.fieldValues?.[column.key] ??
+              '',
+          ).trim() !== '';
+      if (!filled) return false;
+    }
+    return true;
+  }
+
+  private async requireOwnSummary(actor: Actor, id: string) {
+    const summary = await this.summaryModel.findOne({
+      _id: this.requireObjectId(id, 'Báo cáo'),
+      departmentId: actor.departmentId,
+    });
+    if (!summary) throw new NotFoundException('Không tìm thấy báo cáo.');
+    return summary;
+  }
+
+  /**
+   * Bản mà tôi được phép ĐỌC: bản đội tôi lập, hoặc bản trình tới đơn vị tôi.
+   *
+   * Không populate `departmentId` ở đây - chỗ gọi còn so nó với đơn vị của
+   * người dùng, mà tài liệu đã populate thì so không bao giờ khớp.
+   */
+  private async requireVisibleSummary(actor: Actor, id: string) {
+    const summary = await this.summaryModel.findById(
+      this.requireObjectId(id, 'Báo cáo'),
+    );
+    if (!summary) throw new NotFoundException('Không tìm thấy báo cáo.');
+
+    const mine = String(summary.departmentId) === String(actor.departmentId);
+    const incoming =
+      String(summary.recipientDepartmentId ?? '') ===
+        String(actor.departmentId) && summary.status !== 'DRAFT';
+    if (!mine && !incoming) {
+      throw new ForbiddenException('Báo cáo này không thuộc đơn vị bạn.');
+    }
+    return summary;
+  }
+
+  /** Người nhận phải là cấp trên có quyền duyệt - không trình ngang, không tự trình. */
+  private async requireSummaryRecipient(actor: Actor, recipientId: string) {
+    const allowed = await this.summaryRecipients(String(actor.id));
+    const picked = allowed.data.people.find(
+      (person) => person.id === recipientId,
+    );
+    if (!picked) {
+      throw new BadRequestException(
+        'Người nhận không hợp lệ - phải là cấp trên có quyền duyệt báo cáo.',
+      );
+    }
+    return {
+      id: this.requireObjectId(picked.id, 'Người nhận'),
+      name: picked.fullName,
+      departmentId: picked.departmentId
+        ? this.requireObjectId(picked.departmentId, 'Đơn vị')
+        : null,
+    };
+  }
+
+  /**
+   * Mẫu của các dòng trong một bản chụp, tra bằng "<id mẫu>:<phiên bản>".
+   *
+   * Phải tra ĐÚNG PHIÊN BẢN đã đóng dấu trên từng dòng: quản trị có thể đã sửa
+   * mẫu sau ngày trình, lấy bản mới nhất thì bảng bày ra một bộ cột khác với bộ
+   * cột lúc gửi.
+   */
+  private async templatesOfRows(rows: TeamReportDayRow[]) {
+    const templates: Record<string, ResolvedTemplate> = {};
+    for (const row of rows) {
+      if (!row.formTemplateId) continue;
+      const key = `${String(row.formTemplateId)}:${row.formTemplateVersion ?? 1}`;
+      if (templates[key]) continue;
+      const resolved = await this.formTemplatesService.resolveVersion(
+        row.formTemplateId,
+        row.formTemplateVersion ?? 1,
+      );
+      if (resolved) {
+        templates[key] = { _id: String(row.formTemplateId), ...resolved };
+      }
+    }
+    return templates;
+  }
 
   private async requireActor(userId: string): Promise<Actor> {
     const user = await this.userModel
@@ -1456,8 +2622,62 @@ export class TeamReportService {
     };
   }
 
+  /**
+   * Chụp lại giá trị mọi cột của một nhiệm vụ, để lát nữa so ra ai đổi gì.
+   *
+   * Chỉ lấy cột của mẫu chứ không lấy cả `fieldValues`: khoá rác còn sót từ mẫu
+   * cũ mà đem so thì nhật ký đầy những dòng đổi một cột không còn tồn tại.
+   */
+  private snapshotValues(
+    task: TeamReportTaskDocument,
+    template: ResolvedTemplate | null,
+  ): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const column of template?.columns ?? []) {
+      out[column.key] = catalogOfSemantic(column.semanticKey)
+        ? (task.catalogValues?.[column.key]?.name ?? '')
+        : String(task.fieldValues?.[column.key] ?? '');
+    }
+    return out;
+  }
+
+  /**
+   * Ghi vào nhật ký MỌI ô vừa đổi giá trị.
+   *
+   * Sửa ở đâu cũng phải để lại vết: sau này còn tra được con số trên báo cáo đã
+   * duyệt do ai đặt, lúc nào, vì sao. Không ghi thì bản đã trình chỉ còn một
+   * con số trần, cãi nhau không có gì để đối chiếu.
+   *
+   * So THEO CỘT chứ không ghi thẳng thứ client gửi lên: cột tự tính đổi theo mà
+   * client không hề gửi, và ô gửi lên trùng giá trị cũ thì không phải một lần
+   * sửa.
+   */
+  private logValueChanges(
+    task: TeamReportTaskDocument,
+    template: ResolvedTemplate | null,
+    before: Record<string, string>,
+    actor: Actor,
+    reason: string,
+    also?: TeamReportSummaryDocument | TeamReportDayDocument,
+  ): number {
+    const after = this.snapshotValues(task, template);
+    let changed = 0;
+    for (const column of template?.columns ?? []) {
+      const from = before[column.key] ?? '';
+      const to = after[column.key] ?? '';
+      if (from === to) continue;
+      this.appendEdit(task, actor, column.title, from, to, reason);
+      if (also) this.appendEdit(also, actor, column.title, from, to, reason);
+      changed += 1;
+    }
+    return changed;
+  }
+
   private appendEdit(
-    doc: TeamReportTaskDocument | TeamReportDayDocument,
+    doc:
+      | TeamReportTaskDocument
+      | TeamReportDayDocument
+      | TeamReportSummaryDocument,
     actor: Actor,
     field: string,
     from: string,

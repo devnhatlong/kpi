@@ -58,6 +58,12 @@ import {
   teamReportKeys,
   type TeamReportClassifyInput,
 } from "@/features/team-report/api";
+import {
+  CLOSED_DONE_CLASS,
+  CLOSED_STOPPED_CLASS,
+  READINESS_CLASS,
+  scoreTone,
+} from "@/features/team-report/status-styles";
 import { DynamicColumnCell } from "@/features/team-report/components/dynamic-column-cell";
 import { TeamReportDayPicker } from "@/features/team-report/components/team-report-day-picker";
 import {
@@ -66,6 +72,7 @@ import {
   catalogOfColumn,
   finalCatalogValue,
   finalFieldValue,
+  formatScore,
   inputColumns,
   isColumnReviewed,
   missingRequiredColumns,
@@ -75,6 +82,7 @@ import {
   workContentColumnOf,
   type TaskReadiness,
   type TeamReportAxis,
+  type TeamReportAxisScore,
   type TeamReportCatalogs,
   type TeamReportColumn,
   type TeamReportTask,
@@ -87,15 +95,6 @@ import { formatServerHm, formatYmd, serverYmd } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
 const REFRESH_MS = 8000;
-
-const READINESS_CLASS: Record<TaskReadiness, string> = {
-  UNCLASSIFIED:
-    "border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200",
-  IN_PROGRESS:
-    "border-sky-300 bg-sky-100 text-sky-900 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200",
-  READY:
-    "border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
-};
 
 /**
  * Bộ lọc hàng đợi.
@@ -397,7 +396,7 @@ export function TeamReportClassifyView() {
           done: true,
         });
         toast.success(
-          "Đã đánh dấu hoàn thành. Từ mai nhiệm vụ này không hiện lại.",
+          "Đã đánh dấu hoàn thành. Nhiệm vụ rời bảng nhập ngày, vẫn còn ở đây trong mục Đã đóng.",
         );
       },
       "Không đóng được nhiệm vụ.",
@@ -651,6 +650,7 @@ export function TeamReportClassifyView() {
             closedCount={counts.closed}
             byAxis={counts.byAxis}
             axes={axes}
+            axisScores={data?.axisScores ?? []}
           />
         </div>
       ) : null}
@@ -903,14 +903,23 @@ function QueueList({
                 : "Không đặt hạn"}
             </span>
             {task.isOpen ? null : (
-              <Badge variant="outline" className="gap-1 font-normal">
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "gap-1 whitespace-nowrap font-normal",
+                  task.closedReason ? CLOSED_STOPPED_CLASS : CLOSED_DONE_CLASS,
+                )}
+              >
                 <Check className="size-3" />
                 {task.closedReason ? "Đã dừng" : "Đã xong"}
               </Badge>
             )}
             <Badge
               variant="secondary"
-              className={cn("font-normal", READINESS_CLASS[readiness])}
+              className={cn(
+                "whitespace-nowrap font-normal",
+                READINESS_CLASS[readiness],
+              )}
             >
               {READINESS_LABEL[readiness]}
             </Badge>
@@ -1492,8 +1501,11 @@ function TaskTableRow({
           </Badge>
           {task.isOpen ? null : (
             <Badge
-              variant="outline"
-              className="gap-1 whitespace-nowrap font-normal"
+              variant="secondary"
+              className={cn(
+                "gap-1 whitespace-nowrap font-normal",
+                task.closedReason ? CLOSED_STOPPED_CLASS : CLOSED_DONE_CLASS,
+              )}
             >
               <Check className="size-3" />
               {task.closedReason ? "Đã dừng" : "Đã xong"}
@@ -1901,8 +1913,9 @@ function TaskLifecycleBar({
               ? `Đã dừng giữa chừng: ${task.closedReason}`
               : "Đã đánh dấu hoàn thành."}{" "}
             <span className="text-muted-foreground">
-              Vẫn đi trong báo cáo hôm nay, từ mai không hiện lại. Biểu mẫu bên
-              dưới khoá lại - muốn sửa thì mở lại trước.
+              Đã rời bảng nhập ngày, vẫn đi trong báo cáo hôm nay. Biểu mẫu bên
+              dưới khoá lại - bấm Mở lại nếu cần sửa hoặc cho nó hiện lại ở bảng
+              nhập.
             </span>
           </span>
         </span>
@@ -2049,12 +2062,23 @@ function DaySummary({
   closedCount,
   byAxis,
   axes,
+  axisScores,
 }: {
   counts: Record<TaskReadiness, number>;
   closedCount: number;
   byAxis: Map<string, number>;
   axes: TeamReportAxis[];
+  axisScores: TeamReportAxisScore[];
 }) {
+  const scoreByAxis = new Map(
+    axisScores.map((item) => [item.axisId, item] as const),
+  );
+  const totalScore = axisScores.reduce(
+    (sum, item) => sum + (item.convertedScore ?? 0),
+    0,
+  );
+  const totalMax = axisScores.reduce((sum, item) => sum + item.maxScore, 0);
+
   return (
     <Card className="shadow-sm xl:sticky xl:top-4 xl:self-start">
       <CardContent className="space-y-4 py-4">
@@ -2086,21 +2110,70 @@ function DaySummary({
           </div>
         </div>
 
-        <div className="space-y-1.5 border-t pt-3">
-          <p className="text-xs font-medium text-muted-foreground">
-            Đã xếp theo trục
-          </p>
-          {axes.map((axis) => (
+        {/* Điểm theo trục ngay tại đây: đội phải thấy mình đang được bao nhiêu
+            TRƯỚC khi gửi, không phải chờ cấp trên mở ra mới biết. */}
+        <div className="space-y-2 border-t pt-3">
+          {/* Tổng để nổi hẳn, tô theo mức đạt: đây là con số cả đội nhìn vào. */}
+          {totalMax > 0 ? (
             <div
-              key={axis._id}
-              className="flex items-center justify-between gap-2 text-sm"
+              className={cn(
+                "flex items-center justify-between gap-2 rounded-md border px-2.5 py-2",
+                scoreTone(totalScore / totalMax).badge,
+              )}
             >
-              <span className="min-w-0 truncate">{axis.name}</span>
-              <span className="tabular-nums text-muted-foreground">
-                {byAxis.get(axis._id) ?? 0}
+              <span className="text-xs font-medium">Tổng điểm hôm nay</span>
+              <span className="tabular-nums">
+                <strong className="font-display text-lg">
+                  {formatScore(totalScore)}
+                </strong>
+                <span className="text-xs opacity-70">
+                  {" "}
+                  / {formatScore(totalMax)}
+                </span>
               </span>
             </div>
-          ))}
+          ) : null}
+
+          {axes.map((axis) => {
+            const count = byAxis.get(axis._id) ?? 0;
+            const score = scoreByAxis.get(axis._id);
+            const tone = scoreTone(score?.axisScore ?? null);
+            const percent = Math.min(
+              100,
+              Math.max(0, (score?.axisScore ?? 0) * 100),
+            );
+            return (
+              <div key={axis._id} className="space-y-1">
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="min-w-0 truncate">
+                    {axis.name}
+                    <span className="text-muted-foreground"> · {count}</span>
+                  </span>
+                  <span className="shrink-0 tabular-nums">
+                    {score?.convertedScore === null ||
+                    score?.convertedScore === undefined ? (
+                      <span className="text-muted-foreground">-</span>
+                    ) : (
+                      <>
+                        <strong className={tone.text}>
+                          {formatScore(score.convertedScore)}
+                        </strong>
+                        <span className="text-muted-foreground">
+                          /{axis.maxScore}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn("h-full rounded-full", tone.bar)}
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {/* Nhắc lại luật gửi ngay tại chỗ người dùng đang đứng - đây là chỗ hay
