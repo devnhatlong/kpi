@@ -5,6 +5,7 @@ import useSWR from "swr";
 import {
   ArrowLeft,
   ArrowRight,
+  Building2,
   Check,
   ClipboardCheck,
   FileText,
@@ -44,6 +45,7 @@ import {
   previewTeamReportSummaryScore,
   sendTeamReportSummary,
   teamReportKeys,
+  type TeamReportSummaryLevel,
 } from "@/features/team-report/api";
 import {
   CLOSED_DONE_CLASS,
@@ -111,6 +113,8 @@ function defaultTitle(from: string, to: string): string {
 
 type WizardProps = {
   open: boolean;
+  /** `UNIT` = phòng gom việc của các đội; khi đó có thêm bộ lọc theo đội. */
+  level?: TeamReportSummaryLevel;
   onOpenChange: (open: boolean) => void;
   /**
    * Gọi sau khi trình xong hoặc lưu nháp, kèm id bản vừa lập để màn ngoài mở
@@ -131,6 +135,7 @@ type WizardProps = {
  */
 export function TeamReportSummaryWizard({
   open,
+  level = "TEAM",
   onOpenChange,
   onDone,
 }: WizardProps) {
@@ -144,6 +149,15 @@ export function TeamReportSummaryWizard({
   const [filter, setFilter] = useState<PickFilter>("ALL");
   /** "ALL" hoặc id một trục - lọc kho theo trục trước khi lọc theo trạng thái. */
   const [axisFilter, setAxisFilter] = useState("ALL");
+  /*
+    "ALL" hoặc id một đội. Chỉ bản của PHÒNG mới dùng tới - kho của phòng gồm
+    việc của tất cả các đội, không lọc được thì nhìn một danh sách vài trăm dòng
+    trộn lẫn tám đội.
+
+    Lọc ở SERVER chứ không lọc tại chỗ như trục: trần kho là 300 dòng, lọc tại
+    chỗ thì đội đứng cuối bảng chữ cái có thể đã bị cắt trước khi tới tay client.
+  */
+  const [deptFilter, setDeptFilter] = useState("ALL");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [recipientId, setRecipientId] = useState("");
   const [note, setNote] = useState("");
@@ -166,6 +180,7 @@ export function TeamReportSummaryWizard({
       setQuery("");
       setFilter("ALL");
       setAxisFilter("ALL");
+      setDeptFilter("ALL");
       setPicked(new Set());
       setRecipientId("");
       setNote("");
@@ -195,18 +210,32 @@ export function TeamReportSummaryWizard({
 
   const rangeValid = !!fromDate && !!toDate && fromDate <= toDate;
 
+  const deptParam = deptFilter === "ALL" ? "" : deptFilter;
   const { data, isLoading } = useSWR(
     open && step === "pick" && rangeValid
-      ? teamReportKeys.summaryCandidates(fromDate, toDate, query.trim())
+      ? teamReportKeys.summaryCandidates(
+          fromDate,
+          toDate,
+          query.trim(),
+          "PERIOD",
+          level,
+          deptParam,
+        )
       : null,
     () =>
-      fetchTeamReportSummaryCandidates({ fromDate, toDate, q: query.trim() }),
+      fetchTeamReportSummaryCandidates({
+        fromDate,
+        toDate,
+        q: query.trim(),
+        level,
+        ...(deptParam ? { departmentIds: [deptParam] } : {}),
+      }),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
 
   const { data: recipients = [] } = useSWR(
-    open && step === "send" ? teamReportKeys.recipients() : null,
-    () => fetchTeamReportRecipients(),
+    open && step === "send" ? teamReportKeys.recipients(level) : null,
+    () => fetchTeamReportRecipients(undefined, level),
   );
 
   /*
@@ -221,7 +250,7 @@ export function TeamReportSummaryWizard({
     open && step === "pick" && pickedIds.length
       ? (["team-report", "summary-preview", pickedIds.join(",")] as const)
       : null,
-    () => previewTeamReportSummaryScore(pickedIds),
+    () => previewTeamReportSummaryScore(pickedIds, level),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
 
@@ -236,6 +265,14 @@ export function TeamReportSummaryWizard({
 
   /* Danh sách trục dựng TỪ CHÍNH KHO, không lấy cả danh mục trục: bày ra một
      trục mà kỳ này không có việc nào thì lọc vào chỉ ra bảng trống. */
+  /*
+    Các đội để lọc - lấy từ server, KHÔNG dựng từ kho đang hiện.
+
+    Dựng từ kho thì đang lọc đội A xong danh sách chỉ còn mỗi đội A, không quay
+    về đội khác được. Rỗng với bản của đội (không có đơn vị con) nên ô lọc tự ẩn.
+  */
+  const deptOptions = useMemo(() => data?.departments ?? [], [data]);
+
   const axisOptions = useMemo(() => {
     const seen = new Map<string, { id: string; name: string; count: number }>();
     for (const row of all) {
@@ -353,12 +390,14 @@ export function TeamReportSummaryWizard({
         toDate,
         taskIds: [...picked],
         note: note.trim() || undefined,
+        level,
       });
       if (send) {
-        await sendTeamReportSummary(summary._id, {
-          recipientId,
-          note: note.trim() || undefined,
-        });
+        await sendTeamReportSummary(
+          summary._id,
+          { recipientId, note: note.trim() || undefined },
+          level,
+        );
         toast.success("Đã trình báo cáo lên cấp trên.");
       } else {
         toast.success("Đã lưu bản nháp.");
@@ -489,6 +528,29 @@ export function TeamReportSummaryWizard({
                     className="bg-background pl-8"
                   />
                 </div>
+                {/* Lọc đội đứng TRƯỚC lọc trục: với bản của phòng, câu hỏi đầu
+                    tiên luôn là "việc của đội nào", trục là chuyện sau đó. */}
+                {deptOptions.length ? (
+                  <Select
+                    value={deptFilter}
+                    onValueChange={(next) => {
+                      setDeptFilter(next);
+                      setAxisFilter("ALL");
+                    }}
+                  >
+                    <SelectTrigger className="w-52 bg-background">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Tất cả các đội</SelectItem>
+                      {deptOptions.map((department) => (
+                        <SelectItem key={department.id} value={department.id}>
+                          {department.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
                 {axisOptions.length > 1 ? (
                   <Select value={axisFilter} onValueChange={setAxisFilter}>
                     <SelectTrigger className="w-44 bg-background">
@@ -565,7 +627,7 @@ export function TeamReportSummaryWizard({
                   </p>
                 ) : null}
 
-                {candidates.map(({ task, alreadySent }) => (
+                {candidates.map(({ task, alreadySent, departmentName }) => (
                   <label
                     key={task._id}
                     className="flex cursor-pointer items-start gap-2.5 rounded-md p-2 hover:bg-muted/60"
@@ -587,6 +649,17 @@ export function TeamReportSummaryWizard({
                           : ""}
                       </span>
                       <span className="flex flex-wrap items-center gap-1.5">
+                        {/* Tên đội chỉ có nghĩa khi kho trộn nhiều đội - bản của
+                            đội thì dòng nào cũng của chính họ. */}
+                        {deptOptions.length && departmentName ? (
+                          <Badge
+                            variant="secondary"
+                            className="gap-1 whitespace-nowrap font-normal"
+                          >
+                            <Building2 className="size-3" />
+                            {departmentName}
+                          </Badge>
+                        ) : null}
                         {refName(task.axisId) ? (
                           <Badge variant="secondary" className="font-normal">
                             {refName(task.axisId)}

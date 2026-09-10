@@ -2,7 +2,15 @@
 
 import { useMemo, useState } from "react";
 import useSWR from "swr";
-import { Check, Eye, Layers, PencilLine, Undo2 } from "lucide-react";
+import {
+  Check,
+  Eye,
+  FileDown,
+  Layers,
+  Loader2,
+  PencilLine,
+  Undo2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
@@ -38,6 +46,7 @@ import {
   type TeamReportReviewRow,
 } from "@/features/team-report/api";
 import { DynamicColumnCell } from "@/features/team-report/components/dynamic-column-cell";
+import { exportTeamReportToExcel } from "@/features/team-report/excel";
 import {
   TEAM_REPORT_STATUS_LABEL,
   catalogOfColumn,
@@ -478,8 +487,8 @@ function TeamReportDayDetailDialog({
   onReturn,
 }: DetailProps) {
   const [edits, setEdits] = useState<Record<string, TeamReportReviewRow>>({});
-  const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const { data, isLoading, mutate } = useSWR(
     teamReportKeys.day(dayId),
@@ -546,20 +555,43 @@ function TeamReportDayDetailDialog({
     });
   };
 
+  /* Dựng file từ chính dữ liệu đang mở - bản chụp và điểm trục đều có sẵn ở
+     `data`, gọi lại server chỉ để nhận đúng thứ đang cầm. */
+  const exportExcel = async () => {
+    setExporting(true);
+    try {
+      const unit = refName(day.departmentId) || "Đội";
+      await exportTeamReportToExcel({
+        title: `Báo cáo ngày ${formatYmd(day.reportDate)}`,
+        // Tên tệp kèm đơn vị - tải về cả chục bản cùng ngày thì mới phân biệt được.
+        fileTitle: `Bao cao ngay ${formatYmd(day.reportDate)} - ${unit}`,
+        meta: [
+          unit,
+          `Ngày ${formatYmd(day.reportDate)}`,
+          `${day.rows.length} nhiệm vụ`,
+          TEAM_REPORT_STATUS_LABEL[day.status],
+          day.sentByName ? `Người gửi ${day.sentByName}` : "",
+        ]
+          .filter(Boolean)
+          .join("   ·   "),
+        note: day.note,
+        rows: day.rows,
+        templates,
+        axisScores: data?.axisScores ?? [],
+      });
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không xuất được file Excel."));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const save = async () => {
     if (!changedCount) return;
-    if (!reason.trim()) {
-      toast.error("Nêu lý do chỉnh.");
-      return;
-    }
     setSaving(true);
     try {
-      await reviewTeamReportDay(day._id, {
-        reason: reason.trim(),
-        rows: Object.values(edits),
-      });
+      await reviewTeamReportDay(day._id, { rows: Object.values(edits) });
       setEdits({});
-      setReason("");
       await Promise.all([mutate(), onChanged()]);
       toast.success("Đã chỉnh và ghi vào nhật ký.");
     } catch (error) {
@@ -703,23 +735,29 @@ function TeamReportDayDetailDialog({
           ) : null}
 
           {!decided && changedCount ? (
-            <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
-              <p className="text-sm font-medium">
-                Đang chỉnh {changedCount} nhiệm vụ. Giá trị này ghi vào cả bản
-                đã trình lẫn nhiệm vụ đang chạy của đội.
-              </p>
-              <Textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                rows={2}
-                placeholder="Lý do chỉnh (bắt buộc)"
-                className="bg-background"
-              />
-            </div>
+            <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm font-medium dark:border-amber-900 dark:bg-amber-950/40">
+              Đang chỉnh {changedCount} nhiệm vụ. Giá trị này ghi vào cả bản đã
+              trình lẫn nhiệm vụ đang chạy của đội, và vào nhật ký.
+            </p>
           ) : null}
         </div>
 
         <DialogFooter className="border-t px-6 py-4">
+          {/* Xuất được ở mọi trạng thái - bản chờ duyệt cũng cần in ra đọc kỹ
+              trước khi ký, bản đã duyệt là thứ đem nộp. */}
+          <Button
+            variant="outline"
+            className="mr-auto bg-background"
+            disabled={exporting || !day.rows.length}
+            onClick={() => void exportExcel()}
+          >
+            {exporting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <FileDown className="size-4" />
+            )}
+            Xuất Excel
+          </Button>
           {!decided && changedCount ? (
             <Button
               variant="outline"

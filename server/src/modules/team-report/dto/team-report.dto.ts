@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsArray,
@@ -206,6 +206,22 @@ export class TeamReportSummaryCandidatesQueryDto {
   @IsOptional()
   @IsIn(['PERIOD', 'ALL'])
   scope?: 'PERIOD' | 'ALL';
+
+  /*
+    Lọc theo ĐỘI - chỉ có nghĩa với bản của phòng, nơi kho gồm việc của nhiều
+    đội. Bỏ trống là lấy cả nhánh. Id lạ bị bỏ qua chứ không báo lỗi: đây là bộ
+    lọc để nhìn cho gọn, không phải cổng kiểm quyền - phạm vi thật vẫn do cây
+    đơn vị quyết.
+  */
+  @ApiPropertyOptional({ type: [String], description: 'Id các đội cần lọc' })
+  @IsOptional()
+  @Transform(({ value }): string[] => {
+    if (typeof value === 'string') return value.split(',').filter(Boolean);
+    return Array.isArray(value) ? (value as string[]) : [];
+  })
+  @IsArray()
+  @IsString({ each: true })
+  departmentIds?: string[];
 }
 
 /**
@@ -374,10 +390,13 @@ export class ReviewTeamReportDayDto {
   @Type(() => ReviewEditRowDto)
   rows?: ReviewEditRowDto[];
 
-  @ApiProperty({ description: 'Vì sao chỉnh - vào nhật ký' })
+  /* Không bắt buộc: ai sửa, sửa gì, lúc nào đã có trong nhật ký. Ghi thêm lý
+     do thì vào nhật ký cùng, không ghi thì thôi. */
+  @ApiPropertyOptional({ description: 'Vì sao chỉnh - vào nhật ký nếu có' })
+  @IsOptional()
   @IsString()
   @MaxLength(500)
-  reason!: string;
+  reason?: string;
 }
 
 /**
@@ -442,4 +461,42 @@ export class TeamReportClassifyQueryDto {
   @Type(() => Boolean)
   @IsBoolean()
   onlyUnclassified?: boolean;
+}
+
+// ================================================== bảng A - tiêu chí chung
+
+export class TeamReportCriteriaQueryDto {
+  @ApiPropertyOptional({
+    description: 'Tháng YYYY-MM, mặc định tháng hiện tại',
+  })
+  @IsOptional()
+  @IsString()
+  periodMonth?: string;
+}
+
+/** Một dòng tiêu chí vừa chấm - chỉ gửi những ô đổi. */
+export class TeamReportCriterionPatchDto {
+  @ApiProperty()
+  @IsMongoId()
+  criterionId!: string;
+
+  @ApiPropertyOptional({ description: 'Giá trị theo khoá cột của mẫu bảng A' })
+  @IsOptional()
+  @IsObject()
+  fieldValues?: Record<string, string | number>;
+}
+
+export class SaveTeamReportCriteriaDto {
+  /** Số bản vừa đọc về - lệch là có người khác vừa sửa, server trả 409. */
+  @ApiProperty()
+  @IsInt()
+  @Min(0)
+  version!: number;
+
+  @ApiProperty({ type: [TeamReportCriterionPatchDto] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => TeamReportCriterionPatchDto)
+  rows!: TeamReportCriterionPatchDto[];
 }

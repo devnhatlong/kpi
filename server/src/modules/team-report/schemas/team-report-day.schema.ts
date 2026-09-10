@@ -41,6 +41,20 @@ export class TeamReportDayRow {
   @Prop({ trim: true, default: '' })
   name!: string;
 
+  /*
+    Đơn vị CHỦ nhiệm vụ.
+
+    Bản của đội thì luôn là chính đội đó nên nhìn thừa, nhưng bản của phòng gộp
+    việc của nhiều đội - không ghi ở từng dòng thì mở báo cáo ra không biết việc
+    nào của ai, mà cũng không lọc theo đội được. Chép tên luôn như mọi trường
+    khác: đơn vị đổi tên về sau thì bản đã trình vẫn giữ chữ lúc trình.
+  */
+  @Prop({ type: Types.ObjectId, ref: Department.name, default: null })
+  departmentId!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  departmentName!: string;
+
   @Prop({ trim: true, default: '' })
   deadline!: string;
 

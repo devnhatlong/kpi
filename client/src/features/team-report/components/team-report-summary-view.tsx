@@ -13,6 +13,7 @@ import {
   fetchTeamReportSummaries,
   fetchTeamReportSummary,
   teamReportKeys,
+  type TeamReportSummaryLevel,
 } from "@/features/team-report/api";
 import { TeamReportSummaryPanel } from "@/features/team-report/components/team-report-summary-panel";
 import { TeamReportSummaryWizard } from "@/features/team-report/components/team-report-summary-wizard";
@@ -42,18 +43,31 @@ type StatusFilter = TeamReportDayStatus | "ALL";
  * đường lên đơn vị cha. Bản tổng hợp là người lập tự chọn kỳ, tự chọn việc, tự
  * chọn trình cho ai.
  */
-export function TeamReportSummaryView() {
+export function TeamReportSummaryView({
+  level = "TEAM",
+}: {
+  /**
+   * `TEAM` = đội gom việc của mình. `UNIT` = phòng gom việc của các đội.
+   *
+   * Cùng một màn cho cả hai cấp: nghiệp vụ giống hệt nhau, chỉ khác đường gọi
+   * và bộ lọc đội. Dựng hai màn song song là mọi lần sửa sau này phải nhớ sửa
+   * cả hai chỗ - kiểu gì cũng có lần quên.
+   */
+  level?: TeamReportSummaryLevel;
+}) {
+  const unit = level === "UNIT";
   const [status, setStatus] = useState<StatusFilter>("ALL");
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
 
-  const list = useSWR(teamReportKeys.summaries(status, page), () =>
+  const list = useSWR(teamReportKeys.summaries(status, page, level), () =>
     fetchTeamReportSummaries({
       status: status === "ALL" ? "" : status,
       page,
       limit: PAGE_SIZE,
+      level,
     }),
   );
 
@@ -78,8 +92,8 @@ export function TeamReportSummaryView() {
       : (reports[0]?._id ?? null);
 
   const detail = useSWR(
-    activeId ? teamReportKeys.summary(activeId) : null,
-    () => fetchTeamReportSummary(activeId!),
+    activeId ? teamReportKeys.summary(activeId, level) : null,
+    () => fetchTeamReportSummary(activeId!, level),
   );
 
   /** Sửa gì cũng nạp lại cả hai cột - đếm và nhãn ở cột trái đọc cùng dữ liệu. */
@@ -97,11 +111,12 @@ export function TeamReportSummaryView() {
             </span>
             <div>
               <h1 className="font-display text-xl font-semibold tracking-tight">
-                Tạo báo cáo tổng hợp
+                {unit ? "Tạo báo cáo của phòng" : "Tạo báo cáo tổng hợp"}
               </h1>
               <p className="text-sm text-muted-foreground">
-                Gom nhiệm vụ từ bảng ngày của đội theo ngày, tuần hoặc tháng,
-                chọn những việc đã sẵn sàng rồi trình lên cấp trên.
+                {unit
+                  ? "Gom nhiệm vụ của các đội trong phòng theo kỳ, lọc theo đội hoặc theo trục, rồi trình lên cấp trên."
+                  : "Gom nhiệm vụ từ bảng ngày của đội theo ngày, tuần hoặc tháng, chọn những việc đã sẵn sàng rồi trình lên cấp trên."}
               </p>
             </div>
           </div>
@@ -248,6 +263,7 @@ export function TeamReportSummaryView() {
         ) : (
           <TeamReportSummaryPanel
             detail={detail.data}
+            level={level}
             onChanged={refreshAll}
             onDeleted={async () => {
               setPickedId(null);
@@ -259,6 +275,7 @@ export function TeamReportSummaryView() {
 
       <TeamReportSummaryWizard
         open={wizardOpen}
+        level={level}
         onOpenChange={setWizardOpen}
         onDone={async (summaryId) => {
           if (summaryId) setPickedId(summaryId);

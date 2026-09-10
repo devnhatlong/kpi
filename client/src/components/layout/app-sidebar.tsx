@@ -8,7 +8,7 @@ import { ChevronDown } from "lucide-react";
 
 import { NAV_ITEMS, SIDEBAR_BRAND, type NavItem } from "@/constants/navigation";
 import { useAuth } from "@/features/auth/auth-provider";
-import { userHasAnyPermission } from "@/features/auth/types";
+import { userHasAnyPermission, userHasAnyRole } from "@/features/auth/types";
 import {
   Collapsible,
   CollapsibleContent,
@@ -205,8 +205,11 @@ export function AppSidebar() {
 
       const children = item.children.filter(
         (child) =>
-          !child.permissions?.length ||
-          userHasAnyPermission(user, child.permissions),
+          (!child.permissions?.length ||
+            userHasAnyPermission(user, child.permissions)) &&
+          // `roles` là điều kiện CỘNG THÊM, không thay quyền: có quyền rồi vẫn
+          // phải đúng vai trò mới hiện.
+          (!child.roles?.length || userHasAnyRole(user, child.roles)),
       );
       if (children.length) items.push({ ...item, children });
     }

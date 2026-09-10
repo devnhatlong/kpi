@@ -2,9 +2,9 @@ import type { LucideIcon } from "lucide-react";
 import {
   BookMarked,
   CalendarCheck,
+  ClipboardCheck,
   ClipboardPen,
   ClipboardList,
-  FileSpreadsheet,
   FileStack,
   FormInput,
   Gauge,
@@ -31,6 +31,14 @@ export type NavSubItem = {
   icon: LucideIcon;
   /** Nếu có: chỉ hiện khi user có ít nhất một trong các quyền này. */
   permissions?: string[];
+  /**
+   * Nếu có: phải giữ thêm một trong các vai trò này mới hiện.
+   *
+   * Dùng cho những màn mà quyền không nói đủ. Ví dụ "Tạo báo cáo của phòng":
+   * cả trưởng phòng lẫn tỉnh đều có quyền duyệt báo cáo, nhưng tỉnh đứng đầu
+   * chuỗi - không có cấp trên nào để trình lên, nên màn đó vô nghĩa với họ.
+   */
+  roles?: string[];
 };
 
 export type NavItem = {
@@ -80,6 +88,14 @@ export const NAV_ITEMS: NavItem[] = [
         permissions: [PERM.TEAM_REPORT_ENTRY],
       },
       {
+        /* Khối A của báo cáo - bảng chấm phẳng, tháng một bản, tách khỏi luồng
+           nhiệm vụ theo ngày ở hai mục trên. */
+        title: "Tiêu chí chung (A)",
+        href: "/team-report/criteria",
+        icon: ClipboardCheck,
+        permissions: [PERM.TEAM_REPORT_ENTRY],
+      },
+      {
         title: "Duyệt báo cáo ngày",
         href: "/team-report/incoming",
         icon: Stamp,
@@ -106,6 +122,20 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/team-report/summary",
         icon: FileStack,
         permissions: [PERM.TEAM_REPORT_ENTRY],
+      },
+      {
+        /*
+          Dòng riêng cho cấp trên, không gộp vào "Tạo báo cáo" ở trên: hai bên
+          đi hai bộ route khác nhau (đội có ENTRY, phòng có REVIEW) nên một
+          dòng menu chung sẽ dẫn nửa số người dùng tới một trang trả 403.
+        */
+        title: "Tạo báo cáo của phòng",
+        href: "/team-report/summary/unit",
+        icon: FileStack,
+        permissions: [PERM.TEAM_REPORT_REVIEW],
+        /* Chỉ cấp phòng / xã. Tỉnh cũng có quyền duyệt nhưng đứng đầu chuỗi -
+           không có ai để trình lên, lập bản ở đó là lập rồi để đấy. */
+        roles: ["UNIT_ADMIN", "VICE_UNIT_ADMIN"],
       },
       {
         title: "Duyệt báo cáo",

@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import {
+  Building2,
   CalendarRange,
   Check,
   ChevronRight,
+  FileDown,
   History,
   Loader2,
   Pencil,
@@ -56,8 +58,11 @@ import {
   teamReportKeys,
   type TeamReportReviewRow,
   type TeamReportSummaryDetail,
+  type TeamReportSummaryLevel,
 } from "@/features/team-report/api";
 import { DynamicColumnCell } from "@/features/team-report/components/dynamic-column-cell";
+import { TeamReportCriteriaPreview } from "@/features/team-report/components/team-report-criteria-preview";
+import { exportTeamReportToExcel } from "@/features/team-report/excel";
 import {
   DAY_STATUS_CLASS,
   scoreTone,
@@ -276,6 +281,13 @@ type PanelProps = {
    * nhóm nút, nên tách hai component là chép đôi cả bảng chấm.
    */
   role?: "OWNER" | "REVIEWER";
+  /**
+   * Bản này do ĐỘI lập hay do PHÒNG lập - quyết định gọi bộ route nào.
+   *
+   * Chỉ có nghĩa với vai `OWNER`. Vai `REVIEWER` đọc bản của cấp dưới qua đường
+   * hộp đến, đường đó chung cho mọi cấp.
+   */
+  level?: TeamReportSummaryLevel;
   onChanged: () => void | Promise<void>;
   onDeleted?: () => void | Promise<void>;
 };
@@ -289,6 +301,7 @@ type PanelProps = {
 export function TeamReportSummaryPanel({
   detail,
   role = "OWNER",
+  level = "TEAM",
   onChanged,
   onDeleted,
 }: PanelProps) {
@@ -300,6 +313,9 @@ export function TeamReportSummaryPanel({
     ở ô chỉ đọc là cố tình bày một cái tên khác với cái đã trình.
   */
   const { summary, templates, catalogs, axisScores } = detail;
+  /* Tên đơn vị lập bản. Server trả riêng ở `department` vì `departmentId` cố ý
+     không populate; `refName` chỉ ăn khi bản tới từ danh sách đã populate. */
+  const unitName = detail.department?.name || refName(summary.departmentId);
   const [sendOpen, setSendOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
@@ -307,6 +323,7 @@ export function TeamReportSummaryPanel({
   const [note, setNote] = useState("");
   const [returnReason, setReturnReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   /* Trục nào đang mở. Thu sẵn tất cả: mở báo cáo ra là nhìn điểm trước, cần
      xem chi tiết trục nào thì bấm mở trục đó. */
   const [openAxes, setOpenAxes] = useState<Set<string>>(new Set());
@@ -317,6 +334,9 @@ export function TeamReportSummaryPanel({
      mà danh sách đổ ra cả bốn trục thì phải tự dò lại từng dòng. `null` là mở
      từ nút chung: bày tất, kể cả trục báo cáo chưa có dòng nào. */
   const [addAxisId, setAddAxisId] = useState<string | null>(null);
+  /* Lọc theo ĐỘI trong hộp thêm - chỉ bản của phòng mới có. Lọc ở server vì kho
+     có trần dòng, lọc tại chỗ thì đội cuối danh sách có thể đã bị cắt. */
+  const [addDeptId, setAddDeptId] = useState<string | null>(null);
   const [savingCell, setSavingCell] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   /*
@@ -335,10 +355,6 @@ export function TeamReportSummaryPanel({
     độ sửa là ranh giới rõ ràng giữa "đang đọc" và "đang chấm lại".
   */
   const [editMode, setEditMode] = useState(false);
-  /* Lý do chỉnh - hỏi ngay lúc vào chế độ sửa rồi dùng cho cả phiên, chứ hỏi
-     mỗi ô một lần thì chấm lại mười dòng là mười lần gõ cùng một câu. */
-  const [editReason, setEditReason] = useState("");
-  const [reasonOpen, setReasonOpen] = useState(false);
 
   const reviewer = role === "REVIEWER";
   const draft = summary.status === "DRAFT";
@@ -378,8 +394,8 @@ export function TeamReportSummaryPanel({
   const canSend = !reviewer && (draft || summary.status === "RETURNED");
 
   const { data: recipients = [] } = useSWR(
-    sendOpen ? teamReportKeys.recipients() : null,
-    () => fetchTeamReportRecipients(),
+    sendOpen ? teamReportKeys.recipients(level) : null,
+    () => fetchTeamReportRecipients(undefined, level),
   );
 
   /*
@@ -397,6 +413,8 @@ export function TeamReportSummaryPanel({
           summary.toDate,
           addQuery.trim(),
           "ALL",
+          level,
+          addDeptId ?? "",
         )
       : null,
     () =>
@@ -405,12 +423,30 @@ export function TeamReportSummaryPanel({
         toDate: summary.toDate,
         q: addQuery.trim(),
         scope: "ALL",
+        level,
+        ...(addDeptId ? { departmentIds: [addDeptId] } : {}),
       }),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
 
   const inReport = useMemo(
     () => new Set(summary.rows.map((row) => String(row.taskId))),
+    [summary.rows],
+  );
+  /*
+    Bản này có trộn việc của NHIỀU đội không.
+
+    Suy từ chính dữ liệu chứ không từ `level`: cấp trên mở bản của phòng qua
+    đường hộp đến, ở đó `level` luôn là "TEAM" mà bản thì vẫn nhiều đội - cột
+    tên đội phải hiện theo bản, không theo đường vào.
+  */
+  const multiUnit = useMemo(
+    () =>
+      new Set(
+        summary.rows
+          .map((row) => String(row.departmentId ?? ""))
+          .filter(Boolean),
+      ).size > 1,
     [summary.rows],
   );
   /** Các trục có mặt trong kho - để đổi trục ngay trong hộp thoại. */
@@ -448,8 +484,12 @@ export function TeamReportSummaryPanel({
       "")
     : "";
 
+  /** Các đội bên dưới - rỗng với bản của đội, nên ô lọc tự ẩn. */
+  const addDepartments = useMemo(() => addData?.departments ?? [], [addData]);
+
   const openAddDialog = (axisId: string | null) => {
     setAddAxisId(axisId);
+    setAddDeptId(null);
     setAddPicked(new Set());
     setAddQuery("");
     setAddOpen(true);
@@ -500,6 +540,41 @@ export function TeamReportSummaryPanel({
   );
   const totalMax = axisScores.reduce((sum, item) => sum + item.maxScore, 0);
 
+  /*
+    Xuất Excel dựng từ CHÍNH dữ liệu đang mở, không gọi lại server: bản chụp và
+    điểm trục đều đã có sẵn trong `detail`, gọi lại chỉ để nhận đúng thứ đang
+    cầm - và có nguy cơ file khác với thứ vừa đọc trên màn.
+  */
+  const exportExcel = async () => {
+    setExporting(true);
+    try {
+      await exportTeamReportToExcel({
+        title: summary.title,
+        /* Tên tệp kèm đơn vị: cấp trên tải về hàng chục bản cùng kỳ, tên giống
+           hệt nhau thì mở ra mới biết của ai. */
+        fileTitle: unitName ? `${summary.title} - ${unitName}` : summary.title,
+        meta: [
+          unitName || "Đơn vị lập",
+          `Kỳ ${formatYmd(summary.fromDate)} - ${formatYmd(summary.toDate)}`,
+          TEAM_REPORT_PERIOD_LABEL[summary.period],
+          `${summary.rows.length} nhiệm vụ`,
+          draft ? "Nháp" : TEAM_REPORT_STATUS_LABEL[summary.status],
+          summary.recipientName ? `Trình ${summary.recipientName}` : "",
+        ]
+          .filter(Boolean)
+          .join("   ·   "),
+        note: summary.note,
+        rows: summary.rows,
+        templates,
+        axisScores,
+      });
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không xuất được file Excel."));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const send = async () => {
     if (!recipientId) {
       toast.error("Chọn cấp trên nhận báo cáo.");
@@ -507,10 +582,11 @@ export function TeamReportSummaryPanel({
     }
     setBusy(true);
     try {
-      await sendTeamReportSummary(summary._id, {
-        recipientId,
-        note: note.trim() || undefined,
-      });
+      await sendTeamReportSummary(
+        summary._id,
+        { recipientId, note: note.trim() || undefined },
+        level,
+      );
       setSendOpen(false);
       await onChanged();
       toast.success("Đã trình báo cáo lên cấp trên.");
@@ -524,7 +600,7 @@ export function TeamReportSummaryPanel({
   const remove = async () => {
     setBusy(true);
     try {
-      await deleteTeamReportSummary(summary._id);
+      await deleteTeamReportSummary(summary._id, level);
       setDeleteOpen(false);
       await onDeleted?.();
       toast.success("Đã xoá bản nháp.");
@@ -542,7 +618,8 @@ export function TeamReportSummaryPanel({
    * thể vài trăm dòng, giữ bản nháp của cả bảng trong màn hình rồi lưu một lượt
    * là đè mất phần người khác vừa sửa.
    *
-   * Lý do chỉnh của cấp trên đã hỏi lúc bấm "Sửa", nên tới đây chắc chắn có.
+   * Không hỏi lý do: ai sửa, sửa gì, lúc nào đã có trong nhật ký - đó là thứ
+   * để trace, còn bắt gõ lý do trước mỗi lượt chấm chỉ làm người duyệt bực.
    */
   const saveCell = async (taskId: string, patch: TeamReportReviewRow) => {
     /* Mỗi lượt lưu chỉ đụng vào một ô, nên khoá đầu tiên chính là ô vừa gõ - đủ
@@ -556,12 +633,9 @@ export function TeamReportSummaryPanel({
     setSavingCell(taskId);
     try {
       if (reviewer) {
-        await reviewTeamReportSummary(summary._id, {
-          reason: editReason.trim(),
-          rows: [patch],
-        });
+        await reviewTeamReportSummary(summary._id, { rows: [patch] });
       } else {
-        await editTeamReportSummaryRows(summary._id, [patch]);
+        await editTeamReportSummaryRows(summary._id, [patch], level);
       }
       await onChanged();
       setSavedAt(formatServerHm(Date.now()));
@@ -598,7 +672,11 @@ export function TeamReportSummaryPanel({
   const changeTasks = async (input: { add?: string[]; remove?: string[] }) => {
     setBusy(true);
     try {
-      const result = await changeTeamReportSummaryTasks(summary._id, input);
+      const result = await changeTeamReportSummaryTasks(
+        summary._id,
+        input,
+        level,
+      );
       await onChanged();
       toast.success(
         result.rows?.length
@@ -645,6 +723,14 @@ export function TeamReportSummaryPanel({
               {summary.title}
             </h2>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {/* Đơn vị lập đứng ĐẦU dòng thông tin và in đậm: mở hộp duyệt ra,
+                  câu hỏi đầu tiên luôn là "bản này của ai". */}
+              {unitName ? (
+                <span className="flex items-center gap-1.5 font-medium text-foreground">
+                  <Building2 className="size-3.5" />
+                  {unitName}
+                </span>
+              ) : null}
               <span className="flex items-center gap-1.5 tabular-nums">
                 <CalendarRange className="size-3.5" />
                 {formatYmd(summary.fromDate)} - {formatYmd(summary.toDate)}
@@ -686,6 +772,24 @@ export function TeamReportSummaryPanel({
               {draft ? "Nháp" : TEAM_REPORT_STATUS_LABEL[summary.status]}
             </Badge>
 
+            {/* Xuất được ở MỌI trạng thái, cả hai vai: bản nháp cũng cần in ra
+                đọc soát trước khi trình, bản đã duyệt là thứ đem nộp. */}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="bg-background"
+              disabled={exporting || !summary.rows.length}
+              onClick={() => void exportExcel()}
+            >
+              {exporting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <FileDown className="size-4" />
+              )}
+              Xuất Excel
+            </Button>
+
             {/*
               Vào chế độ sửa là một hành động riêng cho CẢ HAI vai, không phải
               trạng thái mặc định: bảng gõ được sẵn thì một cú bấm nhầm là đổi
@@ -714,12 +818,9 @@ export function TeamReportSummaryPanel({
                   className="bg-background"
                   disabled={busy}
                   onClick={() => {
-                    if (reviewer) {
-                      setEditReason("");
-                      setReasonOpen(true);
-                      return;
-                    }
                     setEditMode(true);
+                    /* Mở luôn các trục: bấm Sửa xong mà bảng vẫn thu hết thì
+                       không có ô nào để gõ, phải đi mở từng trục mới sửa được. */
                     setOpenAxes(new Set(groups.map((group) => group.key)));
                   }}
                 >
@@ -807,15 +908,8 @@ export function TeamReportSummaryPanel({
           <p className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
             <Pencil className="size-4 shrink-0" />
             <span>
-              {reviewer ? (
-                <>
-                  Đang sửa · lý do: <strong>{editReason}</strong>.{" "}
-                </>
-              ) : (
-                <>Đang sửa điểm. </>
-              )}
-              Mỗi ô tự lưu ngay khi chọn hoặc rời ô, ghi thẳng vào nhiệm vụ gốc
-              và vào nhật ký bên dưới.
+              Đang sửa điểm. Mỗi ô tự lưu ngay khi chọn hoặc rời ô, ghi thẳng
+              vào nhiệm vụ gốc và vào nhật ký bên dưới.
             </span>
           </p>
         ) : null}
@@ -840,6 +934,19 @@ export function TeamReportSummaryPanel({
             axisScores={axisScores}
             totalScore={totalScore}
             totalMax={totalMax}
+          />
+        ) : null}
+
+        {/*
+          Khối A bày kèm cho ĐỘI, thu gọn sẵn - chỉ để đối chiếu A với B trên
+          cùng một màn trước khi trình. Không nằm trong bản chụp, không đi lên
+          cấp trên: bảng A có đường riêng. Vai duyệt và cấp phòng không thấy -
+          họ không có quyền đọc bảng A của đội qua đường này, mà cũng không cần.
+        */}
+        {!reviewer && level === "TEAM" ? (
+          <TeamReportCriteriaPreview
+            fromDate={summary.fromDate}
+            toDate={summary.toDate}
           />
         ) : null}
 
@@ -994,6 +1101,15 @@ export function TeamReportSummaryPanel({
                               ) : null}
                               <span className="font-medium">{row.name}</span>
                             </div>
+                            {/* Tên đội chỉ bày khi bản trộn nhiều đội - bản của
+                                đội thì dòng nào cũng của chính họ, ghi lại chỉ
+                                tổ chật bảng. */}
+                            {multiUnit && row.departmentName ? (
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Building2 className="size-3 shrink-0" />
+                                {row.departmentName}
+                              </div>
+                            ) : null}
                             {row.product ? (
                               <div className="text-xs text-muted-foreground">
                                 Sản phẩm: {row.product}
@@ -1311,6 +1427,7 @@ export function TeamReportSummaryPanel({
             setAddPicked(new Set());
             setAddQuery("");
             setAddAxisId(null);
+            setAddDeptId(null);
           }
         }}
       >
@@ -1322,8 +1439,10 @@ export function TeamReportSummaryPanel({
                 : "Thêm nhiệm vụ vào báo cáo"}
             </DialogTitle>
             <DialogDescription>
-              Nhiệm vụ đã sẵn sàng của đội mà báo cáo này chưa có. Việc nằm
-              ngoài kỳ {formatYmd(summary.fromDate)} -{" "}
+              {addDepartments.length
+                ? "Nhiệm vụ đã sẵn sàng của các đội mà báo cáo này chưa có."
+                : "Nhiệm vụ đã sẵn sàng của đội mà báo cáo này chưa có."}{" "}
+              Việc nằm ngoài kỳ {formatYmd(summary.fromDate)} -{" "}
               {formatYmd(summary.toDate)} vẫn chọn được, có ghi chú riêng.
             </DialogDescription>
           </DialogHeader>
@@ -1338,6 +1457,26 @@ export function TeamReportSummaryPanel({
                 className="bg-background pl-8"
               />
             </div>
+            {/* Lọc đội đứng trước lọc trục - với bản của phòng, câu hỏi đầu
+                tiên là "việc của đội nào". Ẩn hẳn với bản của đội. */}
+            {addDepartments.length ? (
+              <SearchableSelect
+                value={addDeptId ?? ""}
+                onValueChange={(next) => {
+                  setAddDeptId(next || null);
+                  setAddPicked(new Set());
+                }}
+                options={[
+                  { value: "", label: "Tất cả các đội" },
+                  ...addDepartments.map((department) => ({
+                    value: department.id,
+                    label: department.name,
+                  })),
+                ]}
+                placeholder="Tất cả các đội"
+                className="w-full sm:w-56"
+              />
+            ) : null}
             {/* Mở từ khối trục nào thì lọc sẵn trục đó, nhưng vẫn đổi được sang
                 trục khác - kể cả trục báo cáo chưa có dòng nào. */}
             <SearchableSelect
@@ -1372,7 +1511,7 @@ export function TeamReportSummaryPanel({
               </p>
             ) : null}
 
-            {addable.map(({ task, alreadySent, inPeriod }) => (
+            {addable.map(({ task, alreadySent, inPeriod, departmentName }) => (
               <label
                 key={task._id}
                 className="flex cursor-pointer items-start gap-2.5 rounded-md p-2 hover:bg-muted/60"
@@ -1400,6 +1539,15 @@ export function TeamReportSummaryPanel({
                     {` · khai ${formatYmd(task.createdDate)}`}
                   </span>
                   <span className="flex flex-wrap items-center gap-1.5">
+                    {addDepartments.length && departmentName ? (
+                      <Badge
+                        variant="secondary"
+                        className="gap-1 whitespace-nowrap font-normal"
+                      >
+                        <Building2 className="size-3" />
+                        {departmentName}
+                      </Badge>
+                    ) : null}
                     {refName(task.axisId) ? (
                       <Badge variant="secondary" className="font-normal">
                         {refName(task.axisId)}
@@ -1443,46 +1591,6 @@ export function TeamReportSummaryPanel({
             >
               <Plus className="size-4" />
               Thêm {addPicked.size || ""} nhiệm vụ
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Hỏi lý do NGAY LÚC mở khoá, dùng cho cả phiên: hỏi mỗi ô một lần thì
-          chấm lại mười dòng là mười lần gõ cùng một câu. */}
-      <Dialog open={reasonOpen} onOpenChange={setReasonOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Chỉnh lại số trên báo cáo</DialogTitle>
-            <DialogDescription>
-              Nêu lý do trước khi mở khoá bảng. Lý do vào nhật ký của báo cáo và
-              của từng nhiệm vụ, đội đọc được. Chỉ hỏi một lần cho cả lượt sửa.
-            </DialogDescription>
-          </DialogHeader>
-
-          <Textarea
-            value={editReason}
-            onChange={(event) => setEditReason(event.target.value)}
-            rows={3}
-            placeholder="Ví dụ: chấm lại theo hồ sơ kiểm chứng"
-          />
-
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setReasonOpen(false)}>
-              Huỷ
-            </Button>
-            <Button
-              disabled={!editReason.trim()}
-              onClick={() => {
-                setReasonOpen(false);
-                setEditMode(true);
-                /* Mở luôn các trục: bấm Sửa xong mà bảng vẫn thu hết thì
-                   không có ô nào để gõ, phải đi mở từng trục mới sửa được. */
-                setOpenAxes(new Set(groups.map((group) => group.key)));
-              }}
-            >
-              <Pencil className="size-4" />
-              Mở khoá để sửa
             </Button>
           </DialogFooter>
         </DialogContent>

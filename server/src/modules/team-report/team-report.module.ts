@@ -51,8 +51,15 @@ import {
   TeamReportSummary,
   TeamReportSummarySchema,
 } from './schemas/team-report-summary.schema';
+import {
+  TeamReportCriteriaSheet,
+  TeamReportCriteriaSheetSchema,
+} from './schemas/team-report-criteria-sheet.schema';
 import { TeamReportController } from './team-report.controller';
+import { TeamReportUnitSummaryController } from './team-report-unit-summary.controller';
+import { TeamReportCriteriaController } from './team-report-criteria.controller';
 import { TeamReportService } from './team-report.service';
+import { TeamReportCriteriaService } from './team-report-criteria.service';
 
 /**
  * Báo cáo ngày cấp đội - bản nghiệp vụ mới, tách hẳn khỏi `personal-mission`.
@@ -68,6 +75,10 @@ import { TeamReportService } from './team-report.service';
       { name: TeamReportDay.name, schema: TeamReportDaySchema },
       { name: TeamReportUnitDay.name, schema: TeamReportUnitDaySchema },
       { name: TeamReportSummary.name, schema: TeamReportSummarySchema },
+      {
+        name: TeamReportCriteriaSheet.name,
+        schema: TeamReportCriteriaSheetSchema,
+      },
       { name: User.name, schema: UserSchema },
       { name: Role.name, schema: RoleSchema },
       { name: Department.name, schema: DepartmentSchema },
@@ -85,8 +96,12 @@ import { TeamReportService } from './team-report.service';
     // phiên bản mẫu đã đóng dấu, kể cả khi mẫu đã bị sửa sau đó.
     forwardRef(() => MissionFormConfigModule),
   ],
-  controllers: [TeamReportController],
-  providers: [TeamReportService],
+  controllers: [
+    TeamReportController,
+    TeamReportUnitSummaryController,
+    TeamReportCriteriaController,
+  ],
+  providers: [TeamReportService, TeamReportCriteriaService],
   exports: [TeamReportService],
 })
 export class TeamReportModule {}

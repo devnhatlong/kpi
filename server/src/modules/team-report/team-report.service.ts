@@ -723,8 +723,8 @@ export class TeamReportService {
       throw new BadRequestException('Báo cáo đã duyệt, không chỉnh được nữa.');
     }
 
-    const reason = dto.reason.trim();
-    if (!reason) throw new BadRequestException('Lý do chỉnh là bắt buộc.');
+    // Lý do là tuỳ chọn - nhật ký đã ghi ai sửa, sửa gì, lúc nào.
+    const reason = dto.reason?.trim() ?? '';
 
     const patches = dto.rows ?? [];
     if (!patches.length) throw new BadRequestException('Chưa chọn dòng nào.');
@@ -1614,9 +1614,24 @@ export class TeamReportService {
       task.createdDate <= toDate &&
       (task.isOpen || (task.closedDate ?? '') >= fromDate);
 
+    /*
+      Phạm vi đơn vị: đội thì đúng đội mình, phòng thì cả các đội bên dưới.
+
+      Phòng cũng phải lập bản trình lên tỉnh, mà việc thì nằm ở các đội - bó
+      trong đúng đơn vị của người lập là kho của phòng lúc nào cũng rỗng.
+    */
+    const scope = await this.scopeDepartmentIds(actor.departmentId);
+    /* Giữ nguyên ObjectId của `scope` chứ không dựng lại từ chuỗi gửi lên: bộ
+       lọc so chuỗi với ObjectId thì không khớp gì và hỏng lặng lẽ - đúng cái
+       bẫy đã gặp với trường đã populate. */
+    const wanted = new Set((query.departmentIds ?? []).map((id) => String(id)));
+    const picked = wanted.size
+      ? scope.filter((id) => wanted.has(String(id)))
+      : [];
+
     const all = query.scope === 'ALL';
     const filter: Record<string, unknown> = {
-      departmentId: actor.departmentId,
+      departmentId: { $in: picked.length ? picked : scope },
       ...(all
         ? {}
         : {
@@ -1668,15 +1683,34 @@ export class TeamReportService {
       this.isTaskReady(task, templates[this.axisIdOf(task)] ?? null),
     );
 
+    /*
+      Bộ lọc đội: ĐÚNG các đội trực thuộc đơn vị của người lập.
+
+      Bày cả nhánh chứ không chỉ các đội có việc trong kho lần này - lọc ra
+      trống cũng là một câu trả lời, còn đội biến mất khỏi danh sách thì người
+      dùng tưởng mình nhớ nhầm. Giữ thứ tự cây đơn vị, không sắp lại theo bảng
+      chữ cái: người dùng quen nhìn các đội theo đúng thứ tự trên sơ đồ phòng.
+    */
+    const names = await this.departmentNames(scope);
+    const departments = (await this.childDepartments(actor.departmentId))
+      .filter((department) => department.isActive !== false)
+      .map((department) => ({
+        id: String(department._id),
+        name: department.name ?? '',
+      }));
+
     return {
       message: 'OK',
       data: {
         fromDate,
         toDate,
+        /** Rỗng với đội (không có đơn vị con), có các đội với phòng. */
+        departments,
         tasks: ready.map((task) => ({
           task,
           alreadySent: sentTaskIds.has(String(task._id)),
           inPeriod: inPeriod(task),
+          departmentName: names.get(String(task.departmentId ?? '')) ?? '',
         })),
         /** Tổng số việc trong kỳ, kể cả việc chưa sẵn sàng - để nói rõ đã lọc. */
         scanned: tasks.length,
@@ -1765,7 +1799,12 @@ export class TeamReportService {
     }
 
     const tasks = await this.taskModel
-      .find({ _id: { $in: ids }, departmentId: actor.departmentId })
+      .find({
+        _id: { $in: ids },
+        departmentId: {
+          $in: await this.scopeDepartmentIds(actor.departmentId),
+        },
+      })
       .populate('axisId', 'code name');
 
     const templates = await this.templatesOfRows(
@@ -1795,6 +1834,23 @@ export class TeamReportService {
   /** Lập một bản tổng hợp ở trạng thái nháp - chưa đi đâu cả. */
   async createSummary(userId: string, dto: CreateTeamReportSummaryDto) {
     const actor = await this.requireActor(userId);
+    /*
+      Đơn vị đứng ĐẦU cây thì không lập bản tổng hợp.
+
+      Bản tổng hợp sinh ra để trình lên trên; ở gốc cây không còn ai để trình,
+      lập xong chỉ nằm đó mãi ở dạng nháp. Xét theo CÂY ĐƠN VỊ chứ không theo
+      việc có tài khoản cấp trên nào đang hoạt động hay không - hệ thống mới cài
+      chưa kịp tạo tài khoản tỉnh thì các phòng vẫn phải soạn bản được.
+    */
+    const home = await this.departmentModel
+      .findById(actor.departmentId)
+      .select('ancestors');
+    if (!home?.ancestors?.length) {
+      throw new BadRequestException(
+        'Đơn vị bạn đứng đầu chuỗi báo cáo nên không có cấp trên để trình. ' +
+          'Bản tổng hợp do các đơn vị cấp dưới lập rồi trình lên.',
+      );
+    }
     const { fromDate, toDate } = this.requirePeriod(dto.fromDate, dto.toDate);
     const title = dto.title.trim();
     if (!title) throw new BadRequestException('Tên báo cáo là bắt buộc.');
@@ -1803,15 +1859,20 @@ export class TeamReportService {
       this.requireObjectId(id, 'Nhiệm vụ'),
     );
     const tasks = await this.taskModel
-      .find({ _id: { $in: ids }, departmentId: actor.departmentId })
+      .find({
+        _id: { $in: ids },
+        departmentId: {
+          $in: await this.scopeDepartmentIds(actor.departmentId),
+        },
+      })
       .populate('axisId', 'code name')
       .populate('workContentId', 'code name');
 
-    /* Đếm lại thay vì tin danh sách gửi lên: id lạ hoặc id của đội khác lọt vào
-       thì báo cáo thiếu dòng mà không ai biết. */
+    /* Đếm lại thay vì tin danh sách gửi lên: id lạ hoặc id ngoài nhánh của mình
+       lọt vào thì báo cáo thiếu dòng mà không ai biết. */
     if (tasks.length !== ids.length) {
       throw new BadRequestException(
-        'Một số nhiệm vụ không thuộc đơn vị bạn hoặc không còn tồn tại.',
+        'Một số nhiệm vụ không thuộc phạm vi đơn vị bạn hoặc không còn tồn tại.',
       );
     }
 
@@ -1830,13 +1891,16 @@ export class TeamReportService {
       );
     }
 
+    const names = await this.departmentNames(
+      tasks.map((task) => task.departmentId),
+    );
     const summary = await this.summaryModel.create({
       departmentId: actor.departmentId,
       title,
       period: dto.period as TeamReportPeriod,
       fromDate,
       toDate,
-      rows: tasks.map((task) => this.snapshotOf(task, !task.isOpen)),
+      rows: tasks.map((task) => this.snapshotOf(task, !task.isOpen, names)),
       status: 'DRAFT' as const,
       note: dto.note?.trim() ?? '',
     });
@@ -1870,7 +1934,9 @@ export class TeamReportService {
     const tasks = await this.taskModel
       .find({
         _id: { $in: summary.rows.map((row) => row.taskId) },
-        departmentId: actor.departmentId,
+        departmentId: {
+          $in: await this.scopeDepartmentIds(actor.departmentId),
+        },
       })
       .populate('axisId', 'code name')
       .populate('workContentId', 'code name');
@@ -1878,7 +1944,12 @@ export class TeamReportService {
       throw new BadRequestException('Báo cáo không còn nhiệm vụ nào để trình.');
     }
 
-    summary.rows = tasks.map((task) => this.snapshotOf(task, !task.isOpen));
+    const names = await this.departmentNames(
+      tasks.map((task) => task.departmentId),
+    );
+    summary.rows = tasks.map((task) =>
+      this.snapshotOf(task, !task.isOpen, names),
+    );
     summary.status = 'PENDING';
     summary.recipientId = recipient.id;
     summary.recipientName = recipient.name;
@@ -1972,9 +2043,26 @@ export class TeamReportService {
       templates,
       catalogs,
     );
+    /*
+      Tên đơn vị lập trả RIÊNG, không populate vào `summary.departmentId`.
+
+      Populate rồi thì trường đó thành tài liệu chứ không còn là ObjectId, mà
+      chỗ khác vẫn đem nó đi so và đi lọc - đúng cái bẫy đã làm hỏng vài chỗ
+      trước đây. Người duyệt cần biết đang đọc bản của ai, nên phải có tên.
+    */
+    const names = await this.departmentNames([summary.departmentId]);
     return {
       message: 'OK',
-      data: { summary, templates, catalogs, axisScores },
+      data: {
+        summary,
+        department: {
+          id: String(summary.departmentId),
+          name: names.get(String(summary.departmentId)) ?? '',
+        },
+        templates,
+        catalogs,
+        axisScores,
+      },
     };
   }
 
@@ -2065,9 +2153,18 @@ export class TeamReportService {
           'Có nhiệm vụ không nằm trong báo cáo này.',
         );
       }
-      const task = await this.requireOwnTask(actor, patch.taskId);
-      // Cùng một luật với tab Phân loại: việc đã chốt thì phải mở lại đã.
-      this.assertClosedNotEdited(task);
+      const task = await this.requireScopedTask(actor, patch.taskId);
+      /*
+        Việc đã chốt thì phải mở lại đã - cùng luật với tab Phân loại.
+
+        Chỉ áp cho việc của CHÍNH đơn vị mình. Phòng gộp việc của các đội thì
+        không có nút mở lại việc của đội, chặn ở đây là phòng không chấm nổi
+        dòng nào đã đóng - mà đóng trước khi tổng hợp cả tuần mới là chuyện
+        thường. Ai sửa gì vẫn vào nhật ký như mọi lượt khác.
+      */
+      if (String(task.departmentId) === String(actor.departmentId)) {
+        this.assertClosedNotEdited(task);
+      }
 
       const template = await this.templateOfTask(task);
       const before = this.snapshotValues(task, template);
@@ -2104,11 +2201,18 @@ export class TeamReportService {
     const tasks = await this.taskModel
       .find({
         _id: { $in: summary.rows.map((row) => row.taskId) },
-        departmentId: actor.departmentId,
+        departmentId: {
+          $in: await this.scopeDepartmentIds(actor.departmentId),
+        },
       })
       .populate('axisId', 'code name')
       .populate('workContentId', 'code name');
-    summary.rows = tasks.map((task) => this.snapshotOf(task, !task.isOpen));
+    const names = await this.departmentNames(
+      tasks.map((task) => task.departmentId),
+    );
+    summary.rows = tasks.map((task) =>
+      this.snapshotOf(task, !task.isOpen, names),
+    );
     await summary.save();
 
     return { message: `Đã chấm lại ${changed} nhiệm vụ.`, data: summary };
@@ -2146,11 +2250,16 @@ export class TeamReportService {
         this.requireObjectId(taskId, 'Nhiệm vụ'),
       );
       const tasks = await this.taskModel
-        .find({ _id: { $in: ids }, departmentId: actor.departmentId })
+        .find({
+          _id: { $in: ids },
+          departmentId: {
+            $in: await this.scopeDepartmentIds(actor.departmentId),
+          },
+        })
         .populate('axisId', 'code name');
       if (tasks.length !== ids.length) {
         throw new BadRequestException(
-          'Một số nhiệm vụ không thuộc đơn vị bạn hoặc không còn tồn tại.',
+          'Một số nhiệm vụ không thuộc phạm vi đơn vị bạn hoặc không còn tồn tại.',
         );
       }
 
@@ -2184,11 +2293,18 @@ export class TeamReportService {
     const tasks = await this.taskModel
       .find({
         _id: { $in: [...current].map((taskId) => new Types.ObjectId(taskId)) },
-        departmentId: actor.departmentId,
+        departmentId: {
+          $in: await this.scopeDepartmentIds(actor.departmentId),
+        },
       })
       .populate('axisId', 'code name')
       .populate('workContentId', 'code name');
-    summary.rows = tasks.map((task) => this.snapshotOf(task, !task.isOpen));
+    const names = await this.departmentNames(
+      tasks.map((task) => task.departmentId),
+    );
+    summary.rows = tasks.map((task) =>
+      this.snapshotOf(task, !task.isOpen, names),
+    );
 
     if (adding.length) {
       this.appendEdit(
@@ -2227,8 +2343,8 @@ export class TeamReportService {
    */
   async reviewSummary(userId: string, id: string, dto: ReviewTeamReportDayDto) {
     const actor = await this.requireActor(userId);
+    // Lý do là tuỳ chọn - nhật ký đã ghi ai sửa, sửa gì, lúc nào.
     const reason = dto.reason?.trim() ?? '';
-    if (!reason) throw new BadRequestException('Lý do chỉnh là bắt buộc.');
 
     const summary = await this.summaryModel.findById(
       this.requireObjectId(id, 'Báo cáo'),
@@ -2263,9 +2379,14 @@ export class TeamReportService {
       const row = byTaskId.get(patch.taskId);
       if (!row) continue;
 
+      /* Tìm theo PHẠM VI của đơn vị lập bản, không theo đúng đơn vị đó: bản của
+         phòng gồm việc của các đội, khoá cứng vào `summary.departmentId` là
+         tỉnh không chỉnh nổi dòng nào. */
       const task = await this.taskModel.findOne({
         _id: this.requireObjectId(patch.taskId, 'Nhiệm vụ'),
-        departmentId: summary.departmentId,
+        departmentId: {
+          $in: await this.scopeDepartmentIds(summary.departmentId),
+        },
       });
       if (!task) {
         throw new BadRequestException(
@@ -2410,6 +2531,70 @@ export class TeamReportService {
       if (!filled) return false;
     }
     return true;
+  }
+
+  /**
+   * Những đơn vị mà một người được phép lấy nhiệm vụ về làm báo cáo tổng hợp:
+   * đơn vị của chính họ, cộng cả nhánh bên dưới.
+   *
+   * Một luật cho cả hai cấp, không rẽ nhánh theo vai trò. Đội không có đơn vị
+   * con nên tập này thu về đúng đội đó - y như trước. Phòng thì có các đội bên
+   * dưới, nên gộp được việc của các đội vào một bản trình lên tỉnh.
+   *
+   * Xét theo CÂY ĐƠN VỊ chứ không theo quyền: quyền chỉ nói người này được bấm
+   * nút gì, còn lấy được việc của ai là chuyện của cây tổ chức.
+   */
+  private async scopeDepartmentIds(
+    departmentId: Types.ObjectId,
+  ): Promise<Types.ObjectId[]> {
+    const children = await this.childDepartments(departmentId);
+    return [departmentId, ...children.map((child) => child._id)];
+  }
+
+  /**
+   * Các đơn vị nằm dưới một đơn vị, theo đúng thứ tự cây.
+   *
+   * Lấy CẢ đơn vị đã tắt: việc của một đội vừa giải thể vẫn phải gộp được vào
+   * báo cáo kỳ này. Riêng ô lọc trên màn thì chỉ bày đơn vị còn hoạt động - bày
+   * đội đã tắt ra chỉ tổ người dùng chọn vào rồi thấy trống.
+   */
+  private async childDepartments(departmentId: Types.ObjectId) {
+    return this.departmentModel
+      .find({ ancestors: departmentId })
+      .select('name sortOrder isActive')
+      .sort({ sortOrder: 1, name: 1 });
+  }
+
+  /** Tên các đơn vị, để chép vào bản chụp và bày ở bộ lọc. */
+  private async departmentNames(
+    ids: Array<Types.ObjectId | string | null | undefined>,
+  ): Promise<Map<string, string>> {
+    const unique = [...new Set(ids.filter(Boolean).map((id) => String(id)))];
+    if (!unique.length) return new Map();
+    const departments = await this.departmentModel
+      .find({ _id: { $in: unique } })
+      .select('name');
+    return new Map(
+      departments.map((department) => [
+        String(department._id),
+        department.name ?? '',
+      ]),
+    );
+  }
+
+  /**
+   * Nhiệm vụ nằm trong phạm vi của người này - đơn vị mình hoặc nhánh dưới.
+   *
+   * Khác `requireOwnTask` (chỉ đúng đơn vị mình, dùng cho bảng nhập của đội):
+   * chỗ này dành cho báo cáo tổng hợp, nơi phòng chạm được vào việc của các đội.
+   */
+  private async requireScopedTask(actor: Actor, id: string) {
+    const task = await this.taskModel.findOne({
+      _id: this.requireObjectId(id, 'Nhiệm vụ'),
+      departmentId: { $in: await this.scopeDepartmentIds(actor.departmentId) },
+    });
+    if (!task) throw new NotFoundException('Không tìm thấy nhiệm vụ.');
+    return task;
   }
 
   private async requireOwnSummary(actor: Actor, id: string) {
@@ -2589,6 +2774,7 @@ export class TeamReportService {
   private snapshotOf(
     task: TeamReportTaskDocument,
     closed: boolean,
+    departmentNames?: Map<string, string>,
   ): TeamReportDayRow {
     const axis = task.axisId as unknown as {
       _id?: Types.ObjectId;
@@ -2601,6 +2787,9 @@ export class TeamReportService {
     return {
       taskId: task._id,
       name: task.name,
+      departmentId: task.departmentId ?? null,
+      departmentName:
+        departmentNames?.get(String(task.departmentId ?? '')) ?? '',
       deadline: task.deadline,
       product: task.product ?? '',
       axisId: axis?._id ?? null,

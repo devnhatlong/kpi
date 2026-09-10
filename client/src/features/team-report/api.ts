@@ -4,6 +4,7 @@ import type {
   TeamReportAxisScore,
   TeamReportCatalogs,
   TeamReportClassifyBoard,
+  TeamReportCriteriaData,
   TeamReportDay,
   TeamReportDayStatus,
   TeamReportPeriod,
@@ -49,19 +50,36 @@ export const teamReportKeys = {
       params.limit ?? 20,
     ] as const,
   day: (id: string) => ["team-report", "day", id] as const,
-  summaries: (status: string, page: number) =>
-    ["team-report", "summaries", status, page] as const,
+  /* Cấp lập bản nằm trong khoá: cùng một tài khoản phòng vừa xem bản mình lập
+     vừa xem bản các đội trình lên, hai thứ khác nhau mà trùng khoá thì màn này
+     nạp lại làm hỏng cache màn kia. */
+  summaries: (status: string, page: number, level = "TEAM") =>
+    ["team-report", "summaries", level, status, page] as const,
   summaryInbox: (status: string, page: number) =>
     ["team-report", "summary-inbox", status, page] as const,
-  summary: (id: string) => ["team-report", "summary", id] as const,
+  summary: (id: string, level = "TEAM") =>
+    ["team-report", "summary", level, id] as const,
   summaryCandidates: (
     fromDate: string,
     toDate: string,
     q: string,
     scope: "PERIOD" | "ALL" = "PERIOD",
+    level = "TEAM",
+    departmentIds = "",
   ) =>
-    ["team-report", "summary-candidates", fromDate, toDate, q, scope] as const,
-  recipients: () => ["team-report", "recipients"] as const,
+    [
+      "team-report",
+      "summary-candidates",
+      level,
+      fromDate,
+      toDate,
+      q,
+      scope,
+      departmentIds,
+    ] as const,
+  recipients: (level = "TEAM") => ["team-report", "recipients", level] as const,
+  criteria: (periodMonth: string) =>
+    ["team-report", "criteria", periodMonth] as const,
 };
 
 // ------------------------------------------------------ giai đoạn 1: nhập thô
@@ -274,7 +292,7 @@ export type TeamReportReviewRow = {
  */
 export function reviewTeamReportDay(
   id: string,
-  input: { reason: string; rows: TeamReportReviewRow[] },
+  input: { reason?: string; rows: TeamReportReviewRow[] },
 ) {
   return unwrapData(
     api.patch<ApiResponse<TeamReportDay>>(
@@ -298,22 +316,43 @@ export function decideTeamReportDay(
 
 // ------------------------------------------------------- báo cáo tổng hợp
 
+/**
+ * Bản này do ĐỘI lập hay do PHÒNG lập.
+ *
+ * Nghiệp vụ y hệt nhau - cùng luật trạng thái, cùng cách chấm, cùng đường trình
+ * lên. Khác duy nhất là ĐƯỜNG GỌI: server gác hai đầu bằng hai quyền khác nhau
+ * (đội có ENTRY, phòng có REVIEW) nên phải có hai bộ route, gọi nhầm đường là
+ * nhận 403. Phạm vi lấy nhiệm vụ thì server tự suy từ cây đơn vị: đội lấy việc
+ * của mình, phòng lấy việc của các đội bên dưới.
+ */
+export type TeamReportSummaryLevel = "TEAM" | "UNIT";
+
+const summaryBase = (level: TeamReportSummaryLevel = "TEAM") =>
+  level === "UNIT" ? "/team-report/unit-summary" : "/team-report/summary";
+
 export function fetchTeamReportSummaryCandidates(params: {
   fromDate: string;
   toDate: string;
   q?: string;
-  /** `ALL` = cả kho của đội, mỗi việc kèm cờ `inPeriod`. Mặc định chỉ trong kỳ. */
+  /** `ALL` = cả kho, mỗi việc kèm cờ `inPeriod`. Mặc định chỉ trong kỳ. */
   scope?: "PERIOD" | "ALL";
+  /** Lọc theo đội - chỉ có nghĩa với bản của phòng. */
+  departmentIds?: string[];
+  level?: TeamReportSummaryLevel;
 }) {
   return unwrapData(
     api.get<ApiResponse<TeamReportSummaryCandidates>>(
-      "/team-report/summary/candidates",
+      `${summaryBase(params.level)}/candidates`,
       {
         params: {
           fromDate: params.fromDate,
           toDate: params.toDate,
           ...(params.q?.trim() ? { q: params.q.trim() } : {}),
           ...(params.scope ? { scope: params.scope } : {}),
+          // Gộp thành chuỗi: server tự tách, khỏi phụ thuộc cách nối mảng của axios.
+          ...(params.departmentIds?.length
+            ? { departmentIds: params.departmentIds.join(",") }
+            : {}),
         },
       },
     ),
@@ -327,19 +366,25 @@ export function fetchTeamReportSummaryCandidates(params: {
  * Server tính bằng đúng công thức của bản đã lập, nên con số xem trước chính là
  * con số sẽ ra.
  */
-export function previewTeamReportSummaryScore(taskIds: string[]) {
+export function previewTeamReportSummaryScore(
+  taskIds: string[],
+  level?: TeamReportSummaryLevel,
+) {
   return unwrapData(
     api.post<ApiResponse<{ axisScores: TeamReportAxisScore[] }>>(
-      "/team-report/summary/preview",
+      `${summaryBase(level)}/preview`,
       { taskIds },
     ),
   ).then((data) => data.axisScores);
 }
 
-export function fetchTeamReportRecipients(q?: string) {
+export function fetchTeamReportRecipients(
+  q?: string,
+  level?: TeamReportSummaryLevel,
+) {
   return unwrapData(
     api.get<ApiResponse<{ people: TeamReportRecipient[] }>>(
-      "/team-report/summary/recipients",
+      `${summaryBase(level)}/recipients`,
       { params: q?.trim() ? { q: q.trim() } : {} },
     ),
   ).then((data) => data.people);
@@ -349,9 +394,10 @@ export function fetchTeamReportSummaries(query: {
   status?: TeamReportDayStatus | "";
   page?: number;
   limit?: number;
+  level?: TeamReportSummaryLevel;
 }) {
   return unwrapPaginated(
-    api.get<ApiResponse<TeamReportSummary[]>>("/team-report/summary", {
+    api.get<ApiResponse<TeamReportSummary[]>>(summaryBase(query.level), {
       params: {
         page: query.page ?? 1,
         limit: query.limit ?? 20,
@@ -374,19 +420,22 @@ export function createTeamReportSummary(input: {
   toDate: string;
   taskIds: string[];
   note?: string;
+  level?: TeamReportSummaryLevel;
 }) {
+  const { level, ...body } = input;
   return unwrapData(
-    api.post<ApiResponse<TeamReportSummary>>("/team-report/summary", input),
+    api.post<ApiResponse<TeamReportSummary>>(summaryBase(level), body),
   );
 }
 
 export function sendTeamReportSummary(
   id: string,
   input: { recipientId: string; note?: string },
+  level?: TeamReportSummaryLevel,
 ) {
   return unwrapData(
     api.post<ApiResponse<TeamReportSummary>>(
-      `/team-report/summary/${id}/send`,
+      `${summaryBase(level)}/${id}/send`,
       input,
     ),
   );
@@ -394,15 +443,22 @@ export function sendTeamReportSummary(
 
 export type TeamReportSummaryDetail = {
   summary: TeamReportSummary;
+  /** Đơn vị lập bản - server trả riêng vì `summary.departmentId` không populate. */
+  department?: { id: string; name: string };
   templates: Record<string, TeamReportTemplate>;
   catalogs: TeamReportCatalogs;
   /** Điểm từng trục, do server tính theo công thức khai trong mẫu. */
   axisScores: TeamReportAxisScore[];
 };
 
-export function fetchTeamReportSummary(id: string) {
+export function fetchTeamReportSummary(
+  id: string,
+  level?: TeamReportSummaryLevel,
+) {
   return unwrapData(
-    api.get<ApiResponse<TeamReportSummaryDetail>>(`/team-report/summary/${id}`),
+    api.get<ApiResponse<TeamReportSummaryDetail>>(
+      `${summaryBase(level)}/${id}`,
+    ),
   );
 }
 
@@ -458,10 +514,11 @@ export function decideTeamReportSummary(
 export function editTeamReportSummaryRows(
   id: string,
   rows: TeamReportReviewRow[],
+  level?: TeamReportSummaryLevel,
 ) {
   return unwrapData(
     api.patch<ApiResponse<TeamReportSummary>>(
-      `/team-report/summary/${id}/rows`,
+      `${summaryBase(level)}/${id}/rows`,
       { rows },
     ),
   );
@@ -476,19 +533,23 @@ export function editTeamReportSummaryRows(
 export function changeTeamReportSummaryTasks(
   id: string,
   input: { add?: string[]; remove?: string[] },
+  level?: TeamReportSummaryLevel,
 ) {
   return unwrapData(
     api.patch<ApiResponse<TeamReportSummary>>(
-      `/team-report/summary/${id}/tasks`,
+      `${summaryBase(level)}/${id}/tasks`,
       input,
     ),
   );
 }
 
-/** Cấp trên chỉnh số trên bản đã nhận - số của họ nằm riêng để đối chiếu. */
+/**
+ * Cấp trên chỉnh số trên bản đã nhận. Không cần lý do: ai sửa, sửa gì, lúc nào
+ * đã nằm trong nhật ký của bản lẫn của nhiệm vụ.
+ */
 export function reviewTeamReportSummary(
   id: string,
-  input: { reason: string; rows: TeamReportReviewRow[] },
+  input: { reason?: string; rows: TeamReportReviewRow[] },
 ) {
   return unwrapData(
     api.patch<ApiResponse<TeamReportSummary>>(
@@ -498,9 +559,12 @@ export function reviewTeamReportSummary(
   );
 }
 
-export function deleteTeamReportSummary(id: string) {
+export function deleteTeamReportSummary(
+  id: string,
+  level?: TeamReportSummaryLevel,
+) {
   return unwrapData(
-    api.delete<ApiResponse<{ id: string }>>(`/team-report/summary/${id}`),
+    api.delete<ApiResponse<{ id: string }>>(`${summaryBase(level)}/${id}`),
   );
 }
 
@@ -512,6 +576,39 @@ export function promoteTeamReport(input: {
   return unwrapData(
     api.post<ApiResponse<{ unitDayId: string; rowCount: number }>>(
       "/team-report/promote",
+      input,
+    ),
+  );
+}
+
+// ------------------------------------------------- bảng A: tiêu chí chung
+
+export function fetchTeamReportCriteria(periodMonth?: string) {
+  return unwrapData(
+    api.get<ApiResponse<TeamReportCriteriaData>>("/team-report/criteria", {
+      params: periodMonth ? { periodMonth } : {},
+    }),
+  );
+}
+
+/**
+ * Chấm các ô của bảng A. Gửi từng ô như tab Phân loại - cả đội chấm chung qua
+ * một tài khoản, gửi cả bảng là đè mất phần người khác vừa gõ. Lần lưu đầu
+ * tiên của tháng tạo ra bản thật; `version` lệch thì server trả 409.
+ */
+export function saveTeamReportCriteria(
+  periodMonth: string,
+  input: {
+    version: number;
+    rows: Array<{
+      criterionId: string;
+      fieldValues: Record<string, string | number>;
+    }>;
+  },
+) {
+  return unwrapData(
+    api.patch<ApiResponse<TeamReportCriteriaData>>(
+      `/team-report/criteria/${periodMonth}`,
       input,
     ),
   );

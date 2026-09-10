@@ -11,6 +11,7 @@
 
 import {
   catalogOfSemantic,
+  type FormHeaderGroup,
   type FormTemplateColumn,
 } from "@/features/mission-form-config/types";
 
@@ -54,6 +55,13 @@ export type TeamReportTemplate = {
   name: string;
   version: number;
   columns: TeamReportColumn[];
+  /**
+   * Tiêu đề gộp nhiều tầng của mẫu giấy.
+   *
+   * Bảng trên màn bày một hàng tiêu đề phẳng, nhưng file xuất ra phải dựng lại
+   * đúng các ô gộp của mẫu - đó mới là thứ đem in nộp lên.
+   */
+  headerGroups?: FormHeaderGroup[];
 };
 
 /** Một mục trong danh mục dùng cho cột kiểu chọn. */
@@ -324,6 +332,10 @@ export function isColumnReviewed(task: TeamReportTask, key: string): boolean {
 export type TeamReportDayRow = {
   taskId: string;
   name: string;
+  /* Đội chủ nhiệm vụ. Bản của đội thì luôn là chính đội đó nên không bày; bản
+     của phòng gộp việc nhiều đội nên mỗi dòng phải nói rõ của ai. */
+  departmentId?: Ref;
+  departmentName?: string;
   deadline: string;
   product: string;
   axisId: Ref;
@@ -444,11 +456,15 @@ export type TeamReportSummaryCandidate = {
   alreadySent: boolean;
   /** Còn sống trong kỳ của bản không. Chỉ khác `true` khi quét cả kho (`ALL`). */
   inPeriod?: boolean;
+  /** Đội chủ nhiệm vụ - bản của phòng gộp việc nhiều đội nên phải nói rõ. */
+  departmentName?: string;
 };
 
 export type TeamReportSummaryCandidates = {
   fromDate: string;
   toDate: string;
+  /** Các đội bên dưới - rỗng với bản của đội, có danh sách với bản của phòng. */
+  departments: Array<{ id: string; name: string }>;
   tasks: TeamReportSummaryCandidate[];
   /** Tổng số việc trong kỳ, kể cả việc chưa đủ điều kiện. */
   scanned: number;
@@ -511,4 +527,43 @@ export type TeamReportRecipient = {
   fullName: string;
   departmentId: string | null;
   departmentName: string;
+};
+
+// ------------------------------------------------- bảng A: tiêu chí chung
+
+/** Một dòng của bảng A - một tiêu chí, tên và trần điểm chép từ danh mục lúc lập. */
+export type TeamReportCriterionRow = {
+  criterionId: string;
+  criterionName: string;
+  criterionNote: string;
+  maxScore: number;
+  /** Theo khoá cột của mẫu `forCriteria`; ô tích lưu "1" hoặc vắng mặt. */
+  fieldValues: Record<string, string | number>;
+};
+
+export type TeamReportCriteriaSheet = {
+  /** null = bảng tạm dựng từ danh mục, chưa ai lưu. */
+  _id: string | null;
+  periodMonth: string;
+  rows: TeamReportCriterionRow[];
+  version: number;
+  edits: TeamReportEdit[];
+  updatedAt: string | null;
+  saved: boolean;
+};
+
+export type TeamReportCriteriaScore = {
+  /** Cột điểm - cột số khai dải theo "Điểm tối đa"; null = mẫu không có cột đó. */
+  scoreColumnKey: string | null;
+  total: number | null;
+  max: number;
+  scoredRows: number;
+};
+
+export type TeamReportCriteriaData = {
+  sheet: TeamReportCriteriaSheet;
+  template: TeamReportTemplate | null;
+  score: TeamReportCriteriaScore;
+  /** Các tháng đội đã chấm - để ô chọn tháng đánh dấu. */
+  months?: string[];
 };
