@@ -6,6 +6,10 @@ import {
 } from "@/lib/api-client";
 import type { ApiResponse } from "@/features/auth/types";
 import type {
+  AdjustmentItem,
+  AdjustmentItemInput,
+  AdjustmentSection,
+  AdjustmentSummary,
   Axis,
   AxisInput,
   CriteriaSummary,
@@ -125,6 +129,73 @@ export function updateCriterion(id: string, input: Partial<CriterionInput>) {
 
 export async function deleteCriterion(id: string) {
   await api.delete(`/mission-form-config/criteria/${id}`);
+}
+
+// ------------------------------- điểm cộng / điểm trừ / điều chỉnh xếp loại
+
+export const adjustmentKeys = {
+  all: ["adjustments"] as const,
+  list: (params: ListQueryParams & { section?: AdjustmentSection | "" }) =>
+    [
+      "adjustments",
+      params.section ?? "",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+    ] as const,
+  summary: ["adjustments", "summary"] as const,
+};
+
+export async function fetchAdjustmentsPage(
+  params: ListQueryParams & { section?: AdjustmentSection | "" },
+): Promise<PaginatedResult<AdjustmentItem>> {
+  const { section, ...rest } = params;
+  return unwrapPaginated(
+    api.get<ApiResponse<AdjustmentItem[]>>(
+      "/mission-form-config/adjustments/all",
+      {
+        params: {
+          ...buildListQuery(rest),
+          ...(section ? { section } : {}),
+        },
+      },
+    ),
+  );
+}
+
+/** Số dòng đang dùng từng phần và tổng điểm cộng tối đa. */
+export function fetchAdjustmentSummary() {
+  return unwrapData(
+    api.get<ApiResponse<AdjustmentSummary>>(
+      "/mission-form-config/adjustments/summary",
+    ),
+  );
+}
+
+export function createAdjustmentItem(input: AdjustmentItemInput) {
+  return unwrapData(
+    api.post<ApiResponse<AdjustmentItem>>(
+      "/mission-form-config/adjustments",
+      input,
+    ),
+  );
+}
+
+export function updateAdjustmentItem(
+  id: string,
+  input: Partial<AdjustmentItemInput>,
+) {
+  return unwrapData(
+    api.patch<ApiResponse<AdjustmentItem>>(
+      `/mission-form-config/adjustments/${id}`,
+      input,
+    ),
+  );
+}
+
+export async function deleteAdjustmentItem(id: string) {
+  await api.delete(`/mission-form-config/adjustments/${id}`);
 }
 
 export const workContentKeys = {
@@ -351,6 +422,8 @@ export const formTemplateKeys = {
     ] as const,
   byAxis: (axisId: string) => ["form-template-by-axis", axisId] as const,
   forCriteria: ["form-template-for-criteria"] as const,
+  forAdjustment: (section: string) =>
+    ["form-template-for-adjustment", section] as const,
 };
 
 export async function fetchFormTemplatesPage(
@@ -389,6 +462,18 @@ export async function fetchFormTemplateForCriteria(): Promise<FormTemplate | nul
   const data = await unwrapData(
     api.get<ApiResponse<FormTemplate | null>>(
       "/mission-form-config/form-templates/for-criteria",
+    ),
+  );
+  return data ?? null;
+}
+
+/** Mẫu đang áp dụng cho một phần của phụ lục điểm cộng / trừ / xếp loại. */
+export async function fetchFormTemplateForAdjustment(
+  section: AdjustmentSection,
+): Promise<FormTemplate | null> {
+  const data = await unwrapData(
+    api.get<ApiResponse<FormTemplate | null>>(
+      `/mission-form-config/form-templates/for-adjustment/${section}`,
     ),
   );
   return data ?? null;

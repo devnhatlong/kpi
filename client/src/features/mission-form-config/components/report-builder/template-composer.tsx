@@ -251,7 +251,7 @@ export function TemplateComposer({
                         checked ? "text-primary" : "text-muted-foreground/50",
                       )}
                     >
-                      {order ?? "–"}
+                      {order ?? "-"}
                     </span>
                     <div className="min-w-40 flex-1">
                       <Label

@@ -5,6 +5,10 @@ import { RolesModule } from '../roles/roles.module';
 import { WorkContent, WorkContentSchema } from './schemas/work-content.schema';
 import { WorkTask, WorkTaskSchema } from './schemas/work-task.schema';
 import { Criterion, CriterionSchema } from './schemas/criterion.schema';
+import {
+  AdjustmentItem,
+  AdjustmentItemSchema,
+} from './schemas/adjustment-item.schema';
 import { Axis, AxisSchema } from './schemas/axis.schema';
 import { ScoreGroup, ScoreGroupSchema } from './schemas/score-group.schema';
 import {
@@ -42,6 +46,8 @@ import { QualityLevelsController } from './quality-levels.controller';
 import { QualityLevelsService } from './quality-levels.service';
 import { CriteriaController } from './criteria.controller';
 import { CriteriaService } from './criteria.service';
+import { AdjustmentItemsController } from './adjustment-items.controller';
+import { AdjustmentItemsService } from './adjustment-items.service';
 import { ReportTemplatesController } from './report-templates.controller';
 import { ReportTemplatesService } from './report-templates.service';
 import {
@@ -60,6 +66,7 @@ import {
       { name: FormTemplateVersion.name, schema: FormTemplateVersionSchema },
       { name: QualityLevel.name, schema: QualityLevelSchema },
       { name: Criterion.name, schema: CriterionSchema },
+      { name: AdjustmentItem.name, schema: AdjustmentItemSchema },
       { name: ReportTemplate.name, schema: ReportTemplateSchema },
       // Mẫu báo cáo phải soi cây đơn vị và hồ sơ người dùng để biết đơn vị nào
       // dùng mẫu nào - đăng ký model tại chỗ như personal-mission vẫn làm.
@@ -78,6 +85,7 @@ import {
     FormTemplatesController,
     QualityLevelsController,
     CriteriaController,
+    AdjustmentItemsController,
     ReportTemplatesController,
   ],
   providers: [
@@ -88,6 +96,7 @@ import {
     FormTemplatesService,
     QualityLevelsService,
     CriteriaService,
+    AdjustmentItemsService,
     ReportTemplatesService,
   ],
   exports: [

@@ -92,7 +92,7 @@ export function DynamicColumnCell({
             <SelectItem key={item._id} value={item._id}>
               {item.name}
               {item.minScore !== undefined && item.maxScore !== undefined
-                ? ` (${item.minScore}–${item.maxScore})`
+                ? ` (${item.minScore}-${item.maxScore})`
                 : ""}
               {item.percent !== undefined ? ` (${item.percent}%)` : ""}
             </SelectItem>

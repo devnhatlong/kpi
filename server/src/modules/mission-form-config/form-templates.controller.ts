@@ -54,6 +54,15 @@ export class FormTemplatesController {
     return this.formTemplatesService.findForCriteria();
   }
 
+  @ApiOperation({
+    summary: 'Mẫu bảng đang áp dụng cho một phần của bảng điểm cộng / trừ',
+  })
+  @Permissions(Permission.TASK_VIEW)
+  @Get('for-adjustment/:section')
+  findForAdjustment(@Param('section') section: string) {
+    return this.formTemplatesService.findForAdjustment(section);
+  }
+
   @ApiOperation({ summary: 'Chi tiết mẫu bảng nhiệm vụ' })
   @Permissions(Permission.TASK_VIEW)
   @Get(':id')

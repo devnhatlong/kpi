@@ -1,6 +1,7 @@
 import type { ApiResponse } from "@/features/auth/types";
 import { api, unwrapData, unwrapPaginated } from "@/lib/api-client";
 import type {
+  TeamReportAdjustmentData,
   TeamReportAxisScore,
   TeamReportCatalogs,
   TeamReportClassifyBoard,
@@ -78,6 +79,8 @@ export const teamReportKeys = {
       departmentIds,
     ] as const,
   recipients: (level = "TEAM") => ["team-report", "recipients", level] as const,
+  adjustments: (periodMonth: string) =>
+    ["team-report", "adjustments", periodMonth] as const,
   criteria: (periodMonth: string) =>
     ["team-report", "criteria", periodMonth] as const,
 };
@@ -609,6 +612,109 @@ export function saveTeamReportCriteria(
   return unwrapData(
     api.patch<ApiResponse<TeamReportCriteriaData>>(
       `/team-report/criteria/${periodMonth}`,
+      input,
+    ),
+  );
+}
+
+// ------------------------- phụ lục điểm cộng / điểm trừ / điều chỉnh xếp loại
+
+export function fetchTeamReportAdjustments(periodMonth?: string) {
+  return unwrapData(
+    api.get<ApiResponse<TeamReportAdjustmentData>>("/team-report/adjustments", {
+      params: periodMonth ? { periodMonth } : {},
+    }),
+  );
+}
+
+export type TeamReportAdjustmentEntryInput = {
+  /** Ô đổi theo khoá cột của mẫu; chuỗi rỗng = xoá ô. */
+  fieldValues?: Record<string, string | number>;
+};
+
+export function addTeamReportAdjustmentEntry(
+  periodMonth: string,
+  input: TeamReportAdjustmentEntryInput & { version: number; itemId: string },
+) {
+  return unwrapData(
+    api.post<ApiResponse<TeamReportAdjustmentData>>(
+      `/team-report/adjustments/${periodMonth}/entries`,
+      input,
+    ),
+  );
+}
+
+export function updateTeamReportAdjustmentEntry(
+  periodMonth: string,
+  entryId: string,
+  input: TeamReportAdjustmentEntryInput & { version: number },
+) {
+  return unwrapData(
+    api.patch<ApiResponse<TeamReportAdjustmentData>>(
+      `/team-report/adjustments/${periodMonth}/entries/${entryId}`,
+      input,
+    ),
+  );
+}
+
+export function removeTeamReportAdjustmentEntry(
+  periodMonth: string,
+  entryId: string,
+  version: number,
+) {
+  return unwrapData(
+    api.delete<ApiResponse<TeamReportAdjustmentData>>(
+      `/team-report/adjustments/${periodMonth}/entries/${entryId}`,
+      { params: { version } },
+    ),
+  );
+}
+
+// ------------------------------------------- quyền nhập bảng điểm cộng / trừ
+
+export type TeamReportAdjustmentAccess = {
+  allowed: boolean;
+  /** Đã có luật riêng chưa; chưa thì đang chạy luật mặc định. */
+  configured: boolean;
+  reason: string;
+};
+
+/** Tôi có được nhập bảng điểm cộng / trừ / xếp loại không - để ẩn/hiện menu. */
+export function fetchTeamReportAdjustmentAccess() {
+  return unwrapData(
+    api.get<ApiResponse<TeamReportAdjustmentAccess>>(
+      "/team-report/adjustments/access",
+    ),
+  );
+}
+
+export type TeamReportAdjustmentAccessRule = {
+  roleCodes: string[];
+  userIds: string[];
+  departmentIds: string[];
+  includeDescendants: boolean;
+  updatedByName: string;
+  updatedAt: string | null;
+  configured: boolean;
+};
+
+export function fetchTeamReportAdjustmentAccessRule() {
+  return unwrapData(
+    api.get<ApiResponse<TeamReportAdjustmentAccessRule>>(
+      "/team-report/adjustments/access/rule",
+    ),
+  );
+}
+
+export function saveTeamReportAdjustmentAccessRule(input: {
+  roleCodes: string[];
+  userIds: string[];
+  departmentIds: string[];
+  includeDescendants: boolean;
+}) {
+  return unwrapData(
+    api.put<ApiResponse<TeamReportAdjustmentAccessRule>>(
+      "/team-report/adjustments/access/rule",
       input,
     ),
   );

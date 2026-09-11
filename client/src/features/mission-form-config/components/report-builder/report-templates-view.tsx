@@ -8,6 +8,7 @@ import {
   FileSpreadsheet,
   Pencil,
   Plus,
+  Scale,
   Search,
   Settings2,
   Trash2,
@@ -48,7 +49,9 @@ import {
   criterionKeys,
   deleteReportTemplate,
   fetchCriteriaSummary,
+  fetchFormTemplatesAll,
   fetchReportTemplatesPage,
+  formTemplateKeys,
   reportTemplateKeys,
   unapplyReportTemplate,
 } from "@/features/mission-form-config/api";
@@ -96,6 +99,13 @@ export function ReportTemplatesView() {
     () => fetchReportTemplatesPage(listParams),
   );
   const criteria = useSWR(criterionKeys.summary, fetchCriteriaSummary);
+  /* Chỉ để đếm mấy phần phụ lục đã có form - danh sách mẫu bảng vốn nhỏ. */
+  const formTemplates = useSWR(formTemplateKeys.all, fetchFormTemplatesAll);
+  const adjustmentReady = new Set(
+    (formTemplates.data ?? [])
+      .filter((template) => template.forAdjustment && template.isActive)
+      .map((template) => template.forAdjustment),
+  ).size;
 
   const items = data?.data ?? [];
   const meta = data?.meta ?? emptyPaginationMeta(limit);
@@ -343,6 +353,38 @@ export function ReportTemplatesView() {
             onLimitChange={setLimit}
             disabled={isLoading}
           />
+        </CardContent>
+      </Card>
+
+      {/*
+        Mẫu BẢNG ĐIỂM CỘNG, TRỪ & XẾP LOẠI đứng riêng, không phải một dòng trong
+        bảng trên: mẫu KPI đi theo năm và phạm vi đơn vị, còn bảng này là một
+        bộ ba form dùng chung,
+        đội nhập mỗi tháng một bản. Nhét chung bảng là phải bịa ra năm và phạm
+        vi cho một thứ không có hai khái niệm đó.
+      */}
+      <Card>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-400">
+              <Scale className="size-5" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="font-display text-base font-semibold">
+                Bảng đề xuất điểm cộng, điểm trừ &amp; xếp loại
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Mẫu báo cáo riêng, ba phần I / II / III · đội nhập mỗi tháng một
+                bản · {adjustmentReady}/3 phần đã dựng form
+              </p>
+            </div>
+          </div>
+          <Button asChild variant="outline">
+            <Link href="/mission/form-config/builder/adjustment">
+              <Settings2 className="size-4" />
+              Cấu hình form
+            </Link>
+          </Button>
         </CardContent>
       </Card>
 

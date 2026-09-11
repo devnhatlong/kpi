@@ -13,6 +13,7 @@ import {
   Layers,
   ListTree,
   Network,
+  Scale,
   Settings,
   Shield,
   ShieldCheck,
@@ -39,6 +40,13 @@ export type NavSubItem = {
    * chuỗi - không có cấp trên nào để trình lên, nên màn đó vô nghĩa với họ.
    */
   roles?: string[];
+  /**
+   * Cổng kiểm ĐỘNG - server quyết theo luật quản trị đặt, không suy được từ
+   * quyền hay vai trò. Sidebar hỏi server một lượt rồi ẩn/hiện mục.
+   *
+   * `adjustment-access`: ai được nhập bảng điểm cộng / trừ / xếp loại.
+   */
+  gate?: "adjustment-access";
 };
 
 export type NavItem = {
@@ -94,6 +102,17 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/team-report/criteria",
         icon: ClipboardCheck,
         permissions: [PERM.TEAM_REPORT_ENTRY],
+      },
+      {
+        /*
+          Bảng đề xuất điểm cộng, điểm trừ, điều chỉnh xếp loại - tháng một bản
+          như bảng A. Ai được nhập KHÔNG theo mã quyền: quản trị chỉ định theo
+          vai trò / tài khoản / đơn vị, nên sidebar phải hỏi server.
+        */
+        title: "Điểm cộng, trừ & xếp loại",
+        href: "/team-report/adjustments",
+        icon: Scale,
+        gate: "adjustment-access",
       },
       {
         title: "Duyệt báo cáo ngày",
@@ -227,6 +246,14 @@ export const NAV_ITEMS: NavItem[] = [
         title: "Nhóm điểm",
         href: "/mission/form-config/score-groups",
         icon: Gauge,
+      },
+      {
+        /* Nửa trái của "Bảng đề xuất điểm cộng, điểm trừ và điều chỉnh, khống
+           chế mức xếp loại" - ba phần I/II/III, quản trị khai sẵn như nội
+           dung công việc. */
+        title: "Điểm cộng, trừ & xếp loại",
+        href: "/mission/form-config/adjustments",
+        icon: Scale,
       },
     ],
   },

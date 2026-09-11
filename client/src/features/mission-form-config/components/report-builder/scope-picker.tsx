@@ -82,6 +82,18 @@ type ScopePickerProps = {
   onChange: (scope: ScopeDraft) => void;
   /** Tắt khi hộp thoại đang đóng - khỏi gọi danh mục đơn vị mỗi lượt render. */
   enabled?: boolean;
+  /**
+   * Chỉ dùng cây đơn vị, không có ba nút chọn kiểu phạm vi và ghi chú cuối.
+   * Dành cho chỗ mượn cây này để chọn đơn vị vào một luật khác (quyền nhập bảng
+   * điểm cộng / trừ), nơi "toàn hệ thống / theo cấp" không có nghĩa.
+   */
+  treeOnly?: boolean;
+  /** Nhãn thay cho "Các đơn vị áp dụng" và mô tả ô "cấp dưới" khi mượn cây. */
+  labels?: {
+    departments?: string;
+    descendants?: string;
+    descendantsHint?: string;
+  };
 };
 
 /**
@@ -96,6 +108,8 @@ export function ScopePicker({
   value,
   onChange,
   enabled = true,
+  treeOnly = false,
+  labels,
 }: ScopePickerProps) {
   const [query, setQuery] = useState("");
 
@@ -274,35 +288,37 @@ export function ScopePicker({
 
   return (
     <div className="min-w-0 space-y-4">
-      <div className="grid min-w-0 gap-2 sm:grid-cols-3">
-        {REPORT_SCOPE_TYPES.map((type) => {
-          const Icon = SCOPE_ICON[type];
-          const active = value.scopeType === type;
-          return (
-            <button
-              key={type}
-              type="button"
-              onClick={() => onChange({ ...value, scopeType: type })}
-              className={cn(
-                "flex min-w-0 flex-col gap-1 rounded-lg border p-3 text-left transition-colors",
-                active
-                  ? "border-primary bg-primary/5"
-                  : "hover:border-border hover:bg-accent/40",
-              )}
-            >
-              <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
-                <Icon className="size-4 shrink-0 text-muted-foreground" />
-                <span className="truncate">
-                  {REPORT_SCOPE_TYPE_LABEL[type]}
+      {treeOnly ? null : (
+        <div className="grid min-w-0 gap-2 sm:grid-cols-3">
+          {REPORT_SCOPE_TYPES.map((type) => {
+            const Icon = SCOPE_ICON[type];
+            const active = value.scopeType === type;
+            return (
+              <button
+                key={type}
+                type="button"
+                onClick={() => onChange({ ...value, scopeType: type })}
+                className={cn(
+                  "flex min-w-0 flex-col gap-1 rounded-lg border p-3 text-left transition-colors",
+                  active
+                    ? "border-primary bg-primary/5"
+                    : "hover:border-border hover:bg-accent/40",
+                )}
+              >
+                <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+                  <Icon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">
+                    {REPORT_SCOPE_TYPE_LABEL[type]}
+                  </span>
                 </span>
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {REPORT_SCOPE_TYPE_HINT[type]}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+                <span className="text-xs text-muted-foreground">
+                  {REPORT_SCOPE_TYPE_HINT[type]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {value.scopeType === "by_level" ? (
         <div className="min-w-0 space-y-2">
@@ -346,7 +362,7 @@ export function ScopePicker({
       {value.scopeType === "by_department" ? (
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <Label>Các đơn vị áp dụng</Label>
+            <Label>{labels?.departments ?? "Các đơn vị áp dụng"}</Label>
             <div className="flex items-center gap-1">
               <span className="text-xs text-muted-foreground">
                 Đã chọn {value.departmentIds.length}
@@ -401,11 +417,11 @@ export function ScopePicker({
           <div className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5">
             <div className="min-w-0 space-y-0.5">
               <Label htmlFor="scope-descendants" className="text-sm">
-                Cấp dưới dùng theo đơn vị cha
+                {labels?.descendants ?? "Cấp dưới dùng theo đơn vị cha"}
               </Label>
               <p className="text-xs text-muted-foreground">
-                Tick một Phòng là mọi Đội trong Phòng đó dùng chung mẫu này. Tắt
-                khi muốn mẫu chỉ áp đúng đơn vị đã chọn.
+                {labels?.descendantsHint ??
+                  "Tick một Phòng là mọi Đội trong Phòng đó dùng chung mẫu này. Tắt khi muốn mẫu chỉ áp đúng đơn vị đã chọn."}
               </p>
             </div>
             <Switch
@@ -420,11 +436,13 @@ export function ScopePicker({
         </div>
       ) : null}
 
-      <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-        Một đơn vị khớp nhiều mẫu thì lấy mẫu hẹp nhất: đơn vị chỉ định &gt;
-        theo cấp &gt; toàn hệ thống. Nhờ vậy một năm vẫn có mẫu chung cho cả
-        ngành và vài mẫu riêng cho đơn vị đặc thù.
-      </p>
+      {treeOnly ? null : (
+        <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+          Một đơn vị khớp nhiều mẫu thì lấy mẫu hẹp nhất: đơn vị chỉ định &gt;
+          theo cấp &gt; toàn hệ thống. Nhờ vậy một năm vẫn có mẫu chung cho cả
+          ngành và vài mẫu riêng cho đơn vị đặc thù.
+        </p>
+      )}
     </div>
   );
 }

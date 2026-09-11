@@ -567,3 +567,52 @@ export type TeamReportCriteriaData = {
   /** Các tháng đội đã chấm - để ô chọn tháng đánh dấu. */
   months?: string[];
 };
+
+// ------------------------- phụ lục điểm cộng / điểm trừ / điều chỉnh xếp loại
+
+export type TeamReportAdjustmentSection = "BONUS" | "PENALTY" | "RANKING";
+
+/** Một mục của danh mục soi chiếu (nửa trái bảng) - quản trị khai sẵn. */
+export type TeamReportAdjustmentItem = {
+  _id: string;
+  code: string;
+  section: TeamReportAdjustmentSection;
+  name: string;
+  rule: string;
+  maxScore: number | null;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+/** Một dòng đội điền (nửa phải bảng), trỏ về một mục của danh mục. */
+export type TeamReportAdjustmentEntry = {
+  _id: string;
+  itemId: string;
+  section: TeamReportAdjustmentSection;
+  itemCode: string;
+  itemName: string;
+  itemMaxScore: number | null;
+  /** Theo khoá cột của mẫu phần đó; ô tích lưu "1". */
+  fieldValues: Record<string, string | number>;
+};
+
+export type TeamReportAdjustmentSheet = {
+  _id: string | null;
+  periodMonth: string;
+  entries: TeamReportAdjustmentEntry[];
+  version: number;
+  edits: TeamReportEdit[];
+  updatedAt: string | null;
+  saved: boolean;
+};
+
+export type TeamReportAdjustmentData = {
+  sheet: TeamReportAdjustmentSheet;
+  /** Mẫu bảng của từng phần - null = quản trị chưa dựng form cho phần đó. */
+  templates: Record<TeamReportAdjustmentSection, TeamReportTemplate | null>;
+  /** Khoá cột điểm của từng phần, server quyết - để bày tổng dưới đúng cột. */
+  scoreColumnKeys: Record<TeamReportAdjustmentSection, string | null>;
+  totals: { bonus: number; penalty: number; net: number };
+  catalog?: TeamReportAdjustmentItem[];
+  months?: string[];
+};

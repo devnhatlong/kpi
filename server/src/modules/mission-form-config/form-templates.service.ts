@@ -88,6 +88,10 @@ export class FormTemplatesService {
     const axisIds = await this.resolveAxisIds(dto.axisIds ?? [], null);
     const forCriteria = dto.forCriteria ?? false;
     if (forCriteria) await this.ensureSingleCriteriaTemplate(null);
+    const forAdjustment = dto.forAdjustment ?? null;
+    if (forAdjustment) {
+      await this.ensureSingleAdjustmentTemplate(forAdjustment, null);
+    }
 
     const data = await this.formTemplateModel.create({
       code,
@@ -98,6 +102,7 @@ export class FormTemplatesService {
       footer,
       axisIds,
       forCriteria,
+      forAdjustment,
       sortOrder: dto.sortOrder ?? 0,
       isActive: dto.isActive ?? true,
     });
@@ -153,6 +158,17 @@ export class FormTemplatesService {
       .findOne({ forCriteria: true, isActive: true })
       .populate(AXIS_POPULATE);
     // Chưa gán mẫu nào -> client hiện bảng tiêu chí với bộ cột mặc định.
+    return { data };
+  }
+
+  /** Mẫu đang áp dụng cho một phần của phụ lục điểm cộng / trừ / xếp loại. */
+  async findForAdjustment(section: string) {
+    const known = ['BONUS', 'PENALTY', 'RANKING'] as const;
+    const picked = known.find((value) => value === section);
+    if (!picked) throw new NotFoundException('Phần của bảng không hợp lệ.');
+    const data = await this.formTemplateModel
+      .findOne({ forAdjustment: picked, isActive: true })
+      .populate(AXIS_POPULATE);
     return { data };
   }
 
@@ -225,6 +241,15 @@ export class FormTemplatesService {
         await this.ensureSingleCriteriaTemplate(item.id as string);
       }
       item.forCriteria = dto.forCriteria;
+    }
+    if (dto.forAdjustment !== undefined) {
+      if (dto.forAdjustment) {
+        await this.ensureSingleAdjustmentTemplate(
+          dto.forAdjustment,
+          item.id as string,
+        );
+      }
+      item.forAdjustment = dto.forAdjustment;
     }
 
     await item.save();
@@ -323,6 +348,26 @@ export class FormTemplatesService {
    * Bảng tiêu chí chỉ có MỘT, nên cũng chỉ được đúng một mẫu đang hoạt động
    * nhận vai đó - hai mẫu cùng nhận thì không biết in bảng theo mẫu nào.
    */
+  /** Mỗi phần phụ lục chỉ một mẫu đang hoạt động - cùng luật với bảng tiêu chí. */
+  private async ensureSingleAdjustmentTemplate(
+    section: 'BONUS' | 'PENALTY' | 'RANKING',
+    excludeId: string | null,
+  ) {
+    const filter: Record<string, unknown> = {
+      forAdjustment: section,
+      isActive: true,
+    };
+    if (excludeId) filter._id = { $ne: new Types.ObjectId(excludeId) };
+    const existing = await this.formTemplateModel
+      .findOne(filter)
+      .select('name');
+    if (existing) {
+      throw new BadRequestException(
+        `Phần này đã có mẫu "${existing.name}" đang hoạt động. Ngừng mẫu đó trước khi gán mẫu mới.`,
+      );
+    }
+  }
+
   private async ensureSingleCriteriaTemplate(excludeId: string | null) {
     const filter: Record<string, unknown> = {
       forCriteria: true,
@@ -473,7 +518,8 @@ export class FormTemplatesService {
         .filter(
           (column) =>
             column.semanticKey === 'score_group' ||
-            column.semanticKey === 'criterion_max_score',
+            column.semanticKey === 'criterion_max_score' ||
+            column.semanticKey === 'adjustment_max_score',
         )
         .map((column) => column.key),
     );

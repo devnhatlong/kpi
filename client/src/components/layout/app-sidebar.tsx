@@ -5,10 +5,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
+import useSWR from "swr";
 
 import { NAV_ITEMS, SIDEBAR_BRAND, type NavItem } from "@/constants/navigation";
 import { useAuth } from "@/features/auth/auth-provider";
 import { userHasAnyPermission, userHasAnyRole } from "@/features/auth/types";
+import { fetchTeamReportAdjustmentAccess } from "@/features/team-report/api";
 import {
   Collapsible,
   CollapsibleContent,
@@ -185,6 +187,18 @@ function NavGroup({ item, allHrefs }: { item: NavItem; allHrefs: string[] }) {
 export function AppSidebar() {
   const { user } = useAuth();
 
+  /*
+    Cổng động: mục nào có `gate` thì server quyết theo luật quản trị đặt (vai
+    trò / tài khoản / đơn vị). Hỏi một lượt khi đã đăng nhập; chưa có trả lời
+    thì ẩn - hiện rồi bấm vào 403 tệ hơn là hiện muộn một nhịp.
+  */
+  const adjustmentGate = useSWR(
+    user ? ["team-report", "adjustment-access", user.id] : null,
+    () => fetchTeamReportAdjustmentAccess(),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+  const adjustmentAllowed = adjustmentGate.data?.allowed === true;
+
   // Lọc cả mục con: nhóm chỉ còn lại những trang user thật sự vào được, và
   // nhóm rỗng thì ẩn luôn thay vì bung ra một danh sách trống.
   const visibleItems = useMemo(() => {
@@ -209,13 +223,15 @@ export function AppSidebar() {
             userHasAnyPermission(user, child.permissions)) &&
           // `roles` là điều kiện CỘNG THÊM, không thay quyền: có quyền rồi vẫn
           // phải đúng vai trò mới hiện.
-          (!child.roles?.length || userHasAnyRole(user, child.roles)),
+          (!child.roles?.length || userHasAnyRole(user, child.roles)) &&
+          (!child.gate ||
+            (child.gate === "adjustment-access" && adjustmentAllowed)),
       );
       if (children.length) items.push({ ...item, children });
     }
 
     return items;
-  }, [user]);
+  }, [user, adjustmentAllowed]);
 
   const allHrefs = useMemo(() => collectNavHrefs(visibleItems), [visibleItems]);
 

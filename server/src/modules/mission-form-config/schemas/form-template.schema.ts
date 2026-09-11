@@ -48,6 +48,14 @@ export const FORM_COLUMN_SEMANTICS = [
   'criterion_note',
   /** Điểm tối đa admin khai sẵn ở tiêu chí đang chọn - không ai gõ tay. */
   'criterion_max_score',
+  /*
+    Ba cột nửa trái của phụ lục điểm cộng / trừ / xếp loại - chép từ danh mục
+    `mission_adjustment_items`, đơn vị chỉ đọc: nội dung, điều kiện & mức điểm,
+    và tối đa (chỉ phần Điểm cộng có).
+  */
+  'adjustment_name',
+  'adjustment_rule',
+  'adjustment_max_score',
 ] as const;
 
 export type FormColumnSemantic = (typeof FORM_COLUMN_SEMANTICS)[number];
@@ -294,6 +302,19 @@ export class FormTemplate {
    */
   @Prop({ default: false, index: true })
   forCriteria!: boolean;
+
+  /**
+   * Mẫu này là bộ cột của MỘT PHẦN trong phụ lục điểm cộng / trừ / xếp loại
+   * (BONUS = I, PENALTY = II, RANKING = III); null = không phải. Mỗi phần chỉ
+   * một mẫu đang hoạt động, cùng luật với `forCriteria`.
+   */
+  @Prop({
+    type: String,
+    enum: ['BONUS', 'PENALTY', 'RANKING'],
+    default: null,
+    index: true,
+  })
+  forAdjustment!: 'BONUS' | 'PENALTY' | 'RANKING' | null;
 
   @Prop({ default: 0, min: 0 })
   sortOrder!: number;

@@ -57,6 +57,9 @@ const PRESET_ICON: Record<string, LucideIcon> = {
   criterion_note: StickyNote,
   stt: ListOrdered,
   criterion_max_score: Hash,
+  adjustment_name: StickyNote,
+  adjustment_rule: StickyNote,
+  adjustment_max_score: Hash,
 };
 
 /** Thứ tự kéo thả trong danh sách - đánh số 01, 02… như trên bảng. */

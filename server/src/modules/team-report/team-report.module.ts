@@ -60,6 +60,21 @@ import { TeamReportUnitSummaryController } from './team-report-unit-summary.cont
 import { TeamReportCriteriaController } from './team-report-criteria.controller';
 import { TeamReportService } from './team-report.service';
 import { TeamReportCriteriaService } from './team-report-criteria.service';
+import { TeamReportAdjustmentController } from './team-report-adjustment.controller';
+import { TeamReportAdjustmentService } from './team-report-adjustment.service';
+import { TeamReportAdjustmentAccessService } from './team-report-adjustment-access.service';
+import {
+  TeamReportAdjustmentAccess,
+  TeamReportAdjustmentAccessSchema,
+} from './schemas/team-report-adjustment-access.schema';
+import {
+  TeamReportAdjustmentSheet,
+  TeamReportAdjustmentSheetSchema,
+} from './schemas/team-report-adjustment-sheet.schema';
+import {
+  AdjustmentItem,
+  AdjustmentItemSchema,
+} from '../mission-form-config/schemas/adjustment-item.schema';
 
 /**
  * Báo cáo ngày cấp đội - bản nghiệp vụ mới, tách hẳn khỏi `personal-mission`.
@@ -88,6 +103,15 @@ import { TeamReportCriteriaService } from './team-report-criteria.service';
       { name: WorkTask.name, schema: WorkTaskSchema },
       { name: QualityLevel.name, schema: QualityLevelSchema },
       { name: Criterion.name, schema: CriterionSchema },
+      { name: AdjustmentItem.name, schema: AdjustmentItemSchema },
+      {
+        name: TeamReportAdjustmentSheet.name,
+        schema: TeamReportAdjustmentSheetSchema,
+      },
+      {
+        name: TeamReportAdjustmentAccess.name,
+        schema: TeamReportAdjustmentAccessSchema,
+      },
       { name: FormTemplate.name, schema: FormTemplateSchema },
     ]),
     forwardRef(() => AuthsModule),
@@ -100,8 +124,14 @@ import { TeamReportCriteriaService } from './team-report-criteria.service';
     TeamReportController,
     TeamReportUnitSummaryController,
     TeamReportCriteriaController,
+    TeamReportAdjustmentController,
   ],
-  providers: [TeamReportService, TeamReportCriteriaService],
+  providers: [
+    TeamReportService,
+    TeamReportCriteriaService,
+    TeamReportAdjustmentService,
+    TeamReportAdjustmentAccessService,
+  ],
   exports: [TeamReportService],
 })
 export class TeamReportModule {}

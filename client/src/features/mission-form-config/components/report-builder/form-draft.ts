@@ -88,7 +88,8 @@ export function sanitizeDraft(draft: FormDraft): FormDraft {
       .filter(
         (column) =>
           column.semanticKey === "score_group" ||
-          column.semanticKey === "criterion_max_score",
+          column.semanticKey === "criterion_max_score" ||
+          column.semanticKey === "adjustment_max_score",
       )
       .map((column) => column.key),
   );

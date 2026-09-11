@@ -90,6 +90,73 @@ export type CriterionInput = {
   isActive?: boolean;
 };
 
+// ------------------------------- điểm cộng / điểm trừ / điều chỉnh xếp loại
+
+/**
+ * Ba phần của "Bảng đề xuất điểm cộng, điểm trừ và điều chỉnh, khống chế mức
+ * xếp loại". BONUS = I, PENALTY = II, RANKING = III.
+ */
+export const ADJUSTMENT_SECTIONS = ["BONUS", "PENALTY", "RANKING"] as const;
+export type AdjustmentSection = (typeof ADJUSTMENT_SECTIONS)[number];
+
+/** Nhãn từng phần và tên hai cột chữ - khác nhau theo phần, đúng như mẫu giấy. */
+export const ADJUSTMENT_SECTION_META: Record<
+  AdjustmentSection,
+  { numeral: string; title: string; nameLabel: string; ruleLabel: string }
+> = {
+  BONUS: {
+    numeral: "I",
+    title: "Điểm cộng",
+    nameLabel: "Nội dung cộng điểm",
+    ruleLabel: "Điều kiện, mức điểm",
+  },
+  PENALTY: {
+    numeral: "II",
+    title: "Điểm trừ",
+    nameLabel: "Nội dung, điều kiện trừ điểm",
+    ruleLabel: "Mức điểm trừ",
+  },
+  RANKING: {
+    numeral: "III",
+    title: "Điều chỉnh, khống chế mức xếp loại",
+    nameLabel: "Mức xử lý",
+    ruleLabel: "Trường hợp áp dụng",
+  },
+};
+
+/**
+ * Một dòng "nội dung để soi chiếu" - nửa trái của bảng, quản trị khai sẵn.
+ * Nửa phải (kết quả cụ thể, điểm đề xuất) là phần đơn vị điền theo tháng, không
+ * nằm ở đây.
+ */
+export type AdjustmentItem = {
+  _id: string;
+  id?: string;
+  code: string;
+  section: AdjustmentSection;
+  name: string;
+  rule: string;
+  /** "Tối đa" - chỉ phần Điểm cộng có; hai phần kia null. */
+  maxScore: number | null;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+export type AdjustmentItemInput = {
+  section: AdjustmentSection;
+  name: string;
+  rule?: string;
+  maxScore?: number | null;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+export type AdjustmentSummary = {
+  counts: Record<AdjustmentSection, number>;
+  /** Dòng "TỔNG ĐIỂM CỘNG TỐI ĐA" - mẫu giấy ghi 10 điểm. */
+  bonusMaxTotal: number;
+};
+
 /** Dòng "Tổng điểm" cuối bảng - tính trên mọi tiêu chí đang hoạt động. */
 export type CriteriaSummary = {
   activeCount: number;
@@ -233,6 +300,13 @@ export const FORM_COLUMN_SEMANTICS = [
   "criterion_note",
   /** Điểm tối đa admin khai sẵn ở tiêu chí đang chọn - không ai gõ tay. */
   "criterion_max_score",
+  /*
+    Ba cột nửa trái của phụ lục điểm cộng / trừ / xếp loại - chép từ danh mục
+    Điểm cộng, trừ & xếp loại, đơn vị chỉ đọc.
+  */
+  "adjustment_name",
+  "adjustment_rule",
+  "adjustment_max_score",
 ] as const;
 
 export type FormColumnSemantic = (typeof FORM_COLUMN_SEMANTICS)[number];
@@ -248,6 +322,9 @@ export const FORM_COLUMN_SEMANTIC_LABEL: Record<FormColumnSemantic, string> = {
   criterion: "Tiêu chí (chọn từ danh mục)",
   criterion_note: "Ghi chú (tiêu chí)",
   criterion_max_score: "Điểm tối đa (tiêu chí)",
+  adjustment_name: "Nội dung (điểm cộng / trừ / xếp loại)",
+  adjustment_rule: "Điều kiện, mức điểm (điểm cộng / trừ / xếp loại)",
+  adjustment_max_score: "Tối đa (điểm cộng)",
 };
 
 /**
@@ -257,6 +334,8 @@ export const FORM_COLUMN_SEMANTIC_LABEL: Record<FormColumnSemantic, string> = {
 export const CONTENT_TEXT_SEMANTICS: FormColumnSemantic[] = [
   "work_content_note",
   "criterion_note",
+  "adjustment_name",
+  "adjustment_rule",
 ];
 
 export function isContentTextSemantic(semanticKey: FormColumnSemantic) {
@@ -316,7 +395,7 @@ export const SEMANTIC_KIND_HINT: Record<SemanticKind, string> = {
   free: "Giá trị chỉ hiển thị lại trên báo cáo, không dùng để chấm hay thống kê.",
   catalog: "Người nhập chọn trong danh mục, không gõ được giá trị lạ.",
   content:
-    "Chữ khai một lần ở danh mục (Nội dung công việc / Tiêu chí) rồi in ra mọi bảng; người nhập chỉ đọc, không gõ lại.",
+    "Chữ khai một lần ở danh mục (Nội dung công việc / Tiêu chí / Điểm cộng, trừ) rồi in ra mọi bảng; người nhập chỉ đọc, không gõ lại.",
   system: "Người nhập tự gõ, giá trị vào đúng trường để chấm và tổng hợp.",
   auto: "Không cần nhập.",
 };
@@ -326,7 +405,11 @@ export const SEMANTIC_KIND_HINT: Record<SemanticKind, string> = {
   "Admin khai sẵn": cùng là giá trị lấy từ danh mục, nhưng nó là SỐ - phải giữ
   kiểu số thì dòng Tổng điểm cuối bảng mới cộng được.
 */
-const AUTO_SEMANTICS: FormColumnSemantic[] = ["stt", "criterion_max_score"];
+const AUTO_SEMANTICS: FormColumnSemantic[] = [
+  "stt",
+  "criterion_max_score",
+  "adjustment_max_score",
+];
 
 export function kindOfSemantic(semanticKey: FormColumnSemantic): SemanticKind {
   if (semanticKey === "custom") return "free";
@@ -369,6 +452,9 @@ export const SEMANTIC_DATA_TYPE: Partial<
   criterion: "select",
   criterion_note: "text",
   criterion_max_score: "number",
+  adjustment_name: "text",
+  adjustment_rule: "text",
+  adjustment_max_score: "number",
 };
 
 const INPUT_DATA_TYPES: FormColumnDataType[] = [
@@ -390,7 +476,12 @@ export function allowedDataTypes(
 ): FormColumnDataType[] {
   if (semanticKey === "stt") return ["auto_increment"];
   // Điểm tối đa chép từ tiêu chí - đổi sang kiểu khác là dòng Tổng điểm hết cộng.
-  if (semanticKey === "criterion_max_score") return ["number"];
+  if (
+    semanticKey === "criterion_max_score" ||
+    semanticKey === "adjustment_max_score"
+  ) {
+    return ["number"];
+  }
   // Nhiệm vụ / Ghi chú là đoạn chữ admin đã khai - không có kiểu nào khác.
   if (isContentTextSemantic(semanticKey)) return ["text"];
   // Đổi cột danh mục sang ô nhập tay là mất ràng buộc với danh mục, người nhập
@@ -466,7 +557,8 @@ export function rangeSourceColumns(
   return columns.filter(
     (column) =>
       column.semanticKey === "score_group" ||
-      column.semanticKey === "criterion_max_score",
+      column.semanticKey === "criterion_max_score" ||
+      column.semanticKey === "adjustment_max_score",
   );
 }
 
@@ -665,6 +757,10 @@ export type FormTemplate = {
   axisIds: Array<AxisRef | string>;
   /** Mẫu này là bộ cột của bảng tiêu chí chung - chỉ một mẫu được nhận vai. */
   forCriteria?: boolean;
+  /** Mẫu này là bộ cột của một phần phụ lục điểm cộng / trừ / xếp loại. */
+  forAdjustment?: AdjustmentSection | null;
+  /** Tăng mỗi lần sửa cột - bản chụp đóng dấu số này. */
+  version?: number;
   sortOrder: number;
   isActive: boolean;
 };
@@ -678,6 +774,7 @@ export type FormTemplateInput = {
   footer?: FormTemplateFooter;
   axisIds: string[];
   forCriteria?: boolean;
+  forAdjustment?: AdjustmentSection | null;
   sortOrder?: number;
   isActive?: boolean;
 };
@@ -686,6 +783,109 @@ export function localId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
+}
+
+/**
+ * Bộ cột mặc định cho một phần của phụ lục điểm cộng / trừ / xếp loại - đúng
+ * mẫu giấy, để quản trị có sẵn form mà chỉ cần chỉnh chứ không dựng từ trống.
+ *
+ * Nửa trái là ba cột chép từ danh mục (ánh xạ `adjustment_*`), nửa phải là các
+ * cột tự do đơn vị điền. Cột điểm cộng khai dải theo cột Tối đa để server chặn
+ * vượt trần theo mục.
+ */
+export function createDefaultAdjustmentDraft(section: AdjustmentSection): {
+  columns: FormTemplateColumn[];
+  headerGroups: FormHeaderGroup[];
+  footer: FormTemplateFooter;
+} {
+  const LEFT = "grp-adj-left";
+  const RIGHT = "grp-adj-right";
+  const make = (
+    semanticKey: FormColumnSemantic,
+    key: string,
+    title: string,
+    width: number,
+    headerPath: string[],
+    dataType: FormColumnDataType = SEMANTIC_DATA_TYPE[semanticKey] ?? "text",
+    rangeFromColumnKey: string | null = null,
+  ): FormTemplateColumn => ({
+    id: localId("col"),
+    key,
+    title,
+    headerPath,
+    width,
+    visible: true,
+    dataType,
+    semanticKey,
+    required: false,
+    rangeFromColumnKey,
+    autoValue: null,
+  });
+
+  const meta = ADJUSTMENT_SECTION_META[section];
+  const left = [
+    make("stt", "stt", "STT", 60, [LEFT], "auto_increment"),
+    make("adjustment_name", "adjustment_name", meta.nameLabel, 220, [LEFT]),
+    make("adjustment_rule", "adjustment_rule", meta.ruleLabel, 340, [LEFT]),
+    ...(section === "BONUS"
+      ? [
+          make(
+            "adjustment_max_score",
+            "adjustment_max_score",
+            "Tối đa",
+            100,
+            [LEFT],
+            "number",
+          ),
+        ]
+      : []),
+  ];
+
+  const right =
+    section === "BONUS"
+      ? [
+          make("custom", "result", "Kết quả, thành tích cụ thể", 320, [RIGHT]),
+          make(
+            "custom",
+            "proposed_score",
+            "Điểm cộng đề xuất",
+            130,
+            [RIGHT],
+            "number",
+            "adjustment_max_score",
+          ),
+        ]
+      : section === "PENALTY"
+        ? [
+            make("custom", "target", "Đối với tập thể", 160, [RIGHT]),
+            make("custom", "issue", "Tồn tại, hạn chế, vi phạm cụ thể", 320, [
+              RIGHT,
+            ]),
+            make(
+              "custom",
+              "proposed_score",
+              "Điểm đề xuất trừ",
+              130,
+              [RIGHT],
+              "number",
+            ),
+          ]
+        : [
+            make("custom", "target", "Đối với tập thể", 160, [RIGHT]),
+            make("custom", "detail", "Nội dung, tình tiết cụ thể", 320, [
+              RIGHT,
+            ]),
+            make("custom", "note", "Ghi chú", 180, [RIGHT]),
+          ];
+
+  return {
+    footer: EMPTY_FORM_TEMPLATE_FOOTER,
+    headerGroups: [
+      { id: LEFT, name: "Nội dung để soi chiếu", children: [] },
+      { id: RIGHT, name: "Nội dung theo dõi, thẩm định", children: [] },
+    ],
+    columns: [...left, ...right],
+  };
 }
 
 /** Bộ cột mặc định - đúng bảng đang dùng ở form nhập nhiệm vụ. */
@@ -936,6 +1136,24 @@ export const FIELD_PRESET_GROUPS: Array<{
         dataType: "text",
         width: 180,
       },
+      {
+        id: "adjustment_name",
+        label: "Nội dung (điểm cộng / trừ / xếp loại)",
+        hint: "Chữ admin khai ở danh mục Điểm cộng, trừ & xếp loại",
+        title: "Nội dung",
+        semanticKey: "adjustment_name",
+        dataType: "text",
+        width: 220,
+      },
+      {
+        id: "adjustment_rule",
+        label: "Điều kiện, mức điểm",
+        hint: "Đoạn điều kiện / mức điểm admin khai ở danh mục",
+        title: "Điều kiện, mức điểm",
+        semanticKey: "adjustment_rule",
+        dataType: "text",
+        width: 320,
+      },
     ],
   },
   {
@@ -958,6 +1176,15 @@ export const FIELD_PRESET_GROUPS: Array<{
         semanticKey: "criterion_max_score",
         dataType: "number",
         width: 110,
+      },
+      {
+        id: "adjustment_max_score",
+        label: "Tối đa (điểm cộng)",
+        hint: "Trần điểm của mục, lấy từ danh mục Điểm cộng",
+        title: "Tối đa",
+        semanticKey: "adjustment_max_score",
+        dataType: "number",
+        width: 100,
       },
     ],
   },

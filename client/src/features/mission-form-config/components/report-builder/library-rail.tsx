@@ -184,7 +184,7 @@ export function LibraryRail({
                           : "Chưa ghép vào mẫu này"
                       }
                     >
-                      {order ?? "–"}
+                      {order ?? "-"}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">

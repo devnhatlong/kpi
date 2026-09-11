@@ -8,6 +8,7 @@ import {
   IsMongoId,
   IsOptional,
   IsString,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import {
@@ -178,6 +179,18 @@ export class CreateFormTemplateDto {
     example: false,
   })
   forCriteria?: boolean;
+
+  @ApiPropertyOptional({
+    enum: ['BONUS', 'PENALTY', 'RANKING'],
+    nullable: true,
+    description: 'Mẫu dùng cho phần nào của bảng điểm cộng / trừ / xếp loại',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsIn(['BONUS', 'PENALTY', 'RANKING'], {
+    message: 'Phần của bảng không hợp lệ.',
+  })
+  forAdjustment?: 'BONUS' | 'PENALTY' | 'RANKING' | null;
 
   @NumberNotRequired('Thứ tự hiển thị', { example: 0 })
   sortOrder?: number;

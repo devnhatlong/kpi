@@ -500,3 +500,79 @@ export class SaveTeamReportCriteriaDto {
   @Type(() => TeamReportCriterionPatchDto)
   rows!: TeamReportCriterionPatchDto[];
 }
+
+// ============================= phụ lục điểm cộng / điểm trừ / xếp loại
+
+export class TeamReportAdjustmentQueryDto {
+  @ApiPropertyOptional({
+    description: 'Tháng YYYY-MM, mặc định tháng hiện tại',
+  })
+  @IsOptional()
+  @IsString()
+  periodMonth?: string;
+}
+
+/** Thêm một dòng kết quả dưới một mục của danh mục. */
+export class AddTeamReportAdjustmentEntryDto {
+  @ApiProperty({ description: 'Số bản đang cầm; lệch thì 409' })
+  @IsInt()
+  @Min(0)
+  version!: number;
+
+  @ApiProperty({ description: 'Mục trong danh mục điểm cộng / trừ / xếp loại' })
+  @IsMongoId()
+  itemId!: string;
+
+  @ApiPropertyOptional({
+    description: 'Giá trị theo khoá cột của mẫu phần đó: { "<khoá cột>": ... }',
+  })
+  @IsOptional()
+  @IsObject()
+  fieldValues?: Record<string, string | number>;
+}
+
+/** Sửa một dòng đã có - chỉ gửi ô đổi. Không đổi được mục của dòng. */
+export class UpdateTeamReportAdjustmentEntryDto {
+  @ApiProperty({ description: 'Số bản đang cầm; lệch thì 409' })
+  @IsInt()
+  @Min(0)
+  version!: number;
+
+  @ApiPropertyOptional({
+    description: 'Ô đổi, theo khoá cột; chuỗi rỗng = xoá ô',
+  })
+  @IsOptional()
+  @IsObject()
+  fieldValues?: Record<string, string | number>;
+}
+
+/** Quản trị đặt ai được nhập bảng điểm cộng / trừ / xếp loại. */
+export class SaveTeamReportAdjustmentAccessDto {
+  @ApiPropertyOptional({ type: [String], description: 'Mã vai trò được nhập' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  roleCodes?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Tài khoản được nhập' })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true })
+  userIds?: string[];
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Đơn vị / khối được nhập',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true })
+  departmentIds?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Đơn vị đã chọn thì cả cấp dưới cũng được',
+  })
+  @IsOptional()
+  @IsBoolean()
+  includeDescendants?: boolean;
+}
