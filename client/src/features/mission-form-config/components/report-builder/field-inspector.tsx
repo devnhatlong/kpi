@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo } from "react";
+import useSWR from "swr";
 import { Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -36,6 +38,7 @@ import {
   type FormHeaderGroup,
   type FormTemplateColumn,
 } from "@/features/mission-form-config/types";
+import { fetchDepartmentLevels } from "@/features/organization/api";
 
 const NO_GROUP = "__none__";
 const NO_RANGE = "__norange__";
@@ -239,6 +242,13 @@ export function FieldInspector({
         ) : null}
       </div>
 
+      {column.dataType === "department" ? (
+        <DepartmentLevelPicker
+          value={column.departmentLevelIds ?? []}
+          onChange={(departmentLevelIds) => onPatch({ departmentLevelIds })}
+        />
+      ) : null}
+
       {/* Cột điểm ăn theo trần của cột nào - phải chỉ đích danh vì mẫu có thể
           có nhiều cột nhóm điểm hoặc nhiều cột điểm tối đa. */}
       {column.dataType === "number" && scoreColumns.length > 0 ? (
@@ -375,6 +385,73 @@ export function FieldInspector({
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Ô chọn đơn vị bày cấp nào: tích Phòng / Đội / Khối... theo danh mục cấp đơn
+ * vị. Không tích cấp nào = bày mọi đơn vị. Người nhập ngoài bảng sẽ sổ chọn
+ * nhiều đơn vị trong đúng các cấp này.
+ */
+function DepartmentLevelPicker({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const { data: levels = [], isLoading } = useSWR(
+    "department-levels-scope",
+    fetchDepartmentLevels,
+    { revalidateOnFocus: false },
+  );
+  const active = levels
+    .filter((level) => level.isActive)
+    .sort((a, b) => a.rank - b.rank);
+
+  return (
+    <div className="space-y-2 rounded-lg border p-3">
+      <Label>Cấp đơn vị được bày ra</Label>
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">Đang tải cấp đơn vị...</p>
+      ) : active.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Chưa khai cấp đơn vị nào - ô sẽ bày mọi đơn vị.
+        </p>
+      ) : (
+        <div className="grid gap-1.5">
+          {active.map((level) => {
+            const checked = value.includes(level._id);
+            return (
+              <label
+                key={level._id}
+                className="flex cursor-pointer items-center gap-2 text-sm"
+              >
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={(next) =>
+                    onChange(
+                      next
+                        ? [...value, level._id]
+                        : value.filter((id) => id !== level._id),
+                    )
+                  }
+                />
+                <span>{level.name}</span>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  {level.code}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+      <p className="text-[11px] text-muted-foreground">
+        {value.length
+          ? `Người nhập chọn được nhiều đơn vị thuộc ${value.length} cấp đã tích.`
+          : "Không tích cấp nào = bày mọi đơn vị đang hoạt động."}
+      </p>
     </div>
   );
 }

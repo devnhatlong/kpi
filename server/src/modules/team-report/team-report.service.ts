@@ -2628,6 +2628,15 @@ export class TeamReportService {
     return summary;
   }
 
+  /**
+   * Bản công khai cho các service khác trong module (bảng điểm cộng / trừ) -
+   * cùng một luật chọn người nhận, không nhân đôi.
+   */
+  async requireSummaryRecipientFor(userId: string, recipientId: string) {
+    const actor = await this.requireActor(userId);
+    return this.requireSummaryRecipient(actor, recipientId);
+  }
+
   /** Người nhận phải là cấp trên có quyền duyệt - không trình ngang, không tự trình. */
   private async requireSummaryRecipient(actor: Actor, recipientId: string) {
     const allowed = await this.summaryRecipients(String(actor.id));

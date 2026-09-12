@@ -132,7 +132,7 @@ export function AdjustmentAccessCard() {
         <div className="space-y-1">
           <h3 className="flex items-center gap-2 text-sm font-semibold">
             <ShieldCheck className="size-4 text-primary" />
-            Ai được nhập bảng này
+            Đối tượng được phân quyền
           </h3>
           <p className="text-xs text-muted-foreground">
             Khớp <strong>một trong ba</strong> là được nhập: giữ vai trò đã

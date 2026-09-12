@@ -576,3 +576,42 @@ export class SaveTeamReportAdjustmentAccessDto {
   @IsBoolean()
   includeDescendants?: boolean;
 }
+
+/** Đội trình bảng điểm cộng / trừ / xếp loại lên một người cấp trên. */
+export class SendTeamReportAdjustmentDto {
+  @ApiProperty({ description: 'Số bản đang cầm; lệch thì 409' })
+  @IsInt()
+  @Min(0)
+  version!: number;
+
+  @ApiProperty({ description: 'Người cấp trên nhận bản' })
+  @IsMongoId()
+  recipientId!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
+export class TeamReportAdjustmentInboxQueryDto {
+  @ApiPropertyOptional({ enum: TEAM_REPORT_DAY_STATUSES })
+  @IsOptional()
+  @IsIn([...TEAM_REPORT_DAY_STATUSES])
+  status?: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+}

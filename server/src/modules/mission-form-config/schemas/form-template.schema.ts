@@ -16,6 +16,11 @@ export const FORM_COLUMN_DATA_TYPES = [
   'boolean',
   /** Chọn từ danh mục có sẵn - nguồn suy ra từ semanticKey. */
   'select',
+  /**
+   * Chọn NHIỀU đơn vị trong cây tổ chức - ô "Đối với tập thể". Cấp nào được
+   * bày ra do `departmentLevelIds` của cột quyết định.
+   */
+  'department',
 ] as const;
 
 export type FormColumnDataType = (typeof FORM_COLUMN_DATA_TYPES)[number];
@@ -213,6 +218,13 @@ export class FormTemplateColumn {
    */
   @Prop({ type: FormColumnAutoValueSchema, default: null })
   autoValue!: FormColumnAutoValue | null;
+
+  /**
+   * Cột kiểu `department`: chỉ bày đơn vị thuộc các CẤP này (Phòng, Đội,
+   * Khối...). Rỗng = mọi cấp. Cột kiểu khác luôn rỗng.
+   */
+  @Prop({ type: [String], default: [] })
+  departmentLevelIds!: string[];
 }
 
 export const FormTemplateColumnSchema =

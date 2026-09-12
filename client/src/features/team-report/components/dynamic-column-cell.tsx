@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DatePickerInput } from "@/components/common/date-picker-input";
+import {
+  MultiSelect,
+  type MultiSelectOption,
+} from "@/components/common/multi-select";
 import { NumberInput } from "@/features/team-report/components/number-input";
 import type {
   TeamReportCatalogItem,
@@ -115,6 +119,19 @@ export function DynamicColumnCell({
     );
   }
 
+  if (column.dataType === "department") {
+    return (
+      <DepartmentCell
+        column={column}
+        value={value}
+        choices={catalogs.department ?? []}
+        disabled={disabled}
+        invalid={invalid}
+        onCommit={onCommit}
+      />
+    );
+  }
+
   if (column.dataType === "boolean") {
     return (
       <Checkbox
@@ -135,6 +152,102 @@ export function DynamicColumnCell({
       disabled={disabled}
       invalid={invalid}
       onCommit={onCommit}
+    />
+  );
+}
+
+/** Giá trị ô chọn đơn vị: chuỗi id cách nhau bằng dấu phẩy. */
+export function splitDepartmentIds(value: string): string[] {
+  return value
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Dựng cây cha - con từ danh sách phẳng server gửi, bày theo thứ tự duyệt sâu.
+ *
+ * Chỉ dòng thuộc cấp cột cho phép mới tích được; cha ngoài cấp giữ lại làm
+ * tiêu đề nhánh. Nhánh không có dòng nào tích được thì bỏ hẳn. Tích cha
+ * KHÔNG kéo theo con - mỗi dòng một lựa chọn.
+ */
+export function departmentTreeOptions(
+  choices: TeamReportCatalogItem[],
+  levelIds: string[],
+): MultiSelectOption[] {
+  const selectable = (item: TeamReportCatalogItem) =>
+    !levelIds.length || levelIds.includes(item.levelId ?? "");
+  const ids = new Set(choices.map((item) => item._id));
+  const children = new Map<string, TeamReportCatalogItem[]>();
+  for (const item of choices) {
+    // Cha không nằm trong danh sách thì coi như gốc, không rơi mất.
+    const parent = item.parentId && ids.has(item.parentId) ? item.parentId : "";
+    children.set(parent, [...(children.get(parent) ?? []), item]);
+  }
+  const bySort = (a: TeamReportCatalogItem, b: TeamReportCatalogItem) =>
+    (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name);
+
+  const out: MultiSelectOption[] = [];
+  const walk = (parent: string, depth: number, trail: string[]): boolean => {
+    let any = false;
+    for (const item of [...(children.get(parent) ?? [])].sort(bySort)) {
+      const mark = out.length;
+      const own = selectable(item);
+      out.push({
+        value: item._id,
+        label: item.code ? `${item.code} - ${item.name}` : item.name,
+        // Gõ tên nhánh cha vẫn tìm ra con.
+        keywords: trail.join(" "),
+        depth,
+        selectable: own,
+      });
+      const below = walk(item._id, depth + 1, [...trail, item.name]);
+      if (!own && !below) out.splice(mark, 1);
+      any = any || own || below;
+    }
+    return any;
+  };
+  walk("", 0, []);
+  return out;
+}
+
+/**
+ * Ô chọn nhiều đơn vị ("Đối với tập thể"). Danh sách là đơn vị server gửi
+ * kèm bảng, bày dạng cây, lọc theo cấp cột đã khai; tích trong sổ rồi ĐÓNG sổ
+ * mới lưu, để chọn năm đơn vị không thành năm lượt ghi.
+ */
+function DepartmentCell({
+  column,
+  value,
+  choices,
+  disabled,
+  invalid,
+  onCommit,
+}: Omit<DynamicColumnCellProps, "catalogs"> & {
+  choices: TeamReportCatalogItem[];
+}) {
+  const [draft, setDraft] = useState<string[]>(() => splitDepartmentIds(value));
+  const options = useMemo(
+    () => departmentTreeOptions(choices, column.departmentLevelIds ?? []),
+    [choices, column.departmentLevelIds],
+  );
+
+  return (
+    <MultiSelect
+      value={draft}
+      options={options}
+      disabled={disabled}
+      invalid={invalid}
+      placeholder={column.title}
+      searchPlaceholder="Tìm đơn vị..."
+      emptyText="Không có đơn vị nào."
+      triggerClassName={cn(invalid && INVALID_CLASS)}
+      onValueChange={setDraft}
+      onClose={(next) => {
+        const joined = next.join(",");
+        if (!invalid && joined === splitDepartmentIds(value).join(",")) return;
+        onCommit(joined);
+      }}
     />
   );
 }

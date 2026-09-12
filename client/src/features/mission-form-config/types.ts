@@ -256,6 +256,8 @@ export const FORM_COLUMN_DATA_TYPES = [
   "auto_increment",
   "boolean",
   "select",
+  /** Chọn NHIỀU đơn vị trong cây tổ chức - ô "Đối với tập thể". */
+  "department",
 ] as const;
 
 export type FormColumnDataType = (typeof FORM_COLUMN_DATA_TYPES)[number];
@@ -270,6 +272,7 @@ export const FORM_COLUMN_DATA_TYPE_LABEL: Record<FormColumnDataType, string> = {
   auto_increment: "Tự đánh số",
   boolean: "Ô tích",
   select: "Chọn từ danh mục",
+  department: "Chọn đơn vị (nhiều)",
 };
 
 /**
@@ -465,6 +468,7 @@ const INPUT_DATA_TYPES: FormColumnDataType[] = [
   "datetime",
   "boolean",
   "file",
+  "department",
 ];
 
 /**
@@ -535,6 +539,11 @@ export type FormTemplateColumn = {
   rangeFromColumnKey?: string | null;
   /** Cột tự tính; null = người nhập tự gõ. */
   autoValue?: FormColumnAutoValue | null;
+  /**
+   * Cột kiểu `department`: chỉ bày đơn vị thuộc các cấp này (Phòng, Đội,
+   * Khối...). Rỗng = mọi cấp.
+   */
+  departmentLevelIds?: string[];
 };
 
 /** Các cột Nhóm điểm trong mẫu - nguồn giới hạn cho cột điểm. */

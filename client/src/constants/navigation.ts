@@ -120,6 +120,14 @@ export const NAV_ITEMS: NavItem[] = [
         icon: Stamp,
         permissions: [PERM.TEAM_REPORT_REVIEW],
       },
+      {
+        /* Hộp đến riêng của bảng điểm cộng, trừ - đội trình lên như bản tổng
+           hợp, nhưng tháng một bản và không chung collection. */
+        title: "Duyệt điểm cộng, trừ",
+        href: "/team-report/adjustments/incoming",
+        icon: Scale,
+        permissions: [PERM.TEAM_REPORT_REVIEW],
+      },
     ],
   },
   {

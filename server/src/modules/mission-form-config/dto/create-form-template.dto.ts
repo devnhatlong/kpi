@@ -106,6 +106,19 @@ export class FormTemplateColumnDto {
   @ValidateNested()
   @Type(() => FormColumnAutoValueDto)
   autoValue?: FormColumnAutoValueDto | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      'Cột kiểu department: các cấp đơn vị được bày ra; rỗng = mọi cấp',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({
+    each: true,
+    message: 'departmentLevelIds phải là id cấp đơn vị.',
+  })
+  departmentLevelIds?: string[];
 }
 
 export class FormTemplateFooterDto {

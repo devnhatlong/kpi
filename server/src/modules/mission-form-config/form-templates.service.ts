@@ -296,6 +296,8 @@ export class FormTemplatesService {
                 column.autoValue.baseColumnKey,
               ]
             : null,
+          // Đổi cấp đơn vị được bày là đổi bộ lựa chọn của ô - cũng là bản mới.
+          column.departmentLevelIds ?? [],
         ]),
         headerGroups: groups,
         footer: [
@@ -502,6 +504,10 @@ export class FormTemplatesService {
               baseColumnKey: column.autoValue.baseColumnKey.trim(),
             }
           : null,
+        departmentLevelIds:
+          (column.dataType ?? 'text') === 'department'
+            ? [...new Set(column.departmentLevelIds ?? [])]
+            : [],
       };
     });
 

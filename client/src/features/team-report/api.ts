@@ -2,6 +2,7 @@ import type { ApiResponse } from "@/features/auth/types";
 import { api, unwrapData, unwrapPaginated } from "@/lib/api-client";
 import type {
   TeamReportAdjustmentData,
+  TeamReportAdjustmentInboxRow,
   TeamReportAxisScore,
   TeamReportCatalogs,
   TeamReportClassifyBoard,
@@ -81,6 +82,10 @@ export const teamReportKeys = {
   recipients: (level = "TEAM") => ["team-report", "recipients", level] as const,
   adjustments: (periodMonth: string) =>
     ["team-report", "adjustments", periodMonth] as const,
+  adjustmentInbox: (status: string, page: number) =>
+    ["team-report", "adjustment-inbox", status, page] as const,
+  adjustmentIncoming: (id: string) =>
+    ["team-report", "adjustment-incoming", id] as const,
   criteria: (periodMonth: string) =>
     ["team-report", "criteria", periodMonth] as const,
 };
@@ -715,6 +720,73 @@ export function saveTeamReportAdjustmentAccessRule(input: {
   return unwrapData(
     api.put<ApiResponse<TeamReportAdjustmentAccessRule>>(
       "/team-report/adjustments/access/rule",
+      input,
+    ),
+  );
+}
+
+// ------------------------------------------- gửi / duyệt bảng điểm cộng, trừ
+
+export function sendTeamReportAdjustment(
+  periodMonth: string,
+  input: { version: number; recipientId: string; note?: string },
+) {
+  return unwrapData(
+    api.post<ApiResponse<TeamReportAdjustmentData>>(
+      `/team-report/adjustments/${periodMonth}/send`,
+      input,
+    ),
+  );
+}
+
+export function fetchTeamReportAdjustmentInbox(query: {
+  status?: TeamReportDayStatus | "";
+  page?: number;
+  limit?: number;
+}) {
+  return unwrapPaginated(
+    api.get<ApiResponse<TeamReportAdjustmentInboxRow[]>>(
+      "/team-report/adjustments/incoming",
+      {
+        params: {
+          page: query.page ?? 1,
+          limit: query.limit ?? 20,
+          ...(query.status ? { status: query.status } : {}),
+        },
+      },
+    ),
+  );
+}
+
+export function fetchIncomingTeamReportAdjustment(id: string) {
+  return unwrapData(
+    api.get<ApiResponse<TeamReportAdjustmentData>>(
+      `/team-report/adjustments/incoming/${id}`,
+    ),
+  );
+}
+
+export function decideTeamReportAdjustment(
+  id: string,
+  input: { decision: "APPROVE" | "RETURN"; reason?: string },
+) {
+  return unwrapData(
+    api.post<ApiResponse<TeamReportAdjustmentData>>(
+      `/team-report/adjustments/incoming/${id}/decide`,
+      input,
+    ),
+  );
+}
+
+/** Cấp trên chỉnh một ô của bản đang chờ duyệt - ghi thẳng vào bản, có nhật ký. */
+export function reviewTeamReportAdjustmentEntry(
+  id: string,
+  entryId: string,
+  input: { version: number; fieldValues: Record<string, string | number> },
+) {
+  return unwrapData(
+    api.patch<ApiResponse<TeamReportAdjustmentData>>(
+      `/team-report/adjustments/incoming/${id}/entries/${entryId}`,
       input,
     ),
   );

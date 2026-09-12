@@ -2,7 +2,14 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, LayoutGrid, Loader2, Save, Scale } from "lucide-react";
+import {
+  ArrowLeft,
+  LayoutGrid,
+  Loader2,
+  Save,
+  Scale,
+  ShieldCheck,
+} from "lucide-react";
 import useSWR, { mutate as globalMutate } from "swr";
 import { toast } from "sonner";
 
@@ -18,6 +25,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   adjustmentKeys,
   createFormTemplate,
@@ -90,6 +104,7 @@ export function AdjustmentBuilderView() {
   );
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [structureOpen, setStructureOpen] = useState(false);
+  const [accessOpen, setAccessOpen] = useState(false);
   const [pendingSection, setPendingSection] =
     useState<AdjustmentSection | null>(null);
   const [saving, setSaving] = useState(false);
@@ -181,19 +196,46 @@ export function AdjustmentBuilderView() {
             </p>
           </div>
         </div>
-        <Button
-          type="button"
-          onClick={save}
-          disabled={saving || !dirty || !draft}
-        >
-          {saving ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Save className="size-4" />
-          )}
-          {dirty ? "Lưu form này" : "Đã lưu"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Quyền nhập là của CẢ bảng, không theo phần I / II / III - để ở
+              popup riêng, khỏi nằm lẫn dưới vùng thiết kế cột. */}
+          <Button
+            type="button"
+            variant="outline"
+            className="bg-background"
+            onClick={() => setAccessOpen(true)}
+          >
+            <ShieldCheck className="size-4" />
+            Phân quyền nhập
+          </Button>
+          <Button
+            type="button"
+            onClick={save}
+            disabled={saving || !dirty || !draft}
+          >
+            {saving ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
+            )}
+            {dirty ? "Lưu form này" : "Đã lưu"}
+          </Button>
+        </div>
       </div>
+
+      <Dialog open={accessOpen} onOpenChange={setAccessOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Phân quyền nhập bảng</DialogTitle>
+            <DialogDescription>
+              Chỉ định vai trò, tài khoản hoặc đơn vị được nhập bảng này - áp
+              cho cả ba phần I / II / III. Lưu riêng, không phụ thuộc nút
+              &quot;Lưu form này&quot; của bộ cột.
+            </DialogDescription>
+          </DialogHeader>
+          <AdjustmentAccessCard />
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-4 lg:grid-cols-[290px_minmax(0,1fr)]">
         {/* Thư viện: đúng ba phần, không trục, không ô tích ghép mẫu. */}
@@ -324,10 +366,6 @@ export function AdjustmentBuilderView() {
                 headerGroups={draft.headerGroups}
               />
             </div>
-
-            {/* Quyền nhập là của CẢ bảng, không theo phần - nên đứng dưới cùng,
-                ngoài vùng đổi theo phần I / II / III. */}
-            <AdjustmentAccessCard />
           </section>
         ) : (
           <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground">

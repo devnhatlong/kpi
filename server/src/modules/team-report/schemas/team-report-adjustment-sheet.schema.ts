@@ -2,10 +2,15 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
 import { Department } from '@/modules/departments/schemas/department.schema';
+import { User } from '@/modules/users/schemas/user.schema';
 import {
   ADJUSTMENT_SECTIONS,
   type AdjustmentSection,
 } from '@/modules/mission-form-config/schemas/adjustment-item.schema';
+import {
+  TEAM_REPORT_DAY_STATUSES,
+  type TeamReportDayStatus,
+} from './team-report-day.schema';
 import {
   TeamReportEdit,
   TeamReportEditSchema,
@@ -100,6 +105,59 @@ export class TeamReportAdjustmentSheet {
     >
   >;
 
+  // ---------------------------------------------------- vòng đời gửi / duyệt
+
+  /*
+    Cùng vòng đời với báo cáo tổng hợp: DRAFT (đội đang nhập) → PENDING (đã
+    trình, cấp trên cầm) → APPROVED / RETURNED. Trình tới một người cấp trên
+    do đội chọn, như bản tổng hợp.
+  */
+  @Prop({
+    type: String,
+    enum: TEAM_REPORT_DAY_STATUSES,
+    default: 'DRAFT',
+    index: true,
+  })
+  status!: TeamReportDayStatus;
+
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null, index: true })
+  recipientId!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  recipientName!: string;
+
+  @Prop({
+    type: Types.ObjectId,
+    ref: Department.name,
+    default: null,
+    index: true,
+  })
+  recipientDepartmentId!: Types.ObjectId | null;
+
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null })
+  sentById!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  sentByName!: string;
+
+  @Prop({ type: Date, default: null })
+  sentAt!: Date | null;
+
+  @Prop({ trim: true, default: '' })
+  note!: string;
+
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null })
+  decidedById!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  decidedByName!: string;
+
+  @Prop({ type: Date, default: null })
+  decidedAt!: Date | null;
+
+  @Prop({ trim: true, default: '' })
+  returnReason!: string;
+
   /** Chống đè: cả đội gõ chung một bảng qua một tài khoản. */
   @Prop({ type: Number, default: 0 })
   version!: number;
@@ -119,3 +177,10 @@ TeamReportAdjustmentSheetSchema.index(
   { departmentId: 1, periodMonth: 1 },
   { unique: true },
 );
+
+/** Hộp đến của cấp trên: bản trình tới đơn vị mình, mới nhất trước. */
+TeamReportAdjustmentSheetSchema.index({
+  recipientDepartmentId: 1,
+  status: 1,
+  periodMonth: -1,
+});

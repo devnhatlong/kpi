@@ -76,6 +76,12 @@ export type TeamReportCatalogItem = {
   /** Nội dung công việc thuộc trục nào - dùng để lọc theo trục đang chọn. */
   axisId?: string;
   note?: string;
+  /** Đơn vị (ô chọn đơn vị): cấp và tên đơn vị cha để lọc / bày. */
+  levelId?: string | null;
+  parentId?: string | null;
+  sortOrder?: number;
+  parentName?: string;
+  code?: string;
 };
 
 export type TeamReportCatalogs = Record<string, TeamReportCatalogItem[]>;
@@ -604,6 +610,30 @@ export type TeamReportAdjustmentSheet = {
   edits: TeamReportEdit[];
   updatedAt: string | null;
   saved: boolean;
+  /* Vòng đời gửi / duyệt - cùng luật với báo cáo tổng hợp. */
+  status: TeamReportDayStatus;
+  recipientId: string | null;
+  recipientName: string;
+  sentByName: string;
+  sentAt: string | null;
+  note: string;
+  decidedByName: string;
+  decidedAt: string | null;
+  returnReason: string;
+};
+
+/** Một dòng trong hộp đến của cấp trên - không mang theo các dòng chi tiết. */
+export type TeamReportAdjustmentInboxRow = {
+  _id: string;
+  periodMonth: string;
+  status: TeamReportDayStatus;
+  department: Ref;
+  recipientName: string;
+  sentByName: string;
+  sentAt: string | null;
+  decidedByName: string;
+  decidedAt: string | null;
+  returnReason: string;
 };
 
 export type TeamReportAdjustmentData = {
@@ -615,4 +645,11 @@ export type TeamReportAdjustmentData = {
   totals: { bonus: number; penalty: number; net: number };
   catalog?: TeamReportAdjustmentItem[];
   months?: string[];
+  /** Chỉ có ở đường hộp đến - đơn vị đã lập bản. */
+  department?: { id: string; name: string };
+  /**
+   * Đơn vị bày ra ở các ô kiểu chọn đơn vị - server gom theo hợp các cấp mà
+   * mọi cột kiểu này khai; từng ô lọc lại theo `departmentLevelIds` của cột.
+   */
+  departmentChoices?: TeamReportCatalogItem[];
 };

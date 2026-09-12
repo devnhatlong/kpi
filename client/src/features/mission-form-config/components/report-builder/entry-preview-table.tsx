@@ -21,6 +21,7 @@ function placeholderOf(column: FormTemplateColumn): string {
   }
   if (column.dataType === "file") return "Đính kèm tệp";
   if (column.dataType === "boolean") return "Tích chọn";
+  if (column.dataType === "department") return "Sổ chọn nhiều đơn vị";
   return `Nhập ${column.title.toLowerCase()}`;
 }
 

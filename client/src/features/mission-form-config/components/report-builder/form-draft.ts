@@ -115,6 +115,9 @@ export function sanitizeDraft(draft: FormDraft): FormDraft {
         auto.baseColumnKey !== next.key;
       if (!usable) next.autoValue = null;
     }
+    // Cấp đơn vị chỉ có nghĩa với ô chọn đơn vị - đổi kiểu là bỏ.
+    next.departmentLevelIds =
+      next.dataType === "department" ? (next.departmentLevelIds ?? []) : [];
     return next;
   });
 
@@ -163,6 +166,7 @@ export function draftFingerprint(draft: FormDraft): string {
             column.autoValue.baseColumnKey,
           ]
         : null,
+      column.departmentLevelIds ?? [],
     ]),
     headerGroups: draft.headerGroups,
     footer: [

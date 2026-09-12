@@ -8,40 +8,46 @@ import {
   ChevronRight,
   History,
   Loader2,
-  Plus,
   RefreshCw,
   Scale,
-  Trash2,
+  Send,
   TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { SearchableSelect } from "@/components/common/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import {
   addTeamReportAdjustmentEntry,
   fetchTeamReportAdjustments,
+  fetchTeamReportRecipients,
   removeTeamReportAdjustmentEntry,
+  sendTeamReportAdjustment,
   teamReportKeys,
   updateTeamReportAdjustmentEntry,
 } from "@/features/team-report/api";
-import { DynamicColumnCell } from "@/features/team-report/components/dynamic-column-cell";
 import {
+  ADJUSTMENT_SECTIONS_UI,
+  AdjustmentSectionTable,
+} from "@/features/team-report/components/team-report-adjustment-table";
+import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
+import {
+  TEAM_REPORT_STATUS_LABEL,
   formatScore,
   type TeamReportAdjustmentEntry,
   type TeamReportAdjustmentItem,
-  type TeamReportAdjustmentSection,
   type TeamReportColumn,
-  type TeamReportTemplate,
 } from "@/features/team-report/types";
 import { useServerTime } from "@/hooks/use-server-time";
 import { getApiErrorMessage } from "@/lib/api-client";
@@ -59,39 +65,12 @@ function monthLabel(month: string): string {
   return `Tháng ${m}/${y}`;
 }
 
-const SECTIONS: Array<{
-  key: TeamReportAdjustmentSection;
-  numeral: string;
-  title: string;
-}> = [
-  { key: "BONUS", numeral: "I", title: "ĐIỂM CỘNG" },
-  { key: "PENALTY", numeral: "II", title: "ĐIỂM TRỪ" },
-  {
-    key: "RANKING",
-    numeral: "III",
-    title: "ĐỀ XUẤT ĐIỀU CHỈNH, KHỐNG CHẾ MỨC XẾP LOẠI",
-  },
-];
-
 /**
- * Cột nửa trái - chép từ danh mục, gộp dọc theo mục, đội không gõ. Luật phải
- * khớp `LEFT_SEMANTICS` bên server.
- */
-const LEFT_SEMANTICS = new Set([
-  "stt",
-  "adjustment_name",
-  "adjustment_rule",
-  "adjustment_max_score",
-]);
-
-/**
- * "Bảng đề xuất điểm cộng, điểm trừ và điều chỉnh, khống chế mức xếp
- * loại" - đội tự điền, THÁNG MỘT BẢN.
+ * "Bảng đề xuất điểm cộng, điểm trừ và điều chỉnh, khống chế mức xếp loại" -
+ * đội tự điền, THÁNG MỘT BẢN, rồi trình lên cấp trên như báo cáo tổng hợp.
  *
- * Bộ cột của từng phần lấy từ MẪU BẢNG quản trị dựng ở Mẫu báo cáo nhiệm vụ
- * (mẫu gắn `forAdjustment`), y như bảng A và các trục - màn này không biết
- * trước cột nào. Nửa trái (ánh xạ `adjustment_*`) bày từ danh mục và gộp dọc
- * theo mục; nửa phải là các dòng đội tự thêm dưới từng mục, ô nào cũng tự lưu.
+ * Bộ cột của từng phần lấy từ mẫu bảng quản trị dựng (mẫu gắn `forAdjustment`).
+ * Bảng chi tiết nằm ở `AdjustmentSectionTable`, dùng chung với màn duyệt.
  */
 export function TeamReportAdjustmentView() {
   const { ready } = useServerTime();
@@ -99,6 +78,10 @@ export function TeamReportAdjustmentView() {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [cellErrors, setCellErrors] = useState<Record<string, string>>({});
+  const [sendOpen, setSendOpen] = useState(false);
+  const [recipientId, setRecipientId] = useState("");
+  const [sendNote, setSendNote] = useState("");
+  const [sending, setSending] = useState(false);
 
   const month = pickedMonth ?? (ready ? serverYmd().slice(0, 7) : "");
 
@@ -204,6 +187,41 @@ export function TeamReportAdjustmentView() {
       );
     });
 
+  /*
+    Đội chỉ sửa được khi bản còn NHÁP hoặc BỊ TRẢ LẠI - đã trình là cấp trên
+    đang cầm, cùng luật với báo cáo tổng hợp. Server chặn y hệt
+    (`assertTeamEditable`); ở đây chỉ để khỏi bày ô gõ được rồi bị từ chối.
+  */
+  const status = sheet?.status ?? "DRAFT";
+  const editable = status === "DRAFT" || status === "RETURNED";
+  const canSend = editable && (sheet?.entries.length ?? 0) > 0;
+
+  const { data: recipients = [] } = useSWR(
+    sendOpen ? teamReportKeys.recipients() : null,
+    () => fetchTeamReportRecipients(),
+  );
+
+  const send = async () => {
+    if (!sheet || !recipientId) return;
+    setSending(true);
+    try {
+      await applyResult(
+        await sendTeamReportAdjustment(month, {
+          version: sheet.version,
+          recipientId,
+          note: sendNote.trim() || undefined,
+        }),
+      );
+      setSendOpen(false);
+      setSendNote("");
+      toast.success("Đã trình bảng lên cấp trên.");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không trình được."));
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <Card className="shadow-sm">
@@ -235,6 +253,17 @@ export function TeamReportAdjustmentView() {
                 Đã lưu lúc {savedAt}
               </span>
             ) : null}
+            {sheet?.saved ? (
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "whitespace-nowrap font-normal",
+                  DAY_STATUS_CLASS[status],
+                )}
+              >
+                {status === "DRAFT" ? "Nháp" : TEAM_REPORT_STATUS_LABEL[status]}
+              </Badge>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -244,9 +273,48 @@ export function TeamReportAdjustmentView() {
               <RefreshCw className="size-4" />
               Làm mới
             </Button>
+            {canSend ? (
+              <Button
+                type="button"
+                disabled={busyKey !== null}
+                onClick={() => {
+                  setRecipientId(sheet?.recipientId ?? "");
+                  setSendOpen(true);
+                }}
+              >
+                <Send className="size-4" />
+                {status === "RETURNED" ? "Trình lại" : "Trình cấp trên"}
+              </Button>
+            ) : null}
           </div>
         </CardContent>
       </Card>
+
+      {/* Bản đang ở đâu và vì sao khoá - đội nhìn là biết, khỏi bấm thử. */}
+      {sheet?.saved && status !== "DRAFT" ? (
+        <p
+          className={cn(
+            "rounded-md border px-3 py-2.5 text-sm",
+            status === "RETURNED"
+              ? "border-destructive/40 bg-destructive/5 text-destructive"
+              : "bg-muted/40",
+          )}
+        >
+          {status === "PENDING"
+            ? `Đã trình ${sheet.recipientName ?? "cấp trên"}${
+                sheet.sentAt ? ` lúc ${formatServerHm(sheet.sentAt)}` : ""
+              } - đang chờ duyệt, bảng khoá cho tới khi được duyệt hoặc trả lại.`
+            : status === "APPROVED"
+              ? `${sheet.decidedByName || "Cấp trên"} đã duyệt${
+                  sheet.decidedAt
+                    ? ` lúc ${formatServerHm(sheet.decidedAt)}`
+                    : ""
+                }. Bảng tháng này đã chốt.`
+              : `Cấp trên trả lại: ${
+                  sheet.returnReason || "không nêu lý do"
+                } - sửa rồi bấm Trình lại.`}
+        </p>
+      ) : null}
 
       <Card className="shadow-sm">
         <CardContent className="space-y-5 py-4">
@@ -355,8 +423,8 @@ export function TeamReportAdjustmentView() {
               khai ở Cấu hình form nhiệm vụ trước.
             </p>
           ) : (
-            SECTIONS.map((section) => (
-              <SectionTable
+            ADJUSTMENT_SECTIONS_UI.map((section) => (
+              <AdjustmentSectionTable
                 key={section.key}
                 section={section}
                 template={templates?.[section.key] ?? null}
@@ -376,6 +444,8 @@ export function TeamReportAdjustmentView() {
                 onAdd={addLine}
                 onSave={saveCell}
                 onRemove={removeLine}
+                mode={editable ? "edit" : "read"}
+                catalogs={{ department: data?.departmentChoices ?? [] }}
               />
             ))
           )}
@@ -416,322 +486,78 @@ export function TeamReportAdjustmentView() {
           ) : null}
         </CardContent>
       </Card>
-    </div>
-  );
-}
 
-/** Nhóm nhiều `<TableRow>` mà không thêm phần tử DOM - `<tbody>` không nhận `<div>`. */
-function FragmentRows({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
-}
-
-/**
- * Bảng của một phần, dựng từ mẫu của phần đó.
- *
- * Cột nửa trái (ánh xạ `adjustment_*`, STT) lấy từ mục và gộp dọc qua mọi dòng
- * của mục; cột còn lại là ô nhập theo cấu hình cột - `DynamicColumnCell` đọc
- * kiểu dữ liệu và dựng đúng ô, y như tab Phân loại.
- */
-function SectionTable({
-  section,
-  template,
-  scoreKey,
-  items,
-  entriesByItem,
-  sheetVersion,
-  sectionTotal,
-  busyKey,
-  cellErrors,
-  onAdd,
-  onSave,
-  onRemove,
-}: {
-  section: { key: TeamReportAdjustmentSection; numeral: string; title: string };
-  template: TeamReportTemplate | null;
-  scoreKey: string | null;
-  items: TeamReportAdjustmentItem[];
-  entriesByItem: Map<string, TeamReportAdjustmentEntry[]>;
-  sheetVersion: number;
-  sectionTotal: number | null;
-  busyKey: string | null;
-  cellErrors: Record<string, string>;
-  onAdd: (item: TeamReportAdjustmentItem) => void;
-  onSave: (
-    entry: TeamReportAdjustmentEntry,
-    column: TeamReportColumn,
-    next: string,
-  ) => void;
-  onRemove: (entry: TeamReportAdjustmentEntry) => void;
-}) {
-  if (!items.length) return null;
-
-  const columns = (template?.columns ?? []).filter((column) => column.visible);
-  const leftCols = columns.filter((column) =>
-    LEFT_SEMANTICS.has(column.semanticKey),
-  );
-  const rightCols = columns.filter(
-    (column) => !LEFT_SEMANTICS.has(column.semanticKey),
-  );
-  /* Bề rộng nửa phải: các cột của mẫu + cột nút xoá. */
-  const rightSpan = rightCols.length + 1;
-
-  const readScore = (entry: TeamReportAdjustmentEntry) => {
-    if (!scoreKey) return 0;
-    const value = Number(String(entry.fieldValues?.[scoreKey] ?? "").trim());
-    return Number.isFinite(value) ? value : 0;
-  };
-
-  return (
-    <section className="space-y-2">
-      <h2 className="font-display text-sm font-semibold">
-        {section.numeral}. {section.title}
-      </h2>
-
-      {!template ? (
-        <p className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          <TriangleAlert className="size-4 shrink-0" />
-          Phần này chưa được gán mẫu bảng. Quản trị dựng form ở{" "}
-          <span className="font-medium">
-            Mẫu báo cáo nhiệm vụ → Bảng điểm cộng, trừ &amp; xếp loại →{" "}
-            {section.numeral}
-          </span>{" "}
-          rồi lưu là bảng hiện ở đây.
-        </p>
-      ) : (
-        <div className="overflow-x-auto rounded-md border">
-          <Table className="border-collapse [&_td]:border [&_td]:border-border [&_th]:border [&_th]:border-border">
-            <TableHeader>
-              {/* Hai tầng tiêu đề như mẫu giấy: soi chiếu | theo dõi. */}
-              <TableRow className="bg-muted/60 hover:bg-inherit">
-                <TableHead
-                  colSpan={Math.max(1, leftCols.length)}
-                  className="text-center"
-                >
-                  Nội dung để soi chiếu
-                </TableHead>
-                <TableHead colSpan={rightSpan} className="text-center">
-                  Nội dung theo dõi, thẩm định
-                </TableHead>
-              </TableRow>
-              <TableRow className="bg-muted/40 hover:bg-inherit">
-                {columns.map((column) => (
-                  <TableHead
-                    key={column.key}
-                    style={{ minWidth: column.width }}
-                    className={cn(
-                      "align-middle",
-                      (column.semanticKey === "stt" ||
-                        column.dataType === "number" ||
-                        column.dataType === "boolean") &&
-                        "text-center",
-                    )}
-                  >
-                    {column.title}
-                    {column.key === scoreKey && section.key === "BONUS" ? (
-                      <span className="ml-1 text-xs font-normal text-muted-foreground">
-                        (mỗi dòng ≤ tối đa)
-                      </span>
-                    ) : null}
-                  </TableHead>
-                ))}
-                <TableHead className="w-12" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((item, index) => {
-                const lines = entriesByItem.get(item._id) ?? [];
-                const span = Math.max(1, lines.length) + 1;
-                const itemTotal = lines.reduce(
-                  (sum, line) => sum + readScore(line),
-                  0,
-                );
-                /* Nửa trái gộp dọc qua mọi dòng của mục, kể cả dòng nút
-                   "Thêm" - đúng như ô gộp trên mẫu giấy. */
-                const left = leftCols.map((column) => {
-                  let body: React.ReactNode = null;
-                  if (column.semanticKey === "stt") body = index + 1;
-                  else if (column.semanticKey === "adjustment_name")
-                    body = (
-                      <>
-                        {item.name}
-                        {!item.isActive ? (
-                          <span className="ml-1 text-xs font-normal text-muted-foreground">
-                            (đã ngừng)
-                          </span>
-                        ) : null}
-                      </>
-                    );
-                  else if (column.semanticKey === "adjustment_rule")
-                    body = item.rule;
-                  else if (column.semanticKey === "adjustment_max_score")
-                    body =
-                      item.maxScore === null ? (
-                        "-"
-                      ) : (
-                        <>
-                          Tối đa {formatScore(item.maxScore)}
-                          {/* Tổng các dòng chỉ để tham khảo - trần áp cho TỪNG
-                              dòng, không cộng dồn. */}
-                          {lines.length > 1 ? (
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              cộng {formatScore(itemTotal)}
-                            </div>
-                          ) : null}
-                        </>
-                      );
-                  return (
-                    <TableCell
-                      key={column.key}
-                      rowSpan={span}
-                      className={cn(
-                        "border-b-2 align-top",
-                        column.semanticKey === "stt" &&
-                          "text-center tabular-nums",
-                        column.semanticKey === "adjustment_name" &&
-                          "whitespace-normal text-sm font-medium",
-                        column.semanticKey === "adjustment_rule" &&
-                          "whitespace-normal text-xs text-muted-foreground",
-                        column.semanticKey === "adjustment_max_score" &&
-                          "text-center text-sm tabular-nums",
-                      )}
-                    >
-                      {body}
-                    </TableCell>
-                  );
-                });
-
-                const right = (line: TeamReportAdjustmentEntry) => (
-                  <>
-                    {rightCols.map((column) => {
-                      const errorKey = `${line._id}:${column.key}`;
-                      const value = String(
-                        line.fieldValues?.[column.key] ?? "",
-                      );
-                      return (
-                        <TableCell
-                          key={column.key}
-                          className={cn(
-                            "align-top",
-                            column.dataType === "boolean" && "text-center",
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              column.dataType === "boolean" &&
-                                "flex justify-center pt-2",
-                            )}
-                          >
-                            <DynamicColumnCell
-                              key={`${line._id}:${column.key}:${sheetVersion}`}
-                              column={column}
-                              value={value}
-                              catalogs={{}}
-                              disabled={busyKey?.startsWith(line._id) ?? false}
-                              invalid={errorKey in cellErrors}
-                              onCommit={(next) => onSave(line, column, next)}
-                            />
-                            {cellErrors[errorKey] ? (
-                              <p className="mt-1 text-xs text-destructive">
-                                {cellErrors[errorKey]}
-                              </p>
-                            ) : null}
-                          </div>
-                        </TableCell>
-                      );
-                    })}
-                    <TableCell className="align-top">
-                      <button
-                        type="button"
-                        disabled={busyKey !== null}
-                        aria-label="Xoá dòng"
-                        title="Xoá dòng"
-                        onClick={() => onRemove(line)}
-                        className="mt-1.5 cursor-pointer text-muted-foreground transition-colors hover:text-destructive disabled:cursor-not-allowed"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </TableCell>
-                  </>
-                );
-
-                return (
-                  <FragmentRows key={item._id}>
-                    {lines.length ? (
-                      lines.map((line, lineIndex) => (
-                        <TableRow key={line._id}>
-                          {lineIndex === 0 ? left : null}
-                          {right(line)}
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        {left}
-                        <TableCell
-                          colSpan={rightSpan}
-                          className="align-middle text-xs text-muted-foreground"
-                        >
-                          Chưa có kết quả nào cho mục này.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    <TableRow className="border-b-2 hover:bg-inherit">
-                      <TableCell colSpan={rightSpan} className="py-1.5">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-xs text-muted-foreground"
-                          disabled={busyKey !== null || !item.isActive}
-                          onClick={() => onAdd(item)}
-                        >
-                          <Plus className="size-3.5" />
-                          Thêm dòng kết quả
-                        </Button>
-                        {cellErrors[`add:${item._id}`] ? (
-                          <span className="ml-2 text-xs text-destructive">
-                            {cellErrors[`add:${item._id}`]}
-                          </span>
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
-                  </FragmentRows>
-                );
-              })}
-
-              {sectionTotal !== null ? (
-                <TableRow className="bg-muted/40 font-medium hover:bg-inherit">
-                  <TableCell
-                    colSpan={Math.max(1, leftCols.length)}
-                    className="uppercase"
-                  >
-                    {section.key === "BONUS"
-                      ? "Tổng điểm cộng"
-                      : "Tổng điểm trừ"}
-                    {section.key === "BONUS" ? (
-                      <span className="ml-2 text-xs font-normal normal-case text-muted-foreground">
-                        tối đa{" "}
-                        {formatScore(
-                          items.reduce(
-                            (sum, item) => sum + (item.maxScore ?? 0),
-                            0,
-                          ),
-                        )}
-                      </span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell
-                    colSpan={rightSpan}
-                    className="text-right tabular-nums"
-                  >
-                    {section.key === "BONUS" ? "+" : "−"}
-                    {formatScore(sectionTotal)} điểm
-                  </TableCell>
-                </TableRow>
+      <Dialog open={sendOpen} onOpenChange={setSendOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Trình bảng {month ? monthLabel(month).toLowerCase() : ""}
+            </DialogTitle>
+            <DialogDescription>
+              {sheet?.entries.length ?? 0} dòng · cộng +
+              {formatScore(totals?.bonus ?? 0)} · trừ −
+              {formatScore(totals?.penalty ?? 0)}
+              {status === "RETURNED" ? (
+                <>
+                  {" · "}
+                  <span className="text-destructive">
+                    đã bị trả lại: {sheet?.returnReason || "không nêu lý do"}
+                  </span>
+                </>
               ) : null}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-    </section>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium">
+                Trình lên <span className="text-destructive">*</span>
+              </p>
+              <SearchableSelect
+                value={recipientId}
+                onValueChange={setRecipientId}
+                options={recipients.map((person) => ({
+                  value: person.id,
+                  label: person.departmentName
+                    ? `${person.fullName} - ${person.departmentName}`
+                    : person.fullName,
+                }))}
+                placeholder={
+                  recipients.length
+                    ? "Chọn cấp trên..."
+                    : "Chưa tìm được cấp trên nào có quyền duyệt"
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium">Ghi chú gửi kèm</p>
+              <Textarea
+                value={sendNote}
+                onChange={(event) => setSendNote(event.target.value)}
+                rows={3}
+                placeholder="Không bắt buộc"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Trình xong bảng khoá lại cho tới khi được duyệt hoặc trả lại -
+              cùng luật với báo cáo tổng hợp.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSendOpen(false)}>
+              Huỷ
+            </Button>
+            <Button
+              disabled={sending || !recipientId}
+              onClick={() => void send()}
+            >
+              <Send className="size-4" />
+              Trình cấp trên
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

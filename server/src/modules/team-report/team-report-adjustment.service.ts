@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,6 +9,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
 import { User, UserDocument } from '@/modules/users/schemas/user.schema';
+import {
+  Department,
+  DepartmentDocument,
+} from '@/modules/departments/schemas/department.schema';
 import {
   ADJUSTMENT_SECTIONS,
   AdjustmentItem,
@@ -27,9 +32,13 @@ import {
 } from './schemas/team-report-adjustment-sheet.schema';
 import {
   AddTeamReportAdjustmentEntryDto,
+  DecideTeamReportDayDto,
+  SendTeamReportAdjustmentDto,
+  TeamReportAdjustmentInboxQueryDto,
   TeamReportAdjustmentQueryDto,
   UpdateTeamReportAdjustmentEntryDto,
 } from './dto/team-report.dto';
+import { TeamReportService } from './team-report.service';
 import { isYmd, serverDateYmd } from './team-report.time';
 import { TeamReportAdjustmentAccessService } from './team-report-adjustment-access.service';
 
@@ -82,8 +91,11 @@ export class TeamReportAdjustmentService {
     private readonly formTemplateModel: Model<FormTemplateDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    @InjectModel(Department.name)
+    private readonly departmentModel: Model<DepartmentDocument>,
     private readonly formTemplatesService: FormTemplatesService,
     private readonly access: TeamReportAdjustmentAccessService,
+    private readonly teamReportService: TeamReportService,
   ) {}
 
   /**
@@ -129,7 +141,7 @@ export class TeamReportAdjustmentService {
     return {
       message: 'OK',
       data: {
-        ...this.toClient(stored, periodMonth, entries, templates),
+        ...(await this.toClient(stored, periodMonth, entries, templates)),
         catalog: items,
         months,
       },
@@ -179,6 +191,7 @@ export class TeamReportAdjustmentService {
       });
     }
     this.assertVersion(sheet, dto.version);
+    this.assertTeamEditable(sheet);
 
     const item = await this.itemModel.findById(
       this.requireObjectId(dto.itemId, 'Mục'),
@@ -205,7 +218,7 @@ export class TeamReportAdjustmentService {
       itemMaxScore: item.maxScore ?? null,
       fieldValues: {},
     };
-    entry.fieldValues = this.applyValues(
+    entry.fieldValues = await this.applyValues(
       entry,
       template,
       dto.fieldValues ?? {},
@@ -225,7 +238,7 @@ export class TeamReportAdjustmentService {
 
     return {
       message: 'Đã thêm dòng.',
-      data: this.toClient(sheet, periodMonth, sheet.entries, templates),
+      data: await this.toClient(sheet, periodMonth, sheet.entries, templates),
     };
   }
 
@@ -242,6 +255,7 @@ export class TeamReportAdjustmentService {
     await this.access.assertAllowed(userId);
     const { sheet, entry } = await this.requireEntry(actor, month, entryId);
     this.assertVersion(sheet, dto.version);
+    this.assertTeamEditable(sheet);
 
     const templates = await this.templatesOfSheet(sheet);
     const template = templates[entry.section];
@@ -250,7 +264,7 @@ export class TeamReportAdjustmentService {
     }
 
     const before = { ...(entry.fieldValues ?? {}) };
-    entry.fieldValues = this.applyValues(
+    entry.fieldValues = await this.applyValues(
       entry,
       template,
       dto.fieldValues ?? {},
@@ -273,7 +287,12 @@ export class TeamReportAdjustmentService {
     if (!changed) {
       return {
         message: 'Không có ô nào thay đổi.',
-        data: this.toClient(sheet, sheet.periodMonth, sheet.entries, templates),
+        data: await this.toClient(
+          sheet,
+          sheet.periodMonth,
+          sheet.entries,
+          templates,
+        ),
       };
     }
 
@@ -282,7 +301,12 @@ export class TeamReportAdjustmentService {
     await sheet.save();
     return {
       message: `Đã lưu ${changed} ô.`,
-      data: this.toClient(sheet, sheet.periodMonth, sheet.entries, templates),
+      data: await this.toClient(
+        sheet,
+        sheet.periodMonth,
+        sheet.entries,
+        templates,
+      ),
     };
   }
 
@@ -298,6 +322,7 @@ export class TeamReportAdjustmentService {
     await this.access.assertAllowed(userId);
     const { sheet, entry } = await this.requireEntry(actor, month, entryId);
     this.assertVersion(sheet, version);
+    this.assertTeamEditable(sheet);
     const templates = await this.templatesOfSheet(sheet);
 
     sheet.entries = sheet.entries.filter(
@@ -320,13 +345,305 @@ export class TeamReportAdjustmentService {
     await sheet.save();
     return {
       message: 'Đã xoá dòng.',
-      data: this.toClient(sheet, sheet.periodMonth, sheet.entries, templates),
+      data: await this.toClient(
+        sheet,
+        sheet.periodMonth,
+        sheet.entries,
+        templates,
+      ),
+    };
+  }
+
+  // ============================================================ gửi và duyệt
+
+  /**
+   * Trình bảng của tháng lên một người cấp trên - cùng đường với báo cáo tổng
+   * hợp: người nhận do đội chọn, lọc trong các cấp trên có quyền duyệt.
+   */
+  async send(userId: string, month: string, dto: SendTeamReportAdjustmentDto) {
+    const actor = await this.requireActor(userId);
+    await this.access.assertAllowed(userId);
+    const periodMonth = this.requireMonth(month);
+
+    const sheet = await this.sheetModel.findOne({
+      departmentId: actor.departmentId,
+      periodMonth,
+    });
+    if (!sheet || !sheet.entries.length) {
+      throw new BadRequestException(
+        'Tháng này chưa có dòng nào để trình. Nhập ít nhất một dòng trước.',
+      );
+    }
+    this.assertVersion(sheet, dto.version);
+    if (sheet.status !== 'DRAFT' && sheet.status !== 'RETURNED') {
+      throw new BadRequestException('Bảng này đã trình rồi.');
+    }
+
+    const recipient = await this.teamReportService.requireSummaryRecipientFor(
+      String(actor.id),
+      dto.recipientId,
+    );
+
+    sheet.status = 'PENDING';
+    sheet.recipientId = recipient.id;
+    sheet.recipientName = recipient.name;
+    sheet.recipientDepartmentId = recipient.departmentId;
+    sheet.sentById = actor.id;
+    sheet.sentByName = actor.name;
+    sheet.sentAt = new Date();
+    sheet.returnReason = '';
+    if (dto.note?.trim()) sheet.note = dto.note.trim();
+    this.appendEdit(
+      sheet,
+      actor,
+      'Trạng thái',
+      'nháp',
+      `đã trình ${recipient.name}`,
+    );
+    sheet.version += 1;
+    await sheet.save();
+
+    const templates = await this.templatesOfSheet(sheet);
+    return {
+      message: `Đã trình bảng lên ${recipient.name}.`,
+      data: await this.toClient(sheet, periodMonth, sheet.entries, templates),
+    };
+  }
+
+  /**
+   * Hộp đến của cấp trên - bản trình tới ĐƠN VỊ mình (không chỉ đích danh
+   * người được chọn: trưởng phòng đi vắng thì người khác trong phòng vẫn mở
+   * được, cùng luật với bản tổng hợp).
+   */
+  async inbox(userId: string, query: TeamReportAdjustmentInboxQueryDto) {
+    const actor = await this.requireActor(userId);
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const filter: Record<string, unknown> = {
+      recipientDepartmentId: actor.departmentId,
+      status: { $ne: 'DRAFT' },
+    };
+    if (query.status) filter.status = query.status;
+
+    const [rows, total] = await Promise.all([
+      this.sheetModel
+        .find(filter)
+        .sort({ sentAt: -1, periodMonth: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .select('-entries -edits -templates')
+        .populate('departmentId', 'code name'),
+      this.sheetModel.countDocuments(filter),
+    ]);
+
+    return {
+      message: 'OK',
+      data: rows.map((row) => ({
+        _id: String(row._id),
+        periodMonth: row.periodMonth,
+        status: row.status,
+        department: row.departmentId,
+        recipientName: row.recipientName,
+        sentByName: row.sentByName,
+        sentAt: row.sentAt,
+        decidedByName: row.decidedByName,
+        decidedAt: row.decidedAt,
+        returnReason: row.returnReason,
+      })),
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
+  }
+
+  /** Cấp trên mở một bản trình tới đơn vị mình. */
+  async incomingDetail(userId: string, id: string) {
+    const actor = await this.requireActor(userId);
+    const sheet = await this.requireIncoming(actor, id);
+    const templates = await this.templatesOfSheet(sheet);
+    const usedIds = sheet.entries.map((entry) => entry.itemId);
+    const items = await this.itemModel
+      .find({ $or: [{ isActive: true }, { _id: { $in: usedIds } }] })
+      .sort({ section: 1, sortOrder: 1, name: 1 });
+    const names = await this.departmentNameOf(sheet.departmentId);
+    return {
+      message: 'OK',
+      data: {
+        ...(await this.toClient(
+          sheet,
+          sheet.periodMonth,
+          sheet.entries,
+          templates,
+        )),
+        catalog: items,
+        department: { id: String(sheet.departmentId), name: names },
+      },
+    };
+  }
+
+  /** Duyệt hoặc trả lại. Trả lại BẮT BUỘC có lý do - đội phải biết sửa gì. */
+  async decide(userId: string, id: string, dto: DecideTeamReportDayDto) {
+    const actor = await this.requireActor(userId);
+    const sheet = await this.requireIncoming(actor, id);
+    if (sheet.status === 'APPROVED') {
+      throw new BadRequestException('Bảng đã được duyệt.');
+    }
+    if (sheet.status !== 'PENDING') {
+      throw new BadRequestException('Chỉ duyệt được bản đang chờ duyệt.');
+    }
+
+    const before = sheet.status;
+    if (dto.decision === 'RETURN') {
+      const reason = dto.reason?.trim() ?? '';
+      if (!reason) throw new BadRequestException('Lý do trả lại là bắt buộc.');
+      sheet.status = 'RETURNED';
+      sheet.returnReason = reason;
+    } else {
+      sheet.status = 'APPROVED';
+      sheet.returnReason = '';
+    }
+    sheet.decidedById = actor.id;
+    sheet.decidedByName = actor.name;
+    sheet.decidedAt = new Date();
+    this.appendEdit(
+      sheet,
+      actor,
+      'Trạng thái',
+      before === 'PENDING' ? 'đã trình' : before,
+      sheet.status === 'APPROVED'
+        ? 'đã duyệt'
+        : `trả lại: ${sheet.returnReason}`,
+    );
+    sheet.version += 1;
+    await sheet.save();
+
+    const templates = await this.templatesOfSheet(sheet);
+    return {
+      message: sheet.status === 'APPROVED' ? 'Đã duyệt.' : 'Đã trả lại.',
+      data: await this.toClient(
+        sheet,
+        sheet.periodMonth,
+        sheet.entries,
+        templates,
+      ),
+    };
+  }
+
+  /**
+   * Cấp trên chỉnh một dòng của bản đang chờ duyệt - ghi thẳng vào bản, có
+   * nhật ký, như chỉnh số trên báo cáo tổng hợp. Chỉ khi PENDING: trả lại rồi
+   * là đội đang cầm, hai bên cùng sửa là đè nhau.
+   */
+  async reviewEntry(
+    userId: string,
+    id: string,
+    entryId: string,
+    dto: UpdateTeamReportAdjustmentEntryDto,
+  ) {
+    const actor = await this.requireActor(userId);
+    const sheet = await this.requireIncoming(actor, id);
+    if (sheet.status !== 'PENDING') {
+      throw new BadRequestException(
+        sheet.status === 'RETURNED'
+          ? 'Bản này đã trả lại cho đội - chờ đội sửa và trình lại.'
+          : 'Chỉ chỉnh được bản đang chờ duyệt.',
+      );
+    }
+    this.assertVersion(sheet, dto.version);
+    const wanted = String(this.requireObjectId(entryId, 'Dòng'));
+    const entry = sheet.entries.find((row) => String(row._id) === wanted);
+    if (!entry) throw new NotFoundException('Không tìm thấy dòng.');
+
+    const templates = await this.templatesOfSheet(sheet);
+    const template = templates[entry.section];
+    if (!template) {
+      throw new BadRequestException('Phần này không còn mẫu bảng để đọc cột.');
+    }
+    const before = { ...(entry.fieldValues ?? {}) };
+    entry.fieldValues = await this.applyValues(
+      entry,
+      template,
+      dto.fieldValues ?? {},
+    );
+
+    let changed = 0;
+    for (const column of this.inputColumns(template)) {
+      const from = String(before[column.key] ?? '');
+      const to = String(entry.fieldValues[column.key] ?? '');
+      if (from === to) continue;
+      changed += 1;
+      this.appendEdit(
+        sheet,
+        actor,
+        `${entry.itemCode} · ${column.title}`,
+        from,
+        to,
+      );
+    }
+    if (!changed) {
+      return {
+        message: 'Không có ô nào thay đổi.',
+        data: await this.toClient(
+          sheet,
+          sheet.periodMonth,
+          sheet.entries,
+          templates,
+        ),
+      };
+    }
+    sheet.version += 1;
+    sheet.markModified('entries');
+    await sheet.save();
+    return {
+      message: `Đã chỉnh ${changed} ô.`,
+      data: await this.toClient(
+        sheet,
+        sheet.periodMonth,
+        sheet.entries,
+        templates,
+      ),
     };
   }
 
   // ==================================================================== nội bộ
 
-  private toClient(
+  /**
+   * Đội chỉ sửa được khi bản CÒN NHÁP hoặc BỊ TRẢ LẠI. Đã trình là bản cấp trên
+   * đang cầm - cùng luật với báo cáo tổng hợp.
+   */
+  private assertTeamEditable(sheet: TeamReportAdjustmentSheetDocument) {
+    if (sheet.status === 'DRAFT' || sheet.status === 'RETURNED') return;
+    throw new BadRequestException(
+      sheet.status === 'APPROVED'
+        ? 'Bảng tháng này đã được duyệt, không sửa được nữa.'
+        : 'Bảng tháng này đang chờ cấp trên duyệt nên đội không sửa được. Chờ duyệt hoặc chờ trả lại.',
+    );
+  }
+
+  private async requireIncoming(actor: Actor, id: string) {
+    const sheet = await this.sheetModel.findById(
+      this.requireObjectId(id, 'Bảng'),
+    );
+    if (!sheet) throw new NotFoundException('Không tìm thấy bảng.');
+    if (
+      String(sheet.recipientDepartmentId ?? '') !==
+        String(actor.departmentId) ||
+      sheet.status === 'DRAFT'
+    ) {
+      throw new ForbiddenException('Bảng này không trình tới đơn vị bạn.');
+    }
+    return sheet;
+  }
+
+  private async departmentNameOf(id: Types.ObjectId): Promise<string> {
+    const found = await this.departmentModel.findById(id).select('name');
+    return found?.name ?? '';
+  }
+
+  private async toClient(
     sheet: TeamReportAdjustmentSheetDocument | null,
     periodMonth: string,
     entries: TeamReportAdjustmentEntry[],
@@ -341,6 +658,15 @@ export class TeamReportAdjustmentService {
         edits: sheet?.edits ?? [],
         updatedAt: sheet?.updatedAt ?? null,
         saved: Boolean(sheet),
+        status: sheet?.status ?? 'DRAFT',
+        recipientId: sheet?.recipientId ? String(sheet.recipientId) : null,
+        recipientName: sheet?.recipientName ?? '',
+        sentByName: sheet?.sentByName ?? '',
+        sentAt: sheet?.sentAt ?? null,
+        note: sheet?.note ?? '',
+        decidedByName: sheet?.decidedByName ?? '',
+        decidedAt: sheet?.decidedAt ?? null,
+        returnReason: sheet?.returnReason ?? '',
       },
       templates,
       /** Khoá cột điểm của từng phần - client bày tổng dưới đúng cột. */
@@ -351,7 +677,68 @@ export class TeamReportAdjustmentService {
         ]),
       ) as Record<AdjustmentSection, string | null>,
       totals: this.totalsOf(entries, templates),
+      departmentChoices: await this.departmentChoicesOf(templates),
     };
+  }
+
+  /**
+   * Đơn vị bày ra ở các ô kiểu `department` ("Đối với tập thể"...).
+   *
+   * Lấy một lần cho cả bảng theo HỢP các cấp mà mọi cột kiểu này khai; client
+   * lọc lại theo cấp của từng cột. Cột không khai cấp nào = mọi cấp. Không có
+   * cột nào kiểu này thì không đụng tới bảng đơn vị.
+   *
+   * Gửi KÈM tổ tiên của các đơn vị được chọn (dù tổ tiên ngoài cấp) để client
+   * dựng cây cha - con; dòng ngoài cấp chỉ làm tiêu đề nhánh, không tích được.
+   */
+  private async departmentChoicesOf(templates: SectionTemplates) {
+    const columns = Object.values(templates)
+      .flatMap((template) => template?.columns ?? [])
+      .filter((column) => column.dataType === 'department');
+    if (!columns.length) return [];
+    const anyLevel = columns.some(
+      (column) => !(column.departmentLevelIds ?? []).length,
+    );
+    const levelIds = [
+      ...new Set(columns.flatMap((column) => column.departmentLevelIds ?? [])),
+    ];
+    const rows = await this.departmentModel
+      .find({
+        isActive: true,
+        ...(anyLevel
+          ? {}
+          : { levelId: { $in: levelIds.map((id) => new Types.ObjectId(id)) } }),
+      })
+      .select('name code levelId parentId sortOrder ancestors')
+      .sort({ sortOrder: 1, name: 1 });
+    const have = new Set(rows.map((row) => String(row._id)));
+    const missing = [
+      ...new Set(
+        rows.flatMap((row) =>
+          (row.ancestors ?? [])
+            .map((id) => String(id))
+            .filter((id) => !have.has(id)),
+        ),
+      ),
+    ];
+    const ancestors = missing.length
+      ? await this.departmentModel
+          .find({ _id: { $in: missing.map((id) => new Types.ObjectId(id)) } })
+          .select('name code levelId parentId sortOrder')
+      : [];
+    const all = [...rows, ...ancestors];
+    const byId = new Map(all.map((row) => [String(row._id), row]));
+    return all.map((row) => ({
+      _id: String(row._id),
+      name: row.name,
+      code: row.code ?? '',
+      levelId: row.levelId ? String(row.levelId) : null,
+      parentId: row.parentId ? String(row.parentId) : null,
+      sortOrder: row.sortOrder ?? 0,
+      parentName: row.parentId
+        ? (byId.get(String(row.parentId))?.name ?? '')
+        : '',
+    }));
   }
 
   /**
@@ -363,11 +750,11 @@ export class TeamReportAdjustmentService {
    * mẫu giấy nói "mỗi kết quả không quá tối đa", hai kết quả 1,5 điểm dưới mục
    * tối đa 2 là hai việc riêng, đều hợp lệ.
    */
-  private applyValues(
+  private async applyValues(
     entry: TeamReportAdjustmentEntry,
     template: SectionTemplate,
     input: Record<string, string | number>,
-  ): Record<string, string | number> {
+  ): Promise<Record<string, string | number>> {
     const next = { ...(entry.fieldValues ?? {}) };
     const byKey = new Map(
       this.inputColumns(template).map((column) => [column.key, column]),
@@ -413,6 +800,10 @@ export class TeamReportAdjustmentService {
         next[key] = '1';
         continue;
       }
+      if (column.dataType === 'department') {
+        next[key] = await this.normalizeDepartmentIds(column, value);
+        continue;
+      }
       if (column.dataType === 'date' && !isYmd(value)) {
         throw new BadRequestException(
           `Cột "${column.title}" phải có dạng YYYY-MM-DD.`,
@@ -421,6 +812,57 @@ export class TeamReportAdjustmentService {
       next[key] = value;
     }
     return next;
+  }
+
+  /**
+   * Ô chọn đơn vị lưu chuỗi id cách nhau bằng dấu phẩy. Kiểm từng id: phải là
+   * đơn vị đang hoạt động và thuộc đúng cấp cột cho phép - client lọc rồi,
+   * nhưng gửi thẳng API thì vẫn phải chặn.
+   */
+  private async normalizeDepartmentIds(
+    column: FormTemplateColumn,
+    value: string,
+  ): Promise<string> {
+    const ids = [
+      ...new Set(
+        value
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    ];
+    for (const id of ids) {
+      if (!Types.ObjectId.isValid(id)) {
+        throw new BadRequestException(
+          `Cột "${column.title}" có id đơn vị không hợp lệ.`,
+        );
+      }
+    }
+    const allowedLevels = column.departmentLevelIds ?? [];
+    const rows = await this.departmentModel
+      .find({
+        _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
+        isActive: true,
+      })
+      .select('levelId');
+    const found = new Map(rows.map((row) => [String(row._id), row]));
+    for (const id of ids) {
+      const row = found.get(id);
+      if (!row) {
+        throw new BadRequestException(
+          `Cột "${column.title}" có đơn vị không tồn tại hoặc đã ngừng hoạt động.`,
+        );
+      }
+      if (
+        allowedLevels.length &&
+        !allowedLevels.includes(String(row.levelId ?? ''))
+      ) {
+        throw new BadRequestException(
+          `Cột "${column.title}" chỉ chọn được đơn vị thuộc cấp đã cấu hình.`,
+        );
+      }
+    }
+    return ids.join(',');
   }
 
   /** Cột đội gõ được: bỏ nửa trái, bỏ cột tự tính, chỉ cột đang hiện. */

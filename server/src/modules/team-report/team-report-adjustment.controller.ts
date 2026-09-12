@@ -20,7 +20,10 @@ import type { JwtPayloadUser } from '@/common/interfaces/jwt-payload-user.interf
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import {
   AddTeamReportAdjustmentEntryDto,
+  DecideTeamReportDayDto,
   SaveTeamReportAdjustmentAccessDto,
+  SendTeamReportAdjustmentDto,
+  TeamReportAdjustmentInboxQueryDto,
   TeamReportAdjustmentQueryDto,
   UpdateTeamReportAdjustmentEntryDto,
 } from './dto/team-report.dto';
@@ -52,6 +55,53 @@ export class TeamReportAdjustmentController {
     return { message: 'OK', data: await this.accessService.check(user.uid) };
   }
 
+  /*
+    Đường của CẤP TRÊN - gác REVIEW, đứng trên ':periodMonth/…'. Bản trình tới
+    đơn vị mình mới đọc / duyệt được, service kiểm bằng `requireIncoming`.
+  */
+
+  @ApiOperation({
+    summary: 'Bảng điểm cộng / trừ các đội trình lên đơn vị tôi',
+  })
+  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  @Get('incoming')
+  inbox(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: TeamReportAdjustmentInboxQueryDto,
+  ) {
+    return this.service.inbox(user.uid, query);
+  }
+
+  @ApiOperation({ summary: 'Chi tiết một bản trình tới đơn vị tôi' })
+  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  @Get('incoming/:id')
+  incomingDetail(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
+    return this.service.incomingDetail(user.uid, id);
+  }
+
+  @ApiOperation({ summary: 'Duyệt hoặc trả lại' })
+  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  @Post('incoming/:id/decide')
+  decide(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: DecideTeamReportDayDto,
+  ) {
+    return this.service.decide(user.uid, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Cấp trên chỉnh một dòng của bản đang chờ duyệt' })
+  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  @Patch('incoming/:id/entries/:entryId')
+  reviewEntry(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Param('entryId') entryId: string,
+    @Body() dto: UpdateTeamReportAdjustmentEntryDto,
+  ) {
+    return this.service.reviewEntry(user.uid, id, entryId, dto);
+  }
+
   @ApiOperation({ summary: 'Luật ai được nhập - quản trị đọc' })
   @Permissions(Permission.MISSION_MANAGE)
   @Get('access/rule')
@@ -79,6 +129,16 @@ export class TeamReportAdjustmentController {
     @Query() query: TeamReportAdjustmentQueryDto,
   ) {
     return this.service.sheet(user.uid, query);
+  }
+
+  @ApiOperation({ summary: 'Trình bảng của tháng lên cấp trên đã chọn' })
+  @Post(':periodMonth/send')
+  send(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('periodMonth') periodMonth: string,
+    @Body() dto: SendTeamReportAdjustmentDto,
+  ) {
+    return this.service.send(user.uid, periodMonth, dto);
   }
 
   @ApiOperation({ summary: 'Thêm một dòng kết quả dưới một mục' })
