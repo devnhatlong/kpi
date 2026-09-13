@@ -64,9 +64,7 @@ export class UsersService {
     return {
       ...safe,
       id: user.id,
-      departmentId: user.departmentId
-        ? String(user.departmentId)
-        : undefined,
+      departmentId: user.departmentId ? String(user.departmentId) : undefined,
       departmentName,
     };
   }
@@ -74,16 +72,12 @@ export class UsersService {
   async validateUser(username: string, password: string) {
     const user = await this.findByUsername(username);
     if (!user) {
-      throw new BadRequestException(
-        'Tài khoản hoặc mật khẩu không chính xác.',
-      );
+      throw new BadRequestException('Tài khoản hoặc mật khẩu không chính xác.');
     }
 
     const isCorrectPassword = await user.comparePassword(password);
     if (!isCorrectPassword) {
-      throw new BadRequestException(
-        'Tài khoản hoặc mật khẩu không chính xác.',
-      );
+      throw new BadRequestException('Tài khoản hoặc mật khẩu không chính xác.');
     }
 
     return user;
@@ -310,7 +304,11 @@ export class UsersService {
   }
 
   /** Đổi mật khẩu của chính mình, bắt buộc xác thực mật khẩu hiện tại. */
-  async changeOwnPassword(id: string, currentPassword: string, newPassword: string) {
+  async changeOwnPassword(
+    id: string,
+    currentPassword: string,
+    newPassword: string,
+  ) {
     const user = await this.requireUser(id, true);
 
     const isCorrectPassword = await user.comparePassword(currentPassword);
@@ -334,6 +332,43 @@ export class UsersService {
     return { message: 'Xóa người dùng thành công.' };
   }
 
+  /**
+   * Xoá hàng loạt. Không cho tự xoá tài khoản đang đăng nhập, và không xoá
+   * SUPER_ADMIN cuối cùng - hai lỗi này làm mất luôn đường vào hệ thống.
+   */
+  async removeMany(ids: string[], actorId: string) {
+    const requested = new Set(ids);
+    const unique = [...requested].filter((id) => id !== actorId);
+    const skippedSelf = unique.length !== requested.size;
+    if (!unique.length) {
+      throw new BadRequestException(
+        'Không thể tự xoá tài khoản đang đăng nhập.',
+      );
+    }
+    const objectIds = unique.map((id) => new Types.ObjectId(id));
+
+    const adminsTotal = await this.userModel.countDocuments({
+      'roleAssignments.roleCode': RoleCode.SUPER_ADMIN,
+      isActive: true,
+    });
+    const adminsPicked = await this.userModel.countDocuments({
+      _id: { $in: objectIds },
+      'roleAssignments.roleCode': RoleCode.SUPER_ADMIN,
+      isActive: true,
+    });
+    if (adminsTotal - adminsPicked < 1) {
+      throw new BadRequestException(
+        'Phải giữ lại ít nhất một Quản trị hệ thống đang hoạt động.',
+      );
+    }
+
+    const result = await this.userModel.deleteMany({ _id: { $in: objectIds } });
+    return {
+      message: `Đã xoá ${result.deletedCount} người dùng.${skippedSelf ? ' Bỏ qua tài khoản đang đăng nhập.' : ''}`,
+      data: { deleted: result.deletedCount, skippedSelf },
+    };
+  }
+
   async importMany(rows: ImportUserRowDto[]) {
     const results: ImportRowResult[] = [];
     const defaultPassword = '123456';
@@ -347,9 +382,9 @@ export class UsersService {
     const validRoleCodes = new Set(roles.map((r) => r.code.toUpperCase()));
 
     const existingUsernames = new Set(
-      (
-        await this.userModel.find().select('username')
-      ).map((u) => u.username.toLowerCase()),
+      (await this.userModel.find().select('username')).map((u) =>
+        u.username.toLowerCase(),
+      ),
     );
 
     for (let i = 0; i < rows.length; i++) {
@@ -498,7 +533,11 @@ export class UsersService {
 
     const codes = [
       ...new Set(
-        assignments.map((a) => String(a.roleCode ?? '').trim().toUpperCase()),
+        assignments.map((a) =>
+          String(a.roleCode ?? '')
+            .trim()
+            .toUpperCase(),
+        ),
       ),
     ].filter(Boolean);
 

@@ -351,7 +351,9 @@
       "Bash(grep -n \"  /\\\\* ------------------------------------------------ luồng trình\\\\|  /\\\\*\\\\*\\\\n   \\\\* Người này có được mở\\\\|  async canReceive\\\\|  async assertCanReceive\\\\|  private async directSuperiors\\\\|  async directSuperiors\\\\|  private async hasReviewPermission\\\\|  private hasRecipients\\\\|  private async recipientClauses\\\\|  private async upsert\\\\|^  async recipientsRule\\\\|^  async saveRecipientsRule\\\\|^  async recipients\\(\" src/modules/team-report/team-report-adjustment-access.service.ts)",
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-routes-wire.js\")",
       "Bash(node e2e-adjustment-routes.js)",
-      "Bash(grep -n \"const \\\\[deciding, setDeciding\\\\]\\\\|mode={pending ? \\\\\"review\\\\\" : \\\\\"read\\\\\"}\\\\|Gõ thẳng vào ô để chỉnh\\\\|<Undo2 className=\\\\\"size-4\\\\\" />\\\\n                  Trả lại\\\\|{pending ? \\(\\\\n              <>\" src/features/team-report/components/team-report-adjustment-inbox-view.tsx)"
+      "Bash(grep -n \"const \\\\[deciding, setDeciding\\\\]\\\\|mode={pending ? \\\\\"review\\\\\" : \\\\\"read\\\\\"}\\\\|Gõ thẳng vào ô để chỉnh\\\\|<Undo2 className=\\\\\"size-4\\\\\" />\\\\n                  Trả lại\\\\|{pending ? \\(\\\\n              <>\" src/features/team-report/components/team-report-adjustment-inbox-view.tsx)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-bulk-users.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-bulk-client.js\")"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

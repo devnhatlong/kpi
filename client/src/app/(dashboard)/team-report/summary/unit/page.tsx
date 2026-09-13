@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { TeamReportSummaryView } from "@/features/team-report/components/team-report-summary-view";
 
 export const metadata: Metadata = {
-  title: "Tạo báo cáo của phòng",
+  title: "Tạo báo cáo của đơn vị",
 };
 
 /**

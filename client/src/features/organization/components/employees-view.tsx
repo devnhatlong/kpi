@@ -42,6 +42,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { TablePagination } from "@/components/common/table-pagination";
 import {
   activeBadgeClass,
@@ -50,6 +51,7 @@ import {
 } from "@/features/organization/badge-styles";
 import {
   deleteUser,
+  deleteUsers,
   fetchDepartments,
   fetchUsersPage,
   userKeys,
@@ -91,6 +93,10 @@ export function EmployeesView() {
   const [importOpen, setImportOpen] = useState(false);
   const [edit, setEdit] = useState<UserAccount | null>(null);
   const [deleting, setDeleting] = useState<UserAccount | null>(null);
+  /* Chọn hàng loạt - giữ id qua các trang, xoá một lượt. */
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
   const downloadTemplate = async () => {
@@ -123,6 +129,45 @@ export function EmployeesView() {
       await mutate();
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không xoá được người dùng."));
+    }
+  };
+
+  const pageIds = users.map((user) => entityId(user));
+  const allOnPage = pageIds.length > 0 && pageIds.every((id) => picked.has(id));
+  const someOnPage = pageIds.some((id) => picked.has(id));
+
+  const togglePage = (checked: boolean) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      for (const id of pageIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  const toggleOne = (id: string, checked: boolean) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  const confirmBulkDelete = async () => {
+    if (!picked.size) return;
+    setBulkDeleting(true);
+    try {
+      const result = await deleteUsers([...picked]);
+      toast.success(
+        `Đã xoá ${result.deleted} người dùng.${result.skippedSelf ? " Bỏ qua tài khoản đang đăng nhập." : ""}`,
+      );
+      setPicked(new Set());
+      setBulkOpen(false);
+      await mutate();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không xoá được."));
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -167,20 +212,56 @@ export function EmployeesView() {
 
       <Card>
         <CardContent className="space-y-4 pt-4">
-          <div className="relative max-w-sm">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-8"
-              placeholder="Tìm theo tên đăng nhập, họ tên, email..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-8"
+                placeholder="Tìm theo tên đăng nhập, họ tên, email..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            {picked.size ? (
+              <>
+                <Badge variant="secondary" className="font-normal">
+                  Đã chọn {picked.size}
+                </Badge>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setBulkOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Xoá đã chọn
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPicked(new Set())}
+                >
+                  Bỏ chọn
+                </Button>
+              </>
+            ) : null}
           </div>
 
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={
+                        allOnPage ? true : someOnPage ? "indeterminate" : false
+                      }
+                      disabled={!pageIds.length}
+                      aria-label="Chọn cả trang"
+                      onCheckedChange={(checked) =>
+                        togglePage(checked === true)
+                      }
+                    />
+                  </TableHead>
                   <TableHead className="w-14">STT</TableHead>
                   <TableHead className="w-[140px]">Tên đăng nhập</TableHead>
                   <TableHead>Họ tên</TableHead>
@@ -198,7 +279,7 @@ export function EmployeesView() {
                 {isLoading ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={10}
                       className="h-24 text-center text-muted-foreground"
                     >
                       Đang tải...
@@ -207,7 +288,7 @@ export function EmployeesView() {
                 ) : users.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={10}
                       className="h-24 text-center text-muted-foreground"
                     >
                       <div className="inline-flex flex-col items-center gap-2">
@@ -220,7 +301,21 @@ export function EmployeesView() {
                   users.map((user, index) => {
                     const deptId = entityId(user.departmentId);
                     return (
-                      <TableRow key={entityId(user)}>
+                      <TableRow
+                        key={entityId(user)}
+                        data-state={
+                          picked.has(entityId(user)) ? "selected" : undefined
+                        }
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={picked.has(entityId(user))}
+                            aria-label={`Chọn ${user.username}`}
+                            onCheckedChange={(checked) =>
+                              toggleOne(entityId(user), checked === true)
+                            }
+                          />
+                        </TableCell>
                         <TableCell className="text-muted-foreground">
                           {rowIndex(meta.page, meta.limit, index)}
                         </TableCell>
@@ -344,6 +439,32 @@ export function EmployeesView() {
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete}>Xoá</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkOpen} onOpenChange={setBulkOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Xoá {picked.size} người dùng đã chọn?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Xoá hẳn, không khôi phục được. Tài khoản đang đăng nhập và Quản
+              trị hệ thống cuối cùng sẽ không bị xoá.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDeleting}>Hủy</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={bulkDeleting}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmBulkDelete();
+              }}
+            >
+              {bulkDeleting ? "Đang xoá..." : `Xoá ${picked.size} người dùng`}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -16,9 +16,12 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { AdminCreateUserDto } from './dto/admin-create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ImportUsersDto } from './dto/import-users.dto';
+import { BulkDeleteUsersDto } from './dto/bulk-delete-users.dto';
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import { PermissionsGuard } from '@/common/guards/permissions.guard';
 import { Permissions } from '@/common/decorators';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import type { JwtPayloadUser } from '@/common/interfaces/jwt-payload-user.interface';
 import { Permission } from '@/common/enums/permission.enum';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 
@@ -58,6 +61,18 @@ export class UsersController {
   @Get('all')
   findAll(@Query() query: PaginationQueryDto) {
     return this.usersService.findAll(query);
+  }
+
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Xoá nhiều người dùng đã chọn' })
+  @UseGuards(JwtGuard, PermissionsGuard)
+  @Permissions(Permission.USER_MANAGE)
+  @Post('bulk-delete')
+  bulkRemove(
+    @CurrentUser() user: JwtPayloadUser,
+    @Body() dto: BulkDeleteUsersDto,
+  ) {
+    return this.usersService.removeMany(dto.ids, user.uid);
   }
 
   @ApiBearerAuth()

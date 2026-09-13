@@ -111,11 +111,11 @@ export function TeamReportSummaryView({
             </span>
             <div>
               <h1 className="font-display text-xl font-semibold tracking-tight">
-                {unit ? "Tạo báo cáo của phòng" : "Tạo báo cáo tổng hợp"}
+                {unit ? "Tạo báo cáo của đơn vị" : "Tạo báo cáo tổng hợp"}
               </h1>
               <p className="text-sm text-muted-foreground">
                 {unit
-                  ? "Gom nhiệm vụ của các đội trong phòng theo kỳ, lọc theo đội hoặc theo trục, rồi trình lên cấp trên."
+                  ? "Gom nhiệm vụ của các đội trong đơn vị theo kỳ, lọc theo đội hoặc theo trục, rồi trình lên cấp trên."
                   : "Gom nhiệm vụ từ bảng ngày của đội theo ngày, tuần hoặc tháng, chọn những việc đã sẵn sàng rồi trình lên cấp trên."}
               </p>
             </div>

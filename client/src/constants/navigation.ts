@@ -35,7 +35,7 @@ export type NavSubItem = {
   /**
    * Nếu có: phải giữ thêm một trong các vai trò này mới hiện.
    *
-   * Dùng cho những màn mà quyền không nói đủ. Ví dụ "Tạo báo cáo của phòng":
+   * Dùng cho những màn mà quyền không nói đủ. Ví dụ "Tạo báo cáo của đơn vị":
    * cả trưởng phòng lẫn tỉnh đều có quyền duyệt báo cáo, nhưng tỉnh đứng đầu
    * chuỗi - không có cấp trên nào để trình lên, nên màn đó vô nghĩa với họ.
    */
@@ -159,7 +159,7 @@ export const NAV_ITEMS: NavItem[] = [
           đi hai bộ route khác nhau (đội có ENTRY, phòng có REVIEW) nên một
           dòng menu chung sẽ dẫn nửa số người dùng tới một trang trả 403.
         */
-        title: "Tạo báo cáo của phòng",
+        title: "Tạo báo cáo của đơn vị",
         href: "/team-report/summary/unit",
         icon: FileStack,
         permissions: [PERM.TEAM_REPORT_REVIEW],

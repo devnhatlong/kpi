@@ -1,4 +1,9 @@
-import { api, buildListQuery, unwrapData, unwrapPaginated } from "@/lib/api-client";
+import {
+  api,
+  buildListQuery,
+  unwrapData,
+  unwrapPaginated,
+} from "@/lib/api-client";
 import type {
   ApiResponse,
   AppPermission,
@@ -27,7 +32,13 @@ import type {
 export const departmentKeys = {
   all: ["departments"] as const,
   list: (params: ListQueryParams) =>
-    ["departments", params.page, params.limit, params.q ?? "", params.all ?? false] as const,
+    [
+      "departments",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+    ] as const,
   levels: ["department-levels"] as const,
   levelsList: (params: ListQueryParams) =>
     [
@@ -39,25 +50,49 @@ export const departmentKeys = {
     ] as const,
   users: ["users"] as const,
   usersList: (params: ListQueryParams) =>
-    ["users", params.page, params.limit, params.q ?? "", params.all ?? false] as const,
+    [
+      "users",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+    ] as const,
 };
 
 export const roleKeys = {
   all: ["roles"] as const,
   list: (params: ListQueryParams) =>
-    ["roles", params.page, params.limit, params.q ?? "", params.all ?? false] as const,
+    [
+      "roles",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+    ] as const,
 };
 
 export const permissionKeys = {
   all: ["permissions"] as const,
   list: (params: ListQueryParams) =>
-    ["permissions", params.page, params.limit, params.q ?? "", params.all ?? false] as const,
+    [
+      "permissions",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+    ] as const,
 };
 
 export const userKeys = {
   all: ["users"] as const,
   list: (params: ListQueryParams) =>
-    ["users", params.page, params.limit, params.q ?? "", params.all ?? false] as const,
+    [
+      "users",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+    ] as const,
 };
 
 export async function fetchDepartments() {
@@ -83,8 +118,13 @@ export async function createDepartment(input: CreateDepartmentInput) {
   return unwrapData(api.post<ApiResponse<Department>>("/departments", input));
 }
 
-export async function updateDepartment(id: string, input: UpdateDepartmentInput) {
-  return unwrapData(api.patch<ApiResponse<Department>>(`/departments/${id}`, input));
+export async function updateDepartment(
+  id: string,
+  input: UpdateDepartmentInput,
+) {
+  return unwrapData(
+    api.patch<ApiResponse<Department>>(`/departments/${id}`, input),
+  );
 }
 
 export async function deleteDepartment(id: string) {
@@ -94,7 +134,9 @@ export async function deleteDepartment(id: string) {
 
 export async function importDepartments(rows: ImportDepartmentRow[]) {
   return unwrapData(
-    api.post<ApiResponse<ImportDepartmentsResult>>("/departments/import", { rows }),
+    api.post<ApiResponse<ImportDepartmentsResult>>("/departments/import", {
+      rows,
+    }),
   );
 }
 
@@ -124,14 +166,19 @@ export async function createDepartmentLevel(input: CreateDepartmentLevelInput) {
   );
 }
 
-export async function updateDepartmentLevel(id: string, input: UpdateDepartmentLevelInput) {
+export async function updateDepartmentLevel(
+  id: string,
+  input: UpdateDepartmentLevelInput,
+) {
   return unwrapData(
     api.patch<ApiResponse<DepartmentLevel>>(`/department-levels/${id}`, input),
   );
 }
 
 export async function deleteDepartmentLevel(id: string) {
-  const { data } = await api.delete<ApiResponse<unknown>>(`/department-levels/${id}`);
+  const { data } = await api.delete<ApiResponse<unknown>>(
+    `/department-levels/${id}`,
+  );
   return data;
 }
 
@@ -188,10 +235,15 @@ export async function fetchPermissionsPage(
 }
 
 export async function createPermission(input: CreatePermissionInput) {
-  return unwrapData(api.post<ApiResponse<AppPermission>>("/permissions", input));
+  return unwrapData(
+    api.post<ApiResponse<AppPermission>>("/permissions", input),
+  );
 }
 
-export async function updatePermission(id: string, input: UpdatePermissionInput) {
+export async function updatePermission(
+  id: string,
+  input: UpdatePermissionInput,
+) {
   return unwrapData(
     api.patch<ApiResponse<AppPermission>>(`/permissions/${id}`, input),
   );
@@ -233,6 +285,16 @@ export async function updateUser(id: string, input: UpdateUserInput) {
 export async function deleteUser(id: string) {
   const { data } = await api.delete<ApiResponse<unknown>>(`/users/${id}`);
   return data;
+}
+
+/** Xoá nhiều tài khoản một lượt; server tự bỏ qua tài khoản đang đăng nhập. */
+export async function deleteUsers(ids: string[]) {
+  return unwrapData(
+    api.post<ApiResponse<{ deleted: number; skippedSelf: boolean }>>(
+      "/users/bulk-delete",
+      { ids },
+    ),
+  );
 }
 
 export async function importUsers(rows: ImportUserRow[]) {
