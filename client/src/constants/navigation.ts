@@ -85,7 +85,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: CalendarCheck,
     children: [
       {
-        title: "Bảng nhiệm vụ ngày",
+        title: "Nhập nhiệm vụ ngày",
         href: "/team-report/sheet",
         icon: ClipboardPen,
         permissions: [PERM.TEAM_REPORT_ENTRY],

@@ -94,7 +94,9 @@ import { getApiErrorMessage } from "@/lib/api-client";
 import { formatServerHm, formatYmd, serverYmd } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
-const REFRESH_MS = 8000;
+/* Phân loại ít khi hai người cùng đụng một dòng - 30 giây, cùng lý do giảm
+   tải như bảng nhập (xem team-report-sheet-view). */
+const REFRESH_MS = 30_000;
 
 /**
  * Bộ lọc hàng đợi.

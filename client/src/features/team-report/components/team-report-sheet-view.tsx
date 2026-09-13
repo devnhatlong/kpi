@@ -65,10 +65,12 @@ import { cn } from "@/lib/utils";
  * Nhịp tự nạp lại bảng.
  *
  * Cả đội gõ chung một bảng nên phải thấy dòng người khác vừa thêm mà không cần
- * bấm gì. 5 giây là đủ để cảm giác "sống" mà không nện API - một đội chục người
- * ngồi cả buổi cũng chỉ vài nghìn lượt, nhẹ hơn nhiều so với dựng WebSocket.
+ * bấm gì. Nhưng mỗi tài khoản đội có tới ~30 người cùng mở tab, toàn tỉnh hàng
+ * trăm đội - poll 5 giây là hàng nghìn lượt / giây giờ cao điểm. 15 giây đủ
+ * "sống": thao tác của CHÍNH MÌNH cập nhật ngay sau khi lưu, chỉ dòng người
+ * khác mới chờ tối đa 15 giây. SWR tự dừng poll khi tab bị ẩn.
  */
-const REFRESH_MS = 5000;
+const REFRESH_MS = 30_000;
 
 /** Bản nháp đang gõ của một dòng. */
 /*
@@ -310,7 +312,7 @@ export function TeamReportSheetView() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h1 className="font-display text-2xl font-semibold tracking-tight">
-            Bảng nhiệm vụ ngày
+            Nhập nhiệm vụ ngày
           </h1>
           <p className="text-sm text-muted-foreground">
             Cả đội cùng nhập vào bảng này. Bảng tự làm mới nên thấy ngay dòng
