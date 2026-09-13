@@ -46,7 +46,7 @@ export type NavSubItem = {
    *
    * `adjustment-access`: ai được nhập bảng điểm cộng / trừ / xếp loại.
    */
-  gate?: "adjustment-access";
+  gate?: "adjustment-access" | "adjustment-inbox";
 };
 
 export type NavItem = {
@@ -103,30 +103,33 @@ export const NAV_ITEMS: NavItem[] = [
         icon: ClipboardCheck,
         permissions: [PERM.TEAM_REPORT_ENTRY],
       },
+      /*
+        Không có mục "Duyệt báo cáo ngày": luồng thật là đội gom bảng ngày
+        thành BÁO CÁO TỔNG HỢP rồi trình phòng duyệt ở nhóm bên dưới. Trang
+        /team-report/incoming vẫn còn, chỉ không bày ra menu.
+      */
+    ],
+  },
+  {
+    /*
+      Nhóm riêng cho "Bảng đề xuất điểm cộng, điểm trừ & xếp loại": tháng
+      một bản, luồng trình riêng - là một LOẠI báo cáo khác, không phải bảng
+      ngày. Cả hai mục đều hỏi server (luật quản trị đặt), không theo mã quyền.
+    */
+    title: "Điểm cộng, trừ & xếp loại",
+    icon: Scale,
+    children: [
       {
-        /*
-          Bảng đề xuất điểm cộng, điểm trừ, điều chỉnh xếp loại - tháng một bản
-          như bảng A. Ai được nhập KHÔNG theo mã quyền: quản trị chỉ định theo
-          vai trò / tài khoản / đơn vị, nên sidebar phải hỏi server.
-        */
-        title: "Điểm cộng, trừ & xếp loại",
+        title: "Nhập bảng đề xuất",
         href: "/team-report/adjustments",
-        icon: Scale,
+        icon: ClipboardPen,
         gate: "adjustment-access",
       },
       {
-        title: "Duyệt báo cáo ngày",
-        href: "/team-report/incoming",
-        icon: Stamp,
-        permissions: [PERM.TEAM_REPORT_REVIEW],
-      },
-      {
-        /* Hộp đến riêng của bảng điểm cộng, trừ - đội trình lên như bản tổng
-           hợp, nhưng tháng một bản và không chung collection. */
-        title: "Duyệt điểm cộng, trừ",
+        title: "Duyệt bảng đề xuất",
         href: "/team-report/adjustments/incoming",
-        icon: Scale,
-        permissions: [PERM.TEAM_REPORT_REVIEW],
+        icon: Inbox,
+        gate: "adjustment-inbox",
       },
     ],
   },

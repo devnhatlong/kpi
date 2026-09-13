@@ -43,6 +43,32 @@ export class TeamReportAdjustmentAccess {
   @Prop({ default: true })
   includeDescendants!: boolean;
 
+  /*
+    Chỉ luật LUỒNG TRÌNH (key 'recipients') dùng: luồng áp cho NGƯỜI GỬI nào.
+    Rỗng cả hai = mọi người gửi. Người gửi không khớp thì đi mặc định (cấp
+    trên trực tiếp) - để "phòng gửi xuống đội" không làm đội mất đường gửi
+    lên phòng.
+  */
+  @Prop({ type: [String], default: [] })
+  senderRoleCodes!: string[];
+
+  @Prop({ type: [Types.ObjectId], ref: User.name, default: [] })
+  senderUserIds!: Types.ObjectId[];
+
+  @Prop({ type: [Types.ObjectId], ref: Department.name, default: [] })
+  senderDepartmentIds!: Types.ObjectId[];
+
+  @Prop({ default: true })
+  senderIncludeDescendants!: boolean;
+
+  /**
+   * Hướng gửi của luồng: 'DOWN' = người gửi khớp vế trên trình XUỐNG các đơn
+   * vị cấp dưới của mình; 'UP' (mặc định) = lên cấp trên trực tiếp có quyền
+   * duyệt, như báo cáo tổng hợp.
+   */
+  @Prop({ type: String, enum: ['UP', 'DOWN'], default: 'UP' })
+  direction!: 'UP' | 'DOWN';
+
   @Prop({ type: Types.ObjectId, ref: User.name, default: null })
   updatedById!: Types.ObjectId | null;
 

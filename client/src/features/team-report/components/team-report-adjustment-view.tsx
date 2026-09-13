@@ -31,7 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   addTeamReportAdjustmentEntry,
   fetchTeamReportAdjustments,
-  fetchTeamReportRecipients,
+  fetchTeamReportAdjustmentRecipients,
   removeTeamReportAdjustmentEntry,
   sendTeamReportAdjustment,
   teamReportKeys,
@@ -196,10 +196,13 @@ export function TeamReportAdjustmentView() {
   const editable = status === "DRAFT" || status === "RETURNED";
   const canSend = editable && (sheet?.entries.length ?? 0) > 0;
 
-  const { data: recipients = [] } = useSWR(
-    sendOpen ? teamReportKeys.recipients() : null,
-    () => fetchTeamReportRecipients(),
+  /* Người nhận theo LUỒNG quản trị đặt cho bảng này - không phải cấp trên
+     trực tiếp như báo cáo tổng hợp, trừ khi chưa đặt luồng. */
+  const { data: recipientData } = useSWR(
+    sendOpen ? ["team-report", "adjustment-recipients"] : null,
+    () => fetchTeamReportAdjustmentRecipients(),
   );
+  const recipients = recipientData?.people ?? [];
 
   const send = async () => {
     if (!sheet || !recipientId) return;

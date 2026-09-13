@@ -22,6 +22,7 @@ import {
   AddTeamReportAdjustmentEntryDto,
   DecideTeamReportDayDto,
   SaveTeamReportAdjustmentAccessDto,
+  SaveTeamReportAdjustmentRoutesDto,
   SendTeamReportAdjustmentDto,
   TeamReportAdjustmentInboxQueryDto,
   TeamReportAdjustmentQueryDto,
@@ -29,6 +30,7 @@ import {
 } from './dto/team-report.dto';
 import { TeamReportAdjustmentAccessService } from './team-report-adjustment-access.service';
 import { TeamReportAdjustmentService } from './team-report-adjustment.service';
+import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
 
 /**
  * Bảng điểm cộng / điểm trừ / xếp loại của đội - tháng một bản.
@@ -45,6 +47,7 @@ export class TeamReportAdjustmentController {
   constructor(
     private readonly service: TeamReportAdjustmentService,
     private readonly accessService: TeamReportAdjustmentAccessService,
+    private readonly routing: TeamReportAdjustmentRoutingService,
   ) {}
 
   /* Các route 'access…' đứng TRÊN ':periodMonth/…' - Nest khớp theo thứ tự. */
@@ -52,18 +55,22 @@ export class TeamReportAdjustmentController {
   @ApiOperation({ summary: 'Tôi có được nhập bảng này không' })
   @Get('access')
   async access(@CurrentUser() user: JwtPayloadUser) {
-    return { message: 'OK', data: await this.accessService.check(user.uid) };
+    const [entry, canReceive] = await Promise.all([
+      this.accessService.check(user.uid),
+      this.accessService.canReceive(user.uid),
+    ]);
+    return { message: 'OK', data: { ...entry, canReceive } };
   }
 
   /*
-    Đường của CẤP TRÊN - gác REVIEW, đứng trên ':periodMonth/…'. Bản trình tới
-    đơn vị mình mới đọc / duyệt được, service kiểm bằng `requireIncoming`.
+    Đường của NGƯỜI NHẬN, đứng trên ':periodMonth/…'. Không gác mã quyền: ai
+    được nhận do luồng trình quản trị đặt (có thể là các đội, không có quyền
+    duyệt) - service kiểm bằng `assertCanReceive` + `requireIncoming`.
   */
 
   @ApiOperation({
     summary: 'Bảng điểm cộng / trừ các đội trình lên đơn vị tôi',
   })
-  @Permissions(Permission.TEAM_REPORT_REVIEW)
   @Get('incoming')
   inbox(
     @CurrentUser() user: JwtPayloadUser,
@@ -73,14 +80,12 @@ export class TeamReportAdjustmentController {
   }
 
   @ApiOperation({ summary: 'Chi tiết một bản trình tới đơn vị tôi' })
-  @Permissions(Permission.TEAM_REPORT_REVIEW)
   @Get('incoming/:id')
   incomingDetail(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
     return this.service.incomingDetail(user.uid, id);
   }
 
   @ApiOperation({ summary: 'Duyệt hoặc trả lại' })
-  @Permissions(Permission.TEAM_REPORT_REVIEW)
   @Post('incoming/:id/decide')
   decide(
     @CurrentUser() user: JwtPayloadUser,
@@ -91,7 +96,6 @@ export class TeamReportAdjustmentController {
   }
 
   @ApiOperation({ summary: 'Cấp trên chỉnh một dòng của bản đang chờ duyệt' })
-  @Permissions(Permission.TEAM_REPORT_REVIEW)
   @Patch('incoming/:id/entries/:entryId')
   reviewEntry(
     @CurrentUser() user: JwtPayloadUser,
@@ -100,6 +104,31 @@ export class TeamReportAdjustmentController {
     @Body() dto: UpdateTeamReportAdjustmentEntryDto,
   ) {
     return this.service.reviewEntry(user.uid, id, entryId, dto);
+  }
+
+  @ApiOperation({ summary: 'Tôi được trình bảng này tới ai' })
+  @Get('recipients')
+  recipients(@CurrentUser() user: JwtPayloadUser, @Query('q') q?: string) {
+    return this.service.recipients(user.uid, q);
+  }
+
+  @ApiOperation({ summary: 'Các luồng trình - quản trị đọc' })
+  @Permissions(Permission.MISSION_MANAGE)
+  @Get('routing/routes')
+  routes() {
+    return this.routing.list();
+  }
+
+  @ApiOperation({
+    summary: 'Thay toàn bộ luồng trình (thứ tự mảng = thứ tự xét)',
+  })
+  @Permissions(Permission.MISSION_MANAGE)
+  @Put('routing/routes')
+  saveRoutes(
+    @CurrentUser() user: JwtPayloadUser,
+    @Body() dto: SaveTeamReportAdjustmentRoutesDto,
+  ) {
+    return this.routing.saveAll(user.uid, dto);
   }
 
   @ApiOperation({ summary: 'Luật ai được nhập - quản trị đọc' })

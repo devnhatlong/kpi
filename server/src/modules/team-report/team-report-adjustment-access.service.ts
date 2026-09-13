@@ -19,10 +19,15 @@ import {
   TeamReportAdjustmentAccess,
   TeamReportAdjustmentAccessDocument,
 } from './schemas/team-report-adjustment-access.schema';
+import {
+  TeamReportAdjustmentSheet,
+  TeamReportAdjustmentSheetDocument,
+} from './schemas/team-report-adjustment-sheet.schema';
 import { SaveTeamReportAdjustmentAccessDto } from './dto/team-report.dto';
+import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
 
+/** Luật "ai được nhập". */
 const KEY = 'default';
-
 /** Kết quả kiểm quyền, kèm lý do để màn nhập nói được vì sao bị chặn. */
 export type AdjustmentAccessResult = {
   allowed: boolean;
@@ -46,7 +51,10 @@ export class TeamReportAdjustmentAccessService {
     private readonly userModel: Model<UserDocument>,
     @InjectModel(Department.name)
     private readonly departmentModel: Model<DepartmentDocument>,
+    @InjectModel(TeamReportAdjustmentSheet.name)
+    private readonly sheetModel: Model<TeamReportAdjustmentSheetDocument>,
     private readonly rolesService: RolesService,
+    private readonly routing: TeamReportAdjustmentRoutingService,
   ) {}
 
   /** Luật hiện hành - cho màn quản trị. */
@@ -59,6 +67,50 @@ export class TeamReportAdjustmentAccessService {
   }
 
   async save(userId: string, dto: SaveTeamReportAdjustmentAccessDto) {
+    const doc = await this.upsert(KEY, userId, dto);
+    return { message: 'Đã lưu quyền nhập bảng.', data: this.toClient(doc) };
+  }
+
+  /* --------------------------------------------------------- hộp đến */
+
+  /**
+   * Người này có được mở HỘP ĐẾN (đọc, duyệt / trả) không.
+   *
+   * Có quyền duyệt thì luôn được (luồng mặc định). Không có thì được khi nằm
+   * trong vế "gửi cho ai" của một luồng, hoặc đã có bảng trình tới đơn vị
+   * mình - người nhận không cần thêm mã quyền nào.
+   */
+  async canReceive(userId: string): Promise<boolean> {
+    if (!Types.ObjectId.isValid(userId)) return false;
+    const user = await this.userModel
+      .findById(userId)
+      .select('roleAssignments departmentId');
+    if (!user) return false;
+    const codes = (user.roleAssignments ?? []).map((a) => a.roleCode);
+    const permissions = await this.rolesService.getPermissionsByCodes(codes);
+    if (permissions.includes(Permission.TEAM_REPORT_REVIEW)) return true;
+    if (await this.routing.isListedRecipient(userId)) return true;
+    if (!user.departmentId) return false;
+    const addressed = await this.sheetModel.exists({
+      recipientDepartmentId: user.departmentId,
+      status: { $ne: 'DRAFT' },
+    });
+    return Boolean(addressed);
+  }
+
+  async assertCanReceive(userId: string) {
+    if (!(await this.canReceive(userId))) {
+      throw new ForbiddenException(
+        'Chưa có bảng nào trình tới đơn vị bạn, và bạn không có quyền duyệt báo cáo.',
+      );
+    }
+  }
+
+  private async upsert(
+    key: string,
+    userId: string,
+    dto: SaveTeamReportAdjustmentAccessDto,
+  ) {
     const actor = await this.userModel
       .findById(userId)
       .select('fullName username');
@@ -94,8 +146,8 @@ export class TeamReportAdjustmentAccessService {
       }
     }
 
-    const doc = await this.accessModel.findOneAndUpdate(
-      { key: KEY },
+    return this.accessModel.findOneAndUpdate(
+      { key },
       {
         $set: {
           roleCodes,
@@ -105,11 +157,10 @@ export class TeamReportAdjustmentAccessService {
           updatedById: actor._id,
           updatedByName: actor.fullName?.trim() || actor.username,
         },
-        $setOnInsert: { key: KEY },
+        $setOnInsert: { key },
       },
       { upsert: true, new: true },
     );
-    return { message: 'Đã lưu quyền nhập bảng.', data: this.toClient(doc) };
   }
 
   /**

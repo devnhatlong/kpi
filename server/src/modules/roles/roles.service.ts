@@ -311,6 +311,15 @@ export class RolesService implements OnModuleInit {
     return [...set];
   }
 
+  /** Mã các vai trò đang hoạt động có một quyền cụ thể. */
+  async findCodesByPermission(permission: string): Promise<string[]> {
+    const roles = await this.roleModel
+      .find({ permissions: permission, isActive: true })
+      .select('code')
+      .lean();
+    return roles.map((role) => role.code);
+  }
+
   async seedSystemRoles() {
     for (const role of SYSTEM_ROLES) {
       await this.roleModel.updateOne(

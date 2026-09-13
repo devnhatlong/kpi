@@ -575,6 +575,39 @@ export class SaveTeamReportAdjustmentAccessDto {
   @IsOptional()
   @IsBoolean()
   includeDescendants?: boolean;
+
+  /* Chỉ luồng trình: áp cho người gửi nào. */
+  @ApiPropertyOptional({ type: [String], description: 'Vai trò người gửi' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  senderRoleCodes?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Tài khoản người gửi' })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true })
+  senderUserIds?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Đơn vị người gửi' })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true })
+  senderDepartmentIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Đơn vị người gửi tính cả cấp dưới' })
+  @IsOptional()
+  @IsBoolean()
+  senderIncludeDescendants?: boolean;
+
+  @ApiPropertyOptional({
+    enum: ['UP', 'DOWN'],
+    description:
+      'Hướng gửi: UP = lên cấp trên (mặc định), DOWN = xuống cấp dưới',
+  })
+  @IsOptional()
+  @IsIn(['UP', 'DOWN'])
+  direction?: 'UP' | 'DOWN';
 }
 
 /** Đội trình bảng điểm cộng / trừ / xếp loại lên một người cấp trên. */
@@ -614,4 +647,68 @@ export class TeamReportAdjustmentInboxQueryDto {
   @IsInt()
   @Min(1)
   limit?: number;
+}
+
+/* ------------------------------------------- luồng trình: nhiều luồng */
+
+export class TeamReportAdjustmentScopeDto {
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  roleCodes?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Cấp đơn vị' })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true })
+  levelIds?: string[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true })
+  departmentIds?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  includeDescendants?: boolean;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true })
+  userIds?: string[];
+}
+
+export class TeamReportAdjustmentRouteDto {
+  @ApiProperty({ example: 'Phòng / xã gửi về PV01' })
+  @IsString()
+  @MaxLength(200)
+  name!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @ApiProperty({ type: () => TeamReportAdjustmentScopeDto })
+  @ValidateNested()
+  @Type(() => TeamReportAdjustmentScopeDto)
+  sender!: TeamReportAdjustmentScopeDto;
+
+  @ApiProperty({ type: () => TeamReportAdjustmentScopeDto })
+  @ValidateNested()
+  @Type(() => TeamReportAdjustmentScopeDto)
+  recipients!: TeamReportAdjustmentScopeDto;
+}
+
+/** Thay toàn bộ danh sách luồng - thứ tự mảng là thứ tự xét. */
+export class SaveTeamReportAdjustmentRoutesDto {
+  @ApiProperty({ type: () => [TeamReportAdjustmentRouteDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TeamReportAdjustmentRouteDto)
+  routes!: TeamReportAdjustmentRouteDto[];
 }

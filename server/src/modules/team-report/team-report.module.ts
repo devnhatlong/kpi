@@ -63,6 +63,11 @@ import { TeamReportCriteriaService } from './team-report-criteria.service';
 import { TeamReportAdjustmentController } from './team-report-adjustment.controller';
 import { TeamReportAdjustmentService } from './team-report-adjustment.service';
 import { TeamReportAdjustmentAccessService } from './team-report-adjustment-access.service';
+import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
+import {
+  TeamReportAdjustmentRoute,
+  TeamReportAdjustmentRouteSchema,
+} from './schemas/team-report-adjustment-route.schema';
 import {
   TeamReportAdjustmentAccess,
   TeamReportAdjustmentAccessSchema,
@@ -112,6 +117,10 @@ import {
         name: TeamReportAdjustmentAccess.name,
         schema: TeamReportAdjustmentAccessSchema,
       },
+      {
+        name: TeamReportAdjustmentRoute.name,
+        schema: TeamReportAdjustmentRouteSchema,
+      },
       { name: FormTemplate.name, schema: FormTemplateSchema },
     ]),
     forwardRef(() => AuthsModule),
@@ -131,6 +140,7 @@ import {
     TeamReportCriteriaService,
     TeamReportAdjustmentService,
     TeamReportAdjustmentAccessService,
+    TeamReportAdjustmentRoutingService,
   ],
   exports: [TeamReportService],
 })

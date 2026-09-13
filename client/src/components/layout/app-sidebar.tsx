@@ -198,6 +198,7 @@ export function AppSidebar() {
     { revalidateOnFocus: false, dedupingInterval: 60_000 },
   );
   const adjustmentAllowed = adjustmentGate.data?.allowed === true;
+  const adjustmentInbox = adjustmentGate.data?.canReceive === true;
 
   // Lọc cả mục con: nhóm chỉ còn lại những trang user thật sự vào được, và
   // nhóm rỗng thì ẩn luôn thay vì bung ra một danh sách trống.
@@ -225,13 +226,14 @@ export function AppSidebar() {
           // phải đúng vai trò mới hiện.
           (!child.roles?.length || userHasAnyRole(user, child.roles)) &&
           (!child.gate ||
-            (child.gate === "adjustment-access" && adjustmentAllowed)),
+            (child.gate === "adjustment-access" && adjustmentAllowed) ||
+            (child.gate === "adjustment-inbox" && adjustmentInbox)),
       );
       if (children.length) items.push({ ...item, children });
     }
 
     return items;
-  }, [user, adjustmentAllowed]);
+  }, [user, adjustmentAllowed, adjustmentInbox]);
 
   const allHrefs = useMemo(() => collectNavHrefs(visibleItems), [visibleItems]);
 

@@ -41,6 +41,7 @@ import {
 import { TeamReportService } from './team-report.service';
 import { isYmd, serverDateYmd } from './team-report.time';
 import { TeamReportAdjustmentAccessService } from './team-report-adjustment-access.service';
+import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
 
 type Actor = {
   id: Types.ObjectId;
@@ -95,6 +96,7 @@ export class TeamReportAdjustmentService {
     private readonly departmentModel: Model<DepartmentDocument>,
     private readonly formTemplatesService: FormTemplatesService,
     private readonly access: TeamReportAdjustmentAccessService,
+    private readonly routing: TeamReportAdjustmentRoutingService,
     private readonly teamReportService: TeamReportService,
   ) {}
 
@@ -379,7 +381,7 @@ export class TeamReportAdjustmentService {
       throw new BadRequestException('Bảng này đã trình rồi.');
     }
 
-    const recipient = await this.teamReportService.requireSummaryRecipientFor(
+    const recipient = await this.requireRecipient(
       String(actor.id),
       dto.recipientId,
     );
@@ -417,6 +419,9 @@ export class TeamReportAdjustmentService {
    */
   async inbox(userId: string, query: TeamReportAdjustmentInboxQueryDto) {
     const actor = await this.requireActor(userId);
+    // Hộp đến chỉ mở cho người nằm trong luồng trình (hoặc có quyền duyệt
+    // khi chưa đặt luồng) - route không gác mã quyền.
+    await this.access.assertCanReceive(userId);
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const filter: Record<string, unknown> = {
@@ -624,6 +629,7 @@ export class TeamReportAdjustmentService {
   }
 
   private async requireIncoming(actor: Actor, id: string) {
+    await this.access.assertCanReceive(String(actor.id));
     const sheet = await this.sheetModel.findById(
       this.requireObjectId(id, 'Bảng'),
     );
@@ -636,6 +642,39 @@ export class TeamReportAdjustmentService {
       throw new ForbiddenException('Bảng này không trình tới đơn vị bạn.');
     }
     return sheet;
+  }
+
+  /**
+   * Người được trình tới: theo luật "luồng trình" quản trị đặt; chưa đặt thì
+   * như báo cáo tổng hợp - cấp trên trực tiếp có quyền duyệt.
+   */
+  async recipients(userId: string, q?: string) {
+    await this.requireActor(userId);
+    const configured = await this.routing.recipients(userId, q);
+    if (configured) {
+      return { message: 'OK', data: { people: configured, configured: true } };
+    }
+    const fallback = await this.routing.directSuperiors(userId, q);
+    return { message: 'OK', data: { people: fallback, configured: false } };
+  }
+
+  private async requireRecipient(userId: string, recipientId: string) {
+    const allowed =
+      (await this.routing.recipients(userId)) ??
+      (await this.routing.directSuperiors(userId));
+    const picked = allowed.find((person) => person.id === recipientId);
+    if (!picked) {
+      throw new BadRequestException(
+        'Người nhận không hợp lệ - phải là cấp trên trực tiếp, hoặc người trong luồng quản trị đã đặt.',
+      );
+    }
+    return {
+      id: new Types.ObjectId(picked.id),
+      name: picked.fullName,
+      departmentId: picked.departmentId
+        ? new Types.ObjectId(picked.departmentId)
+        : null,
+    };
   }
 
   private async departmentNameOf(id: Types.ObjectId): Promise<string> {

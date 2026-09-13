@@ -8,6 +8,7 @@ import {
   History,
   Inbox,
   Loader2,
+  Pencil,
   Scale,
   Search,
   Undo2,
@@ -327,6 +328,8 @@ function ReviewPanel({
   const [returnOpen, setReturnOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [deciding, setDeciding] = useState(false);
+  /* Duyệt là đọc; sửa điểm là việc chủ động, phải bật lên mới gõ được. */
+  const [editing, setEditing] = useState(false);
 
   const { sheet, totals, templates, scoreColumnKeys } = data;
   const catalog = useMemo(() => data.catalog ?? [], [data.catalog]);
@@ -450,6 +453,16 @@ function ReviewPanel({
               <>
                 <Button
                   type="button"
+                  variant={editing ? "secondary" : "outline"}
+                  className={editing ? undefined : "bg-background"}
+                  disabled={deciding || busyKey !== null}
+                  onClick={() => setEditing((value) => !value)}
+                >
+                  <Pencil className="size-4" />
+                  {editing ? "Xong sửa điểm" : "Sửa điểm"}
+                </Button>
+                <Button
+                  type="button"
                   variant="outline"
                   className="bg-background"
                   disabled={deciding || busyKey !== null}
@@ -499,9 +512,10 @@ function ReviewPanel({
               {formatScore(totals.net)}
             </strong>
           </span>
-          {pending ? (
+          {pending && editing ? (
             <span className="text-xs text-muted-foreground">
-              Gõ thẳng vào ô để chỉnh - mỗi lượt sửa được ghi nhật ký.
+              Đang sửa điểm - gõ vào ô rồi rời ô là lưu, mỗi lượt được ghi nhật
+              ký.
             </span>
           ) : null}
         </div>
@@ -527,7 +541,7 @@ function ReviewPanel({
             onAdd={noop}
             onSave={saveCell}
             onRemove={noop}
-            mode={pending ? "review" : "read"}
+            mode={pending && editing ? "review" : "read"}
             catalogs={{ department: data.departmentChoices ?? [] }}
           />
         ))}

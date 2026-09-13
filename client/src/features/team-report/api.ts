@@ -682,6 +682,8 @@ export type TeamReportAdjustmentAccess = {
   /** Đã có luật riêng chưa; chưa thì đang chạy luật mặc định. */
   configured: boolean;
   reason: string;
+  /** Được mở hộp đến (nằm trong luồng trình, hoặc có quyền duyệt khi chưa đặt luồng). */
+  canReceive: boolean;
 };
 
 /** Tôi có được nhập bảng điểm cộng / trừ / xếp loại không - để ẩn/hiện menu. */
@@ -722,6 +724,63 @@ export function saveTeamReportAdjustmentAccessRule(input: {
       "/team-report/adjustments/access/rule",
       input,
     ),
+  );
+}
+
+/* Luồng trình - nhiều luồng "ai gửi → gửi cho ai". */
+export type TeamReportAdjustmentScope = {
+  roleCodes: string[];
+  /** Cấp đơn vị (Phòng, Đội, Xã…). */
+  levelIds: string[];
+  departmentIds: string[];
+  includeDescendants: boolean;
+  userIds: string[];
+};
+
+export type TeamReportAdjustmentRoute = {
+  _id?: string;
+  name: string;
+  isActive: boolean;
+  sender: TeamReportAdjustmentScope;
+  recipients: TeamReportAdjustmentScope;
+  updatedByName?: string;
+  updatedAt?: string | null;
+};
+
+export function fetchTeamReportAdjustmentRoutes() {
+  return unwrapData(
+    api.get<ApiResponse<TeamReportAdjustmentRoute[]>>(
+      "/team-report/adjustments/routing/routes",
+    ),
+  );
+}
+
+/** Thay toàn bộ - thứ tự mảng là thứ tự xét. */
+export function saveTeamReportAdjustmentRoutes(
+  routes: TeamReportAdjustmentRoute[],
+) {
+  return unwrapData(
+    api.put<ApiResponse<TeamReportAdjustmentRoute[]>>(
+      "/team-report/adjustments/routing/routes",
+      {
+        // Server chỉ nhận đúng trường cấu hình - bỏ _id / dấu vết cập nhật.
+        routes: routes.map((route) => ({
+          name: route.name,
+          isActive: route.isActive,
+          sender: route.sender,
+          recipients: route.recipients,
+        })),
+      },
+    ),
+  );
+}
+
+/** Người mà tôi được trình bảng tới - theo luồng đã đặt, chưa đặt thì cấp trên trực tiếp. */
+export function fetchTeamReportAdjustmentRecipients(q?: string) {
+  return unwrapData(
+    api.get<
+      ApiResponse<{ people: TeamReportRecipient[]; configured: boolean }>
+    >("/team-report/adjustments/recipients", { params: q ? { q } : {} }),
   );
 }
 

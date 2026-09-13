@@ -8,6 +8,7 @@ import {
   Loader2,
   Save,
   Scale,
+  Send,
   ShieldCheck,
 } from "lucide-react";
 import useSWR, { mutate as globalMutate } from "swr";
@@ -49,6 +50,7 @@ import {
   type FormDraft,
 } from "@/features/mission-form-config/components/report-builder/form-draft";
 import { AdjustmentAccessCard } from "@/features/mission-form-config/components/report-builder/adjustment-access-card";
+import { AdjustmentRoutesEditor } from "@/features/mission-form-config/components/report-builder/adjustment-routes-editor";
 import { HeaderStructureDialog } from "@/features/mission-form-config/components/report-builder/header-structure-dialog";
 import {
   ADJUSTMENT_SECTION_META,
@@ -105,6 +107,7 @@ export function AdjustmentBuilderView() {
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [structureOpen, setStructureOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
+  const [routingOpen, setRoutingOpen] = useState(false);
   const [pendingSection, setPendingSection] =
     useState<AdjustmentSection | null>(null);
   const [saving, setSaving] = useState(false);
@@ -210,6 +213,15 @@ export function AdjustmentBuilderView() {
           </Button>
           <Button
             type="button"
+            variant="outline"
+            className="bg-background"
+            onClick={() => setRoutingOpen(true)}
+          >
+            <Send className="size-4" />
+            Luồng trình
+          </Button>
+          <Button
+            type="button"
             onClick={save}
             disabled={saving || !dirty || !draft}
           >
@@ -234,6 +246,20 @@ export function AdjustmentBuilderView() {
             </DialogDescription>
           </DialogHeader>
           <AdjustmentAccessCard />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={routingOpen} onOpenChange={setRoutingOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Luồng trình bảng</DialogTitle>
+            <DialogDescription>
+              Mặc định đội / tổ trình lên phòng, xã. Khi phòng / xã gửi thì chọn
+              ở đây ai gửi và gửi cho ai. Chưa đặt thì mọi người trình lên cấp
+              trên trực tiếp.
+            </DialogDescription>
+          </DialogHeader>
+          <AdjustmentRoutesEditor />
         </DialogContent>
       </Dialog>
 
