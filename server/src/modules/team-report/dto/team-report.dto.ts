@@ -319,6 +319,32 @@ export class TeamReportSummaryListQueryDto {
   @IsIn([...TEAM_REPORT_DAY_STATUSES])
   status?: string;
 
+  @ApiPropertyOptional({ description: 'Tìm theo tên báo cáo' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  q?: string;
+
+  @ApiPropertyOptional({ description: 'Chỉ bản của một đơn vị gửi' })
+  @IsOptional()
+  @IsMongoId()
+  departmentId?: string;
+
+  @ApiPropertyOptional({ enum: TEAM_REPORT_PERIODS })
+  @IsOptional()
+  @IsIn([...TEAM_REPORT_PERIODS])
+  period?: string;
+
+  @ApiPropertyOptional({ description: 'Kỳ báo cáo giao với khoảng này - từ' })
+  @IsOptional()
+  @IsString()
+  fromDate?: string;
+
+  @ApiPropertyOptional({ description: 'Kỳ báo cáo giao với khoảng này - đến' })
+  @IsOptional()
+  @IsString()
+  toDate?: string;
+
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @IsOptional()
   @Type(() => Number)

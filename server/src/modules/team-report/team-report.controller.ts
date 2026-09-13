@@ -202,6 +202,12 @@ export class TeamReportController {
     ENTRY lẫn REVIEW sẽ chặn hết cả hai bên - phòng không có ENTRY, đội không
     có REVIEW. Hai đường, mỗi đường một quyền.
   */
+  @ApiOperation({ summary: 'Đơn vị từng trình tới tôi - cho ô lọc' })
+  @Get('summary/incoming/senders')
+  summaryInboxSenders(@CurrentUser() user: JwtPayloadUser) {
+    return this.teamReportService.summaryInboxSenders(user.uid);
+  }
+
   @ApiOperation({ summary: 'Chi tiết một bản tổng hợp trình tới đơn vị tôi' })
   /* Không gác mã quyền: luồng tổng hợp có thể trỏ tới tài khoản đội - service
      kiểm bằng canReceiveSummary + đúng đơn vị nhận. */

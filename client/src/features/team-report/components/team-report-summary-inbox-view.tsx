@@ -1,17 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import useSWR from "swr";
-import { FileSpreadsheet, Inbox, Loader2, Search } from "lucide-react";
+import { FileSpreadsheet, Inbox, Loader2, Search, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DatePickerInput } from "@/components/common/date-picker-input";
+import { SearchableSelect } from "@/components/common/searchable-select";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   fetchIncomingTeamReportSummary,
   fetchTeamReportSummaryInbox,
+  fetchTeamReportSummaryInboxSenders,
   teamReportKeys,
 } from "@/features/team-report/api";
 import { TeamReportSummaryPanel } from "@/features/team-report/components/team-report-summary-panel";
@@ -21,6 +31,7 @@ import {
   TEAM_REPORT_STATUS_LABEL,
   refName,
   type TeamReportDayStatus,
+  type TeamReportPeriod,
   type TeamReportSummary,
 } from "@/features/team-report/types";
 import { getApiErrorMessage } from "@/lib/api-client";
@@ -42,28 +53,63 @@ type StatusFilter = TeamReportDayStatus | "ALL";
 export function TeamReportSummaryInboxView() {
   const [status, setStatus] = useState<StatusFilter>("PENDING");
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const [departmentId, setDepartmentId] = useState("");
+  const [period, setPeriod] = useState<TeamReportPeriod | "">("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [pickedId, setPickedId] = useState<string | null>(null);
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const list = useSWR(teamReportKeys.summaryInbox(status, page), () =>
-    fetchTeamReportSummaryInbox({
-      status: status === "ALL" ? "" : status,
-      page,
-      limit: PAGE_SIZE,
-    }),
+  /*
+    Mọi bộ lọc chạy ở SERVER: hộp đến của phòng / tỉnh nhận từ hàng chục đơn
+    vị, lọc trên trang đang xem là bỏ sót bản nằm trang sau. Ô tìm chờ 300ms
+    rồi mới gọi để không mỗi phím một lượt mạng.
+  */
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    if (debounce.current) clearTimeout(debounce.current);
+    debounce.current = setTimeout(() => {
+      setSearch(next.trim());
+      setPage(1);
+    }, 300);
+  };
+
+  const params = {
+    status: status === "ALL" ? ("" as const) : status,
+    q: search,
+    departmentId,
+    period,
+    fromDate,
+    toDate,
+    page,
+    limit,
+  };
+  const list = useSWR(teamReportKeys.summaryInbox(params), () =>
+    fetchTeamReportSummaryInbox(params),
+  );
+  const senders = useSWR(
+    ["team-report", "summary-inbox-senders"],
+    fetchTeamReportSummaryInboxSenders,
+    { revalidateOnFocus: false },
   );
 
-  const all = list.data?.data ?? [];
+  const reports = list.data?.data ?? [];
   const meta = list.data?.meta;
-
-  const term = query.trim().toLowerCase();
-  const reports = term
-    ? all.filter(
-        (report) =>
-          report.title.toLowerCase().includes(term) ||
-          (refName(report.departmentId) ?? "").toLowerCase().includes(term),
-      )
-    : all;
+  const filtering = Boolean(
+    search || departmentId || period || fromDate || toDate,
+  );
+  const clearFilters = () => {
+    setQuery("");
+    setSearch("");
+    setDepartmentId("");
+    setPeriod("");
+    setFromDate("");
+    setToDate("");
+    setPage(1);
+  };
 
   const activeId =
     pickedId && reports.some((report) => report._id === pickedId)
@@ -111,11 +157,103 @@ export function TeamReportSummaryInboxView() {
               <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Tìm theo tên báo cáo hoặc đội..."
+                onChange={(event) => changeQuery(event.target.value)}
+                placeholder="Tìm theo tên báo cáo..."
                 className="bg-background pl-8"
               />
             </div>
+
+            <SearchableSelect
+              value={departmentId}
+              onValueChange={(next) => {
+                setDepartmentId(next);
+                setPage(1);
+              }}
+              options={[
+                { value: "", label: "Mọi đơn vị" },
+                ...(senders.data ?? []).map((d) => ({
+                  value: d.id,
+                  label: d.code ? `${d.code} - ${d.name}` : d.name,
+                })),
+              ]}
+              placeholder="Mọi đơn vị"
+              searchPlaceholder="Tìm đơn vị..."
+              triggerClassName="bg-background"
+            />
+
+            <div className="grid grid-cols-2 gap-2">
+              <Select
+                value={period || "ALL"}
+                onValueChange={(next) => {
+                  setPeriod(next === "ALL" ? "" : (next as TeamReportPeriod));
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="bg-background">
+                  <SelectValue placeholder="Mọi kỳ" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Mọi kỳ</SelectItem>
+                  {(
+                    Object.keys(TEAM_REPORT_PERIOD_LABEL) as TeamReportPeriod[]
+                  ).map((key) => (
+                    <SelectItem key={key} value={key}>
+                      {TEAM_REPORT_PERIOD_LABEL[key]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={String(limit)}
+                onValueChange={(next) => {
+                  setLimit(Number(next));
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[8, 20, 50].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n} / trang
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <DatePickerInput
+                value={fromDate}
+                onChange={(next) => {
+                  setFromDate(next);
+                  setPage(1);
+                }}
+                placeholder="Kỳ từ ngày"
+              />
+              <DatePickerInput
+                value={toDate}
+                onChange={(next) => {
+                  setToDate(next);
+                  setPage(1);
+                }}
+                placeholder="Kỳ đến ngày"
+              />
+            </div>
+
+            {filtering ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={clearFilters}
+              >
+                <X className="size-3.5" />
+                Xoá bộ lọc
+              </Button>
+            ) : null}
 
             <SegmentedTabs
               ariaLabel="Lọc theo trạng thái"
@@ -142,8 +280,8 @@ export function TeamReportSummaryInboxView() {
 
               {!list.isLoading && !reports.length ? (
                 <p className="py-8 text-center text-sm text-muted-foreground">
-                  {term
-                    ? "Không có báo cáo nào khớp."
+                  {filtering
+                    ? "Không có báo cáo nào khớp bộ lọc."
                     : "Chưa có báo cáo nào ở mục này."}
                 </p>
               ) : null}
@@ -158,7 +296,7 @@ export function TeamReportSummaryInboxView() {
               ))}
             </div>
 
-            {(meta?.totalPages ?? 1) > 1 ? (
+            {(meta?.total ?? 0) > 0 ? (
               <div className="flex items-center justify-between gap-2 border-t pt-3">
                 <Button
                   type="button"
@@ -171,7 +309,8 @@ export function TeamReportSummaryInboxView() {
                   Trước
                 </Button>
                 <span className="text-xs text-muted-foreground tabular-nums">
-                  Trang {meta?.page ?? page}/{meta?.totalPages ?? 1}
+                  Trang {meta?.page ?? page}/{meta?.totalPages ?? 1} ·{" "}
+                  {meta?.total ?? 0} bản
                 </span>
                 <Button
                   type="button"

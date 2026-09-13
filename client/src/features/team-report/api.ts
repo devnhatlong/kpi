@@ -57,8 +57,19 @@ export const teamReportKeys = {
      nạp lại làm hỏng cache màn kia. */
   summaries: (status: string, page: number, level = "TEAM") =>
     ["team-report", "summaries", level, status, page] as const,
-  summaryInbox: (status: string, page: number) =>
-    ["team-report", "summary-inbox", status, page] as const,
+  summaryInbox: (params: TeamReportSummaryInboxQuery) =>
+    [
+      "team-report",
+      "summary-inbox",
+      params.status ?? "",
+      params.q ?? "",
+      params.departmentId ?? "",
+      params.period ?? "",
+      params.fromDate ?? "",
+      params.toDate ?? "",
+      params.page ?? 1,
+      params.limit ?? 20,
+    ] as const,
   summary: (id: string, level = "TEAM") =>
     ["team-report", "summary", level, id] as const,
   summaryCandidates: (
@@ -479,19 +490,43 @@ export function fetchTeamReportSummary(
  * bằng hai quyền khác nhau (đội có ENTRY, cấp trên có REVIEW), gọi nhầm đường
  * là nhận 403 chứ không phải danh sách rỗng.
  */
-export function fetchTeamReportSummaryInbox(query: {
+export type TeamReportSummaryInboxQuery = {
   status?: TeamReportDayStatus | "";
+  q?: string;
+  departmentId?: string;
+  period?: TeamReportPeriod | "";
+  fromDate?: string;
+  toDate?: string;
   page?: number;
   limit?: number;
-}) {
+};
+
+export function fetchTeamReportSummaryInbox(
+  query: TeamReportSummaryInboxQuery,
+) {
+  const params: Record<string, string | number> = {
+    page: query.page ?? 1,
+    limit: query.limit ?? 20,
+  };
+  if (query.status) params.status = query.status;
+  if (query.q?.trim()) params.q = query.q.trim();
+  if (query.departmentId) params.departmentId = query.departmentId;
+  if (query.period) params.period = query.period;
+  if (query.fromDate) params.fromDate = query.fromDate;
+  if (query.toDate) params.toDate = query.toDate;
   return unwrapPaginated(
     api.get<ApiResponse<TeamReportSummary[]>>("/team-report/summary/incoming", {
-      params: {
-        page: query.page ?? 1,
-        limit: query.limit ?? 20,
-        ...(query.status ? { status: query.status } : {}),
-      },
+      params,
     }),
+  );
+}
+
+/** Các đơn vị từng trình tới tôi - cho ô lọc hộp đến. */
+export function fetchTeamReportSummaryInboxSenders() {
+  return unwrapData(
+    api.get<ApiResponse<Array<{ id: string; code: string; name: string }>>>(
+      "/team-report/summary/incoming/senders",
+    ),
   );
 }
 

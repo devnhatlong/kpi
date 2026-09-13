@@ -2050,6 +2050,21 @@ export class TeamReportService {
       status: { $ne: 'DRAFT' },
     };
     if (query.status) filter.status = query.status;
+    // Lọc ở SERVER: hộp đến của phòng / tỉnh nhận từ hàng chục đơn vị, lọc
+    // trên trang đang xem là bỏ sót những bản nằm trang sau.
+    if (query.departmentId) {
+      filter.departmentId = this.requireObjectId(query.departmentId, 'Đơn vị');
+    }
+    if (query.period) filter.period = query.period;
+    if (query.fromDate && isYmd(query.fromDate)) {
+      filter.toDate = { $gte: query.fromDate };
+    }
+    if (query.toDate && isYmd(query.toDate)) {
+      filter.fromDate = { $lte: query.toDate };
+    }
+    if (query.q?.trim()) {
+      filter.title = { $regex: this.likeRegex(query.q) };
+    }
 
     const [rows, total] = await Promise.all([
       this.summaryModel
@@ -2062,6 +2077,27 @@ export class TeamReportService {
     ]);
 
     return buildPaginatedResponse(rows, total, page, limit, 'OK');
+  }
+
+  /** Các đơn vị từng trình bản tổng hợp tới đơn vị tôi - cho ô lọc hộp đến. */
+  async summaryInboxSenders(userId: string) {
+    const actor = await this.requireActor(userId);
+    const ids = await this.summaryModel.distinct('departmentId', {
+      recipientDepartmentId: actor.departmentId,
+      status: { $ne: 'DRAFT' },
+    });
+    const departments = await this.departmentModel
+      .find({ _id: { $in: ids } })
+      .select('code name sortOrder')
+      .sort({ sortOrder: 1, name: 1 });
+    return {
+      message: 'OK',
+      data: departments.map((d) => ({
+        id: String(d._id),
+        code: d.code,
+        name: d.name,
+      })),
+    };
   }
 
   /**
