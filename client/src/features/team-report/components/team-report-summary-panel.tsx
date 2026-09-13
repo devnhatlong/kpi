@@ -1060,8 +1060,14 @@ export function TeamReportSummaryPanel({
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="min-w-[240px]">
+                        <TableHead className="min-w-[220px]">
                           Nhiệm vụ
+                        </TableHead>
+                        <TableHead className="min-w-[160px]">
+                          Sản phẩm
+                        </TableHead>
+                        <TableHead className="whitespace-nowrap">
+                          Hạn hoàn thành
                         </TableHead>
                         <TableHead className="min-w-[200px]">
                           Nội dung công việc
@@ -1112,17 +1118,25 @@ export function TeamReportSummaryPanel({
                                 {row.departmentName}
                               </div>
                             ) : null}
-                            {row.product ? (
+                            {row.closed ? (
                               <div className="text-xs text-muted-foreground">
-                                Sản phẩm: {row.product}
+                                đã đóng
                               </div>
                             ) : null}
-                            <div className="text-xs text-muted-foreground tabular-nums">
-                              {row.deadline
-                                ? `Hạn ${formatYmd(row.deadline)}`
-                                : "Không đặt hạn"}
-                              {row.closed ? " · đã đóng" : ""}
-                            </div>
+                          </TableCell>
+                          {/* Sản phẩm và hạn là cột riêng - đứng dưới tên
+                              nhiệm vụ thì hàng cao, khó dò ngang. */}
+                          <TableCell className="max-w-[260px] whitespace-normal break-words align-middle text-sm">
+                            {row.product || (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="align-middle text-sm tabular-nums whitespace-nowrap">
+                            {row.deadline ? (
+                              formatYmd(row.deadline)
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
                           </TableCell>
                           <TableCell className="align-middle text-sm">
                             {row.workContentName || "-"}
@@ -1249,6 +1263,8 @@ export function TeamReportSummaryPanel({
                             <TableCell className="align-middle text-sm text-muted-foreground">
                               {group.rows.length} nhiệm vụ
                             </TableCell>
+                            <TableCell />
+                            <TableCell />
                             {columns.map((column) => {
                               const total =
                                 group.score?.columnTotals[column.key];
@@ -1272,7 +1288,7 @@ export function TeamReportSummaryPanel({
                                   Tổng điểm {group.axisName.toLowerCase()}
                                 </TableCell>
                                 <TableCell
-                                  colSpan={columns.length + 1}
+                                  colSpan={columns.length + 3}
                                   className="align-middle text-center"
                                 >
                                   <FormulaLine
@@ -1293,7 +1309,7 @@ export function TeamReportSummaryPanel({
                                   Điểm quy đổi
                                 </TableCell>
                                 <TableCell
-                                  colSpan={columns.length + 1}
+                                  colSpan={columns.length + 3}
                                   className="align-middle text-center"
                                 >
                                   <FormulaLine
