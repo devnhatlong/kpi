@@ -69,11 +69,11 @@ export type NavItem = {
  * - nhiệm vụ cấp trên giao: nhiệm vụ top-down giao xuống
  */
 export const NAV_ITEMS: NavItem[] = [
-  // {
-  //   title: "Thống kê",
-  //   href: "/dashboard",
-  //   icon: Gauge,
-  // },
+  {
+    title: "Thống kê",
+    href: "/dashboard",
+    icon: Gauge,
+  },
   /*
     Bản nghiệp vụ MỚI - báo cáo ngày cấp đội, chạy song song với các mục cũ.
 
@@ -91,7 +91,7 @@ export const NAV_ITEMS: NavItem[] = [
         permissions: [PERM.TEAM_REPORT_ENTRY],
       },
       {
-        title: "Phân loại & gửi",
+        title: "Phân loại nhiệm vụ",
         href: "/team-report/classify",
         icon: Table2,
         permissions: [PERM.TEAM_REPORT_ENTRY],

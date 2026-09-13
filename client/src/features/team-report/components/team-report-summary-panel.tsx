@@ -69,6 +69,7 @@ import {
   scoreTone,
 } from "@/features/team-report/status-styles";
 import {
+  recipientLabel,
   TEAM_REPORT_PERIOD_LABEL,
   TEAM_REPORT_STATUS_LABEL,
   catalogOfColumn,
@@ -1394,9 +1395,7 @@ export function TeamReportSummaryPanel({
                 onValueChange={setRecipientId}
                 options={recipients.map((person) => ({
                   value: person.id,
-                  label: person.departmentName
-                    ? `${person.fullName} - ${person.departmentName}`
-                    : person.fullName,
+                  label: recipientLabel(person),
                 }))}
                 placeholder={
                   recipients.length

@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 
-import { StatisticsView } from "@/features/statistics/components/statistics-view";
+import { DashboardSwitch } from "@/features/statistics/components/dashboard-switch";
 
 export const metadata: Metadata = {
   title: "Thống kê",
-  description: "Điểm nhiệm vụ theo trục, tiến độ xử lý và phân bố nhiệm vụ.",
+  description: "Số liệu của tài khoản đang đăng nhập.",
 };
 
 export default function DashboardPage() {
-  return <StatisticsView />;
+  return <DashboardSwitch />;
 }

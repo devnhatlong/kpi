@@ -85,6 +85,7 @@ import {
   TeamReportInboxQueryDto,
   TeamReportSheetQueryDto,
   TeamReportSummaryCandidatesQueryDto,
+  TeamReportDashboardQueryDto,
   TeamReportSummaryListQueryDto,
   UpdateTeamReportTaskDto,
 } from './dto/team-report.dto';
@@ -119,6 +120,13 @@ type ResolvedTemplate = {
  * `truncated` để người dùng thu hẹp kỳ lại, chứ không cắt im lặng.
  */
 const SUMMARY_CANDIDATES_MAX = 500;
+
+/** Cộng / trừ ngày trên chuỗi YYYY-MM-DD, không đụng múi giờ máy. */
+function shiftYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d + days));
+  return date.toISOString().slice(0, 10);
+}
 
 /** Người đang thao tác - luôn là tài khoản dùng chung của một đơn vị. */
 type Actor = {
@@ -1772,7 +1780,13 @@ export class TeamReportService {
     const found = await this.userModel
       .find(filter)
       .select('fullName username departmentId')
-      .populate('departmentId', 'code name')
+      // Kèm đơn vị CHA: tài khoản đội thường mang tên đơn vị, bày "tên - đơn
+      // vị" là lặp; "tên - đơn vị cha" mới nói được đội thuộc phòng / xã nào.
+      .populate({
+        path: 'departmentId',
+        select: 'code name parentId',
+        populate: { path: 'parentId', select: 'name' },
+      })
       .sort({ fullName: 1, username: 1 })
       .limit(200);
 
@@ -1783,12 +1797,14 @@ export class TeamReportService {
           const dept = user.departmentId as unknown as {
             _id?: Types.ObjectId;
             name?: string;
+            parentId?: { name?: string } | null;
           } | null;
           return {
             id: String(user._id),
             fullName: user.fullName?.trim() || user.username,
             departmentId: dept?._id ? String(dept._id) : null,
             departmentName: dept?.name ?? '',
+            parentDepartmentName: dept?.parentId?.name ?? '',
           };
         }),
       },
@@ -2733,6 +2749,225 @@ export class TeamReportService {
       }
     }
     return templates;
+  }
+
+  /**
+   * Số liệu cho trang THỐNG KÊ của tài khoản đang đăng nhập - bản nghiệp vụ
+   * báo cáo ngày cấp đội.
+   *
+   * Phạm vi tự suy từ vai trò: có quyền duyệt (phòng / xã / tỉnh) thì gộp cả
+   * đơn vị cấp dưới và có bảng theo từng đơn vị; đội thì chỉ đơn vị mình.
+   * Điểm trục tính bằng đúng `axisScoresOf` của bảng phân loại / báo cáo
+   * tổng hợp - không có công thức thứ hai.
+   */
+  async dashboard(userId: string, query: TeamReportDashboardQueryDto) {
+    const actor = await this.requireActor(userId);
+    const user = await this.userModel
+      .findById(actor.id)
+      .select('roleAssignments');
+    const codes = (user?.roleAssignments ?? []).map((a) => a.roleCode);
+    const reviewer = Boolean(
+      await this.roleModel.exists({
+        code: { $in: codes },
+        permissions: Permission.TEAM_REPORT_REVIEW,
+        isActive: true,
+      }),
+    );
+
+    const today = serverDateYmd();
+    const toDate = query.toDate && isYmd(query.toDate) ? query.toDate : today;
+    const fromDate =
+      query.fromDate && isYmd(query.fromDate)
+        ? query.fromDate
+        : shiftYmd(toDate, -29);
+    if (fromDate > toDate) {
+      throw new BadRequestException('Từ ngày phải trước đến ngày.');
+    }
+
+    const scope = reviewer
+      ? await this.scopeDepartmentIds(actor.departmentId)
+      : [actor.departmentId];
+    const department = await this.departmentModel
+      .findById(actor.departmentId)
+      .select('name');
+
+    const [tasks, summaries] = await Promise.all([
+      this.taskModel
+        .find({
+          departmentId: { $in: scope },
+          $or: [
+            { isOpen: true },
+            { closedDate: { $gte: fromDate, $lte: toDate } },
+            { createdDate: { $gte: fromDate, $lte: toDate } },
+          ],
+        })
+        .select(
+          'departmentId isOpen createdDate closedDate axisId workContentId formTemplateId formTemplateVersion fieldValues catalogValues reviewValues reviewCatalogValues',
+        ),
+      this.summaryModel
+        .find({
+          departmentId: { $in: scope },
+          fromDate: { $lte: toDate },
+          toDate: { $gte: fromDate },
+        })
+        .select(
+          'departmentId title status period fromDate toDate sentAt decidedAt rows',
+        )
+        .sort({ sentAt: -1, createdAt: -1 }),
+    ]);
+
+    /* ------------------------------------------------------- ô số */
+    const open = tasks.filter((task) => task.isOpen);
+    const unclassified = open.filter(
+      (task) => !task.axisId || !task.workContentId,
+    ).length;
+    const closedInPeriod = tasks.filter(
+      (task) =>
+        !task.isOpen &&
+        task.closedDate >= fromDate &&
+        task.closedDate <= toDate,
+    ).length;
+    const createdInPeriod = tasks.filter(
+      (task) => task.createdDate >= fromDate && task.createdDate <= toDate,
+    ).length;
+
+    const byStatus = { DRAFT: 0, PENDING: 0, APPROVED: 0, RETURNED: 0 };
+    for (const summary of summaries) byStatus[summary.status] += 1;
+
+    /* ------------------------------------------- xu hướng theo ngày */
+    const daily: Array<{ date: string; created: number; closed: number }> = [];
+    for (let d = fromDate; d <= toDate; d = shiftYmd(d, 1)) {
+      daily.push({
+        date: d,
+        created: tasks.filter((task) => task.createdDate === d).length,
+        closed: tasks.filter((task) => !task.isOpen && task.closedDate === d)
+          .length,
+      });
+    }
+
+    /* ---------------------------------------------- điểm theo trục */
+    const scored = tasks.filter(
+      (task) =>
+        task.axisId &&
+        task.formTemplateId &&
+        ((task.createdDate >= fromDate && task.createdDate <= toDate) ||
+          task.isOpen),
+    );
+    const templates: Record<string, ResolvedTemplate> = {};
+    for (const task of scored) {
+      const key = `${String(task.formTemplateId)}:${task.formTemplateVersion ?? 1}`;
+      if (templates[key]) continue;
+      const resolved = await this.formTemplatesService.resolveVersion(
+        task.formTemplateId!,
+        task.formTemplateVersion ?? 1,
+      );
+      if (resolved) {
+        templates[key] = { _id: String(task.formTemplateId), ...resolved };
+      }
+    }
+    const catalogs = await this.catalogsForTemplates(Object.values(templates));
+    const axisScores = await this.axisScoresOf(
+      scored.map((task) => ({
+        axisId: this.axisIdOf(task) || null,
+        formTemplateId: task.formTemplateId,
+        formTemplateVersion: task.formTemplateVersion,
+        fieldValues: task.fieldValues,
+        catalogValues: task.catalogValues,
+        reviewValues: task.reviewValues,
+        reviewCatalogValues: task.reviewCatalogValues,
+      })),
+      templates,
+      catalogs,
+    );
+
+    /* ----------------------------------------- bảng theo đơn vị con */
+    let units: Array<{
+      departmentId: string;
+      name: string;
+      openTasks: number;
+      unclassified: number;
+      closedInPeriod: number;
+      summaries: { PENDING: number; APPROVED: number; RETURNED: number };
+    }> = [];
+    if (reviewer) {
+      const children = await this.childDepartments(actor.departmentId);
+      units = children
+        .filter((child) => child.isActive !== false)
+        .map((child) => {
+          const id = String(child._id);
+          const mine = tasks.filter((task) => String(task.departmentId) === id);
+          const mineSummaries = summaries.filter(
+            (summary) => String(summary.departmentId) === id,
+          );
+          return {
+            departmentId: id,
+            name: child.name,
+            openTasks: mine.filter((task) => task.isOpen).length,
+            unclassified: mine.filter(
+              (task) => task.isOpen && (!task.axisId || !task.workContentId),
+            ).length,
+            closedInPeriod: mine.filter(
+              (task) =>
+                !task.isOpen &&
+                task.closedDate >= fromDate &&
+                task.closedDate <= toDate,
+            ).length,
+            summaries: {
+              PENDING: mineSummaries.filter((s) => s.status === 'PENDING')
+                .length,
+              APPROVED: mineSummaries.filter((s) => s.status === 'APPROVED')
+                .length,
+              RETURNED: mineSummaries.filter((s) => s.status === 'RETURNED')
+                .length,
+            },
+          };
+        })
+        .filter(
+          (unit) =>
+            unit.openTasks ||
+            unit.closedInPeriod ||
+            unit.summaries.PENDING ||
+            unit.summaries.APPROVED ||
+            unit.summaries.RETURNED,
+        );
+    }
+
+    const names = await this.departmentNames(
+      summaries.map((summary) => summary.departmentId),
+    );
+    const recentSummaries = summaries.slice(0, 8).map((summary) => ({
+      id: String(summary._id),
+      title: summary.title,
+      status: summary.status,
+      period: summary.period,
+      fromDate: summary.fromDate,
+      toDate: summary.toDate,
+      departmentName: names.get(String(summary.departmentId)) ?? '',
+      rowCount: summary.rows?.length ?? 0,
+      sentAt: summary.sentAt ?? null,
+      decidedAt: summary.decidedAt ?? null,
+    }));
+
+    return {
+      message: 'OK',
+      data: {
+        level: reviewer ? 'UNIT' : 'TEAM',
+        departmentName: department?.name ?? '',
+        fromDate,
+        toDate,
+        tiles: {
+          openTasks: open.length,
+          unclassified,
+          createdInPeriod,
+          closedInPeriod,
+          summaries: byStatus,
+        },
+        daily,
+        axisScores,
+        units,
+        recentSummaries,
+      },
+    };
   }
 
   private async requireActor(userId: string): Promise<Actor> {

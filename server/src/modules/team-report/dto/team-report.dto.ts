@@ -729,3 +729,16 @@ export class SaveTeamReportAdjustmentRoutesDto {
   @Type(() => TeamReportAdjustmentRouteDto)
   routes!: TeamReportAdjustmentRouteDto[];
 }
+
+/** Khoảng ngày của bảng Thống kê; bỏ trống = 30 ngày gần nhất theo giờ server. */
+export class TeamReportDashboardQueryDto {
+  @ApiPropertyOptional({ example: '2026-09-01' })
+  @IsOptional()
+  @IsString()
+  fromDate?: string;
+
+  @ApiPropertyOptional({ example: '2026-09-30' })
+  @IsOptional()
+  @IsString()
+  toDate?: string;
+}

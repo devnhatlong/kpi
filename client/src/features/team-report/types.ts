@@ -539,7 +539,21 @@ export type TeamReportRecipient = {
   fullName: string;
   departmentId: string | null;
   departmentName: string;
+  /** Đơn vị cha của đơn vị người nhận. */
+  parentDepartmentName?: string;
 };
+
+/**
+ * Nhãn trong dropdown "Trình lên": "tên - đơn vị cha". Tài khoản đội thường
+ * mang tên đúng bằng đơn vị, nên "tên - đơn vị" là lặp; đơn vị cha mới nói
+ * được đội thuộc phòng / xã nào. Không có cha (cấp tỉnh) thì bày đơn vị.
+ */
+export function recipientLabel(person: TeamReportRecipient): string {
+  const tail = person.parentDepartmentName || person.departmentName;
+  return tail && tail !== person.fullName
+    ? `${person.fullName} - ${tail}`
+    : person.fullName;
+}
 
 // ------------------------------------------------- bảng A: tiêu chí chung
 

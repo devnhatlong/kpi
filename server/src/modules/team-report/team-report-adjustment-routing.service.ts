@@ -31,6 +31,8 @@ export type AdjustmentRecipient = {
   username: string;
   departmentId: string | null;
   departmentName: string;
+  /** Đơn vị cha của đơn vị người nhận - để nhãn "tên - phòng / xã". */
+  parentDepartmentName: string;
 };
 
 type Person = {
@@ -167,7 +169,11 @@ export class TeamReportAdjustmentRoutingService {
         $and: and,
       })
       .select('fullName username departmentId')
-      .populate('departmentId', 'code name')
+      .populate({
+        path: 'departmentId',
+        select: 'code name parentId',
+        populate: { path: 'parentId', select: 'name' },
+      })
       .sort({ fullName: 1, username: 1 })
       .limit(300);
     if (chain.length) {
@@ -222,7 +228,11 @@ export class TeamReportAdjustmentRoutingService {
       const found = await this.userModel
         .find(filter)
         .select('fullName username departmentId')
-        .populate('departmentId', 'code name')
+        .populate({
+          path: 'departmentId',
+          select: 'code name parentId',
+          populate: { path: 'parentId', select: 'name' },
+        })
         .sort({ fullName: 1, username: 1 })
         .limit(200);
       if (found.length) return found.map((user) => this.person(user));
@@ -392,6 +402,7 @@ export class TeamReportAdjustmentRoutingService {
     const dept = user.departmentId as unknown as {
       _id?: Types.ObjectId;
       name?: string;
+      parentId?: { name?: string } | null;
     } | null;
     return {
       id: String(user._id),
@@ -399,6 +410,7 @@ export class TeamReportAdjustmentRoutingService {
       username: user.username,
       departmentId: dept?._id ? String(dept._id) : null,
       departmentName: dept?.name ?? '',
+      parentDepartmentName: dept?.parentId?.name ?? '',
     };
   }
 

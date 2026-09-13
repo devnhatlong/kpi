@@ -14,7 +14,6 @@ import {
   Lock,
   Rows3,
   Search,
-  Send,
   TriangleAlert,
   Undo2,
 } from "lucide-react";
@@ -54,7 +53,6 @@ import {
   closeTeamReportTask,
   fetchTeamReportClassify,
   reopenTeamReportTask,
-  submitTeamReportDay,
   teamReportKeys,
   type TeamReportClassifyInput,
 } from "@/features/team-report/api";
@@ -199,9 +197,6 @@ export function TeamReportClassifyView() {
   const [savedAt, setSavedAt] = useState<string | null>(null);
   /* Ô nào vừa bị server từ chối - xem `cellErrorKey` để biết khoá gồm những gì. */
   const [cellErrors, setCellErrors] = useState<Record<string, string>>({});
-  const [sending, setSending] = useState(false);
-  const [sendOpen, setSendOpen] = useState(false);
-  const [note, setNote] = useState("");
   /* Nhiệm vụ đang hỏi lý do dừng. Chỉ "dừng giữa chừng" mới cần hộp thoại;
      "đã xong" và "mở lại" bấm là chạy. */
   const [stopping, setStopping] = useState<TeamReportTask | null>(null);
@@ -224,7 +219,6 @@ export function TeamReportClassifyView() {
   const catalogs = useMemo(() => data?.catalogs ?? {}, [data]);
 
   const locked = data?.locked ?? false;
-  const canSubmit = data?.canSubmit ?? false;
   const editable = ready && !locked && reportDate === today;
 
   const templateOf = (task: TeamReportTask) => {
@@ -438,23 +432,6 @@ export function TeamReportClassifyView() {
     }
   };
 
-  const confirmSend = async () => {
-    setSending(true);
-    try {
-      const result = await submitTeamReportDay({
-        reportDate,
-        note: note.trim() || undefined,
-      });
-      setSendOpen(false);
-      await mutate();
-      toast.success(`Đã gửi ${result.rowCount} nhiệm vụ lên cấp trên.`);
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "Không gửi được báo cáo."));
-    } finally {
-      setSending(false);
-    }
-  };
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -463,11 +440,12 @@ export function TeamReportClassifyView() {
             Báo cáo ngày của đội · {formatYmd(reportDate)}
           </p>
           <h1 className="font-display text-2xl font-semibold tracking-tight">
-            Phân loại &amp; gửi
+            Phân loại nhiệm vụ
           </h1>
           <p className="text-sm text-muted-foreground">
-            Chọn trục cho từng nhiệm vụ, hoàn thiện đúng biểu mẫu của trục đó,
-            rồi gửi cả bảng ngày lên cấp trên.
+            Chọn trục cho từng nhiệm vụ, hoàn thiện đúng biểu mẫu của trục đó.
+            Nhiệm vụ &quot;Sẵn sàng gửi&quot; sẽ được gom vào Báo cáo tổng hợp
+            để trình cấp trên.
           </p>
         </div>
 
@@ -504,22 +482,11 @@ export function TeamReportClassifyView() {
             onChange={setPickedDate}
             today={today}
           />
-          <Button
-            type="button"
-            disabled={!editable || !canSubmit}
-            onClick={() => {
-              setNote("");
-              setSendOpen(true);
-            }}
-            title={
-              canSubmit
-                ? undefined
-                : "Còn nhiệm vụ chưa phân loại - phân loại hết mới gửi được"
-            }
-          >
-            <Send className="size-4" />
-            Gửi báo cáo ngày
-          </Button>
+          {/*
+            Không còn nút "Gửi báo cáo ngày": luồng thật là đội gom nhiệm vụ
+            thành BÁO CÁO TỔNG HỢP rồi trình phòng. Gửi bảng ngày chỉ khoá bảng
+            mà phía phòng không còn chỗ duyệt. Route server vẫn giữ.
+          */}
         </div>
       </div>
 
@@ -656,56 +623,6 @@ export function TeamReportClassifyView() {
           />
         </div>
       ) : null}
-
-      <Dialog open={sendOpen} onOpenChange={setSendOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Gửi báo cáo ngày {formatYmd(reportDate)}</DialogTitle>
-            <DialogDescription>
-              Gửi xong thì bảng của ngày này khoá lại. Nhiệm vụ chưa đóng vẫn
-              chạy tiếp và hiện lại ở bảng ngày mai.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            {/*
-              Chỉ TỔNG KẾT, không cho quyết định gì thêm ở đây. Việc nào xong đã
-              được đánh dấu ngay lúc làm nó; nhồi vào đây một danh sách tích thì
-              ngày nhiều nhiệm vụ là phải dò cả trăm dòng ở đúng bước cuối cùng.
-            */}
-            <div className="space-y-1.5 rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
-              <p>
-                Bản gửi gồm <strong>{tasks.length} nhiệm vụ</strong>.
-              </p>
-              <p className="text-muted-foreground">
-                {counts.closed
-                  ? `${counts.closed} việc đã đóng hôm nay - vẫn nằm trong bản gửi này, từ mai không hiện lại. ${tasks.length - counts.closed} việc còn chạy tiếp.`
-                  : "Chưa đóng việc nào, tất cả sẽ hiện lại ở bảng ngày mai."}
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium">Ghi chú gửi kèm</p>
-              <Textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                rows={3}
-                placeholder="Không bắt buộc"
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setSendOpen(false)}>
-              Huỷ
-            </Button>
-            <Button disabled={sending} onClick={() => void confirmSend()}>
-              <Send className="size-4" />
-              Gửi lên cấp trên
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Dừng giữa chừng thì phải nói vì sao - "đã xong" thì không hỏi gì. */}
       <Dialog

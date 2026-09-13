@@ -53,6 +53,7 @@ import {
   scoreTone,
 } from "@/features/team-report/status-styles";
 import {
+  recipientLabel,
   formatScore,
   refId,
   refName,
@@ -327,9 +328,7 @@ export function TeamReportSummaryWizard({
     () =>
       recipients.map((person) => ({
         value: person.id,
-        label: person.departmentName
-          ? `${person.fullName} - ${person.departmentName}`
-          : person.fullName,
+        label: recipientLabel(person),
       })),
     [recipients],
   );

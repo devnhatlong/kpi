@@ -317,7 +317,7 @@ export function TeamReportSheetView() {
           <p className="text-sm text-muted-foreground">
             Cả đội cùng nhập vào bảng này. Bảng tự làm mới nên thấy ngay dòng
             người khác vừa thêm. Việc đánh dấu xong sẽ rời bảng - cần hiện lại
-            thì vào tab <strong>Phân loại &amp; gửi</strong>, mục{" "}
+            thì vào tab <strong>Phân loại nhiệm vụ</strong>, mục{" "}
             <strong>Đã đóng</strong>, bấm Mở lại.
           </p>
         </div>
@@ -515,7 +515,7 @@ export function TeamReportSheetView() {
                           colSpan={2}
                           className="text-sm text-muted-foreground"
                         >
-                          Phân loại ở tab Phân loại &amp; gửi
+                          Phân loại ở tab Phân loại nhiệm vụ
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="inline-flex gap-1">

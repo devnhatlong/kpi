@@ -367,7 +367,12 @@
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-evidence-server.js\")",
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-evidence-client.js\")",
       "Bash(sed -i 's/export const MAX_UPLOAD_BYTES = 20 \\\\* 1024 \\\\* 1024;/export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;/' src/modules/uploads/upload-file.utils.ts)",
-      "Bash(sed -i 's/export const MAX_UPLOAD_BYTES = 20 \\\\* 1024 \\\\* 1024;/export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;/' ../client/src/features/uploads/api.ts)"
+      "Bash(sed -i 's/export const MAX_UPLOAD_BYTES = 20 \\\\* 1024 \\\\* 1024;/export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;/' ../client/src/features/uploads/api.ts)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-remove-send-day.js\")",
+      "Bash(sed -i 's/title: \"Phân loại & gửi\",/title: \"Phân loại nhiệm vụ\",/' src/constants/navigation.ts \"src/app/\\(dashboard\\)/team-report/classify/page.tsx\")",
+      "Bash(sed -i 's/Phân loại &amp; gửi/Phân loại nhiệm vụ/g' src/features/team-report/components/team-report-classify-view.tsx src/features/team-report/components/team-report-sheet-view.tsx)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-parent-name.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-dashboard-server.js\")"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

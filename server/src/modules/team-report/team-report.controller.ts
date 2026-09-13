@@ -35,6 +35,7 @@ import {
   TeamReportInboxQueryDto,
   TeamReportSheetQueryDto,
   TeamReportSummaryCandidatesQueryDto,
+  TeamReportDashboardQueryDto,
   TeamReportSummaryListQueryDto,
   UpdateTeamReportTaskDto,
 } from './dto/team-report.dto';
@@ -173,6 +174,15 @@ export class TeamReportController {
     @Query('q') q?: string,
   ) {
     return this.teamReportService.summaryRecipients(user.uid, q);
+  }
+
+  @ApiOperation({ summary: 'Số liệu Thống kê của tài khoản đang đăng nhập' })
+  @Get('dashboard')
+  dashboard(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: TeamReportDashboardQueryDto,
+  ) {
+    return this.teamReportService.dashboard(user.uid, query);
   }
 
   @ApiOperation({ summary: 'Bản tổng hợp cấp dưới trình lên đơn vị tôi' })

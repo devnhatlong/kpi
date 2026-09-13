@@ -860,3 +860,52 @@ export function reviewTeamReportAdjustmentEntry(
     ),
   );
 }
+
+// ------------------------------------------------------------------ thống kê
+
+export type TeamReportDashboardData = {
+  level: "TEAM" | "UNIT";
+  departmentName: string;
+  fromDate: string;
+  toDate: string;
+  tiles: {
+    openTasks: number;
+    unclassified: number;
+    createdInPeriod: number;
+    closedInPeriod: number;
+    summaries: Record<TeamReportDayStatus, number>;
+  };
+  daily: Array<{ date: string; created: number; closed: number }>;
+  axisScores: TeamReportAxisScore[];
+  units: Array<{
+    departmentId: string;
+    name: string;
+    openTasks: number;
+    unclassified: number;
+    closedInPeriod: number;
+    summaries: { PENDING: number; APPROVED: number; RETURNED: number };
+  }>;
+  recentSummaries: Array<{
+    id: string;
+    title: string;
+    status: TeamReportDayStatus;
+    period: TeamReportPeriod;
+    fromDate: string;
+    toDate: string;
+    departmentName: string;
+    rowCount: number;
+    sentAt: string | null;
+    decidedAt: string | null;
+  }>;
+};
+
+export function fetchTeamReportDashboard(params: {
+  fromDate?: string;
+  toDate?: string;
+}) {
+  return unwrapData(
+    api.get<ApiResponse<TeamReportDashboardData>>("/team-report/dashboard", {
+      params,
+    }),
+  );
+}

@@ -43,6 +43,7 @@ import {
 } from "@/features/team-report/components/team-report-adjustment-table";
 import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
 import {
+  recipientLabel,
   TEAM_REPORT_STATUS_LABEL,
   formatScore,
   type TeamReportAdjustmentEntry,
@@ -521,9 +522,7 @@ export function TeamReportAdjustmentView() {
                 onValueChange={setRecipientId}
                 options={recipients.map((person) => ({
                   value: person.id,
-                  label: person.departmentName
-                    ? `${person.fullName} - ${person.departmentName}`
-                    : person.fullName,
+                  label: recipientLabel(person),
                 }))}
                 placeholder={
                   recipients.length
