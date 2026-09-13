@@ -259,7 +259,7 @@ export function AdjustmentBuilderView() {
               trên trực tiếp.
             </DialogDescription>
           </DialogHeader>
-          <AdjustmentRoutesEditor />
+          <AdjustmentRoutesEditor kind="ADJUSTMENT" />
         </DialogContent>
       </Dialog>
 

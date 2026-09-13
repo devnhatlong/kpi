@@ -680,6 +680,13 @@ export class TeamReportAdjustmentScopeDto {
   @IsArray()
   @IsMongoId({ each: true })
   userIds?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Chỉ cấp trên trực thuộc của người gửi (vế người nhận)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  senderSuperiorOnly?: boolean;
 }
 
 export class TeamReportAdjustmentRouteDto {

@@ -48,6 +48,7 @@ import {
   FormTemplateDocument,
 } from '@/modules/mission-form-config/schemas/form-template.schema';
 import { FormTemplatesService } from '@/modules/mission-form-config/form-templates.service';
+import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
 import {
   TeamReportTask,
   TeamReportTaskDocument,
@@ -158,6 +159,7 @@ export class TeamReportService {
     @InjectModel(FormTemplate.name)
     private readonly formTemplateModel: Model<FormTemplateDocument>,
     private readonly formTemplatesService: FormTemplatesService,
+    private readonly routing: TeamReportAdjustmentRoutingService,
   ) {}
 
   // ==================================================== giai đoạn 1: nhập thô
@@ -1731,6 +1733,15 @@ export class TeamReportService {
    */
   async summaryRecipients(userId: string, q?: string) {
     const actor = await this.requireActor(userId);
+    /*
+      Luồng quản trị đặt cho BÁO CÁO TỔNG HỢP đi trước: "phòng X trình về đội
+      Y phụ trách". Người gửi không khớp luồng nào thì mới rơi về luật mặc
+      định bên dưới - mọi cấp trên có quyền duyệt.
+    */
+    const routed = await this.routing.recipients('SUMMARY', userId, q);
+    if (routed) {
+      return { message: 'OK', data: { people: routed, configured: true } };
+    }
     const department = await this.departmentModel
       .findById(actor.departmentId)
       .select('ancestors');
@@ -2009,6 +2020,7 @@ export class TeamReportService {
    */
   async summaryInbox(userId: string, query: TeamReportSummaryListQueryDto) {
     const actor = await this.requireActor(userId);
+    await this.assertCanReceiveSummary(userId);
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
@@ -2030,6 +2042,42 @@ export class TeamReportService {
     ]);
 
     return buildPaginatedResponse(rows, total, page, limit, 'OK');
+  }
+
+  /**
+   * Người này có được mở hộp đến BÁO CÁO TỔNG HỢP không: có quyền duyệt, hoặc
+   * nằm trong vế "gửi cho ai" của một luồng tổng hợp, hoặc đã có bản trình
+   * tới đơn vị mình. Route không gác mã quyền vì luồng có thể trỏ tới tài
+   * khoản đội.
+   */
+  async canReceiveSummary(userId: string): Promise<boolean> {
+    if (!Types.ObjectId.isValid(userId)) return false;
+    const user = await this.userModel
+      .findById(userId)
+      .select('roleAssignments departmentId');
+    if (!user) return false;
+    const codes = (user.roleAssignments ?? []).map((a) => a.roleCode);
+    const reviewer = await this.roleModel.exists({
+      code: { $in: codes },
+      permissions: Permission.TEAM_REPORT_REVIEW,
+      isActive: true,
+    });
+    if (reviewer) return true;
+    if (await this.routing.isListedRecipient('SUMMARY', userId)) return true;
+    if (!user.departmentId) return false;
+    const addressed = await this.summaryModel.exists({
+      recipientDepartmentId: user.departmentId,
+      status: { $ne: 'DRAFT' },
+    });
+    return Boolean(addressed);
+  }
+
+  private async assertCanReceiveSummary(userId: string) {
+    if (!(await this.canReceiveSummary(userId))) {
+      throw new ForbiddenException(
+        'Chưa có báo cáo nào trình tới đơn vị bạn, và bạn không có quyền duyệt báo cáo.',
+      );
+    }
   }
 
   /** Đội lập đọc được bản của mình; cấp trên đọc được bản trình tới đơn vị mình. */
@@ -2069,6 +2117,7 @@ export class TeamReportService {
   /** Cấp trên duyệt hoặc trả lại một bản tổng hợp. */
   async decideSummary(userId: string, id: string, dto: DecideTeamReportDayDto) {
     const actor = await this.requireActor(userId);
+    await this.assertCanReceiveSummary(userId);
     const summary = await this.summaryModel.findById(
       this.requireObjectId(id, 'Báo cáo'),
     );
@@ -2343,6 +2392,7 @@ export class TeamReportService {
    */
   async reviewSummary(userId: string, id: string, dto: ReviewTeamReportDayDto) {
     const actor = await this.requireActor(userId);
+    await this.assertCanReceiveSummary(userId);
     // Lý do là tuỳ chọn - nhật ký đã ghi ai sửa, sửa gì, lúc nào.
     const reason = dto.reason?.trim() ?? '';
 

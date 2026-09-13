@@ -28,10 +28,11 @@ import {
   fetchUsers,
 } from "@/features/organization/api";
 import {
-  fetchTeamReportAdjustmentRoutes,
-  saveTeamReportAdjustmentRoutes,
+  fetchTeamReportRoutes,
+  saveTeamReportRoutes,
   type TeamReportAdjustmentRoute,
   type TeamReportAdjustmentScope,
+  type TeamReportRouteKind,
 } from "@/features/team-report/api";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ const emptyScope = (): TeamReportAdjustmentScope => ({
   departmentIds: [],
   includeDescendants: true,
   userIds: [],
+  senderSuperiorOnly: false,
 });
 
 const newRoute = (index: number): TeamReportAdjustmentRoute => ({
@@ -66,6 +68,7 @@ const scopeKey = (scope: TeamReportAdjustmentScope) => [
   [...scope.departmentIds].sort(),
   scope.includeDescendants,
   [...scope.userIds].sort(),
+  scope.senderSuperiorOnly ?? false,
 ];
 
 const scopeEmpty = (scope: TeamReportAdjustmentScope) =>
@@ -79,10 +82,19 @@ const scopeEmpty = (scope: TeamReportAdjustmentScope) =>
  * vai trò / cấp đơn vị / đơn vị / tài khoản. Xét từ trên xuống, khớp luồng
  * đầu tiên; không khớp luồng nào → cấp trên trực tiếp.
  */
-export function AdjustmentRoutesEditor() {
+const KIND_LABEL: Record<TeamReportRouteKind, string> = {
+  ADJUSTMENT: "bảng điểm cộng, trừ & xếp loại",
+  SUMMARY: "báo cáo tổng hợp",
+};
+
+export function AdjustmentRoutesEditor({
+  kind = "ADJUSTMENT",
+}: {
+  kind?: TeamReportRouteKind;
+}) {
   const stored = useSWR(
-    ["team-report", "adjustment-routes"],
-    fetchTeamReportAdjustmentRoutes,
+    ["team-report", "routes", kind],
+    () => fetchTeamReportRoutes(kind),
     { revalidateOnFocus: false },
   );
   const roles = useSWR("roles-all", fetchRoles, { revalidateOnFocus: false });
@@ -99,7 +111,7 @@ export function AdjustmentRoutesEditor() {
 
   /* Nạp bản nháp ngay trong render lúc dữ liệu về, không qua effect. */
   const stamp = stored.data
-    ? stored.data.map((route) => route.updatedAt ?? "").join("|") || "init"
+    ? `${kind}:${stored.data.map((route) => route.updatedAt ?? "").join("|") || "init"}`
     : null;
   if (stored.data && stamp !== loadedAt) {
     setLoadedAt(stamp);
@@ -181,7 +193,7 @@ export function AdjustmentRoutesEditor() {
     }
     setSaving(true);
     try {
-      const saved = await saveTeamReportAdjustmentRoutes(draft);
+      const saved = await saveTeamReportRoutes(kind, draft);
       await stored.mutate(saved, { revalidate: false });
       setDraft(saved);
       setSavedFp(fingerprint(saved));
@@ -199,7 +211,7 @@ export function AdjustmentRoutesEditor() {
         <div className="space-y-1">
           <h3 className="flex items-center gap-2 text-sm font-semibold">
             <Send className="size-4 text-primary" />
-            Các luồng trình
+            Các luồng trình - {KIND_LABEL[kind]}
           </h3>
           <p className="text-xs text-muted-foreground">
             Mỗi luồng: <strong>ai gửi</strong> → <strong>gửi cho ai</strong>.
@@ -354,6 +366,7 @@ export function AdjustmentRoutesEditor() {
                 }}
               />
               <ScopeEditor
+                recipients
                 title="2. Gửi cho ai"
                 hint="Danh sách hiện trong dropdown Trình lên. Đích danh luôn có; còn lại là người đúng MỌI vế đã tick. Phải chọn ít nhất một thứ."
                 scope={current.recipients}
@@ -385,7 +398,8 @@ type RoleOption = { code: string; name: string };
 type LevelOption = { _id: string; code: string; name: string };
 type UserOption = { value: string; label: string };
 
-function ScopeEditor({
+export function ScopeEditor({
+  recipients = false,
   title,
   hint,
   scope,
@@ -396,6 +410,8 @@ function ScopeEditor({
   userById,
   deptLabels,
 }: {
+  /** Vế người nhận - có thêm cờ "chỉ cấp trên trực thuộc của người gửi". */
+  recipients?: boolean;
   title: string;
   hint: string;
   scope: TeamReportAdjustmentScope;
@@ -419,6 +435,26 @@ function ScopeEditor({
         <p className="text-sm font-semibold">{title}</p>
         <p className="text-xs text-muted-foreground">{hint}</p>
       </div>
+      {recipients ? (
+        <label className="flex cursor-pointer items-start justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2.5">
+          <span>
+            <span className="block text-sm font-medium">
+              Chỉ cấp trên trực thuộc của người gửi
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Thu danh sách về đơn vị cha gần nhất của người gửi: đội thấy đúng
+              phòng mình, tổ thấy đúng xã mình. Kết hợp với vai trò đã tick (ví
+              dụ Trưởng phòng, trưởng xã).
+            </span>
+          </span>
+          <Switch
+            checked={scope.senderSuperiorOnly ?? false}
+            onCheckedChange={(checked) =>
+              onChange({ senderSuperiorOnly: checked })
+            }
+          />
+        </label>
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="space-y-4">
           <div className="space-y-2">

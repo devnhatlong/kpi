@@ -26,90 +26,113 @@ const SYSTEM_PERMISSIONS: Array<{
 }> = [
   {
     code: Permission.USER_VIEW,
-    name: 'Xem người dùng',
+    name: 'Người dùng - xem',
     module: 'user',
     sortOrder: 10,
-    description: 'Xem danh sách và chi tiết người dùng',
+    description: 'Menu Tổ chức › Người dùng: xem danh sách và chi tiết',
   },
   {
     code: Permission.USER_MANAGE,
-    name: 'Quản lý người dùng',
+    name: 'Người dùng - thêm, sửa, xoá',
     module: 'user',
     sortOrder: 20,
-    description: 'Tạo, cập nhật, vô hiệu hóa người dùng',
+    description: 'Thêm, sửa, xoá, import người dùng',
   },
   {
     code: Permission.DEPARTMENT_VIEW,
-    name: 'Xem đơn vị',
+    name: 'Đơn vị & Cấp đơn vị - xem',
     module: 'department',
     sortOrder: 30,
-    description: 'Xem cây đơn vị và cấp đơn vị',
+    description: 'Menu Tổ chức › Đơn vị, Cấp đơn vị: xem cây đơn vị',
   },
   {
     code: Permission.DEPARTMENT_MANAGE,
-    name: 'Quản lý đơn vị',
+    name: 'Đơn vị & Cấp đơn vị - thêm, sửa, xoá',
     module: 'department',
     sortOrder: 40,
-    description: 'Tạo, cập nhật, xóa đơn vị / cấp đơn vị',
+    description: 'Thêm, sửa, xoá đơn vị / cấp đơn vị',
   },
   {
     code: Permission.ROLE_ASSIGN,
-    name: 'Phân quyền vai trò',
+    name: 'Vai trò & Quyền',
     module: 'role',
     sortOrder: 50,
-    description: 'Quản lý vai trò và gán quyền',
+    description: 'Menu Tổ chức › Vai trò, Quyền: quản lý vai trò và gán quyền',
   },
   {
     code: Permission.MISSION_MANAGE,
-    name: 'Quản lý nhiệm vụ',
+    name: 'Cấu hình form nhiệm vụ & Danh mục',
     module: 'mission',
     sortOrder: 60,
+    description:
+      'Menu Cấu hình form nhiệm vụ (mẫu báo cáo, nội dung, nhiệm vụ, nhóm điểm, điểm cộng trừ, luồng trình) và Danh mục',
   },
   {
     code: Permission.TASK_ASSIGN,
-    name: 'Giao nhiệm vụ',
+    name: 'Giao nhiệm vụ xuống',
     module: 'task',
     sortOrder: 80,
-    description: 'Giao nhiệm vụ xuống đơn vị / cán bộ và giao tiếp xuống',
+    description: 'Menu Giao nhiệm vụ xuống: giao xuống đơn vị / cán bộ',
   },
   {
     code: Permission.TASK_VIEW,
-    name: 'Xem nhiệm vụ',
+    name: 'Nhiệm vụ cấp trên giao',
     module: 'task',
     sortOrder: 90,
+    description: 'Menu Nhiệm vụ cấp trên giao: xem chỉ tiêu được giao',
   },
   {
     code: Permission.EVALUATION_SELF,
-    name: 'Tự đánh giá',
+    name: 'Nhiệm vụ cá nhân',
     module: 'evaluation',
     sortOrder: 100,
+    description: 'Menu Nhiệm vụ cá nhân: tự khai và tự chấm',
   },
   {
     code: Permission.EVALUATION_APPROVE,
-    name: 'Duyệt đánh giá',
+    name: 'Theo dõi & duyệt nhiệm vụ',
     module: 'evaluation',
     sortOrder: 110,
+    description: 'Menu Theo dõi & duyệt nhiệm vụ: duyệt bản cấp dưới',
   },
   {
     code: Permission.TEAM_REPORT_ENTRY,
-    name: 'Nhập báo cáo ngày của đội',
+    name: 'Báo cáo ngày & Tạo báo cáo tổng hợp (đội)',
     module: 'team_report',
     sortOrder: 115,
-    description: 'Nhập, phân loại và gửi báo cáo ngày lên cấp phòng',
+    description:
+      'Menu Báo cáo ngày (bảng nhiệm vụ, phân loại, tiêu chí A) và Báo cáo tổng hợp › Tạo báo cáo',
   },
   {
     code: Permission.TEAM_REPORT_REVIEW,
-    name: 'Duyệt báo cáo ngày của đội',
+    name: 'Duyệt báo cáo tổng hợp & Tạo báo cáo của phòng',
     module: 'team_report',
     sortOrder: 120,
-    description: 'Duyệt, chỉnh số và gộp báo cáo ngày của các đội',
+    description: 'Menu Báo cáo tổng hợp › Duyệt báo cáo, Tạo báo cáo của phòng',
+  },
+  {
+    code: Permission.ADJUSTMENT_ENTRY,
+    name: 'Điểm cộng, trừ & xếp loại - Nhập bảng đề xuất',
+    module: 'adjustment',
+    sortOrder: 122,
+    description:
+      'Menu Điểm cộng, trừ & xếp loại › Nhập bảng đề xuất: lập và trình bảng của đơn vị mình',
+  },
+  {
+    code: Permission.ADJUSTMENT_REVIEW,
+    name: 'Điểm cộng, trừ & xếp loại - Duyệt bảng đề xuất',
+    module: 'adjustment',
+    sortOrder: 124,
+    description:
+      'Menu Điểm cộng, trừ & xếp loại › Duyệt bảng đề xuất: mở hộp đến, chỉnh điểm, duyệt / trả lại',
   },
   {
     code: Permission.SYSTEM_CONFIG,
-    name: 'Cấu hình hệ thống',
+    name: 'Cấu hình hệ thống (Phân quyền giao nhiệm vụ, Hiển thị menu)',
     module: 'system',
     sortOrder: 130,
-    description: 'Cấu hình hệ thống và danh mục quyền',
+    description:
+      'Menu Tổ chức › Phân quyền giao nhiệm vụ, Hiển thị menu; sửa danh mục quyền',
   },
 ];
 
@@ -270,13 +293,15 @@ export class PermissionsService implements OnModuleInit {
         {
           $setOnInsert: {
             code: item.code,
-            name: item.name,
-            description: item.description,
             module: item.module,
             isSystem: true,
             isActive: true,
           },
+          // Tên / mô tả của quyền hệ thống đi theo mã trong code - đổi ở đây
+          // là DB đổi theo lúc khởi động, để nhãn luôn khớp tên menu.
           $set: {
+            name: item.name,
+            description: item.description,
             sortOrder: item.sortOrder,
           },
         },

@@ -35,6 +35,15 @@ export class TeamReportAdjustmentScope {
 
   @Prop({ type: [Types.ObjectId], ref: User.name, default: [] })
   userIds!: Types.ObjectId[];
+
+  /**
+   * Chỉ vế NGƯỜI NHẬN dùng: thu danh sách về đơn vị cha GẦN NHẤT của người
+   * gửi (đội → phòng của mình, tổ → xã của mình). "Trưởng phòng / xã" tick ở
+   * vai trò + cờ này = đúng trưởng phòng / xã trực thuộc, không phải mọi
+   * trưởng phòng toàn tỉnh. Cha gần nhất không có ai khớp thì leo lên cấp kế.
+   */
+  @Prop({ default: false })
+  senderSuperiorOnly!: boolean;
 }
 
 const ScopeSchema = SchemaFactory.createForClass(TeamReportAdjustmentScope);
@@ -46,8 +55,24 @@ const ScopeSchema = SchemaFactory.createForClass(TeamReportAdjustmentScope);
  * Nhiều luồng, xét theo `sortOrder`, khớp luồng đầu tiên. Không khớp luồng nào
  * → mặc định: cấp trên trực tiếp có quyền duyệt.
  */
+/** Luồng của loại báo cáo nào. */
+export const TEAM_REPORT_ROUTE_KINDS = ['ADJUSTMENT', 'SUMMARY'] as const;
+export type TeamReportRouteKind = (typeof TEAM_REPORT_ROUTE_KINDS)[number];
+
 @Schema({ timestamps: true, collection: 'team_report_adjustment_routes' })
 export class TeamReportAdjustmentRoute {
+  /**
+   * ADJUSTMENT = bảng điểm cộng / trừ / xếp loại; SUMMARY = báo cáo tổng hợp.
+   * Mỗi loại một bộ luồng riêng, xét riêng.
+   */
+  @Prop({
+    type: String,
+    enum: TEAM_REPORT_ROUTE_KINDS,
+    default: 'ADJUSTMENT',
+    index: true,
+  })
+  kind!: TeamReportRouteKind;
+
   @Prop({ required: true, trim: true })
   name!: string;
 
@@ -73,4 +98,4 @@ export class TeamReportAdjustmentRoute {
 export const TeamReportAdjustmentRouteSchema = SchemaFactory.createForClass(
   TeamReportAdjustmentRoute,
 );
-TeamReportAdjustmentRouteSchema.index({ sortOrder: 1 });
+TeamReportAdjustmentRouteSchema.index({ kind: 1, sortOrder: 1 });

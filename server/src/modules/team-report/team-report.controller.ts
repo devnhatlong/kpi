@@ -176,7 +176,8 @@ export class TeamReportController {
   }
 
   @ApiOperation({ summary: 'Bản tổng hợp cấp dưới trình lên đơn vị tôi' })
-  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  /* Không gác mã quyền: luồng tổng hợp có thể trỏ tới tài khoản đội - service
+     kiểm bằng canReceiveSummary + đúng đơn vị nhận. */
   @Get('summary/incoming')
   summaryInbox(
     @CurrentUser() user: JwtPayloadUser,
@@ -192,7 +193,8 @@ export class TeamReportController {
     có REVIEW. Hai đường, mỗi đường một quyền.
   */
   @ApiOperation({ summary: 'Chi tiết một bản tổng hợp trình tới đơn vị tôi' })
-  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  /* Không gác mã quyền: luồng tổng hợp có thể trỏ tới tài khoản đội - service
+     kiểm bằng canReceiveSummary + đúng đơn vị nhận. */
   @Get('summary/incoming/:id')
   incomingSummaryDetail(
     @CurrentUser() user: JwtPayloadUser,
@@ -202,7 +204,8 @@ export class TeamReportController {
   }
 
   @ApiOperation({ summary: 'Duyệt hoặc trả lại một bản tổng hợp' })
-  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  /* Không gác mã quyền: luồng tổng hợp có thể trỏ tới tài khoản đội - service
+     kiểm bằng canReceiveSummary + đúng đơn vị nhận. */
   @Post('summary/:id/decide')
   decideSummary(
     @CurrentUser() user: JwtPayloadUser,
@@ -265,7 +268,8 @@ export class TeamReportController {
   }
 
   @ApiOperation({ summary: 'Cấp trên chỉnh số trên bản tổng hợp đã nhận' })
-  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  /* Không gác mã quyền: luồng tổng hợp có thể trỏ tới tài khoản đội - service
+     kiểm bằng canReceiveSummary + đúng đơn vị nhận. */
   @Patch('summary/:id/review')
   reviewSummary(
     @CurrentUser() user: JwtPayloadUser,

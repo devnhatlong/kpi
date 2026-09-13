@@ -64,6 +64,7 @@ import { TeamReportAdjustmentController } from './team-report-adjustment.control
 import { TeamReportAdjustmentService } from './team-report-adjustment.service';
 import { TeamReportAdjustmentAccessService } from './team-report-adjustment-access.service';
 import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
+import { TeamReportRoutingController } from './team-report-routing.controller';
 import {
   TeamReportAdjustmentRoute,
   TeamReportAdjustmentRouteSchema,
@@ -134,6 +135,7 @@ import {
     TeamReportUnitSummaryController,
     TeamReportCriteriaController,
     TeamReportAdjustmentController,
+    TeamReportRoutingController,
   ],
   providers: [
     TeamReportService,

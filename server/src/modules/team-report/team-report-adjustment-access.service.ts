@@ -88,8 +88,13 @@ export class TeamReportAdjustmentAccessService {
     if (!user) return false;
     const codes = (user.roleAssignments ?? []).map((a) => a.roleCode);
     const permissions = await this.rolesService.getPermissionsByCodes(codes);
+    // Có mã quyền duyệt là đủ; người trong luồng nhận / đã có bảng trình tới
+    // cũng phải có mã quyền, vì route gác bằng mã.
+    if (!permissions.includes(Permission.ADJUSTMENT_REVIEW)) return false;
     if (permissions.includes(Permission.TEAM_REPORT_REVIEW)) return true;
-    if (await this.routing.isListedRecipient(userId)) return true;
+    if (await this.routing.isListedRecipient('ADJUSTMENT', userId)) {
+      return true;
+    }
     if (!user.departmentId) return false;
     const addressed = await this.sheetModel.exists({
       recipientDepartmentId: user.departmentId,
@@ -208,13 +213,24 @@ export class TeamReportAdjustmentAccessService {
     if (!configured) {
       const permissions =
         await this.rolesService.getPermissionsByCodes(roleCodes);
-      const allowed = permissions.includes(Permission.TEAM_REPORT_ENTRY);
+      const allowed = permissions.includes(Permission.ADJUSTMENT_ENTRY);
       return {
         allowed,
         configured: false,
         reason: allowed
-          ? 'Chưa đặt luật riêng - dùng quyền nhập báo cáo ngày.'
-          : 'Chưa đặt luật riêng, và tài khoản không có quyền nhập báo cáo ngày.',
+          ? 'Theo quyền "Nhập bảng đề xuất" của vai trò.'
+          : 'Vai trò không có quyền "Nhập bảng đề xuất".',
+      };
+    }
+
+    // Luật riêng chỉ THU HẸP: không có quyền gốc thì luật có tick cũng vô nghĩa.
+    const basePermissions =
+      await this.rolesService.getPermissionsByCodes(roleCodes);
+    if (!basePermissions.includes(Permission.ADJUSTMENT_ENTRY)) {
+      return {
+        allowed: false,
+        configured,
+        reason: 'Vai trò không có quyền "Nhập bảng đề xuất".',
       };
     }
 

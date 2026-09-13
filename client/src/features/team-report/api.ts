@@ -684,6 +684,8 @@ export type TeamReportAdjustmentAccess = {
   reason: string;
   /** Được mở hộp đến (nằm trong luồng trình, hoặc có quyền duyệt khi chưa đặt luồng). */
   canReceive: boolean;
+  /** Được mở hộp đến báo cáo tổng hợp (quyền duyệt, hoặc trong luồng tổng hợp). */
+  canReceiveSummary: boolean;
 };
 
 /** Tôi có được nhập bảng điểm cộng / trừ / xếp loại không - để ẩn/hiện menu. */
@@ -735,10 +737,15 @@ export type TeamReportAdjustmentScope = {
   departmentIds: string[];
   includeDescendants: boolean;
   userIds: string[];
+  /** Chỉ vế người nhận: thu về cấp trên trực thuộc của người gửi. */
+  senderSuperiorOnly?: boolean;
 };
+
+export type TeamReportRouteKind = "ADJUSTMENT" | "SUMMARY";
 
 export type TeamReportAdjustmentRoute = {
   _id?: string;
+  kind?: TeamReportRouteKind;
   name: string;
   isActive: boolean;
   sender: TeamReportAdjustmentScope;
@@ -747,21 +754,22 @@ export type TeamReportAdjustmentRoute = {
   updatedAt?: string | null;
 };
 
-export function fetchTeamReportAdjustmentRoutes() {
+export function fetchTeamReportRoutes(kind: TeamReportRouteKind) {
   return unwrapData(
     api.get<ApiResponse<TeamReportAdjustmentRoute[]>>(
-      "/team-report/adjustments/routing/routes",
+      `/team-report/routing/${kind.toLowerCase()}/routes`,
     ),
   );
 }
 
-/** Thay toàn bộ - thứ tự mảng là thứ tự xét. */
-export function saveTeamReportAdjustmentRoutes(
+/** Thay toàn bộ luồng của một loại - thứ tự mảng là thứ tự xét. */
+export function saveTeamReportRoutes(
+  kind: TeamReportRouteKind,
   routes: TeamReportAdjustmentRoute[],
 ) {
   return unwrapData(
     api.put<ApiResponse<TeamReportAdjustmentRoute[]>>(
-      "/team-report/adjustments/routing/routes",
+      `/team-report/routing/${kind.toLowerCase()}/routes`,
       {
         // Server chỉ nhận đúng trường cấu hình - bỏ _id / dấu vết cập nhật.
         routes: routes.map((route) => ({

@@ -353,7 +353,17 @@
       "Bash(node e2e-adjustment-routes.js)",
       "Bash(grep -n \"const \\\\[deciding, setDeciding\\\\]\\\\|mode={pending ? \\\\\"review\\\\\" : \\\\\"read\\\\\"}\\\\|Gõ thẳng vào ô để chỉnh\\\\|<Undo2 className=\\\\\"size-4\\\\\" />\\\\n                  Trả lại\\\\|{pending ? \\(\\\\n              <>\" src/features/team-report/components/team-report-adjustment-inbox-view.tsx)",
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-bulk-users.js\")",
-      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-bulk-client.js\")"
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-bulk-client.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-routing-kind.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-routing-kind-client.js\")",
+      "Bash(grep -v \"set-state-in-effect\\\\|axis-form-dialog\\\\|quality-levels-panel\\\\|score-group-form-dialog\\\\|work-content-form-dialog\\\\|work-task-form-dialog\\\\|^$\\\\|react.dev\\\\|Effects are\\\\|Calling setState\\\\|\\\\* \\\\|^  [0-9]* |^> \\\\|^    \\\\^\\\\|✖\")",
+      "Bash(node e2e-summary-routing.js)",
+      "Bash(sed -i \"s#'/team-report/adjustments/routing/routes'#'/team-report/routing/adjustment/routes'#g\" e2e-adjustment-routes.js)",
+      "Bash(awk '{print $6,$7,$8}')",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-perm-names.js\")",
+      "Bash(cd server *)",
+      "Read(//d/Project/WebApp/client/src/constants/**)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-adj-perms.js\")"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

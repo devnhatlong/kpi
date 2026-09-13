@@ -21,6 +21,7 @@ import {
   TeamReportAdjustmentRoute,
   TeamReportAdjustmentRouteDocument,
   TeamReportAdjustmentScope,
+  type TeamReportRouteKind,
 } from './schemas/team-report-adjustment-route.schema';
 
 /** Người nhận bảng - cùng dạng với người nhận báo cáo tổng hợp. */
@@ -67,13 +68,19 @@ export class TeamReportAdjustmentRoutingService {
     private readonly rolesService: RolesService,
   ) {}
 
-  async list() {
-    const routes = await this.routeModel.find().sort({ sortOrder: 1, _id: 1 });
+  async list(kind: TeamReportRouteKind) {
+    const routes = await this.routeModel
+      .find({ kind })
+      .sort({ sortOrder: 1, _id: 1 });
     return { message: 'OK', data: routes.map((route) => this.toClient(route)) };
   }
 
-  /** Thay cả danh sách - thứ tự mảng là thứ tự xét. */
-  async saveAll(userId: string, dto: SaveTeamReportAdjustmentRoutesDto) {
+  /** Thay cả danh sách của MỘT loại - thứ tự mảng là thứ tự xét. */
+  async saveAll(
+    kind: TeamReportRouteKind,
+    userId: string,
+    dto: SaveTeamReportAdjustmentRoutesDto,
+  ) {
     const actor = await this.userModel
       .findById(userId)
       .select('fullName username');
@@ -96,6 +103,7 @@ export class TeamReportAdjustmentRoutingService {
         throw new BadRequestException(`Luồng "${name}" chưa chọn gửi cho ai.`);
       }
       docs.push({
+        kind,
         name,
         sortOrder: index,
         isActive: route.isActive ?? true,
@@ -105,12 +113,12 @@ export class TeamReportAdjustmentRoutingService {
       });
     }
 
-    await this.routeModel.deleteMany({});
+    await this.routeModel.deleteMany({ kind });
     if (docs.length) await this.routeModel.insertMany(docs);
     return {
       message: docs.length ? 'Đã lưu luồng trình.' : 'Đã bỏ hết luồng riêng.',
-      data: (await this.routeModel.find().sort({ sortOrder: 1 })).map((route) =>
-        this.toClient(route),
+      data: (await this.routeModel.find({ kind }).sort({ sortOrder: 1 })).map(
+        (route) => this.toClient(route),
       ),
     };
   }
@@ -120,13 +128,34 @@ export class TeamReportAdjustmentRoutingService {
    * nếu không khớp luồng nào (nơi gọi rơi về cấp trên trực tiếp).
    */
   async recipients(
+    kind: TeamReportRouteKind,
     actorId: string,
     q?: string,
   ): Promise<AdjustmentRecipient[] | null> {
-    const route = await this.routeFor(actorId);
+    const route = await this.routeFor(kind, actorId);
     if (!route) return null;
     const clauses = await this.clausesOf(route.recipients);
     const and: Record<string, unknown>[] = [{ $or: clauses }];
+
+    /*
+      Cờ "chỉ cấp trên trực thuộc": thu về chuỗi cha của người gửi, rồi lấy
+      cấp cha gần nhất còn có người khớp - đội thấy đúng phòng mình, tổ thấy
+      đúng xã mình.
+    */
+    let chain: Types.ObjectId[] = [];
+    if (route.recipients.senderSuperiorOnly) {
+      const actor = await this.userModel
+        .findById(actorId)
+        .select('departmentId');
+      const home = actor?.departmentId
+        ? await this.departmentModel
+            .findById(actor.departmentId)
+            .select('ancestors')
+        : null;
+      chain = [...(home?.ancestors ?? [])].reverse();
+      if (!chain.length) return [];
+      and.push({ departmentId: { $in: chain } });
+    }
     if (q?.trim()) {
       const like = { $regex: escapeRegex(q.trim()), $options: 'i' };
       and.push({ $or: [{ fullName: like }, { username: like }] });
@@ -141,6 +170,21 @@ export class TeamReportAdjustmentRoutingService {
       .populate('departmentId', 'code name')
       .sort({ fullName: 1, username: 1 })
       .limit(300);
+    if (chain.length) {
+      const nearest = chain.find((id) =>
+        found.some(
+          (user) =>
+            String(user.departmentId?._id ?? user.departmentId) === String(id),
+        ),
+      );
+      return found
+        .filter(
+          (user) =>
+            String(user.departmentId?._id ?? user.departmentId) ===
+            String(nearest),
+        )
+        .map((user) => this.person(user));
+    }
     return found.map((user) => this.person(user));
   }
 
@@ -187,8 +231,11 @@ export class TeamReportAdjustmentRoutingService {
   }
 
   /** Người này có nằm trong vế "gửi cho ai" của luồng nào không. */
-  async isListedRecipient(userId: string): Promise<boolean> {
-    const routes = await this.routeModel.find({ isActive: true });
+  async isListedRecipient(
+    kind: TeamReportRouteKind,
+    userId: string,
+  ): Promise<boolean> {
+    const routes = await this.routeModel.find({ kind, isActive: true });
     for (const route of routes) {
       const hit = await this.userModel.exists({
         _id: new Types.ObjectId(userId),
@@ -202,9 +249,9 @@ export class TeamReportAdjustmentRoutingService {
 
   /* ----------------------------------------------------------- nội bộ */
 
-  private async routeFor(actorId: string) {
+  private async routeFor(kind: TeamReportRouteKind, actorId: string) {
     const routes = await this.routeModel
-      .find({ isActive: true })
+      .find({ kind, isActive: true })
       .sort({ sortOrder: 1, _id: 1 });
     if (!routes.length) return null;
     const user = await this.userModel
@@ -337,6 +384,7 @@ export class TeamReportAdjustmentRoutingService {
       departmentIds,
       includeDescendants: input?.includeDescendants ?? true,
       userIds,
+      senderSuperiorOnly: input?.senderSuperiorOnly ?? false,
     };
   }
 
@@ -361,9 +409,11 @@ export class TeamReportAdjustmentRoutingService {
       departmentIds: s.departmentIds.map(String),
       includeDescendants: s.includeDescendants,
       userIds: s.userIds.map(String),
+      senderSuperiorOnly: s.senderSuperiorOnly ?? false,
     });
     return {
       _id: String(route._id),
+      kind: route.kind,
       name: route.name,
       isActive: route.isActive,
       sender: scope(route.sender),

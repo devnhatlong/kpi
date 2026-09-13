@@ -14,6 +14,7 @@ import {
   ListTree,
   Network,
   Scale,
+  Send,
   Settings,
   Shield,
   ShieldCheck,
@@ -46,7 +47,7 @@ export type NavSubItem = {
    *
    * `adjustment-access`: ai được nhập bảng điểm cộng / trừ / xếp loại.
    */
-  gate?: "adjustment-access" | "adjustment-inbox";
+  gate?: "adjustment-access" | "adjustment-inbox" | "summary-inbox";
 };
 
 export type NavItem = {
@@ -68,11 +69,11 @@ export type NavItem = {
  * - nhiệm vụ cấp trên giao: nhiệm vụ top-down giao xuống
  */
 export const NAV_ITEMS: NavItem[] = [
-  {
-    title: "Thống kê",
-    href: "/dashboard",
-    icon: Gauge,
-  },
+  // {
+  //   title: "Thống kê",
+  //   href: "/dashboard",
+  //   icon: Gauge,
+  // },
   /*
     Bản nghiệp vụ MỚI - báo cáo ngày cấp đội, chạy song song với các mục cũ.
 
@@ -123,12 +124,15 @@ export const NAV_ITEMS: NavItem[] = [
         title: "Nhập bảng đề xuất",
         href: "/team-report/adjustments",
         icon: ClipboardPen,
+        permissions: [PERM.ADJUSTMENT_ENTRY],
+        /* Luật "Phân quyền nhập" thu hẹp thêm trên nền quyền. */
         gate: "adjustment-access",
       },
       {
         title: "Duyệt bảng đề xuất",
         href: "/team-report/adjustments/incoming",
         icon: Inbox,
+        permissions: [PERM.ADJUSTMENT_REVIEW],
         gate: "adjustment-inbox",
       },
     ],
@@ -168,10 +172,12 @@ export const NAV_ITEMS: NavItem[] = [
         roles: ["UNIT_ADMIN", "VICE_UNIT_ADMIN"],
       },
       {
+        /* Không gác mã quyền: luồng tổng hợp có thể trỏ tới tài khoản đội -
+           server quyết ai mở được hộp đến. */
         title: "Duyệt báo cáo",
         href: "/team-report/summary/incoming",
         icon: Inbox,
-        permissions: [PERM.TEAM_REPORT_REVIEW],
+        gate: "summary-inbox",
       },
     ],
   },
@@ -222,12 +228,12 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Trophy,
     permissions: [PERM.TASK_ASSIGN],
   },
-  {
-    title: "Danh mục",
-    href: "/mission/catalogs",
-    icon: BookMarked,
-    permissions: [PERM.MISSION_MANAGE],
-  },
+  // {
+  //   title: "Danh mục",
+  //   href: "/mission/catalogs",
+  //   icon: BookMarked,
+  //   permissions: [PERM.MISSION_MANAGE],
+  // },
   {
     title: "Cấu hình form nhiệm vụ",
     icon: FormInput,
@@ -265,6 +271,13 @@ export const NAV_ITEMS: NavItem[] = [
         title: "Điểm cộng, trừ & xếp loại",
         href: "/mission/form-config/adjustments",
         icon: Scale,
+      },
+      {
+        /* Ai gửi → gửi cho ai, theo từng loại báo cáo (tổng hợp, điểm cộng
+           trừ). Đặt chung một chỗ thay vì giấu trong từng trình dựng form. */
+        title: "Luồng trình báo cáo",
+        href: "/mission/form-config/routing",
+        icon: Send,
       },
     ],
   },

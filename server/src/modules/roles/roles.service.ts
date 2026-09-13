@@ -67,6 +67,8 @@ const SYSTEM_ROLES: Array<{
       Permission.EVALUATION_SELF,
       Permission.EVALUATION_APPROVE,
       Permission.TEAM_REPORT_REVIEW,
+      Permission.ADJUSTMENT_ENTRY,
+      Permission.ADJUSTMENT_REVIEW,
     ],
   },
   {
@@ -88,6 +90,8 @@ const SYSTEM_ROLES: Array<{
       Permission.EVALUATION_SELF,
       Permission.EVALUATION_APPROVE,
       Permission.TEAM_REPORT_REVIEW,
+      Permission.ADJUSTMENT_ENTRY,
+      Permission.ADJUSTMENT_REVIEW,
     ],
   },
   {
@@ -148,6 +152,15 @@ const GRANTED_PERMISSIONS: Array<{ code: string; roles: RoleCode[] }> = [
   {
     code: Permission.TEAM_REPORT_REVIEW,
     roles: [RoleCode.UNIT_ADMIN, RoleCode.VICE_UNIT_ADMIN, RoleCode.CAT_ADMIN],
+  },
+  // Bảng điểm cộng / trừ: chỉ cấp phòng / xã.
+  {
+    code: Permission.ADJUSTMENT_ENTRY,
+    roles: [RoleCode.UNIT_ADMIN, RoleCode.VICE_UNIT_ADMIN],
+  },
+  {
+    code: Permission.ADJUSTMENT_REVIEW,
+    roles: [RoleCode.UNIT_ADMIN, RoleCode.VICE_UNIT_ADMIN],
   },
 ];
 

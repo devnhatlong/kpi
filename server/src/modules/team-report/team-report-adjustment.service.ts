@@ -650,7 +650,7 @@ export class TeamReportAdjustmentService {
    */
   async recipients(userId: string, q?: string) {
     await this.requireActor(userId);
-    const configured = await this.routing.recipients(userId, q);
+    const configured = await this.routing.recipients('ADJUSTMENT', userId, q);
     if (configured) {
       return { message: 'OK', data: { people: configured, configured: true } };
     }
@@ -660,7 +660,7 @@ export class TeamReportAdjustmentService {
 
   private async requireRecipient(userId: string, recipientId: string) {
     const allowed =
-      (await this.routing.recipients(userId)) ??
+      (await this.routing.recipients('ADJUSTMENT', userId)) ??
       (await this.routing.directSuperiors(userId));
     const picked = allowed.find((person) => person.id === recipientId);
     if (!picked) {
