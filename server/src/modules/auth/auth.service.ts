@@ -23,7 +23,13 @@ import {
   RefreshTokenDocument,
 } from './schemas/refresh-token.schema';
 
-const MAX_REFRESH_TOKENS_PER_USER = 5;
+/**
+ * Số phiên đăng nhập (refresh token) tối đa của MỘT tài khoản. Tài khoản đội
+ * là tài khoản dùng chung - cả đội (khoảng 30 người) cùng đăng nhập trên máy
+ * riêng - nên mặc định phải rộng; đặt hẹp là người đăng nhập sau đá người
+ * trước ra sau một giờ. Đổi qua env MAX_SESSIONS_PER_USER.
+ */
+const DEFAULT_MAX_SESSIONS_PER_USER = 60;
 
 @Injectable()
 export class AuthsService {
@@ -113,7 +119,9 @@ export class AuthsService {
   async refresh(refreshToken: string) {
     const stored = await this.findValidRefreshToken(refreshToken);
     if (!stored) {
-      throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn.');
+      throw new UnauthorizedException(
+        'Refresh token không hợp lệ hoặc đã hết hạn.',
+      );
     }
 
     const user = await this.usersService.findById(stored.userId.toString());
@@ -201,10 +209,13 @@ export class AuthsService {
   }
 
   /**
-   * Giữ tối đa MAX-1 token active trước khi tạo mới,
-   * để sau khi create không vượt quá MAX_REFRESH_TOKENS_PER_USER.
+   * Giữ tối đa MAX-1 token active trước khi tạo mới, để sau khi create không
+   * vượt quá giới hạn phiên. Vượt thì bỏ phiên CŨ NHẤT.
    */
   private async enforceTokenLimit(userId: Types.ObjectId) {
+    const raw = Number(this.configService.get<string>('MAX_SESSIONS_PER_USER'));
+    const max =
+      Number.isFinite(raw) && raw >= 1 ? raw : DEFAULT_MAX_SESSIONS_PER_USER;
     const activeTokens = await this.refreshTokenModel
       .find({
         userId,
@@ -215,7 +226,7 @@ export class AuthsService {
       .select('_id')
       .lean();
 
-    const overflow = activeTokens.length - (MAX_REFRESH_TOKENS_PER_USER - 1);
+    const overflow = activeTokens.length - (max - 1);
     if (overflow <= 0) {
       return;
     }

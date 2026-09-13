@@ -336,6 +336,16 @@ export function TeamReportSheetView() {
             <RefreshCw className="size-4" />
             Làm mới
           </Button>
+          {editable ? (
+            <Button
+              type="button"
+              disabled={adding}
+              onClick={() => setAdding(true)}
+            >
+              <Plus className="size-4" />
+              Thêm nhiệm vụ
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -700,18 +710,6 @@ export function TeamReportSheetView() {
               </TableBody>
             </Table>
           </div>
-
-          {editable && !adding ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="bg-background"
-              onClick={() => setAdding(true)}
-            >
-              <Plus className="size-4" />
-              Thêm nhiệm vụ
-            </Button>
-          ) : null}
         </CardContent>
       </Card>
 
