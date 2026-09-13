@@ -94,6 +94,13 @@ export class TeamReportDayRow {
   @Prop({ type: Number, default: 0 })
   evidenceCount!: number;
 
+  /** Bản chụp tệp kiểm chứng lúc gửi - cấp trên tải theo uploadId. */
+  @Prop({
+    type: [{ uploadId: { type: Types.ObjectId }, name: { type: String } }],
+    default: [],
+  })
+  evidence!: Array<{ uploadId: Types.ObjectId; name: string }>;
+
   /** Việc này đóng lại ngay trong lượt gửi đó hay không. */
   @Prop({ default: false })
   closed!: boolean;

@@ -1470,6 +1470,10 @@ function TaskTableRow({
               catalogs={scopedCatalogs}
               invalid={!!error}
               disabled={disabled}
+              evidence={task.evidence}
+              onEvidenceChange={(items) =>
+                onPatch(task, { version: task.version, evidence: items })
+              }
               onCommit={(next) =>
                 onPatch(task, {
                   version: task.version,
@@ -1861,6 +1865,13 @@ function TaskDetailBody({
                       catalogs={scopedCatalogs}
                       invalid={!!error}
                       disabled={disabled}
+                      evidence={task.evidence}
+                      onEvidenceChange={(items) =>
+                        onPatch(task, {
+                          version: task.version,
+                          evidence: items,
+                        })
+                      }
                       onCommit={(next) =>
                         onPatch(task, {
                           version: task.version,

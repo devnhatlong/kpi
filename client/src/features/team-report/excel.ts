@@ -154,6 +154,11 @@ function cellValue(
     return picked;
   }
 
+  // Cột tệp: in tên các tệp đã gắn, cách nhau bằng dấu chấm phẩy.
+  if (column.dataType === "file") {
+    return (row.evidence ?? []).map((item) => item.name).join("; ");
+  }
+
   const raw = row.fieldValues?.[column.key];
   /* Ba ô của giai đoạn 1 vốn được đồng bộ hai chiều với cột mẫu, nhưng dòng
      chụp từ trước khi có đồng bộ thì chỉ còn giá trị ở trường riêng - đọc bù

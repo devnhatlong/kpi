@@ -195,6 +195,8 @@ export type TeamReportClassifyInput = {
   fieldValues?: Record<string, string>;
   /** Cột danh mục: gửi id, server tra lại tên rồi chép sẵn. */
   catalogValues?: Record<string, string>;
+  /** Tài liệu kiểm chứng - thay cả danh sách. */
+  evidence?: Array<{ uploadId: string; name: string }>;
 };
 
 export function classifyTeamReportTask(

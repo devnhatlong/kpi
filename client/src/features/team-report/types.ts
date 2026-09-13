@@ -300,9 +300,13 @@ export function missingRequiredColumns(
 ): TeamReportColumn[] {
   return inputColumns(template).filter((column) => {
     if (!column.required || column.autoValue) return false;
-    const filled = catalogOfColumn(column)
-      ? !!finalCatalogValue(task, column.key)
-      : String(finalFieldValue(task, column.key) ?? "").trim() !== "";
+    // Cột tệp không có giá trị trong fieldValues - "đã điền" là có tệp gắn.
+    const filled =
+      column.dataType === "file"
+        ? (task.evidence?.length ?? 0) > 0
+        : catalogOfColumn(column)
+          ? !!finalCatalogValue(task, column.key)
+          : String(finalFieldValue(task, column.key) ?? "").trim() !== "";
     return !filled;
   });
 }
@@ -354,6 +358,8 @@ export type TeamReportDayRow = {
   fieldValues: Record<string, string | number>;
   catalogValues: Record<string, CatalogValue>;
   evidenceCount: number;
+  /** Bản chụp tệp kiểm chứng lúc gửi (dòng cũ có thể không có). */
+  evidence?: Array<Pick<TeamReportEvidence, "uploadId" | "name">>;
   closed: boolean;
 };
 

@@ -3,7 +3,7 @@ import type { TaskAttachment } from "@/features/personal-mission/types";
 
 type ApiEnvelope<T> = { message: string; data: T };
 
-export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 /**
  * Bộ lọc của hộp thoại chọn tệp.

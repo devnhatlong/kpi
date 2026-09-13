@@ -704,6 +704,7 @@ function TeamReportDayDetailDialog({
                                   value={value}
                                   catalogs={catalogs}
                                   disabled={decided}
+                                  evidence={row.evidence}
                                   onCommit={(next) =>
                                     setValue(row, column, next)
                                   }

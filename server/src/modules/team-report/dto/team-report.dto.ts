@@ -107,6 +107,16 @@ export class ClassifyTeamReportTaskDto {
   fieldValues?: Record<string, string | number>;
 
   @ApiPropertyOptional({
+    type: () => [TeamReportEvidenceDto],
+    description: 'Tài liệu kiểm chứng - thay cả danh sách',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TeamReportEvidenceDto)
+  evidence?: TeamReportEvidenceDto[];
+
+  @ApiPropertyOptional({
     description:
       'Giá trị cột danh mục: { "<khoá cột>": "<id trong danh mục>" }',
   })

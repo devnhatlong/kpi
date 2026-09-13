@@ -363,7 +363,11 @@
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-perm-names.js\")",
       "Bash(cd server *)",
       "Read(//d/Project/WebApp/client/src/constants/**)",
-      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-adj-perms.js\")"
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-adj-perms.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-evidence-server.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-evidence-client.js\")",
+      "Bash(sed -i 's/export const MAX_UPLOAD_BYTES = 20 \\\\* 1024 \\\\* 1024;/export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;/' src/modules/uploads/upload-file.utils.ts)",
+      "Bash(sed -i 's/export const MAX_UPLOAD_BYTES = 20 \\\\* 1024 \\\\* 1024;/export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;/' ../client/src/features/uploads/api.ts)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

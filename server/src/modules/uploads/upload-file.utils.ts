@@ -1,6 +1,6 @@
 import { extname } from 'path';
 
-export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 /**
  * Đuôi tệp cho phép. Kiểm theo đuôi VÀ magic number, không tin `mimetype` do

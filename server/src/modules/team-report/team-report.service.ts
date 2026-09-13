@@ -495,6 +495,10 @@ export class TeamReportService {
         : null;
     }
 
+    // Tài liệu kiểm chứng gắn với nhiệm vụ, không theo cột - cột kiểu "tệp"
+    // của mẫu chỉ là chỗ bày và sửa danh sách này.
+    if (dto.evidence) task.evidence = this.mapEvidence(dto.evidence);
+
     if (dto.fieldValues || dto.catalogValues) {
       await this.stampTemplate(task);
       const template = await this.templateOfTask(task);
@@ -2866,6 +2870,12 @@ export class TeamReportService {
         ...(task.reviewCatalogValues ?? {}),
       },
       evidenceCount: task.evidence?.length ?? 0,
+      // Chụp cả danh sách tệp: cấp trên mở bản đã trình phải tải được đúng
+      // tệp lúc gửi, dù đội có đổi tệp trên nhiệm vụ về sau.
+      evidence: (task.evidence ?? []).map((item) => ({
+        uploadId: item.uploadId,
+        name: item.name,
+      })),
       closed,
     };
   }

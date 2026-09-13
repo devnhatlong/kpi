@@ -61,6 +61,7 @@ import {
   type TeamReportSummaryLevel,
 } from "@/features/team-report/api";
 import { DynamicColumnCell } from "@/features/team-report/components/dynamic-column-cell";
+import { EvidenceCell } from "@/features/team-report/components/evidence-cell";
 import { TeamReportCriteriaPreview } from "@/features/team-report/components/team-report-criteria-preview";
 import { exportTeamReportToExcel } from "@/features/team-report/excel";
 import {
@@ -1188,6 +1189,17 @@ export function TeamReportSummaryPanel({
                                       <span>{cellError}</span>
                                     </p>
                                   ) : null}
+                                </TableCell>
+                              );
+                            }
+
+                            if (column.dataType === "file") {
+                              return (
+                                <TableCell
+                                  key={column.key}
+                                  className="align-middle"
+                                >
+                                  <EvidenceCell items={row.evidence ?? []} />
                                 </TableCell>
                               );
                             }

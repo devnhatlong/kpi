@@ -16,6 +16,10 @@ import {
   MultiSelect,
   type MultiSelectOption,
 } from "@/components/common/multi-select";
+import {
+  EvidenceCell,
+  type EvidenceItem,
+} from "@/features/team-report/components/evidence-cell";
 import { NumberInput } from "@/features/team-report/components/number-input";
 import type {
   TeamReportCatalogItem,
@@ -42,6 +46,10 @@ type DynamicColumnCellProps = {
   invalid?: boolean;
   /** Gọi khi giá trị thật sự chốt - rời ô với cột gõ, chọn xong với dropdown. */
   onCommit: (next: string) => void;
+  /** Cột kiểu tệp: danh sách tệp của nhiệm vụ (không nằm trong fieldValues). */
+  evidence?: EvidenceItem[];
+  /** Không có = cột tệp chỉ đọc. */
+  onEvidenceChange?: (next: EvidenceItem[]) => void | Promise<void>;
 };
 
 /** Viền đỏ dùng chung cho mọi kiểu ô, kể cả ô chọn của Radix. */
@@ -65,6 +73,8 @@ export function DynamicColumnCell({
   disabled,
   invalid,
   onCommit,
+  evidence,
+  onEvidenceChange,
 }: DynamicColumnCellProps) {
   const catalog = catalogOfColumn(column);
 
@@ -107,15 +117,17 @@ export function DynamicColumnCell({
   }
 
   /*
-    Cột tệp chưa nối được chỗ tải lên. Bày rõ là chưa hỗ trợ, KHÔNG rơi xuống ô
-    chữ như trước - ô chữ ở đây mời người dùng gõ tên tệp vào một cột đáng lẽ
-    giữ tệp thật, và cái đó đi thẳng lên báo cáo của cấp trên.
+    Cột tệp không lưu vào fieldValues: nó bày và sửa `task.evidence` - danh
+    sách tệp gắn với cả nhiệm vụ. Không có onEvidenceChange thì chỉ đọc.
   */
   if (column.dataType === "file") {
     return (
-      <span className="text-xs text-muted-foreground">
-        Đính kèm ở bảng nhập
-      </span>
+      <EvidenceCell
+        items={evidence ?? []}
+        onChange={onEvidenceChange}
+        disabled={disabled}
+        invalid={invalid}
+      />
     );
   }
 

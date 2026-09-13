@@ -37,7 +37,7 @@ import {
 @ApiTags('Uploads')
 @ApiBearerAuth()
 // Guard chạy trước interceptor, nên request thiếu token bị chặn TRƯỚC khi
-// multer nạp 20MB vào RAM.
+// multer nạp 10MB vào RAM.
 @UseGuards(JwtGuard)
 @UseFilters(UploadExceptionFilter)
 @Controller('uploads')
