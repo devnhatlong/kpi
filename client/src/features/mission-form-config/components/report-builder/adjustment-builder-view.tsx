@@ -9,7 +9,6 @@ import {
   Save,
   Scale,
   Send,
-  ShieldCheck,
 } from "lucide-react";
 import useSWR, { mutate as globalMutate } from "swr";
 import { toast } from "sonner";
@@ -49,7 +48,6 @@ import {
   sanitizeDraft,
   type FormDraft,
 } from "@/features/mission-form-config/components/report-builder/form-draft";
-import { AdjustmentAccessCard } from "@/features/mission-form-config/components/report-builder/adjustment-access-card";
 import { AdjustmentRoutesEditor } from "@/features/mission-form-config/components/report-builder/adjustment-routes-editor";
 import { HeaderStructureDialog } from "@/features/mission-form-config/components/report-builder/header-structure-dialog";
 import {
@@ -106,7 +104,6 @@ export function AdjustmentBuilderView() {
   );
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [structureOpen, setStructureOpen] = useState(false);
-  const [accessOpen, setAccessOpen] = useState(false);
   const [routingOpen, setRoutingOpen] = useState(false);
   const [pendingSection, setPendingSection] =
     useState<AdjustmentSection | null>(null);
@@ -206,15 +203,6 @@ export function AdjustmentBuilderView() {
             type="button"
             variant="outline"
             className="bg-background"
-            onClick={() => setAccessOpen(true)}
-          >
-            <ShieldCheck className="size-4" />
-            Phân quyền nhập
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="bg-background"
             onClick={() => setRoutingOpen(true)}
           >
             <Send className="size-4" />
@@ -234,20 +222,6 @@ export function AdjustmentBuilderView() {
           </Button>
         </div>
       </div>
-
-      <Dialog open={accessOpen} onOpenChange={setAccessOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
-          <DialogHeader>
-            <DialogTitle>Phân quyền nhập bảng</DialogTitle>
-            <DialogDescription>
-              Chỉ định vai trò, tài khoản hoặc đơn vị được nhập bảng này - áp
-              cho cả ba phần I / II / III. Lưu riêng, không phụ thuộc nút
-              &quot;Lưu form này&quot; của bộ cột.
-            </DialogDescription>
-          </DialogHeader>
-          <AdjustmentAccessCard />
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={routingOpen} onOpenChange={setRoutingOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">

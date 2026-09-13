@@ -734,38 +734,6 @@ export function fetchTeamReportAdjustmentAccess() {
   );
 }
 
-export type TeamReportAdjustmentAccessRule = {
-  roleCodes: string[];
-  userIds: string[];
-  departmentIds: string[];
-  includeDescendants: boolean;
-  updatedByName: string;
-  updatedAt: string | null;
-  configured: boolean;
-};
-
-export function fetchTeamReportAdjustmentAccessRule() {
-  return unwrapData(
-    api.get<ApiResponse<TeamReportAdjustmentAccessRule>>(
-      "/team-report/adjustments/access/rule",
-    ),
-  );
-}
-
-export function saveTeamReportAdjustmentAccessRule(input: {
-  roleCodes: string[];
-  userIds: string[];
-  departmentIds: string[];
-  includeDescendants: boolean;
-}) {
-  return unwrapData(
-    api.put<ApiResponse<TeamReportAdjustmentAccessRule>>(
-      "/team-report/adjustments/access/rule",
-      input,
-    ),
-  );
-}
-
 /* Luồng trình - nhiều luồng "ai gửi → gửi cho ai". */
 export type TeamReportAdjustmentScope = {
   roleCodes: string[];
@@ -776,6 +744,8 @@ export type TeamReportAdjustmentScope = {
   userIds: string[];
   /** Chỉ vế người nhận: thu về cấp trên trực thuộc của người gửi. */
   senderSuperiorOnly?: boolean;
+  /** Chỉ vế người nhận: thu về các đơn vị cấp dưới của người gửi. */
+  senderSubordinatesOnly?: boolean;
 };
 
 export type TeamReportRouteKind = "ADJUSTMENT" | "SUMMARY";

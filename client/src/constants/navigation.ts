@@ -124,15 +124,14 @@ export const NAV_ITEMS: NavItem[] = [
         title: "Nhập bảng đề xuất",
         href: "/team-report/adjustments",
         icon: ClipboardPen,
-        permissions: [PERM.ADJUSTMENT_ENTRY],
-        /* Luật "Phân quyền nhập" thu hẹp thêm trên nền quyền. */
+        /* Ai thấy = vế "ai gửi" của luồng trình (server quyết). */
         gate: "adjustment-access",
       },
       {
         title: "Duyệt bảng đề xuất",
         href: "/team-report/adjustments/incoming",
         icon: Inbox,
-        permissions: [PERM.ADJUSTMENT_REVIEW],
+        /* Ai thấy = vế "gửi cho ai" của luồng trình (server quyết). */
         gate: "adjustment-inbox",
       },
     ],

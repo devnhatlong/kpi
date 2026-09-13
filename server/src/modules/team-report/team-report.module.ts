@@ -70,10 +70,6 @@ import {
   TeamReportAdjustmentRouteSchema,
 } from './schemas/team-report-adjustment-route.schema';
 import {
-  TeamReportAdjustmentAccess,
-  TeamReportAdjustmentAccessSchema,
-} from './schemas/team-report-adjustment-access.schema';
-import {
   TeamReportAdjustmentSheet,
   TeamReportAdjustmentSheetSchema,
 } from './schemas/team-report-adjustment-sheet.schema';
@@ -113,10 +109,6 @@ import {
       {
         name: TeamReportAdjustmentSheet.name,
         schema: TeamReportAdjustmentSheetSchema,
-      },
-      {
-        name: TeamReportAdjustmentAccess.name,
-        schema: TeamReportAdjustmentAccessSchema,
       },
       {
         name: TeamReportAdjustmentRoute.name,

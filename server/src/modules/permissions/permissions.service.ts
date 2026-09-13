@@ -111,22 +111,6 @@ const SYSTEM_PERMISSIONS: Array<{
     description: 'Menu Báo cáo tổng hợp › Duyệt báo cáo, Tạo báo cáo của phòng',
   },
   {
-    code: Permission.ADJUSTMENT_ENTRY,
-    name: 'Điểm cộng, trừ & xếp loại - Nhập bảng đề xuất',
-    module: 'adjustment',
-    sortOrder: 122,
-    description:
-      'Menu Điểm cộng, trừ & xếp loại › Nhập bảng đề xuất: lập và trình bảng của đơn vị mình',
-  },
-  {
-    code: Permission.ADJUSTMENT_REVIEW,
-    name: 'Điểm cộng, trừ & xếp loại - Duyệt bảng đề xuất',
-    module: 'adjustment',
-    sortOrder: 124,
-    description:
-      'Menu Điểm cộng, trừ & xếp loại › Duyệt bảng đề xuất: mở hộp đến, chỉnh điểm, duyệt / trả lại',
-  },
-  {
     code: Permission.SYSTEM_CONFIG,
     name: 'Cấu hình hệ thống (Phân quyền giao nhiệm vụ, Hiển thị menu)',
     module: 'system',
@@ -287,6 +271,12 @@ export class PermissionsService implements OnModuleInit {
   }
 
   async seedSystemPermissions() {
+    // Hai mã từng có rồi bỏ: bảng điểm cộng / trừ giờ đi theo luồng trình,
+    // không theo mã quyền. Xoá khỏi danh mục để không ai tick nhầm.
+    await this.permissionModel.deleteMany({
+      code: { $in: ['adjustment.entry', 'adjustment.review'] },
+    });
+
     for (const item of SYSTEM_PERMISSIONS) {
       await this.permissionModel.updateOne(
         { code: item.code },

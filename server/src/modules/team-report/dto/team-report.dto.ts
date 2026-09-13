@@ -583,68 +583,6 @@ export class UpdateTeamReportAdjustmentEntryDto {
 }
 
 /** Quản trị đặt ai được nhập bảng điểm cộng / trừ / xếp loại. */
-export class SaveTeamReportAdjustmentAccessDto {
-  @ApiPropertyOptional({ type: [String], description: 'Mã vai trò được nhập' })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  roleCodes?: string[];
-
-  @ApiPropertyOptional({ type: [String], description: 'Tài khoản được nhập' })
-  @IsOptional()
-  @IsArray()
-  @IsMongoId({ each: true })
-  userIds?: string[];
-
-  @ApiPropertyOptional({
-    type: [String],
-    description: 'Đơn vị / khối được nhập',
-  })
-  @IsOptional()
-  @IsArray()
-  @IsMongoId({ each: true })
-  departmentIds?: string[];
-
-  @ApiPropertyOptional({
-    description: 'Đơn vị đã chọn thì cả cấp dưới cũng được',
-  })
-  @IsOptional()
-  @IsBoolean()
-  includeDescendants?: boolean;
-
-  /* Chỉ luồng trình: áp cho người gửi nào. */
-  @ApiPropertyOptional({ type: [String], description: 'Vai trò người gửi' })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  senderRoleCodes?: string[];
-
-  @ApiPropertyOptional({ type: [String], description: 'Tài khoản người gửi' })
-  @IsOptional()
-  @IsArray()
-  @IsMongoId({ each: true })
-  senderUserIds?: string[];
-
-  @ApiPropertyOptional({ type: [String], description: 'Đơn vị người gửi' })
-  @IsOptional()
-  @IsArray()
-  @IsMongoId({ each: true })
-  senderDepartmentIds?: string[];
-
-  @ApiPropertyOptional({ description: 'Đơn vị người gửi tính cả cấp dưới' })
-  @IsOptional()
-  @IsBoolean()
-  senderIncludeDescendants?: boolean;
-
-  @ApiPropertyOptional({
-    enum: ['UP', 'DOWN'],
-    description:
-      'Hướng gửi: UP = lên cấp trên (mặc định), DOWN = xuống cấp dưới',
-  })
-  @IsOptional()
-  @IsIn(['UP', 'DOWN'])
-  direction?: 'UP' | 'DOWN';
-}
 
 /** Đội trình bảng điểm cộng / trừ / xếp loại lên một người cấp trên. */
 export class SendTeamReportAdjustmentDto {
@@ -723,6 +661,13 @@ export class TeamReportAdjustmentScopeDto {
   @IsOptional()
   @IsBoolean()
   senderSuperiorOnly?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Chỉ đơn vị cấp dưới của người gửi (vế người nhận)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  senderSubordinatesOnly?: boolean;
 }
 
 export class TeamReportAdjustmentRouteDto {

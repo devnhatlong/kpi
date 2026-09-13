@@ -44,6 +44,13 @@ export class TeamReportAdjustmentScope {
    */
   @Prop({ default: false })
   senderSuperiorOnly!: boolean;
+
+  /**
+   * Chỉ vế NGƯỜI NHẬN dùng: thu danh sách về các đơn vị CẤP DƯỚI của người
+   * gửi (phòng → các đội của chính phòng đó). Kết hợp với vai trò đã tick.
+   */
+  @Prop({ default: false })
+  senderSubordinatesOnly!: boolean;
 }
 
 const ScopeSchema = SchemaFactory.createForClass(TeamReportAdjustmentScope);

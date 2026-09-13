@@ -1,270 +1,73 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
-import { Permission } from '@/common/enums/permission.enum';
 import { RoleCode } from '@/common/enums/role-code.enum';
-import {
-  Department,
-  DepartmentDocument,
-} from '@/modules/departments/schemas/department.schema';
-import { RolesService } from '@/modules/roles/roles.service';
 import { User, UserDocument } from '@/modules/users/schemas/user.schema';
-import {
-  TeamReportAdjustmentAccess,
-  TeamReportAdjustmentAccessDocument,
-} from './schemas/team-report-adjustment-access.schema';
 import {
   TeamReportAdjustmentSheet,
   TeamReportAdjustmentSheetDocument,
 } from './schemas/team-report-adjustment-sheet.schema';
-import { SaveTeamReportAdjustmentAccessDto } from './dto/team-report.dto';
 import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
 
-/** Luật "ai được nhập". */
-const KEY = 'default';
 /** Kết quả kiểm quyền, kèm lý do để màn nhập nói được vì sao bị chặn. */
 export type AdjustmentAccessResult = {
   allowed: boolean;
-  /** Đã có luật riêng chưa; chưa thì đang chạy luật mặc định. */
+  /** Đã có luồng nào cho bảng này chưa. */
   configured: boolean;
   reason: string;
 };
 
 /**
- * Luật "ai được nhập" của bảng điểm cộng / trừ / xếp loại.
+ * Ai được NHẬP / ai được NHẬN bảng điểm cộng, trừ & xếp loại - suy thẳng từ
+ * LUỒNG TRÌNH, không có luật riêng thứ hai:
  *
- * Kiểm ở SERVICE chứ không ở guard: luật gồm cả tài khoản lẫn đơn vị, guard
- * chỉ biết mã quyền. Mọi đường ghi vào bảng đều phải gọi `assertAllowed`.
+ * - Khớp vế "ai gửi" của một luồng đang dùng → thấy menu Nhập, nhập và trình.
+ * - Nằm trong vế "gửi cho ai" của một luồng (hoặc đã có bảng trình tới đơn
+ *   vị mình) → thấy menu Duyệt, mở hộp đến, duyệt / trả.
+ * - Chưa có luồng nào → không ai thấy (trừ quản trị hệ thống).
+ *
+ * Quản trị hệ thống luôn qua cả hai. Kiểm ở SERVICE - route không gác mã quyền
+ * vì luồng có thể trỏ tới tài khoản đội.
  */
 @Injectable()
 export class TeamReportAdjustmentAccessService {
   constructor(
-    @InjectModel(TeamReportAdjustmentAccess.name)
-    private readonly accessModel: Model<TeamReportAdjustmentAccessDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
-    @InjectModel(Department.name)
-    private readonly departmentModel: Model<DepartmentDocument>,
     @InjectModel(TeamReportAdjustmentSheet.name)
     private readonly sheetModel: Model<TeamReportAdjustmentSheetDocument>,
-    private readonly rolesService: RolesService,
     private readonly routing: TeamReportAdjustmentRoutingService,
   ) {}
 
-  /** Luật hiện hành - cho màn quản trị. */
-  async rule() {
-    const doc = await this.accessModel.findOne({ key: KEY });
-    return {
-      message: 'OK',
-      data: this.toClient(doc),
-    };
-  }
-
-  async save(userId: string, dto: SaveTeamReportAdjustmentAccessDto) {
-    const doc = await this.upsert(KEY, userId, dto);
-    return { message: 'Đã lưu quyền nhập bảng.', data: this.toClient(doc) };
-  }
-
-  /* --------------------------------------------------------- hộp đến */
-
-  /**
-   * Người này có được mở HỘP ĐẾN (đọc, duyệt / trả) không.
-   *
-   * Có quyền duyệt thì luôn được (luồng mặc định). Không có thì được khi nằm
-   * trong vế "gửi cho ai" của một luồng, hoặc đã có bảng trình tới đơn vị
-   * mình - người nhận không cần thêm mã quyền nào.
-   */
-  async canReceive(userId: string): Promise<boolean> {
-    if (!Types.ObjectId.isValid(userId)) return false;
-    const user = await this.userModel
-      .findById(userId)
-      .select('roleAssignments departmentId');
-    if (!user) return false;
-    const codes = (user.roleAssignments ?? []).map((a) => a.roleCode);
-    const permissions = await this.rolesService.getPermissionsByCodes(codes);
-    // Có mã quyền duyệt là đủ; người trong luồng nhận / đã có bảng trình tới
-    // cũng phải có mã quyền, vì route gác bằng mã.
-    if (!permissions.includes(Permission.ADJUSTMENT_REVIEW)) return false;
-    if (permissions.includes(Permission.TEAM_REPORT_REVIEW)) return true;
-    if (await this.routing.isListedRecipient('ADJUSTMENT', userId)) {
-      return true;
-    }
-    if (!user.departmentId) return false;
-    const addressed = await this.sheetModel.exists({
-      recipientDepartmentId: user.departmentId,
-      status: { $ne: 'DRAFT' },
-    });
-    return Boolean(addressed);
-  }
-
-  async assertCanReceive(userId: string) {
-    if (!(await this.canReceive(userId))) {
-      throw new ForbiddenException(
-        'Chưa có bảng nào trình tới đơn vị bạn, và bạn không có quyền duyệt báo cáo.',
-      );
-    }
-  }
-
-  private async upsert(
-    key: string,
-    userId: string,
-    dto: SaveTeamReportAdjustmentAccessDto,
-  ) {
-    const actor = await this.userModel
-      .findById(userId)
-      .select('fullName username');
-    if (!actor) throw new NotFoundException('Không tìm thấy người dùng.');
-
-    const roleCodes = [
-      ...new Set(
-        (dto.roleCodes ?? []).map((code) => code.trim()).filter(Boolean),
-      ),
-    ];
-    const userIds = [...new Set(dto.userIds ?? [])].map(
-      (id) => new Types.ObjectId(id),
-    );
-    const departmentIds = [...new Set(dto.departmentIds ?? [])].map(
-      (id) => new Types.ObjectId(id),
-    );
-
-    /* Id lạ thì chặn ngay thay vì lưu vào một luật không bao giờ khớp ai. */
-    if (userIds.length) {
-      const found = await this.userModel.countDocuments({
-        _id: { $in: userIds },
-      });
-      if (found !== userIds.length) {
-        throw new BadRequestException('Có tài khoản không tồn tại.');
-      }
-    }
-    if (departmentIds.length) {
-      const found = await this.departmentModel.countDocuments({
-        _id: { $in: departmentIds },
-      });
-      if (found !== departmentIds.length) {
-        throw new BadRequestException('Có đơn vị không tồn tại.');
-      }
-    }
-
-    return this.accessModel.findOneAndUpdate(
-      { key },
-      {
-        $set: {
-          roleCodes,
-          userIds,
-          departmentIds,
-          includeDescendants: dto.includeDescendants ?? true,
-          updatedById: actor._id,
-          updatedByName: actor.fullName?.trim() || actor.username,
-        },
-        $setOnInsert: { key },
-      },
-      { upsert: true, new: true },
-    );
-  }
-
-  /**
-   * Người này có được nhập không.
-   *
-   * Khớp MỘT trong ba là đủ: đúng tài khoản, giữ một vai trò được phép, hoặc
-   * thuộc đơn vị được phép (tính cả cấp dưới nếu bật). Chưa đặt luật thì rơi
-   * về mặc định cũ - có TEAM_REPORT_ENTRY là nhập được. Quản trị hệ thống
-   * luôn qua.
-   */
   async check(userId: string): Promise<AdjustmentAccessResult> {
-    if (!Types.ObjectId.isValid(userId)) {
+    const who = await this.who(userId);
+    if (!who) {
       return {
         allowed: false,
         configured: false,
         reason: 'Không rõ tài khoản.',
       };
     }
-    const user = await this.userModel
-      .findById(userId)
-      .select('roleAssignments departmentId');
-    if (!user) {
-      return {
-        allowed: false,
-        configured: false,
-        reason: 'Không rõ tài khoản.',
-      };
-    }
-
-    const roleCodes = (user.roleAssignments ?? [])
-      .map((assignment) => assignment.roleCode)
-      .filter(Boolean);
-    if (roleCodes.includes(RoleCode.SUPER_ADMIN)) {
+    if (who.superAdmin) {
       return { allowed: true, configured: true, reason: 'Quản trị hệ thống.' };
     }
-
-    const rule = await this.accessModel.findOne({ key: KEY });
-    const configured = Boolean(
-      rule &&
-      (rule.roleCodes.length ||
-        rule.userIds.length ||
-        rule.departmentIds.length),
-    );
-
+    const configured = await this.routing.hasRoutes('ADJUSTMENT');
     if (!configured) {
-      const permissions =
-        await this.rolesService.getPermissionsByCodes(roleCodes);
-      const allowed = permissions.includes(Permission.ADJUSTMENT_ENTRY);
-      return {
-        allowed,
-        configured: false,
-        reason: allowed
-          ? 'Theo quyền "Nhập bảng đề xuất" của vai trò.'
-          : 'Vai trò không có quyền "Nhập bảng đề xuất".',
-      };
-    }
-
-    // Luật riêng chỉ THU HẸP: không có quyền gốc thì luật có tick cũng vô nghĩa.
-    const basePermissions =
-      await this.rolesService.getPermissionsByCodes(roleCodes);
-    if (!basePermissions.includes(Permission.ADJUSTMENT_ENTRY)) {
       return {
         allowed: false,
         configured,
-        reason: 'Vai trò không có quyền "Nhập bảng đề xuất".',
+        reason:
+          'Chưa đặt luồng trình cho bảng này - quản trị khai ở Luồng trình báo cáo.',
       };
     }
-
-    if (rule!.userIds.some((id) => String(id) === String(user._id))) {
-      return { allowed: true, configured, reason: 'Tài khoản được chỉ định.' };
-    }
-    if (roleCodes.some((code) => rule!.roleCodes.includes(code))) {
-      return { allowed: true, configured, reason: 'Vai trò được phép.' };
-    }
-    if (user.departmentId && rule!.departmentIds.length) {
-      const home = await this.departmentModel
-        .findById(user.departmentId)
-        .select('ancestors');
-      const allowedIds = new Set(rule!.departmentIds.map((id) => String(id)));
-      if (allowedIds.has(String(user.departmentId))) {
-        return { allowed: true, configured, reason: 'Đơn vị được phép.' };
-      }
-      if (
-        rule!.includeDescendants &&
-        (home?.ancestors ?? []).some((id) => allowedIds.has(String(id)))
-      ) {
-        return {
-          allowed: true,
-          configured,
-          reason: 'Thuộc khối / đơn vị được phép.',
-        };
-      }
-    }
-
+    const allowed = await this.routing.matchesSender('ADJUSTMENT', userId);
     return {
-      allowed: false,
+      allowed,
       configured,
-      reason:
-        'Bảng này chỉ mở cho vai trò, tài khoản hoặc đơn vị mà quản trị đã chỉ định.',
+      reason: allowed
+        ? 'Nằm trong vế "ai gửi" của luồng trình.'
+        : 'Bảng này chỉ mở cho người nằm trong vế "ai gửi" của một luồng trình quản trị đã đặt.',
     };
   }
 
@@ -273,20 +76,37 @@ export class TeamReportAdjustmentAccessService {
     if (!result.allowed) throw new ForbiddenException(result.reason);
   }
 
-  private toClient(doc: TeamReportAdjustmentAccessDocument | null) {
+  async canReceive(userId: string): Promise<boolean> {
+    const who = await this.who(userId);
+    if (!who) return false;
+    if (who.superAdmin) return true;
+    if (await this.routing.isListedRecipient('ADJUSTMENT', userId)) return true;
+    if (!who.departmentId) return false;
+    const addressed = await this.sheetModel.exists({
+      recipientDepartmentId: who.departmentId,
+      status: { $ne: 'DRAFT' },
+    });
+    return Boolean(addressed);
+  }
+
+  async assertCanReceive(userId: string) {
+    if (!(await this.canReceive(userId))) {
+      throw new ForbiddenException(
+        'Chưa có bảng nào trình tới đơn vị bạn, và bạn không nằm trong vế "gửi cho ai" của luồng trình.',
+      );
+    }
+  }
+
+  private async who(userId: string) {
+    if (!Types.ObjectId.isValid(userId)) return null;
+    const user = await this.userModel
+      .findById(userId)
+      .select('roleAssignments departmentId');
+    if (!user) return null;
+    const codes = (user.roleAssignments ?? []).map((a) => a.roleCode);
     return {
-      roleCodes: doc?.roleCodes ?? [],
-      userIds: (doc?.userIds ?? []).map((id) => String(id)),
-      departmentIds: (doc?.departmentIds ?? []).map((id) => String(id)),
-      includeDescendants: doc?.includeDescendants ?? true,
-      updatedByName: doc?.updatedByName ?? '',
-      updatedAt: doc?.updatedAt ?? null,
-      configured: Boolean(
-        doc &&
-        (doc.roleCodes.length ||
-          doc.userIds.length ||
-          doc.departmentIds.length),
-      ),
+      departmentId: user.departmentId ?? null,
+      superAdmin: codes.includes(RoleCode.SUPER_ADMIN),
     };
   }
 }

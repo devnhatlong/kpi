@@ -44,6 +44,7 @@ const emptyScope = (): TeamReportAdjustmentScope => ({
   includeDescendants: true,
   userIds: [],
   senderSuperiorOnly: false,
+  senderSubordinatesOnly: false,
 });
 
 const newRoute = (index: number): TeamReportAdjustmentRoute => ({
@@ -69,6 +70,7 @@ const scopeKey = (scope: TeamReportAdjustmentScope) => [
   scope.includeDescendants,
   [...scope.userIds].sort(),
   scope.senderSuperiorOnly ?? false,
+  scope.senderSubordinatesOnly ?? false,
 ];
 
 const scopeEmpty = (scope: TeamReportAdjustmentScope) =>
@@ -189,6 +191,11 @@ export function AdjustmentRoutesEditor({
     const missing = draft.find((route) => scopeEmpty(route.recipients));
     if (missing) {
       toast.error(`Luồng "${missing.name}" chưa chọn gửi cho ai.`);
+      return;
+    }
+    const noSender = draft.find((route) => scopeEmpty(route.sender));
+    if (noSender) {
+      toast.error(`Luồng "${noSender.name}" chưa chọn ai gửi.`);
       return;
     }
     setSaving(true);
@@ -351,7 +358,7 @@ export function AdjustmentRoutesEditor({
 
               <ScopeEditor
                 title="1. Ai gửi"
-                hint="Đích danh thì khớp ngay; còn lại phải đúng MỌI vế đã tick (vai trò ∩ cấp ∩ đơn vị). Bỏ trống hết = mọi người gửi."
+                hint="Đích danh thì khớp ngay; còn lại phải đúng MỌI vế đã tick (vai trò ∩ cấp ∩ đơn vị). Bỏ trống = chưa chọn ai - luồng không áp cho ai cả."
                 scope={current.sender}
                 onChange={(patch) => patchScope("sender", patch)}
                 roleOptions={roleOptions}
@@ -450,7 +457,32 @@ export function ScopeEditor({
           <Switch
             checked={scope.senderSuperiorOnly ?? false}
             onCheckedChange={(checked) =>
-              onChange({ senderSuperiorOnly: checked })
+              onChange({
+                senderSuperiorOnly: checked,
+                ...(checked ? { senderSubordinatesOnly: false } : {}),
+              })
+            }
+          />
+        </label>
+      ) : null}
+      {recipients ? (
+        <label className="flex cursor-pointer items-start justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2.5">
+          <span>
+            <span className="block text-sm font-medium">
+              Chỉ đơn vị cấp dưới của người gửi
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Phòng gửi về các đội của chính phòng đó, xã gửi về các tổ của
+              mình. Kết hợp với vai trò đã tick (ví dụ Đội trưởng).
+            </span>
+          </span>
+          <Switch
+            checked={scope.senderSubordinatesOnly ?? false}
+            onCheckedChange={(checked) =>
+              onChange({
+                senderSubordinatesOnly: checked,
+                ...(checked ? { senderSuperiorOnly: false } : {}),
+              })
             }
           />
         </label>

@@ -375,7 +375,12 @@
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-dashboard-server.js\")",
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-summary-cols.js\")",
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-inbox-filters.js\")",
-      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-inbox-client.js\")"
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-inbox-client.js\")",
+      "Bash(grep -n \"  /\\\\*\\\\*\\\\n   \\\\* Mặc định: CẤP TRÊN TRỰC TIẾP\\\\|  async directSuperiors\\(\" src/modules/team-report/team-report-adjustment-routing.service.ts)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-recipients-fix.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2/scratchpad/patch-routes-as-access.js\")",
+      "Bash(grep -v \"set-state-in-effect\\\\|axis-form-dialog\\\\|quality-levels-panel\\\\|score-group-form-dialog\\\\|work-content-form-dialog\\\\|work-task-form-dialog\\\\|react.dev\\\\|Effects are\\\\|Calling setState\\\\|^  [0-9]* |^> \\\\|^    \\\\^\\\\|^$\\\\|\\\\* \\\\|✖\\\\|BookMarked\")",
+      "Bash(grep -n \"chưa chọn ai gửi\\\\|return false;$\" src/modules/team-report/team-report-adjustment-routing.service.ts)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

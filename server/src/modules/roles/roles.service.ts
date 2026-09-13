@@ -67,8 +67,6 @@ const SYSTEM_ROLES: Array<{
       Permission.EVALUATION_SELF,
       Permission.EVALUATION_APPROVE,
       Permission.TEAM_REPORT_REVIEW,
-      Permission.ADJUSTMENT_ENTRY,
-      Permission.ADJUSTMENT_REVIEW,
     ],
   },
   {
@@ -90,8 +88,6 @@ const SYSTEM_ROLES: Array<{
       Permission.EVALUATION_SELF,
       Permission.EVALUATION_APPROVE,
       Permission.TEAM_REPORT_REVIEW,
-      Permission.ADJUSTMENT_ENTRY,
-      Permission.ADJUSTMENT_REVIEW,
     ],
   },
   {
@@ -153,15 +149,6 @@ const GRANTED_PERMISSIONS: Array<{ code: string; roles: RoleCode[] }> = [
     code: Permission.TEAM_REPORT_REVIEW,
     roles: [RoleCode.UNIT_ADMIN, RoleCode.VICE_UNIT_ADMIN, RoleCode.CAT_ADMIN],
   },
-  // Bảng điểm cộng / trừ: chỉ cấp phòng / xã.
-  {
-    code: Permission.ADJUSTMENT_ENTRY,
-    roles: [RoleCode.UNIT_ADMIN, RoleCode.VICE_UNIT_ADMIN],
-  },
-  {
-    code: Permission.ADJUSTMENT_REVIEW,
-    roles: [RoleCode.UNIT_ADMIN, RoleCode.VICE_UNIT_ADMIN],
-  },
 ];
 
 @Injectable()
@@ -186,6 +173,16 @@ export class RolesService implements OnModuleInit {
    * đó mỗi lần khởi động.
    */
   private async grantNewSystemPermissions() {
+    // Mã đã bỏ thì rút khỏi mọi vai trò, kể cả vai trò tự tạo.
+    await this.roleModel.updateMany(
+      {},
+      {
+        $pull: {
+          permissions: { $in: ['adjustment.entry', 'adjustment.review'] },
+        },
+      },
+    );
+
     for (const grant of GRANTED_PERMISSIONS) {
       await this.roleModel.updateMany(
         { code: { $in: grant.roles }, isSystem: true },

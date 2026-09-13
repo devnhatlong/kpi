@@ -104,6 +104,9 @@ export class TeamReportAdjustmentRoutingService {
       if (scopeEmpty(recipients)) {
         throw new BadRequestException(`Luồng "${name}" chưa chọn gửi cho ai.`);
       }
+      if (scopeEmpty(sender)) {
+        throw new BadRequestException(`Luồng "${name}" chưa chọn ai gửi.`);
+      }
       docs.push({
         kind,
         name,
@@ -128,6 +131,11 @@ export class TeamReportAdjustmentRoutingService {
   /**
    * Danh sách người `actorId` được trình tới theo luồng khớp đầu tiên; null
    * nếu không khớp luồng nào (nơi gọi rơi về cấp trên trực tiếp).
+   *
+   * Người nhận = TÀI KHOẢN ĐÍCH DANH (luôn có, không bị cờ nào thu hẹp) ∪
+   * người thoả vai trò ∩ cấp ∩ đơn vị đã tick. Hai cờ "chỉ cấp trên trực
+   * thuộc" / "chỉ cấp dưới" của người gửi chỉ thu hẹp vế thứ hai: không tick
+   * gì mà bật cờ thì = mọi người ở cấp trên / cấp dưới đó.
    */
   async recipients(
     kind: TeamReportRouteKind,
@@ -136,62 +144,134 @@ export class TeamReportAdjustmentRoutingService {
   ): Promise<AdjustmentRecipient[] | null> {
     const route = await this.routeFor(kind, actorId);
     if (!route) return null;
-    const clauses = await this.clausesOf(route.recipients);
-    const and: Record<string, unknown>[] = [{ $or: clauses }];
+    const scope = route.recipients;
+    const self = new Types.ObjectId(actorId);
 
-    /*
-      Cờ "chỉ cấp trên trực thuộc": thu về chuỗi cha của người gửi, rồi lấy
-      cấp cha gần nhất còn có người khớp - đội thấy đúng phòng mình, tổ thấy
-      đúng xã mình.
-    */
+    const actor = await this.userModel.findById(self).select('departmentId');
+    const home = actor?.departmentId
+      ? await this.departmentModel
+          .findById(actor.departmentId)
+          .select('ancestors')
+      : null;
+
+    /* Vế "tương đối với người gửi": chuỗi cha (gần nhất trước) hoặc cây con. */
     let chain: Types.ObjectId[] = [];
-    if (route.recipients.senderSuperiorOnly) {
-      const actor = await this.userModel
-        .findById(actorId)
-        .select('departmentId');
-      const home = actor?.departmentId
-        ? await this.departmentModel
-            .findById(actor.departmentId)
-            .select('ancestors')
-        : null;
+    let relative: Types.ObjectId[] | null = null;
+    if (scope.senderSuperiorOnly) {
       chain = [...(home?.ancestors ?? [])].reverse();
-      if (!chain.length) return [];
-      and.push({ departmentId: { $in: chain } });
+      relative = chain;
+    } else if (scope.senderSubordinatesOnly && actor?.departmentId) {
+      const below = await this.departmentModel
+        .find({ ancestors: actor.departmentId, isActive: true })
+        .select('_id');
+      relative = below.map((row) => row._id);
     }
-    if (q?.trim()) {
-      const like = { $regex: escapeRegex(q.trim()), $options: 'i' };
-      and.push({ $or: [{ fullName: like }, { username: like }] });
+
+    const like = q?.trim()
+      ? { $regex: escapeRegex(q.trim()), $options: 'i' }
+      : null;
+    const nameFilter = like
+      ? [{ $or: [{ fullName: like }, { username: like }] }]
+      : [];
+    const select = 'fullName username departmentId';
+    const populate = {
+      path: 'departmentId',
+      select: 'code name parentId',
+      populate: { path: 'parentId', select: 'name' },
+    };
+
+    /* 1. Đích danh - luôn có. */
+    const named = scope.userIds.length
+      ? await this.userModel
+          .find({
+            _id: { $in: scope.userIds, $ne: self },
+            isActive: true,
+            ...(nameFilter.length ? { $and: nameFilter } : {}),
+          })
+          .select(select)
+          .populate(populate)
+      : [];
+
+    /* 2. Theo vai trò ∩ cấp ∩ đơn vị, có thể thu hẹp theo người gửi. */
+    const criteria = await this.groupClause(scope);
+    let matched: typeof named = [];
+    const hasGroup =
+      criteria !== null || (relative !== null && relative.length > 0);
+    if (hasGroup && !(relative !== null && relative.length === 0)) {
+      const and: Record<string, unknown>[] = [...nameFilter];
+      if (criteria) and.push(criteria);
+      if (relative) and.push({ departmentId: { $in: relative } });
+      matched = await this.userModel
+        .find({
+          isActive: true,
+          _id: { $ne: self },
+          ...(and.length ? { $and: and } : {}),
+        })
+        .select(select)
+        .populate(populate)
+        .sort({ fullName: 1, username: 1 })
+        .limit(300);
+      // Cấp trên trực thuộc: chỉ giữ cấp cha GẦN NHẤT còn có người.
+      if (chain.length) {
+        const deptOf = (user: (typeof matched)[number]) =>
+          String(
+            (user.departmentId as unknown as { _id?: Types.ObjectId })?._id ??
+              user.departmentId,
+          );
+        const nearest = chain.find((id) =>
+          matched.some((user) => deptOf(user) === String(id)),
+        );
+        matched = matched.filter((user) => deptOf(user) === String(nearest));
+      }
     }
-    const found = await this.userModel
-      .find({
-        isActive: true,
-        _id: { $ne: new Types.ObjectId(actorId) },
-        $and: and,
+
+    const seen = new Set<string>();
+    return [...named, ...matched]
+      .filter((user) => {
+        const id = String(user._id);
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
       })
-      .select('fullName username departmentId')
-      .populate({
-        path: 'departmentId',
-        select: 'code name parentId',
-        populate: { path: 'parentId', select: 'name' },
-      })
-      .sort({ fullName: 1, username: 1 })
-      .limit(300);
-    if (chain.length) {
-      const nearest = chain.find((id) =>
-        found.some(
-          (user) =>
-            String(user.departmentId?._id ?? user.departmentId) === String(id),
-        ),
-      );
-      return found
-        .filter(
-          (user) =>
-            String(user.departmentId?._id ?? user.departmentId) ===
-            String(nearest),
-        )
-        .map((user) => this.person(user));
+      .map((user) => this.person(user));
+  }
+
+  /** Điều kiện vai trò ∩ cấp ∩ đơn vị; null = không tick gì. */
+  private async groupClause(
+    scope: TeamReportAdjustmentScope,
+  ): Promise<Record<string, unknown> | null> {
+    if (
+      !scope.roleCodes.length &&
+      !scope.levelIds.length &&
+      !scope.departmentIds.length
+    ) {
+      return null;
     }
-    return found.map((user) => this.person(user));
+    const clause: Record<string, unknown> = {};
+    if (scope.roleCodes.length) {
+      clause['roleAssignments.roleCode'] = { $in: scope.roleCodes };
+    }
+    let deptIds: Types.ObjectId[] | null = null;
+    if (scope.departmentIds.length) {
+      deptIds = [...scope.departmentIds];
+      if (scope.includeDescendants) {
+        const below = await this.departmentModel
+          .find({ ancestors: { $in: scope.departmentIds } })
+          .select('_id');
+        deptIds.push(...below.map((row) => row._id));
+      }
+    }
+    if (scope.levelIds.length) {
+      const atLevel = await this.departmentModel
+        .find({
+          levelId: { $in: scope.levelIds },
+          ...(deptIds ? { _id: { $in: deptIds } } : {}),
+        })
+        .select('_id');
+      deptIds = atLevel.map((row) => row._id);
+    }
+    if (deptIds) clause.departmentId = { $in: deptIds };
+    return clause;
   }
 
   /**
@@ -240,19 +320,103 @@ export class TeamReportAdjustmentRoutingService {
     return [];
   }
 
-  /** Người này có nằm trong vế "gửi cho ai" của luồng nào không. */
+  /** Có luồng nào đang dùng cho loại này không. */
+  async hasRoutes(kind: TeamReportRouteKind): Promise<boolean> {
+    return Boolean(await this.routeModel.exists({ kind, isActive: true }));
+  }
+
+  /** Người này có khớp vế "ai gửi" của một luồng đang dùng không. */
+  async matchesSender(
+    kind: TeamReportRouteKind,
+    userId: string,
+  ): Promise<boolean> {
+    return Boolean(await this.routeFor(kind, userId));
+  }
+
+  /**
+   * Người này có nằm trong vế "gửi cho ai" của luồng nào không - để hiện menu
+   * Duyệt trước cả khi có bản trình tới.
+   *
+   * Đích danh / vai trò / cấp / đơn vị: so thẳng. Cờ "cấp dưới của người gửi"
+   * hay "cấp trên trực thuộc": phải tồn tại ít nhất một người gửi (khớp vế
+   * "ai gửi") mà đơn vị của họ là tổ tiên / hậu duệ của đơn vị người này.
+   */
   async isListedRecipient(
     kind: TeamReportRouteKind,
     userId: string,
   ): Promise<boolean> {
     const routes = await this.routeModel.find({ kind, isActive: true });
+    if (!routes.length) return false;
+    const user = await this.userModel
+      .findById(userId)
+      .select('roleAssignments departmentId');
+    if (!user) return false;
+    const home = user.departmentId
+      ? await this.departmentModel
+          .findById(user.departmentId)
+          .select('levelId ancestors')
+      : null;
+
     for (const route of routes) {
-      const hit = await this.userModel.exists({
-        _id: new Types.ObjectId(userId),
-        isActive: true,
-        $or: await this.clausesOf(route.recipients),
-      });
-      if (hit) return true;
+      const scope = route.recipients;
+      if (scope.userIds.some((id) => String(id) === String(user._id))) {
+        return true;
+      }
+      const criteria = await this.groupClause(scope);
+      if (criteria) {
+        const hit = await this.userModel.exists({
+          _id: user._id,
+          isActive: true,
+          ...criteria,
+        });
+        if (!hit) continue;
+      }
+      if (!scope.senderSubordinatesOnly && !scope.senderSuperiorOnly) {
+        if (criteria) return true;
+        continue; // vế rỗng hoàn toàn thì không ai là người nhận
+      }
+      if (!user.departmentId) continue;
+      // Tìm người gửi có quan hệ cây với đơn vị người này.
+      const senderClause = await this.groupClause(route.sender);
+      const senderDepts = new Set<string>();
+      if (route.sender.userIds.length || senderClause) {
+        const senders = await this.userModel
+          .find({
+            isActive: true,
+            $or: [
+              ...(route.sender.userIds.length
+                ? [{ _id: { $in: route.sender.userIds } }]
+                : []),
+              ...(senderClause ? [senderClause] : []),
+            ],
+          })
+          .select('departmentId')
+          .limit(2000);
+        for (const s of senders) {
+          if (s.departmentId) senderDepts.add(String(s.departmentId));
+        }
+      }
+      if (scope.senderSubordinatesOnly) {
+        // Người gửi ở một đơn vị tổ tiên của tôi (vế gửi rỗng = mọi người gửi
+        // → chỉ cần tôi có đơn vị cha).
+        const ancestors = (home?.ancestors ?? []).map(String);
+        if (!route.sender.userIds.length && !senderClause) {
+          if (ancestors.length) return true;
+          continue;
+        }
+        if (ancestors.some((id) => senderDepts.has(id))) return true;
+      } else {
+        // Cấp trên trực thuộc: người gửi ở một đơn vị dưới tôi.
+        const below = await this.departmentModel
+          .find({ ancestors: user.departmentId })
+          .select('_id');
+        const mine = new Set(below.map((d) => String(d._id)));
+        if (!route.sender.userIds.length && !senderClause) {
+          if (mine.size) return true;
+          continue;
+        }
+        if ([...senderDepts].some((id) => mine.has(id))) return true;
+      }
     }
     return false;
   }
@@ -296,7 +460,9 @@ export class TeamReportAdjustmentRoutingService {
       !scope.levelIds.length &&
       !scope.departmentIds.length
     ) {
-      return !scope.userIds.length;
+      // Vế trống = CHƯA CHỌN AI, không phải mọi người: luồng quyết luôn ai
+      // thấy menu, để trống mà mở cho tất cả là lộ bảng cho cả tỉnh.
+      return false;
     }
     if (
       scope.roleCodes.length &&
@@ -395,6 +561,7 @@ export class TeamReportAdjustmentRoutingService {
       includeDescendants: input?.includeDescendants ?? true,
       userIds,
       senderSuperiorOnly: input?.senderSuperiorOnly ?? false,
+      senderSubordinatesOnly: input?.senderSubordinatesOnly ?? false,
     };
   }
 
@@ -422,6 +589,7 @@ export class TeamReportAdjustmentRoutingService {
       includeDescendants: s.includeDescendants,
       userIds: s.userIds.map(String),
       senderSuperiorOnly: s.senderSuperiorOnly ?? false,
+      senderSubordinatesOnly: s.senderSubordinatesOnly ?? false,
     });
     return {
       _id: String(route._id),

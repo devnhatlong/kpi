@@ -26,10 +26,6 @@ export const PERM = {
   TEAM_REPORT_ENTRY: "team_report.entry",
   TEAM_REPORT_REVIEW: "team_report.review",
 
-  /* Bảng đề xuất điểm cộng, điểm trừ & xếp loại - chỉ cấp phòng / xã. */
-  ADJUSTMENT_ENTRY: "adjustment.entry",
-  ADJUSTMENT_REVIEW: "adjustment.review",
-
   SYSTEM_CONFIG: "system.config",
 } as const;
 

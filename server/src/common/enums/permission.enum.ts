@@ -26,12 +26,5 @@ export enum Permission {
   TEAM_REPORT_ENTRY = 'team_report.entry',
   TEAM_REPORT_REVIEW = 'team_report.review',
 
-  /*
-    Bảng đề xuất điểm cộng, điểm trừ & xếp loại - mã riêng, không dùng chung
-    với báo cáo ngày: chỉ cấp phòng / xã nhập và duyệt, đội không dính.
-  */
-  ADJUSTMENT_ENTRY = 'adjustment.entry',
-  ADJUSTMENT_REVIEW = 'adjustment.review',
-
   SYSTEM_CONFIG = 'system.config',
 }
