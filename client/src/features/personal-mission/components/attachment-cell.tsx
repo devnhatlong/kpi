@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Download, Inbox, Loader2, Paperclip, X } from "lucide-react";
+import useSWR from "swr";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,11 @@ import {
   uploadFile,
 } from "@/features/uploads/api";
 import type { TaskAttachment } from "@/features/personal-mission/types";
+import {
+  canOpenInOnlyOffice,
+  fetchOnlyOfficeStatus,
+} from "@/features/uploads/api";
+import { OnlyOfficeViewer } from "@/features/uploads/components/onlyoffice-viewer";
 import { getApiErrorMessage } from "@/lib/api-client";
 
 function formatFileSize(bytes: number) {
@@ -50,6 +56,13 @@ export function AttachmentCell({
   const [dragOver, setDragOver] = useState(false);
   /** Phần trăm thật của tệp đang tải; null = không có tệp nào đang tải. */
   const [percent, setPercent] = useState<number | null>(null);
+  const [viewing, setViewing] = useState<TaskAttachment | null>(null);
+  const onlyOffice = useSWR("onlyoffice-status", fetchOnlyOfficeStatus, {
+    revalidateOnFocus: false,
+    dedupingInterval: 5 * 60_000,
+  });
+  const viewable = (item: TaskAttachment) =>
+    onlyOffice.data?.enabled === true && canOpenInOnlyOffice(item.name);
 
   const pickFiles = async (fileList: FileList | null) => {
     if (!fileList?.length) return;
@@ -183,11 +196,24 @@ export function AttachmentCell({
               <button
                 type="button"
                 className="min-w-0 flex-1 break-all text-left leading-snug hover:underline"
-                title={`Tải về ${file.name} (${formatFileSize(file.size)})`}
-                onClick={() => void download(file)}
+                title={`${viewable(file) ? "Xem" : "Tải về"} ${file.name} (${formatFileSize(file.size)})`}
+                onClick={() =>
+                  viewable(file) ? setViewing(file) : void download(file)
+                }
               >
                 {file.name}
               </button>
+              {viewable(file) ? (
+                <button
+                  type="button"
+                  aria-label="Tải về"
+                  title="Tải về"
+                  className="mt-0.5 shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                  onClick={() => void download(file)}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
               {readOnly ? (
                 <Download className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               ) : (
@@ -208,6 +234,10 @@ export function AttachmentCell({
       ) : readOnly ? (
         <span className="text-xs text-muted-foreground">-</span>
       ) : null}
+      <OnlyOfficeViewer
+        file={viewing ? { uploadId: viewing.id, name: viewing.name } : null}
+        onClose={() => setViewing(null)}
+      />
     </div>
   );
 }

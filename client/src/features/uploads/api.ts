@@ -58,3 +58,45 @@ export async function downloadAttachment(item: TaskAttachment) {
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+// ------------------------------------------------------------- OnlyOffice
+
+export type OnlyOfficeViewerConfig = {
+  documentServerUrl: string;
+  config: Record<string, unknown> & { document: { title: string } };
+};
+
+/** Đuôi tệp mở được bằng OnlyOffice - phải khớp DOCUMENT_TYPES bên server. */
+const ONLYOFFICE_EXTENSIONS = new Set([
+  "doc",
+  "docx",
+  "odt",
+  "rtf",
+  "txt",
+  "xls",
+  "xlsx",
+  "ods",
+  "csv",
+  "ppt",
+  "pptx",
+  "odp",
+  "pdf",
+]);
+
+export function canOpenInOnlyOffice(fileName: string): boolean {
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  return ONLYOFFICE_EXTENSIONS.has(ext);
+}
+
+export async function fetchOnlyOfficeStatus() {
+  const { data } =
+    await api.get<ApiEnvelope<{ enabled: boolean }>>("/onlyoffice/status");
+  return data.data;
+}
+
+export async function fetchOnlyOfficeConfig(uploadId: string) {
+  const { data } = await api.get<ApiEnvelope<OnlyOfficeViewerConfig>>(
+    `/onlyoffice/config/${uploadId}`,
+  );
+  return data.data;
+}

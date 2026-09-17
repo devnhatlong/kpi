@@ -1,16 +1,20 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Download, Loader2, Paperclip, X } from "lucide-react";
+import { Download, Eye, Loader2, Paperclip, X } from "lucide-react";
+import useSWR from "swr";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
   ACCEPT_UPLOAD,
   MAX_UPLOAD_BYTES,
+  canOpenInOnlyOffice,
   downloadAttachment,
+  fetchOnlyOfficeStatus,
   uploadFile,
 } from "@/features/uploads/api";
+import { OnlyOfficeViewer } from "@/features/uploads/components/onlyoffice-viewer";
 import type { TeamReportEvidence } from "@/features/team-report/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -44,7 +48,15 @@ export function EvidenceCell({
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<EvidenceItem | null>(null);
   const editable = Boolean(onChange) && !disabled;
+  /* Có Document Server thì bấm tên là mở xem tại chỗ; không có thì tải về. */
+  const onlyOffice = useSWR("onlyoffice-status", fetchOnlyOfficeStatus, {
+    revalidateOnFocus: false,
+    dedupingInterval: 5 * 60_000,
+  });
+  const viewable = (item: EvidenceItem) =>
+    onlyOffice.data?.enabled === true && canOpenInOnlyOffice(item.name);
 
   const pick = async (files: FileList | null) => {
     if (!files?.length || !onChange) return;
@@ -111,17 +123,32 @@ export function EvidenceCell({
               <button
                 type="button"
                 className="flex min-w-0 cursor-pointer items-center gap-1 hover:underline"
-                title="Tải về"
-                onClick={() => void download(item)}
+                title={viewable(item) ? "Xem tại chỗ" : "Tải về"}
+                onClick={() =>
+                  viewable(item) ? setViewing(item) : void download(item)
+                }
                 disabled={downloading === item.uploadId}
               >
                 {downloading === item.uploadId ? (
                   <Loader2 className="size-3 shrink-0 animate-spin" />
+                ) : viewable(item) ? (
+                  <Eye className="size-3 shrink-0 text-muted-foreground" />
                 ) : (
                   <Download className="size-3 shrink-0 text-muted-foreground" />
                 )}
                 <span className="truncate">{item.name || item.uploadId}</span>
               </button>
+              {viewable(item) ? (
+                <button
+                  type="button"
+                  aria-label="Tải về"
+                  title="Tải về"
+                  className="cursor-pointer rounded-sm text-muted-foreground hover:text-foreground"
+                  onClick={() => void download(item)}
+                >
+                  <Download className="size-3" />
+                </button>
+              ) : null}
               {editable ? (
                 <button
                   type="button"
@@ -166,6 +193,8 @@ export function EvidenceCell({
           </Button>
         </>
       ) : null}
+
+      <OnlyOfficeViewer file={viewing} onClose={() => setViewing(null)} />
     </div>
   );
 }
