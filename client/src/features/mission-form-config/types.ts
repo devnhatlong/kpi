@@ -511,6 +511,17 @@ export type FormColumnAutoKind = (typeof FORM_COLUMN_AUTO_KINDS)[number];
  * Nhóm header chỉ để gộp ô cho dễ đọc; buộc công thức vào nó thì đổi bố cục
  * bảng là đổi luôn phép tính. Cùng lý do với `rangeFromColumnKey`.
  */
+/** Trần điểm áp cho từng dòng hay cho tổng các dòng cùng mục. */
+export const FORM_COLUMN_RANGE_SCOPES = ["row", "item_total"] as const;
+export type FormColumnRangeScope = (typeof FORM_COLUMN_RANGE_SCOPES)[number];
+export const FORM_COLUMN_RANGE_SCOPE_LABEL: Record<
+  FormColumnRangeScope,
+  string
+> = {
+  row: "Từng dòng kết quả ≤ tối đa",
+  item_total: "Tổng các dòng của mục ≤ tối đa",
+};
+
 export type FormColumnAutoValue = {
   kind: FormColumnAutoKind;
   /** Khoá cột Chất lượng thực hiện cho phần trăm. */
@@ -537,6 +548,12 @@ export type FormTemplateColumn = {
    * Chỉ đặt được cho cột kiểu số; null = không giới hạn.
    */
   rangeFromColumnKey?: string | null;
+  /**
+   * Trần "Tối đa" (điểm cộng) áp cho từng dòng hay cho TỔNG các dòng cùng
+   * mục. Chỉ có nghĩa khi `rangeFromColumnKey` trỏ vào cột Điểm tối đa của mục;
+   * bỏ trống = từng dòng.
+   */
+  rangeScope?: FormColumnRangeScope;
   /** Cột tự tính; null = người nhập tự gõ. */
   autoValue?: FormColumnAutoValue | null;
   /**

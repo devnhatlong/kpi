@@ -287,6 +287,8 @@ export class FormTemplatesService {
           column.semanticKey,
           column.required,
           column.rangeFromColumnKey,
+          // Đổi trần từng dòng ↔ tổng mục là đổi luật kiểm - lên phiên bản mới.
+          column.rangeScope ?? 'row',
           // Đổi công thức tự tính là đổi con số trong bảng - phải lên phiên bản
           // mới, không thì báo cáo đã gửi bị tính lại theo luật khác.
           column.autoValue
@@ -497,6 +499,11 @@ export class FormTemplatesService {
         semanticKey,
         required: column.required ?? false,
         rangeFromColumnKey: column.rangeFromColumnKey?.trim() || null,
+        // Chỉ giữ khi có trần; không trần thì phạm vi trần vô nghĩa.
+        rangeScope:
+          column.rangeFromColumnKey?.trim() && column.rangeScope
+            ? column.rangeScope
+            : 'row',
         autoValue: column.autoValue
           ? {
               kind: column.autoValue.kind,

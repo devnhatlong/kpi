@@ -106,6 +106,10 @@ export function sanitizeDraft(draft: FormDraft): FormDraft {
     ) {
       next.rangeFromColumnKey = null;
     }
+    // Phạm vi trần chỉ đi cùng trần - không trần thì về mặc định.
+    next.rangeScope = next.rangeFromColumnKey
+      ? (next.rangeScope ?? "row")
+      : "row";
     const auto = next.autoValue;
     if (auto) {
       const usable =
@@ -159,6 +163,7 @@ export function draftFingerprint(draft: FormDraft): string {
       column.semanticKey,
       column.required,
       column.rangeFromColumnKey ?? null,
+      column.rangeScope ?? "row",
       column.autoValue
         ? [
             column.autoValue.kind,

@@ -24,6 +24,8 @@ import {
   CATALOG_LABEL,
   catalogOfSemantic,
   FORM_COLUMN_DATA_TYPE_LABEL,
+  FORM_COLUMN_RANGE_SCOPE_LABEL,
+  FORM_COLUMN_RANGE_SCOPES,
   FORM_COLUMN_SEMANTIC_LABEL,
   kindOfSemantic,
   plainNumberColumns,
@@ -34,6 +36,7 @@ import {
   semanticsByKind,
   type FormColumnAutoValue,
   type FormColumnDataType,
+  type FormColumnRangeScope,
   type FormColumnSemantic,
   type FormHeaderGroup,
   type FormTemplateColumn,
@@ -98,6 +101,9 @@ export function FieldInspector({
   const qualityColumns = useMemo(() => qualityLevelColumns(columns), [columns]);
   const baseColumns = useMemo(() => plainNumberColumns(columns), [columns]);
   const baseCandidates = baseColumns.filter((item) => item.key !== column.key);
+  const rangeSource = column.rangeFromColumnKey
+    ? scoreColumns.find((item) => item.key === column.rangeFromColumnKey)
+    : undefined;
 
   const groupValue = column.headerPath?.length
     ? column.headerPath[column.headerPath.length - 1]!
@@ -274,6 +280,36 @@ export function FieldInspector({
               ))}
             </SelectContent>
           </Select>
+
+          {/* Trần "Tối đa" của mục điểm cộng: mỗi dòng một trần, hay cả mục
+              chung một trần - hai cách đọc cùng một con số, quản trị chọn. */}
+          {rangeSource?.semanticKey === "adjustment_max_score" ? (
+            <div className="space-y-1.5">
+              <Label>Tối đa áp cho</Label>
+              <Select
+                value={column.rangeScope ?? "row"}
+                onValueChange={(value) =>
+                  onPatch({ rangeScope: value as FormColumnRangeScope })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FORM_COLUMN_RANGE_SCOPES.map((scope) => (
+                    <SelectItem key={scope} value={scope}>
+                      {FORM_COLUMN_RANGE_SCOPE_LABEL[scope]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                {(column.rangeScope ?? "row") === "item_total"
+                  ? "Ví dụ mục tối đa 2: ba dòng 1 + 0,5 + 0,5 hợp lệ; thêm dòng nữa là chặn."
+                  : "Ví dụ mục tối đa 2: mỗi dòng ghi tới 2, số dòng không giới hạn."}
+              </p>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

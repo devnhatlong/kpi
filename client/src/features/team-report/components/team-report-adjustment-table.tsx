@@ -122,6 +122,11 @@ export function AdjustmentSectionTable({
   /* Bề rộng nửa phải: các cột của mẫu + cột nút xoá. */
   const rightSpan = rightCols.length + 1;
 
+  /* Trần "Tối đa" áp cho cả mục hay từng dòng - do cột điểm của mẫu khai. */
+  const itemTotalCap =
+    columns.find((column) => column.key === scoreKey)?.rangeScope ===
+    "item_total";
+
   const readScore = (entry: TeamReportAdjustmentEntry) => {
     if (!scoreKey) return 0;
     const value = Number(String(entry.fieldValues?.[scoreKey] ?? "").trim());
@@ -176,7 +181,9 @@ export function AdjustmentSectionTable({
                     {column.title}
                     {column.key === scoreKey && section.key === "BONUS" ? (
                       <span className="ml-1 text-xs font-normal text-muted-foreground">
-                        (mỗi dòng ≤ tối đa)
+                        {itemTotalCap
+                          ? "(tổng các dòng của mục ≤ tối đa)"
+                          : "(mỗi dòng ≤ tối đa)"}
                       </span>
                     ) : null}
                   </TableHead>
@@ -218,11 +225,21 @@ export function AdjustmentSectionTable({
                       ) : (
                         <>
                           Tối đa {formatScore(item.maxScore)}
-                          {/* Tổng các dòng chỉ để tham khảo - trần áp cho TỪNG
-                              dòng, không cộng dồn. */}
-                          {lines.length > 1 ? (
-                            <div className="mt-1 text-xs text-muted-foreground">
+                          {/* Trần theo tổng mục: tổng là con số bị kiểm, vượt
+                              thì đỏ. Trần từng dòng: tổng chỉ để tham khảo. */}
+                          {lines.length > 1 || itemTotalCap ? (
+                            <div
+                              className={cn(
+                                "mt-1 text-xs",
+                                itemTotalCap && itemTotal > item.maxScore
+                                  ? "font-medium text-destructive"
+                                  : "text-muted-foreground",
+                              )}
+                            >
                               cộng {formatScore(itemTotal)}
+                              {itemTotalCap
+                                ? ` / ${formatScore(item.maxScore)}`
+                                : ""}
                             </div>
                           ) : null}
                         </>

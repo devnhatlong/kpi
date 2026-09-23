@@ -25,6 +25,10 @@ export const FORM_COLUMN_DATA_TYPES = [
 
 export type FormColumnDataType = (typeof FORM_COLUMN_DATA_TYPES)[number];
 
+/** Trần điểm áp cho từng dòng hay cho tổng các dòng cùng mục. */
+export const FORM_COLUMN_RANGE_SCOPES = ['row', 'item_total'] as const;
+export type FormColumnRangeScope = (typeof FORM_COLUMN_RANGE_SCOPES)[number];
+
 /**
  * Ánh xạ cột -> trường dữ liệu hệ thống. Khai tường minh khi cấu hình, KHÔNG
  * đoán theo tiêu đề. Cột `custom` lưu vào PersonalMissionItem.fieldValues theo `key`.
@@ -211,6 +215,15 @@ export class FormTemplateColumn {
    */
   @Prop({ type: String, default: null })
   rangeFromColumnKey!: string | null;
+
+  /**
+   * Trần theo "Tối đa" (điểm cộng) áp cho cái gì:
+   * - `row`        - từng dòng kết quả ≤ tối đa (mỗi dòng là một việc riêng);
+   * - `item_total` - TỔNG các dòng của cùng một mục ≤ tối đa.
+   * Chỉ có nghĩa khi `rangeFromColumnKey` trỏ vào cột Điểm tối đa của mục.
+   */
+  @Prop({ type: String, enum: FORM_COLUMN_RANGE_SCOPES, default: 'row' })
+  rangeScope!: FormColumnRangeScope;
 
   /**
    * Cột tự tính - null = người nhập tự gõ như mọi cột số khác.

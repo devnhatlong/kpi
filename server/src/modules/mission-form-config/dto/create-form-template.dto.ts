@@ -20,10 +20,12 @@ import {
 import {
   FORM_COLUMN_AUTO_KINDS,
   FORM_COLUMN_DATA_TYPES,
+  FORM_COLUMN_RANGE_SCOPES,
   FORM_COLUMN_SEMANTICS,
   FORM_FOOTER_MODES,
   type FormColumnAutoKind,
   type FormColumnDataType,
+  type FormColumnRangeScope,
   type FormColumnSemantic,
   type FormFooterMode,
 } from '../schemas/form-template.schema';
@@ -97,6 +99,16 @@ export class FormTemplateColumnDto {
   @IsOptional()
   @IsString({ message: 'rangeFromColumnKey phải là chuỗi.' })
   rangeFromColumnKey?: string | null;
+
+  @ApiPropertyOptional({
+    enum: FORM_COLUMN_RANGE_SCOPES,
+    default: 'row',
+    description:
+      'Trần "Tối đa" áp cho từng dòng (row) hay tổng các dòng cùng mục (item_total)',
+  })
+  @IsOptional()
+  @IsIn(FORM_COLUMN_RANGE_SCOPES, { message: 'rangeScope không hợp lệ.' })
+  rangeScope?: FormColumnRangeScope;
 
   @ApiPropertyOptional({
     type: () => FormColumnAutoValueDto,

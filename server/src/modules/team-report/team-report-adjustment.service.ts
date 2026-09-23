@@ -224,6 +224,7 @@ export class TeamReportAdjustmentService {
       entry,
       template,
       dto.fieldValues ?? {},
+      sheet.entries,
     );
 
     sheet.entries.push(entry);
@@ -270,6 +271,7 @@ export class TeamReportAdjustmentService {
       entry,
       template,
       dto.fieldValues ?? {},
+      sheet.entries,
     );
 
     let changed = 0;
@@ -385,6 +387,9 @@ export class TeamReportAdjustmentService {
       String(actor.id),
       dto.recipientId,
     );
+    // Dòng nhập trước khi quản trị đổi cách áp trần vẫn có thể vượt - soát
+    // lại cả bảng trước khi trình, đừng để cấp trên nhận bảng sai luật.
+    this.assertItemTotals(sheet.entries, await this.templatesOfSheet(sheet));
 
     sheet.status = 'PENDING';
     sheet.recipientId = recipient.id;
@@ -572,6 +577,7 @@ export class TeamReportAdjustmentService {
       entry,
       template,
       dto.fieldValues ?? {},
+      sheet.entries,
     );
 
     let changed = 0;
@@ -784,15 +790,18 @@ export class TeamReportAdjustmentService {
    * Ghi giá trị vào đúng các cột của mẫu - bỏ khoá lạ, bỏ cột hệ thống.
    *
    * Kiểm kiểu theo cột: số phải là số, ngày phải đúng dạng, ô tích lưu "1".
-   * Chuỗi rỗng là xoá ô. Cột điểm có khai dải theo "Tối đa" thì từng ô không
-   * vượt trần của mục. Trần tính TỪNG DÒNG, không cộng dồn các dòng cùng mục:
-   * mẫu giấy nói "mỗi kết quả không quá tối đa", hai kết quả 1,5 điểm dưới mục
-   * tối đa 2 là hai việc riêng, đều hợp lệ.
+   * Chuỗi rỗng là xoá ô. Cột điểm có khai dải theo "Tối đa" thì không vượt
+   * trần của mục; trần áp cho cái gì do `rangeScope` của cột quyết định:
+   * - `row`        - từng dòng ≤ tối đa (hai việc 1,5 điểm dưới mục tối đa 2
+   *                  đều hợp lệ);
+   * - `item_total` - TỔNG các dòng cùng mục ≤ tối đa - "tối đa 2" là trần của
+   *                  cả mục, `siblings` là các dòng còn lại của bảng để cộng.
    */
   private async applyValues(
     entry: TeamReportAdjustmentEntry,
     template: SectionTemplate,
     input: Record<string, string | number>,
+    siblings: TeamReportAdjustmentEntry[] = [],
   ): Promise<Record<string, string | number>> {
     const next = { ...(entry.fieldValues ?? {}) };
     const byKey = new Map(
@@ -825,12 +834,30 @@ export class TeamReportAdjustmentService {
         if (
           column.rangeFromColumnKey &&
           maxKeys.has(column.rangeFromColumnKey) &&
-          entry.itemMaxScore !== null &&
-          parsed > entry.itemMaxScore
+          entry.itemMaxScore !== null
         ) {
-          throw new BadRequestException(
-            `"${entry.itemName}" · ${column.title}: không vượt tối đa ${entry.itemMaxScore} của mục này.`,
-          );
+          if (parsed > entry.itemMaxScore) {
+            throw new BadRequestException(
+              `"${entry.itemName}" · ${column.title}: không vượt tối đa ${entry.itemMaxScore} của mục này.`,
+            );
+          }
+          if (column.rangeScope === 'item_total') {
+            const others = siblings
+              .filter(
+                (row) =>
+                  String(row._id) !== String(entry._id) &&
+                  String(row.itemId) === String(entry.itemId),
+              )
+              .reduce((sum, row) => {
+                const value = Number(row.fieldValues?.[key]);
+                return sum + (Number.isFinite(value) ? value : 0);
+              }, 0);
+            if (others + parsed > entry.itemMaxScore) {
+              throw new BadRequestException(
+                `"${entry.itemName}" · ${column.title}: tổng các dòng của mục không vượt tối đa ${entry.itemMaxScore} (các dòng khác đã ${others}, còn lại ${Math.max(0, entry.itemMaxScore - others)}).`,
+              );
+            }
+          }
         }
         next[key] = parsed;
         continue;
@@ -851,6 +878,56 @@ export class TeamReportAdjustmentService {
       next[key] = value;
     }
     return next;
+  }
+
+  /**
+   * Với cột điểm khai trần theo TỔNG MỤC (`rangeScope = item_total`): cộng
+   * các dòng của từng mục, mục nào vượt "Tối đa" thì chặn.
+   */
+  private assertItemTotals(
+    entries: TeamReportAdjustmentEntry[],
+    templates: SectionTemplates,
+  ) {
+    for (const section of ADJUSTMENT_SECTIONS) {
+      const template = templates[section];
+      if (!template) continue;
+      const maxKeys = new Set(
+        template.columns
+          .filter((column) => column.semanticKey === 'adjustment_max_score')
+          .map((column) => column.key),
+      );
+      const totalColumns = this.inputColumns(template).filter(
+        (column) =>
+          column.dataType === 'number' &&
+          column.rangeScope === 'item_total' &&
+          column.rangeFromColumnKey &&
+          maxKeys.has(column.rangeFromColumnKey),
+      );
+      if (!totalColumns.length) continue;
+
+      const byItem = new Map<string, TeamReportAdjustmentEntry[]>();
+      for (const entry of entries) {
+        if (entry.section !== section) continue;
+        const list = byItem.get(String(entry.itemId)) ?? [];
+        list.push(entry);
+        byItem.set(String(entry.itemId), list);
+      }
+      for (const rows of byItem.values()) {
+        const max = rows[0]?.itemMaxScore ?? null;
+        if (max === null) continue;
+        for (const column of totalColumns) {
+          const total = rows.reduce((sum, row) => {
+            const value = Number(row.fieldValues?.[column.key]);
+            return sum + (Number.isFinite(value) ? value : 0);
+          }, 0);
+          if (total > max) {
+            throw new BadRequestException(
+              `"${rows[0]?.itemName}" · ${column.title}: tổng các dòng là ${total}, vượt tối đa ${max} của mục. Sửa lại trước khi trình.`,
+            );
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -1004,6 +1081,29 @@ export class TeamReportAdjustmentService {
   ): Promise<SectionTemplates> {
     const current = await this.currentTemplates();
     const out = {} as SectionTemplates;
+    // Bản NHÁP đi theo mẫu hiện hành - quản trị vừa đổi luật (trần từng dòng
+    // ↔ tổng mục, thêm cột...) là áp ngay, không đợi sang tháng. Đã trình thì
+    // giữ nguyên dấu phiên bản: cấp trên duyệt đúng bảng đội đã thấy.
+    if (sheet.status === 'DRAFT') {
+      for (const section of ADJUSTMENT_SECTIONS) {
+        out[section] = current[section];
+        const stamp = sheet.templates?.[section];
+        const nextId = current[section]
+          ? new Types.ObjectId(current[section]._id)
+          : null;
+        const nextVersion = current[section]?.version ?? null;
+        if (
+          stamp &&
+          (String(stamp.formTemplateId ?? '') !== String(nextId ?? '') ||
+            stamp.formTemplateVersion !== nextVersion)
+        ) {
+          stamp.formTemplateId = nextId;
+          stamp.formTemplateVersion = nextVersion;
+          sheet.markModified('templates');
+        }
+      }
+      return out;
+    }
     for (const section of ADJUSTMENT_SECTIONS) {
       const stamp = sheet.templates?.[section];
       if (!stamp?.formTemplateId) {

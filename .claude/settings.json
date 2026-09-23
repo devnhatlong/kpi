@@ -387,7 +387,11 @@
       "Bash(node e2e-onlyoffice.js)",
       "PowerShell(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'nest|start:dev|dist/main' } | Select-Object ProcessId, ParentProcessId, CommandLine | Format-List)",
       "Bash(sed -i \"s#const API = 'http://localhost:8080/api/v1';#const API = process.env.API || 'http://localhost:8080/api/v1';#\" e2e-onlyoffice.js)",
-      "Bash(API=http://localhost:8091/api/v1 node e2e-onlyoffice.js)"
+      "Bash(API=http://localhost:8091/api/v1 node e2e-onlyoffice.js)",
+      "PowerShell($g = Get-ChildItem -Path \"C:\\\\Program Files\",\"C:\\\\Program Files \\(x86\\)\",\"$env:LOCALAPPDATA\\\\Programs\" -Filter git.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName; $g; Set-Location d:\\\\Project\\\\WebApp\\\\KPI; & $g diff --stat -- client/src/features/mission-form-config client/src/features/team-report/components/team-report-adjustment-table.tsx server/src)",
+      "Read(//c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/**)",
+      "PowerShell(Set-Location d:\\\\Project\\\\WebApp\\\\KPI\\\\server; \\(Get-Item dist/modules/team-report/team-report-adjustment-service.js -ErrorAction SilentlyContinue\\); \\(Get-Item dist/modules/team-report/team-report-adjustment.service.js\\).LastWriteTime; Select-String -Path dist/modules/team-report/team-report-adjustment.service.js -Pattern \"assertItemTotals\" -Quiet)",
+      "PowerShell(Set-Location d:\\\\Project\\\\WebApp\\\\KPI\\\\server; $env:NODE_PATH = \"d:\\\\Project\\\\WebApp\\\\KPI\\\\server\\\\node_modules\"; node \"C:\\\\Users\\\\PV01\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Project-WebApp-KPI\\\\8d9d9f8e-ee4f-4a2f-bb6a-0f7a22cbb8c2\\\\scratchpad\\\\unit-item-total.js\")"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
