@@ -209,7 +209,9 @@ export class TeamReportService {
     const [tasks, day] = await Promise.all([
       this.taskModel
         .find(filter)
-        .sort({ createdDate: -1, createdAt: 1 })
+        /* Mới nhất lên đầu, sát ngay dưới ô nhập nhanh: cả đội thêm việc liên
+           tục, dòng vừa thêm mà rơi xuống giữa bảng thì không ai thấy. */
+        .sort({ createdDate: -1, createdAt: -1 })
         .populate('workContentId', 'code name'),
       this.dayModel.findOne({
         departmentId: actor.departmentId,

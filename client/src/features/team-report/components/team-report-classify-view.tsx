@@ -1,17 +1,29 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import {
+  ArrowRight,
   Ban,
   Check,
   CheckCheck,
+  ChevronLeft,
   ChevronRight,
   CircleCheck,
   ClipboardList,
   Info,
   Loader2,
   Lock,
+  PartyPopper,
   Rows3,
   Search,
   TriangleAlert,
@@ -31,6 +43,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -103,7 +117,71 @@ const REFRESH_MS = 30_000;
  * vụ, nhưng gộp chung vào một dải nút vì với người dùng đây cùng là một câu hỏi:
  * "còn cái nào phải đụng tới nữa không".
  */
-type QueueFilter = "ALL" | TaskReadiness | "CLOSED";
+type QueueFilter = "ALL" | "TODO" | TaskReadiness | "CLOSED";
+
+const QUEUE_FILTERS: QueueFilter[] = [
+  "ALL",
+  "TODO",
+  "UNCLASSIFIED",
+  "IN_PROGRESS",
+  "READY",
+  "CLOSED",
+];
+
+/**
+ * Nhiệm vụ còn phải đụng tới: đang mở mà chưa "Sẵn sàng".
+ *
+ * Đây là câu người phân loại hỏi suốt buổi - "còn cái nào nữa" - nên có hẳn một
+ * bộ lọc và là thứ nút "Tiếp" nhảy tới, thay vì bắt họ tự dò trong cả ngày.
+ */
+const needsWork = (row: { task: TeamReportTask; readiness: TaskReadiness }) =>
+  row.task.isOpen && row.readiness !== "READY";
+
+function filterLabel(
+  value: QueueFilter,
+  counts: Record<TaskReadiness, number>,
+  total: number,
+  todo: number,
+  closed: number,
+) {
+  switch (value) {
+    case "ALL":
+      return `Tất cả (${total})`;
+    case "TODO":
+      return `Cần xử lý (${todo})`;
+    case "CLOSED":
+      return `Đã đóng (${closed})`;
+    case "READY":
+      return `Sẵn sàng (${counts.READY})`;
+    default:
+      return `${READINESS_LABEL[value]} (${counts[value]})`;
+  }
+}
+
+/** Bỏ dấu, bỏ hoa thường - gõ "ra soat" vẫn ra "Rà soát". */
+function fold(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase();
+}
+
+/**
+ * Nhiệm vụ đã có dữ liệu phân loại chưa.
+ *
+ * Server xoá sạch nội dung công việc, mọi ô của mẫu lẫn điểm cấp trên chấm lại
+ * khi đổi trục - nên đổi trục trên một dòng đã điền phải hỏi lại trước.
+ */
+function hasClassifyData(task: TeamReportTask) {
+  return (
+    !!refId(task.workContentId) ||
+    Object.keys(task.fieldValues ?? {}).length > 0 ||
+    Object.keys(task.catalogValues ?? {}).length > 0
+  );
+}
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Hai cách nhìn cùng một bảng ngày.
@@ -180,14 +258,64 @@ export function TeamReportClassifyView() {
   */
   const { ready } = useServerTime();
   const today = serverYmd();
-  const [pickedDate, setPickedDate] = useState<string | null>(null);
-  const reportDate = pickedDate ?? today;
 
-  const [pickedTaskId, setPickedTaskId] = useState<string | null>(null);
-  const [mode, setMode] = useState<ViewMode>("DETAIL");
+  /*
+    Ngày, cách xem và nhiệm vụ đang mở nằm trên URL (?date=&view=&task=): F5
+    không đá người phân loại về nhiệm vụ đầu, và gửi link cho người bên cạnh là
+    mở đúng việc đang bàn. Ngày trên URL lớn hơn hôm nay thì bỏ qua.
+  */
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const urlDate = searchParams.get("date");
+  const [pickedDate, setPickedDate] = useState<string | null>(
+    urlDate && YMD.test(urlDate) ? urlDate : null,
+  );
+  const reportDate = pickedDate && pickedDate <= today ? pickedDate : today;
+
+  const [pickedTaskId, setPickedTaskId] = useState<string | null>(
+    searchParams.get("task"),
+  );
+  const [mode, setMode] = useState<ViewMode>(
+    searchParams.get("view") === "table" ? "TABLE" : "DETAIL",
+  );
   const [columnSet, setColumnSet] = useState<string>(ALL_COLUMNS);
   const [filter, setFilter] = useState<QueueFilter>("ALL");
   const [query, setQuery] = useState("");
+
+  const syncUrl = (next: {
+    date?: string | null;
+    view?: ViewMode;
+    task?: string | null;
+  }) => {
+    const date = next.date === undefined ? pickedDate : next.date;
+    const view = next.view ?? mode;
+    const task = next.task === undefined ? pickedTaskId : next.task;
+    const params = new URLSearchParams();
+    if (date) params.set("date", date);
+    if (view === "TABLE") params.set("view", "table");
+    if (task) params.set("task", task);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
+  const pickDate = (next: string) => {
+    const date = next === today ? null : next;
+    setPickedDate(date);
+    // Sang ngày khác thì nhiệm vụ đang mở không còn nghĩa gì.
+    setPickedTaskId(null);
+    syncUrl({ date, task: null });
+  };
+
+  const changeMode = (next: ViewMode) => {
+    setMode(next);
+    syncUrl({ view: next });
+  };
+
+  const pickTask = (id: string) => {
+    setPickedTaskId(id);
+    syncUrl({ task: id });
+  };
   const [busyId, setBusyId] = useState<string | null>(null);
   /*
     Màn này TỰ LƯU: đổi ô nào là gửi ngay ô đó. Nhưng tự lưu mà không báo gì thì
@@ -201,6 +329,12 @@ export function TeamReportClassifyView() {
      "đã xong" và "mở lại" bấm là chạy. */
   const [stopping, setStopping] = useState<TeamReportTask | null>(null);
   const [stopReason, setStopReason] = useState("");
+  const [stopReasonError, setStopReasonError] = useState(false);
+  /* Đổi trục đang chờ xác nhận - xem `hasClassifyData`. */
+  const [axisChange, setAxisChange] = useState<{
+    task: TeamReportTask;
+    axisId: string | null;
+  } | null>(null);
 
   const { data, isLoading, mutate } = useSWR(
     ready ? teamReportKeys.classify(reportDate) : null,
@@ -245,14 +379,19 @@ export function TeamReportClassifyView() {
     không tìm được nhiệm vụ nào.
   */
   const visible = useMemo(() => {
-    const term = query.trim().toLowerCase();
+    const term = fold(query.trim());
     return rows.filter(
       (row) =>
         (filter === "ALL" ||
-          (filter === "CLOSED"
-            ? !row.task.isOpen
-            : row.readiness === filter)) &&
-        (!term || row.task.name.toLowerCase().includes(term)),
+          (filter === "TODO"
+            ? needsWork(row)
+            : filter === "CLOSED"
+              ? !row.task.isOpen
+              : row.readiness === filter)) &&
+        // Tìm cả sản phẩm: người phân loại hay nhớ "cái kế hoạch số 12" hơn tên việc.
+        (!term ||
+          fold(row.task.name).includes(term) ||
+          fold(row.task.product ?? "").includes(term)),
     );
   }, [rows, filter, query]);
 
@@ -260,9 +399,15 @@ export function TeamReportClassifyView() {
     Suy ra nhiệm vụ đang mở thay vì giữ trong state rồi đồng bộ bằng effect: bảng
     tự nạp lại mỗi vài giây, mà nhiệm vụ đang chọn có thể vừa bị người khác đóng.
     Suy ra thì luôn trỏ vào một dòng còn tồn tại.
+
+    Chưa chọn gì thì mở sẵn nhiệm vụ ĐẦU TIÊN CÒN PHẢI LÀM, không phải dòng đầu
+    bảng - dòng đầu thường là việc đã xong từ hôm qua.
   */
   const selected =
-    rows.find((row) => row.task._id === pickedTaskId) ?? visible[0] ?? rows[0];
+    rows.find((row) => row.task._id === pickedTaskId) ??
+    visible.find(needsWork) ??
+    visible[0] ??
+    rows[0];
 
   const counts = useMemo(() => {
     const byReadiness: Record<TaskReadiness, number> = {
@@ -272,14 +417,77 @@ export function TeamReportClassifyView() {
     };
     const byAxis = new Map<string, number>();
     let closed = 0;
+    let todo = 0;
     for (const row of rows) {
       byReadiness[row.readiness] += 1;
       if (!row.task.isOpen) closed += 1;
+      if (needsWork(row)) todo += 1;
       const axisId = refId(row.task.axisId);
       if (axisId) byAxis.set(axisId, (byAxis.get(axisId) ?? 0) + 1);
     }
-    return { byReadiness, byAxis, closed };
+    return { byReadiness, byAxis, closed, todo };
   }, [rows]);
+
+  /*
+    Đi lần lượt qua các nhiệm vụ.
+
+    "Trước / Sau" đi theo đúng danh sách đang lọc. "Việc cần xử lý kế tiếp" thì
+    nhảy qua những dòng đã xong, tìm vòng từ sau dòng đang mở - đó là thứ người
+    phân loại cần ngay khi một việc vừa đủ ô.
+  */
+  const selectedIndex = selected
+    ? visible.findIndex((row) => row.task._id === selected.task._id)
+    : -1;
+  const prevRow = selectedIndex > 0 ? visible[selectedIndex - 1] : null;
+  const nextRow =
+    selectedIndex >= 0 && selectedIndex < visible.length - 1
+      ? visible[selectedIndex + 1]
+      : null;
+  const nextTodo = useMemo(() => {
+    const start = selectedIndex < 0 ? 0 : selectedIndex + 1;
+    const ordered = [...visible.slice(start), ...visible.slice(0, start)];
+    return (
+      ordered.find(
+        (row) => needsWork(row) && row.task._id !== selected?.task._id,
+      ) ?? null
+    );
+  }, [visible, selectedIndex, selected?.task._id]);
+
+  /*
+    Phím tắt J / K (hoặc Alt + ↓ / ↑) để đi tiếp / lùi mà không rời bàn phím.
+    Bỏ qua khi đang gõ trong ô nhập hay đang mở hộp thoại - J là một chữ cái,
+    nuốt mất nó giữa câu là lỗi khó chịu nhất có thể.
+  */
+  const navRef = useRef({ prevRow, nextRow, pickTask });
+  navRef.current = { prevRow, nextRow, pickTask };
+  useEffect(() => {
+    if (mode !== "DETAIL") return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey) return;
+      if (document.querySelector("[role='dialog'], [role='listbox']")) return;
+      const target = event.target as HTMLElement | null;
+      const typing =
+        !!target &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
+      const down =
+        (event.altKey && event.key === "ArrowDown") ||
+        (!event.altKey && !typing && event.key.toLowerCase() === "j");
+      const up =
+        (event.altKey && event.key === "ArrowUp") ||
+        (!event.altKey && !typing && event.key.toLowerCase() === "k");
+      const { prevRow: prev, nextRow: next, pickTask: pick } = navRef.current;
+      if (down && next) {
+        event.preventDefault();
+        pick(next.task._id);
+      } else if (up && prev) {
+        event.preventDefault();
+        pick(prev.task._id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode]);
 
   /**
    * Một lần chạm vào server cho MỘT nhiệm vụ.
@@ -383,17 +591,37 @@ export function TeamReportClassifyView() {
     An toàn vì bảng của một ngày vẫn giữ cả việc đóng trong chính ngày đó; đánh
     dấu sớm không làm nó rơi khỏi báo cáo đang soạn, chỉ vắng từ ngày mai.
   */
+  /*
+    Đánh dấu xong chạy ngay không hỏi (bấm cả chục lần một buổi, hỏi lại mỗi
+    lần là phiền), nên đường lùi phải nằm ngay trong thông báo: nút "Hoàn tác"
+    mở lại đúng việc vừa đóng, khỏi phải lọc Đã đóng để tìm.
+  */
   const markDone = (task: TeamReportTask) =>
     void runOnTask(
       task,
       async () => {
-        await closeTeamReportTask(task._id, {
+        const closed = await closeTeamReportTask(task._id, {
           version: task.version,
           done: true,
         });
-        toast.success(
-          "Đã đánh dấu hoàn thành. Nhiệm vụ rời bảng nhập ngày, vẫn còn ở đây trong mục Đã đóng.",
-        );
+        toast.success("Đã đánh dấu hoàn thành.", {
+          description:
+            "Nhiệm vụ rời bảng nhập ngày, vẫn còn ở đây trong mục Đã đóng.",
+          action: {
+            label: "Hoàn tác",
+            onClick: () =>
+              void runOnTask(
+                closed,
+                async () => {
+                  await reopenTeamReportTask(closed._id, {
+                    version: closed.version,
+                  });
+                  toast.success("Đã mở lại nhiệm vụ.");
+                },
+                "Không mở lại được nhiệm vụ.",
+              ),
+          },
+        });
       },
       "Không đóng được nhiệm vụ.",
     );
@@ -408,11 +636,43 @@ export function TeamReportClassifyView() {
       "Không mở lại được nhiệm vụ.",
     );
 
-  const confirmStop = async () => {
+  /**
+   * Cửa vào của mọi lượt lưu từ màn hình.
+   *
+   * Đổi trục trên một dòng đã điền thì dừng lại hỏi: server xoá sạch nội dung
+   * công việc và mọi ô của mẫu cũ, mà ô chọn trục thì nằm ngay đầu - lỡ tay là
+   * mất cả buổi chấm.
+   */
+  const requestPatch = (task: TeamReportTask, input: TeamReportClassifyInput) => {
+    const changesAxis =
+      input.axisId !== undefined &&
+      (input.axisId ?? null) !== (refId(task.axisId) || null);
+    if (changesAxis && refId(task.axisId) && hasClassifyData(task)) {
+      setAxisChange({ task, axisId: input.axisId ?? null });
+      return;
+    }
+    void patch(task, input);
+  };
+
+  const confirmAxisChange = () => {
+    if (!axisChange) return;
+    const { task, axisId } = axisChange;
+    setAxisChange(null);
+    void patch(task, { version: task.version, axisId });
+  };
+
+  const openStop = (task: TeamReportTask) => {
+    setStopReason("");
+    setStopReasonError(false);
+    setStopping(task);
+  };
+
+  const confirmStop = async (event: FormEvent) => {
+    event.preventDefault();
     if (!stopping) return;
     const reason = stopReason.trim();
     if (!reason) {
-      toast.error("Nêu lý do dừng để cấp trên biết vì sao việc này thôi làm.");
+      setStopReasonError(true);
       return;
     }
     const ok = await runOnTask(
@@ -439,13 +699,13 @@ export function TeamReportClassifyView() {
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Báo cáo ngày của đội · {formatYmd(reportDate)}
           </p>
-          <h1 className="font-display text-2xl font-semibold tracking-tight">
+          <h1 className="text-balance font-display text-2xl font-semibold tracking-tight">
             Phân loại nhiệm vụ
           </h1>
           <p className="text-sm text-muted-foreground">
             Chọn trục cho từng nhiệm vụ, hoàn thiện đúng biểu mẫu của trục đó.
-            Nhiệm vụ &quot;Sẵn sàng gửi&quot; sẽ được gom vào Báo cáo tổng hợp
-            để trình cấp trên.
+            Nhiệm vụ &ldquo;Sẵn sàng&rdquo; sẽ được gom vào Báo cáo tổng hợp để
+            trình cấp trên.
           </p>
         </div>
 
@@ -453,13 +713,13 @@ export function TeamReportClassifyView() {
           <SegmentedTabs
             ariaLabel="Cách xem bảng ngày"
             value={mode}
-            onChange={setMode}
+            onChange={changeMode}
             items={[
               {
                 value: "DETAIL" as const,
                 label: (
                   <span className="flex items-center gap-1.5">
-                    <ClipboardList className="size-4" />
+                    <ClipboardList className="size-4" aria-hidden="true" />
                     Dạng nhiệm vụ
                   </span>
                 ),
@@ -469,7 +729,7 @@ export function TeamReportClassifyView() {
                 value: "TABLE" as const,
                 label: (
                   <span className="flex items-center gap-1.5">
-                    <Rows3 className="size-4" />
+                    <Rows3 className="size-4" aria-hidden="true" />
                     Dạng bảng
                   </span>
                 ),
@@ -479,7 +739,7 @@ export function TeamReportClassifyView() {
           />
           <TeamReportDayPicker
             value={reportDate}
-            onChange={setPickedDate}
+            onChange={pickDate}
             today={today}
           />
           {/*
@@ -491,8 +751,11 @@ export function TeamReportClassifyView() {
       </div>
 
       {locked && data?.day ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
-          <Lock className="size-4 text-muted-foreground" />
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2.5 text-sm"
+        >
+          <Lock className="size-4 text-muted-foreground" aria-hidden="true" />
           <span>
             Đã gửi ngày {formatYmd(reportDate)} -{" "}
             {TEAM_REPORT_STATUS_LABEL[data.day.status]}.
@@ -505,22 +768,54 @@ export function TeamReportClassifyView() {
         </div>
       ) : null}
 
-      {!locked && reportDate !== today ? (
-        <div className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground">
+      {ready && !locked && reportDate !== today ? (
+        <div
+          role="status"
+          className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground"
+        >
           Đang xem lại ngày {formatYmd(reportDate)}. Chỉ bảng của hôm nay mới
-          phân loại và gửi được.
+          phân loại được.
         </div>
       ) : null}
 
-      {isLoading && !tasks.length ? (
-        <div className="rounded-md border p-10 text-center text-sm text-muted-foreground">
-          Đang tải...
+      {(!ready || isLoading) && !tasks.length ? (
+        <div className="grid gap-4 xl:grid-cols-[19rem_minmax(0,1fr)_17rem]">
+          {[0, 1, 2].map((index) => (
+            <Card key={index} className="shadow-sm">
+              <CardContent className="space-y-3 py-4">
+                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
       ) : null}
 
-      {!isLoading && !tasks.length ? (
-        <div className="rounded-md border p-10 text-center text-sm text-muted-foreground">
-          Chưa có nhiệm vụ nào của ngày này.
+      {/* Trống thì chỉ luôn chỗ để có dữ liệu, không để một câu cụt. */}
+      {ready && !isLoading && !tasks.length ? (
+        <div className="flex flex-col items-center gap-3 rounded-md border border-dashed p-10 text-center">
+          <ClipboardList
+            className="size-8 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <div className="space-y-1">
+            <p className="text-sm font-medium">
+              Chưa có nhiệm vụ nào của ngày này
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Nhiệm vụ do đội khai ở bảng nhập ngày sẽ hiện ra đây để phân loại.
+            </p>
+          </div>
+          {reportDate === today ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href="/team-report/sheet">
+                Mở bảng nhập nhiệm vụ
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </Link>
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -529,6 +824,7 @@ export function TeamReportClassifyView() {
           rows={visible}
           total={rows.length}
           closedCount={counts.closed}
+          todoCount={counts.todo}
           counts={counts.byReadiness}
           filter={filter}
           query={query}
@@ -544,17 +840,15 @@ export function TeamReportClassifyView() {
           onColumnSet={setColumnSet}
           onFilter={setFilter}
           onQuery={setQuery}
-          onPatch={patch}
+          onPatch={requestPatch}
           onOpen={(id) => {
             setPickedTaskId(id);
             setMode("DETAIL");
+            syncUrl({ task: id, view: "DETAIL" });
           }}
           onMarkDone={markDone}
           onReopen={reopen}
-          onStop={(task) => {
-            setStopReason("");
-            setStopping(task);
-          }}
+          onStop={openStop}
         />
       ) : null}
 
@@ -564,13 +858,16 @@ export function TeamReportClassifyView() {
             rows={visible}
             total={rows.length}
             closedCount={counts.closed}
+            todoCount={counts.todo}
+            readyCount={counts.byReadiness.READY}
             selectedId={selected?.task._id ?? null}
             filter={filter}
             query={query}
             counts={counts.byReadiness}
+            axes={axes}
             onFilter={setFilter}
             onQuery={setQuery}
-            onPick={setPickedTaskId}
+            onPick={pickTask}
           />
 
           {selected ? (
@@ -585,6 +882,15 @@ export function TeamReportClassifyView() {
               cellErrors={cellErrors}
               saving={busyId === selected.task._id}
               savedAt={savedAt}
+              position={
+                selectedIndex >= 0
+                  ? { index: selectedIndex + 1, total: visible.length }
+                  : null
+              }
+              onPrev={prevRow ? () => pickTask(prevRow.task._id) : null}
+              onNext={nextRow ? () => pickTask(nextRow.task._id) : null}
+              nextTodo={nextTodo?.task ?? null}
+              onGoTo={pickTask}
               /*
                 Nhiệm vụ đã chốt thì biểu mẫu khoá lại. Sửa một việc đã đóng là
                 sửa thứ đội vừa tuyên bố là xong - muốn sửa thì mở lại trước, để
@@ -598,13 +904,10 @@ export function TeamReportClassifyView() {
               /* Riêng nút đóng/mở lại thì vẫn bấm được - không thì việc đã đóng
                  không còn đường nào mở ra. */
               lifecycleDisabled={!editable || busyId === selected.task._id}
-              onPatch={patch}
+              onPatch={requestPatch}
               onMarkDone={markDone}
               onReopen={reopen}
-              onStop={(task) => {
-                setStopReason("");
-                setStopping(task);
-              }}
+              onStop={openStop}
             />
           ) : (
             <Card className="shadow-sm">
@@ -632,39 +935,118 @@ export function TeamReportClassifyView() {
         }}
       >
         <DialogContent className="sm:max-w-md">
+          <form
+            onSubmit={(event) => void confirmStop(event)}
+            className="space-y-4"
+          >
+            <DialogHeader>
+              <DialogTitle>Dừng nhiệm vụ giữa chừng</DialogTitle>
+              <DialogDescription className="break-words">
+                {stopping?.name}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="stop-reason">
+                Lý do dừng <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="stop-reason"
+                autoFocus
+                value={stopReason}
+                aria-invalid={stopReasonError || undefined}
+                aria-describedby="stop-reason-hint"
+                onChange={(event) => {
+                  setStopReason(event.target.value);
+                  if (stopReasonError) setStopReasonError(false);
+                }}
+                rows={3}
+                placeholder="Vì sao việc này thôi không làm nữa…"
+                className="aria-[invalid]:border-destructive"
+              />
+              <p
+                id="stop-reason-hint"
+                className={cn(
+                  "text-xs",
+                  stopReasonError ? "text-destructive" : "text-muted-foreground",
+                )}
+              >
+                {stopReasonError
+                  ? "Nêu lý do dừng để cấp trên biết vì sao việc này thôi làm."
+                  : "Cấp trên đọc được lý do này trong báo cáo ngày."}
+              </p>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setStopping(null)}
+              >
+                Huỷ
+              </Button>
+              <Button
+                type="submit"
+                variant="destructive"
+                disabled={!!stopping && busyId === stopping._id}
+              >
+                {stopping && busyId === stopping._id ? (
+                  <Loader2
+                    className="size-4 motion-safe:animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Ban className="size-4" aria-hidden="true" />
+                )}
+                Dừng nhiệm vụ
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Đổi trục trên dòng đã điền: nói rõ cái gì sẽ mất trước khi làm. */}
+      <Dialog
+        open={!!axisChange}
+        onOpenChange={(open) => {
+          if (!open) setAxisChange(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Dừng nhiệm vụ giữa chừng</DialogTitle>
+            <DialogTitle>Đổi trục cho nhiệm vụ này?</DialogTitle>
             <DialogDescription className="break-words">
-              {stopping?.name}
+              &ldquo;{axisChange?.task.name}&rdquo; đang ở trục{" "}
+              <strong className="text-foreground">
+                {axes.find(
+                  (item) => item._id === refId(axisChange?.task.axisId ?? null),
+                )?.name ?? "hiện tại"}
+              </strong>
+              . Chuyển sang{" "}
+              <strong className="text-foreground">
+                {axisChange?.axisId
+                  ? (axes.find((item) => item._id === axisChange.axisId)
+                      ?.name ?? "trục mới")
+                  : "Chưa gán"}
+              </strong>{" "}
+              sẽ xoá nội dung công việc và mọi ô đã điền theo mẫu cũ, kể cả điểm
+              cấp trên đã chấm lại. Không hoàn tác được.
             </DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-1.5">
-            <p className="text-sm font-medium">
-              Lý do dừng <span className="text-destructive">*</span>
-            </p>
-            <Textarea
-              value={stopReason}
-              onChange={(event) => setStopReason(event.target.value)}
-              rows={3}
-              placeholder="Vì sao việc này thôi không làm nữa"
-            />
-            <p className="text-xs text-muted-foreground">
-              Cấp trên đọc được lý do này trong báo cáo ngày.
-            </p>
-          </div>
-
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setStopping(null)}>
-              Huỷ
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setAxisChange(null)}
+            >
+              Giữ trục cũ
             </Button>
             <Button
+              type="button"
               variant="destructive"
-              disabled={!!stopping && busyId === stopping._id}
-              onClick={() => void confirmStop()}
+              onClick={confirmAxisChange}
             >
-              <Ban className="size-4" />
-              Dừng nhiệm vụ
+              Đổi trục và xoá dữ liệu
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -685,10 +1067,13 @@ type TaskQueueProps = {
   rows: QueueRow[];
   total: number;
   closedCount: number;
+  todoCount: number;
+  readyCount: number;
   selectedId: string | null;
   filter: QueueFilter;
   query: string;
   counts: Record<TaskReadiness, number>;
+  axes: TeamReportAxis[];
   onFilter: (next: QueueFilter) => void;
   onQuery: (next: string) => void;
   onPick: (id: string) => void;
@@ -702,58 +1087,92 @@ function TaskQueue({
   rows,
   total,
   closedCount,
+  todoCount,
+  readyCount,
   selectedId,
   filter,
   query,
   counts,
+  axes,
   onFilter,
   onQuery,
   onPick,
 }: TaskQueueProps) {
+  const percent = total ? Math.round((readyCount / total) * 100) : 0;
+
   return (
     <Card className="shadow-sm xl:sticky xl:top-4 xl:self-start">
       <CardContent className="space-y-3 py-4">
-        <div className="space-y-1">
-          <h2 className="font-display text-sm font-semibold">
-            Hàng đợi nhiệm vụ
-          </h2>
+        {/*
+          Tiến độ đứng đầu hàng đợi: câu người phân loại hỏi liên tục là "còn
+          bao nhiêu nữa", trả lời bằng một thanh là đọc được trong một liếc.
+        */}
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="font-display text-sm font-semibold">
+              Hàng đợi nhiệm vụ
+            </h2>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {readyCount}/{total} sẵn sàng
+            </span>
+          </div>
+          <div
+            role="progressbar"
+            aria-label="Tiến độ phân loại"
+            aria-valuemin={0}
+            aria-valuemax={total}
+            aria-valuenow={readyCount}
+            className="h-1.5 overflow-hidden rounded-full bg-muted"
+          >
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-[width] motion-reduce:transition-none"
+              style={{ width: `${percent}%` }}
+            />
+          </div>
           <p className="text-xs text-muted-foreground">
-            {rows.length === total
-              ? `${total} nhiệm vụ trong ngày`
-              : `Đang xem ${rows.length}/${total} nhiệm vụ`}{" "}
-            · chọn một nhiệm vụ để xử lý
+            {todoCount
+              ? `Còn ${todoCount} nhiệm vụ cần xử lý`
+              : "Không còn nhiệm vụ nào cần xử lý"}
+            {rows.length !== total
+              ? ` · đang xem ${rows.length}/${total}`
+              : ""}
           </p>
         </div>
 
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
           <Input
+            type="search"
+            name="q"
+            aria-label="Tìm nhiệm vụ"
+            autoComplete="off"
+            spellCheck={false}
             value={query}
             onChange={(event) => onQuery(event.target.value)}
-            placeholder="Tìm nhiệm vụ..."
-            className="bg-background pl-8"
+            placeholder="Tìm theo tên hoặc sản phẩm…"
+            className="pl-8"
           />
         </div>
 
-        <SegmentedTabs
-          ariaLabel="Lọc theo trạng thái"
+        {/* Cột hẹp: năm sáu nút lọc xếp chồng ba hàng thì rối hơn một ô chọn. */}
+        <Select
           value={filter}
-          onChange={onFilter}
-          items={[
-            { value: "ALL" as const, label: `Tất cả (${total})` },
-            {
-              value: "UNCLASSIFIED" as const,
-              label: `Chưa phân loại (${counts.UNCLASSIFIED})`,
-            },
-            {
-              value: "IN_PROGRESS" as const,
-              label: `Đang hoàn thiện (${counts.IN_PROGRESS})`,
-            },
-            { value: "READY" as const, label: `Sẵn sàng (${counts.READY})` },
-            { value: "CLOSED" as const, label: `Đã đóng (${closedCount})` },
-          ]}
-          className="flex-wrap"
-        />
+          onValueChange={(value) => onFilter(value as QueueFilter)}
+        >
+          <SelectTrigger aria-label="Lọc theo trạng thái" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {QUEUE_FILTERS.map((value) => (
+              <SelectItem key={value} value={value}>
+                {filterLabel(value, counts, total, todoCount, closedCount)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {/*
           Khoá theo bộ lọc để React DỰNG LẠI danh sách: số dòng đang bày là state
@@ -763,9 +1182,17 @@ function TaskQueue({
         <QueueList
           key={`${filter}:${query.trim().toLowerCase()}`}
           rows={rows}
+          axes={axes}
           selectedId={selectedId}
           onPick={onPick}
         />
+
+        <p className="hidden text-xs text-muted-foreground xl:block">
+          <kbd className="rounded border bg-background px-1 font-sans">J</kbd>{" "}
+          /{" "}
+          <kbd className="rounded border bg-background px-1 font-sans">K</kbd>{" "}
+          để sang nhiệm vụ sau / trước
+        </p>
       </CardContent>
     </Card>
   );
@@ -775,83 +1202,120 @@ function TaskQueue({
  * Danh sách nhiệm vụ, bày dần từng mẻ.
  *
  * Một ngày của đội lớn có thể lên tới hàng trăm nhiệm vụ. Dựng hết một lượt thì
- * mỗi lần bảng tự nạp lại (vài giây một lần) là ngần ấy nút phải so lại - gõ
- * vào ô tìm kiếm bắt đầu giật. Bày `QUEUE_PAGE` dòng đầu là đủ cho thao tác
- * thường ngày; ai cần xem sâu hơn thì bấm tải thêm.
+ * mỗi lần bảng tự nạp lại là ngần ấy nút phải so lại - gõ vào ô tìm kiếm bắt
+ * đầu giật. Bày `QUEUE_PAGE` dòng đầu là đủ cho thao tác thường ngày; ai cần
+ * xem sâu hơn thì bấm tải thêm.
  */
 function QueueList({
   rows,
+  axes,
   selectedId,
   onPick,
 }: {
   rows: QueueRow[];
+  axes: TeamReportAxis[];
   selectedId: string | null;
   onPick: (id: string) => void;
 }) {
-  const [shown, setShown] = useState(QUEUE_PAGE);
+  const [more, setMore] = useState(QUEUE_PAGE);
+  /* Nhảy bằng Tiếp / J tới một dòng nằm ngoài mẻ đang bày thì mở rộng mẻ cho
+     tới dòng đó - không thì dòng đang mở lại không thấy đâu trong hàng đợi. */
+  const selectedIndex = rows.findIndex((row) => row.task._id === selectedId);
+  const shown = Math.max(more, selectedIndex + 1);
   const rest = rows.length - shown;
+  const listRef = useRef<HTMLDivElement>(null);
+  const axisName = useMemo(
+    () => new Map(axes.map((axis) => [axis._id, axis.name] as const)),
+    [axes],
+  );
+
+  // Giữ dòng đang mở trong tầm nhìn của hàng đợi khi đi bằng Tiếp / Trước.
+  useEffect(() => {
+    listRef.current
+      ?.querySelector<HTMLElement>("[aria-current='true']")
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
 
   return (
-    <div className="max-h-[32rem] space-y-1.5 overflow-y-auto">
+    <div
+      ref={listRef}
+      className="max-h-[32rem] space-y-1.5 overflow-y-auto overscroll-contain"
+    >
       {rows.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
           Không có nhiệm vụ nào khớp.
         </p>
       ) : null}
 
-      {rows.slice(0, shown).map(({ task, readiness }) => (
-        <button
-          key={task._id}
-          type="button"
-          onClick={() => onPick(task._id)}
-          className={cn(
-            "w-full cursor-pointer rounded-md border p-2.5 text-left transition-colors",
-            task._id === selectedId
-              ? "border-primary bg-primary/5"
-              : "hover:bg-muted/60",
-            !task.isOpen && "opacity-60",
-          )}
-        >
-          <div className="line-clamp-2 break-words text-sm font-medium">
-            {task.name}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {task.deadline
-                ? `Hạn ${formatYmd(task.deadline)}`
-                : "Không đặt hạn"}
-            </span>
-            {task.isOpen ? null : (
+      {rows.slice(0, shown).map(({ task, readiness }) => {
+        const active = task._id === selectedId;
+        const axis = axisName.get(refId(task.axisId) ?? "");
+        return (
+          <button
+            key={task._id}
+            type="button"
+            aria-current={active ? "true" : undefined}
+            onClick={() => onPick(task._id)}
+            className={cn(
+              "w-full cursor-pointer rounded-md border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              active
+                ? "border-primary bg-primary/5 shadow-[inset_3px_0_0_var(--primary)]"
+                : "hover:bg-muted/60",
+            )}
+          >
+            <div
+              className={cn(
+                "line-clamp-2 break-words text-sm font-medium",
+                !task.isOpen && "text-muted-foreground",
+              )}
+            >
+              {task.name}
+            </div>
+            {/* Trục đã gán hiện ngay trên hàng đợi: rà cả ngày xem có dòng
+                nào gán nhầm trục mà không phải mở từng cái. */}
+            <div className="mt-0.5 truncate text-xs text-muted-foreground">
+              {axis ?? "Chưa gán trục"}
+              {task.deadline ? ` · hạn ${formatYmd(task.deadline)}` : ""}
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <Badge
                 variant="secondary"
                 className={cn(
-                  "gap-1 whitespace-nowrap font-normal",
-                  task.closedReason ? CLOSED_STOPPED_CLASS : CLOSED_DONE_CLASS,
+                  "whitespace-nowrap font-normal",
+                  READINESS_CLASS[readiness],
                 )}
               >
-                <Check className="size-3" />
-                {task.closedReason ? "Đã dừng" : "Đã xong"}
+                {READINESS_LABEL[readiness]}
               </Badge>
-            )}
-            <Badge
-              variant="secondary"
-              className={cn(
-                "whitespace-nowrap font-normal",
-                READINESS_CLASS[readiness],
+              {task.isOpen ? null : (
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "gap-1 whitespace-nowrap font-normal",
+                    task.closedReason
+                      ? CLOSED_STOPPED_CLASS
+                      : CLOSED_DONE_CLASS,
+                  )}
+                >
+                  {task.closedReason ? (
+                    <Ban className="size-3" aria-hidden="true" />
+                  ) : (
+                    <Check className="size-3" aria-hidden="true" />
+                  )}
+                  {task.closedReason ? "Đã dừng" : "Đã xong"}
+                </Badge>
               )}
-            >
-              {READINESS_LABEL[readiness]}
-            </Badge>
-          </div>
-        </button>
-      ))}
+            </div>
+          </button>
+        );
+      })}
 
       {rest > 0 ? (
         <Button
           type="button"
           variant="ghost"
           className="w-full"
-          onClick={() => setShown((current) => current + QUEUE_PAGE)}
+          onClick={() => setMore(shown + QUEUE_PAGE)}
         >
           Xem thêm {Math.min(rest, QUEUE_PAGE)} nhiệm vụ (còn {rest})
         </Button>
@@ -866,6 +1330,7 @@ type TaskTableProps = {
   rows: QueueRow[];
   total: number;
   closedCount: number;
+  todoCount: number;
   counts: Record<TaskReadiness, number>;
   filter: QueueFilter;
   query: string;
@@ -903,6 +1368,7 @@ function TaskTableView({
   rows,
   total,
   closedCount,
+  todoCount,
   counts,
   filter,
   query,
@@ -985,21 +1451,45 @@ function TaskTableView({
                 ? `${shown.length} nhiệm vụ thuộc ${axis.name} · đang bày trọn mẫu của trục này`
                 : columnSet === COMPACT_COLUMNS
                   ? "Chỉ trục và nội dung công việc · để rà nhanh dòng nào chưa gán"
-                  : `Gộp cột của mọi mẫu đang có trong bảng · ô gạch ngang là cột không thuộc mẫu của dòng đó`}
+                  : `Gộp cột của mọi mẫu đang có trong bảng. Ô ghi “Không áp dụng” là cột không thuộc mẫu của dòng đó.`}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {savedAt ? (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Check className="size-3 text-emerald-600" />
-                Đã lưu lúc {savedAt}
-              </span>
-            ) : null}
+            <span
+              aria-live="polite"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
+            >
+              {busyId ? (
+                <>
+                  <Loader2
+                    className="size-3 motion-safe:animate-spin"
+                    aria-hidden="true"
+                  />
+                  Đang lưu…
+                </>
+              ) : savedAt ? (
+                <>
+                  <Check
+                    className="size-3 text-emerald-600 dark:text-emerald-400"
+                    aria-hidden="true"
+                  />
+                  Đã lưu lúc {savedAt}
+                </>
+              ) : null}
+            </span>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground">Bộ cột đang hiện</p>
+              <p
+                id="column-set-label"
+                className="text-xs text-muted-foreground"
+              >
+                Bộ cột đang hiện
+              </p>
               <Select value={columnSet} onValueChange={onColumnSet}>
-                <SelectTrigger className="w-56 bg-background">
+                <SelectTrigger
+                  aria-labelledby="column-set-label"
+                  className="w-56"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1021,31 +1511,30 @@ function TaskTableView({
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
             <Input
+              type="search"
+              name="q"
+              aria-label="Tìm nhiệm vụ"
+              autoComplete="off"
+              spellCheck={false}
               value={query}
               onChange={(event) => onQuery(event.target.value)}
-              placeholder="Tìm nhiệm vụ..."
-              className="bg-background pl-8"
+              placeholder="Tìm theo tên hoặc sản phẩm…"
+              className="pl-8"
             />
           </div>
           <SegmentedTabs
             ariaLabel="Lọc theo trạng thái"
             value={filter}
             onChange={onFilter}
-            items={[
-              { value: "ALL" as const, label: `Tất cả (${total})` },
-              {
-                value: "UNCLASSIFIED" as const,
-                label: `Chưa phân loại (${counts.UNCLASSIFIED})`,
-              },
-              {
-                value: "IN_PROGRESS" as const,
-                label: `Đang hoàn thiện (${counts.IN_PROGRESS})`,
-              },
-              { value: "READY" as const, label: `Sẵn sàng (${counts.READY})` },
-              { value: "CLOSED" as const, label: `Đã đóng (${closedCount})` },
-            ]}
+            items={QUEUE_FILTERS.map((value) => ({
+              value,
+              label: filterLabel(value, counts, total, todoCount, closedCount),
+            }))}
             className="flex-wrap"
           />
         </div>
@@ -1283,7 +1772,7 @@ function TaskTableRow({
   });
 
   return (
-    <TableRow className={cn("group", !task.isOpen && "opacity-60")}>
+    <TableRow className="group">
       <TableCell
         className={cn(
           "max-w-[360px] whitespace-normal break-words align-middle",
@@ -1291,7 +1780,13 @@ function TaskTableRow({
           "left-0 border-r",
         )}
       >
-        <div className="font-medium">{task.name}</div>
+        {/* Việc đã đóng chỉ mờ chữ, không mờ cả hàng: `opacity` kéo luôn
+            nhãn trạng thái xuống, nền tối đọc không ra. */}
+        <div
+          className={cn("font-medium", !task.isOpen && "text-muted-foreground")}
+        >
+          {task.name}
+        </div>
         <div className="text-xs text-muted-foreground tabular-nums">
           {task.deadline ? `Hạn ${formatYmd(task.deadline)}` : "Không đặt hạn"}
           {task.product ? ` · ${task.product}` : ""}
@@ -1309,7 +1804,10 @@ function TaskTableRow({
             })
           }
         >
-          <SelectTrigger className="w-full bg-background">
+          <SelectTrigger
+            aria-label={`Trục của nhiệm vụ ${task.name}`}
+            className="w-full"
+          >
             <SelectValue placeholder="Chưa gán" />
           </SelectTrigger>
           <SelectContent>
@@ -1334,7 +1832,10 @@ function TaskTableRow({
             })
           }
         >
-          <SelectTrigger className="w-full bg-background">
+          <SelectTrigger
+            aria-label={`Nội dung công việc của nhiệm vụ ${task.name}`}
+            className="w-full"
+          >
             <SelectValue placeholder={axisId ? "Chọn" : "Chọn trục trước"} />
           </SelectTrigger>
           <SelectContent>
@@ -1360,15 +1861,11 @@ function TaskTableRow({
           return (
             <TableCell
               key={merged.key}
-              className="align-middle text-center text-muted-foreground"
-              /* Nói rõ vì sao trống, kẻo tưởng là chưa điền. */
-              title={
-                axisId
-                  ? "Mẫu của trục này không có cột đó"
-                  : "Chọn trục trước để mở các ô của mẫu"
-              }
+              className="bg-muted/30 align-middle text-xs italic text-muted-foreground"
             >
-              &mdash;
+              {/* Nói rõ vì sao trống NGAY TRONG Ô, không giấu vào `title`: một
+                  dấu gạch không phân biệt được "chưa điền" với "không có cột". */}
+              {axisId ? "Không áp dụng" : "Chọn trục trước"}
             </TableCell>
           );
         }
@@ -1430,7 +1927,11 @@ function TaskTableRow({
                 task.closedReason ? CLOSED_STOPPED_CLASS : CLOSED_DONE_CLASS,
               )}
             >
-              <Check className="size-3" />
+              {task.closedReason ? (
+                <Ban className="size-3" aria-hidden="true" />
+              ) : (
+                <Check className="size-3" aria-hidden="true" />
+              )}
               {task.closedReason ? "Đã dừng" : "Đã xong"}
             </Badge>
           )}
@@ -1465,7 +1966,7 @@ function TaskTableRow({
                 disabled={lifecycleDisabled}
                 onClick={() => onStop(task)}
               >
-                <Ban className="size-4" />
+                <Ban className="size-4" aria-hidden="true" />
               </Button>
               <Button
                 type="button"
@@ -1476,7 +1977,7 @@ function TaskTableRow({
                 disabled={lifecycleDisabled}
                 onClick={() => onMarkDone(task)}
               >
-                <CheckCheck className="size-4" />
+                <CheckCheck className="size-4" aria-hidden="true" />
               </Button>
             </>
           ) : (
@@ -1489,18 +1990,18 @@ function TaskTableRow({
               disabled={lifecycleDisabled}
               onClick={() => onReopen(task)}
             >
-              <Undo2 className="size-4" />
+              <Undo2 className="size-4" aria-hidden="true" />
             </Button>
           )}
           <Button
             type="button"
             size="sm"
             variant="outline"
-            className="bg-background"
+            aria-label={`Mở biểu mẫu của nhiệm vụ ${task.name}`}
             onClick={() => onOpen(task._id)}
           >
             Mở
-            <ChevronRight className="size-4" />
+            <ChevronRight className="size-4" aria-hidden="true" />
           </Button>
         </div>
       </TableCell>
@@ -1528,6 +2029,13 @@ type TaskDetailPanelProps = {
   disabled: boolean;
   /** Khoá riêng nút đóng / mở lại - không đi cùng `disabled`. */
   lifecycleDisabled: boolean;
+  /** Vị trí trong danh sách đang lọc; null = nhiệm vụ đang mở nằm ngoài bộ lọc. */
+  position: { index: number; total: number } | null;
+  onPrev: (() => void) | null;
+  onNext: (() => void) | null;
+  /** Nhiệm vụ còn phải làm kế tiếp - null khi đã hết việc. */
+  nextTodo: TeamReportTask | null;
+  onGoTo: (taskId: string) => void;
   onPatch: (task: TeamReportTask, input: TeamReportClassifyInput) => void;
   onMarkDone: (task: TeamReportTask) => void;
   onReopen: (task: TeamReportTask) => void;
@@ -1563,6 +2071,11 @@ function TaskDetailBody({
   savedAt,
   disabled,
   lifecycleDisabled,
+  position,
+  onPrev,
+  onNext,
+  nextTodo,
+  onGoTo,
   onPatch,
   onMarkDone,
   onReopen,
@@ -1601,16 +2114,78 @@ function TaskDetailBody({
               .join(", ")}.`
           : "Đã đủ. Nhiệm vụ này sẵn sàng đi trong báo cáo ngày.";
 
+  const done = task.isOpen && readiness === "READY";
+
   return (
     <Card className="shadow-sm">
       <CardContent className="space-y-5 py-4">
+        {/*
+          Thanh đi lần lượt: người phân loại làm hết việc này sang việc khác,
+          quay sang hàng đợi bên trái mỗi lần là phải rời mắt khỏi biểu mẫu.
+        */}
+        <div className="flex items-center justify-between gap-2 border-b pb-3">
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={!onPrev}
+              onClick={onPrev ?? undefined}
+              aria-keyshortcuts="K"
+            >
+              <ChevronLeft className="size-4" aria-hidden="true" />
+              Trước
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={!onNext}
+              onClick={onNext ?? undefined}
+              aria-keyshortcuts="J"
+            >
+              Sau
+              <ChevronRight className="size-4" aria-hidden="true" />
+            </Button>
+            {position ? (
+              <span className="ml-1 text-xs text-muted-foreground tabular-nums">
+                {position.index}/{position.total}
+              </span>
+            ) : null}
+          </div>
+
+          {/* Tự lưu nên phải nói rõ đã lưu chưa - không có nút Lưu nào cả. */}
+          <span
+            aria-live="polite"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground"
+          >
+            {saving ? (
+              <>
+                <Loader2
+                  className="size-3 motion-safe:animate-spin"
+                  aria-hidden="true"
+                />
+                Đang lưu…
+              </>
+            ) : savedAt ? (
+              <>
+                <Check
+                  className="size-3 text-emerald-600 dark:text-emerald-400"
+                  aria-hidden="true"
+                />
+                Đã lưu lúc {savedAt}
+              </>
+            ) : null}
+          </span>
+        </div>
+
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-              <ClipboardList className="size-5" />
+              <ClipboardList className="size-5" aria-hidden="true" />
             </span>
             <div className="min-w-0 space-y-1">
-              <h2 className="break-words font-display text-lg font-semibold">
+              <h2 className="text-pretty break-words font-display text-lg font-semibold">
                 {task.name}
               </h2>
               <p className="text-xs text-muted-foreground tabular-nums">
@@ -1629,18 +2204,6 @@ function TaskDetailBody({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {/* Tự lưu nên phải nói rõ đã lưu chưa - không có nút Lưu nào cả. */}
-            {saving ? (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" />
-                Đang lưu
-              </span>
-            ) : savedAt ? (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Check className="size-3 text-emerald-600" />
-                Đã lưu lúc {savedAt}
-              </span>
-            ) : null}
             <Badge
               variant="secondary"
               className={cn("font-normal", READINESS_CLASS[readiness])}
@@ -1660,9 +2223,14 @@ function TaskDetailBody({
 
         {/* Việc đã chốt thì không nhắc "còn thiếu ô nào" nữa: nó đang khoá, đọc
             xong cũng không làm gì được, chỉ tổ mời người ta đi tìm ô để gõ. */}
-        {task.isOpen ? (
+        {done ? (
+          <NextTodoBanner nextTodo={nextTodo} onGoTo={onGoTo} />
+        ) : task.isOpen ? (
           <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
-            <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <Info
+              className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
             <span>
               {nextStep}{" "}
               <span className="text-muted-foreground">
@@ -1675,7 +2243,10 @@ function TaskDetailBody({
         {/* -------------------------------------------- 1. chọn trục */}
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="font-display text-sm font-semibold">
+            <h3
+              id={`axis-heading-${task._id}`}
+              className="font-display text-sm font-semibold"
+            >
               1. Chọn trục áp dụng
             </h3>
             <span className="text-xs font-medium text-destructive">
@@ -1683,7 +2254,11 @@ function TaskDetailBody({
             </span>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+            role="radiogroup"
+            aria-labelledby={`axis-heading-${task._id}`}
+            className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+          >
             {axes.map((axis) => (
               <AxisCard
                 key={axis._id}
@@ -1718,7 +2293,7 @@ function TaskDetailBody({
                     READINESS_CLASS.UNCLASSIFIED,
                   )}
                 >
-                  <TriangleAlert className="size-3" />
+                  <TriangleAlert className="size-3" aria-hidden="true" />
                   Trục chưa có mẫu bảng
                 </Badge>
               )}
@@ -1737,7 +2312,10 @@ function TaskDetailBody({
                       })
                     }
                   >
-                    <SelectTrigger className="w-full bg-background">
+                    <SelectTrigger
+                      aria-label="Nội dung công việc"
+                      className="w-full"
+                    >
                       <SelectValue placeholder="Chọn" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1804,8 +2382,70 @@ function TaskDetailBody({
             </div>
           </section>
         ) : null}
+
+        {/* Nhắc lại ở CUỐI biểu mẫu: ô cuối vừa điền xong là mắt người ta đang
+            ở dưới này, banner trên đầu đã trôi khỏi màn hình. */}
+        {done ? (
+          <NextTodoBanner nextTodo={nextTodo} onGoTo={onGoTo} compact />
+        ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Nhiệm vụ vừa đủ ô - chỉ luôn sang việc kế tiếp.
+ *
+ * Không tự nhảy: ô tự lưu khi rời ô, tự chuyển ngay sau lượt lưu cuối là kéo
+ * mất biểu mẫu khỏi tay người đang định sửa lại một con số.
+ */
+function NextTodoBanner({
+  nextTodo,
+  onGoTo,
+  compact,
+}: {
+  nextTodo: TeamReportTask | null;
+  onGoTo: (taskId: string) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      role="status"
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
+        compact && "py-2",
+      )}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        {nextTodo ? (
+          <CircleCheck
+            className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+            aria-hidden="true"
+          />
+        ) : (
+          <PartyPopper
+            className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+            aria-hidden="true"
+          />
+        )}
+        <span className="min-w-0">
+          {nextTodo
+            ? "Đã đủ - nhiệm vụ này sẵn sàng đi trong báo cáo."
+            : "Đã đủ. Không còn nhiệm vụ nào cần xử lý trong ngày."}
+        </span>
+      </span>
+      {nextTodo ? (
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => onGoTo(nextTodo._id)}
+          className="max-w-full active:scale-[0.98] motion-reduce:active:scale-100 sm:max-w-xs"
+        >
+          <span className="min-w-0 truncate">Tiếp: {nextTodo.name}</span>
+          <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
@@ -1834,10 +2474,30 @@ function TaskLifecycleBar({
   onStop: (task: TeamReportTask) => void;
 }) {
   if (!task.isOpen) {
+    /* Dừng giữa chừng KHÔNG mang màu xanh của "đã xong" - cùng luật với
+       `CLOSED_STOPPED_CLASS`: tô xanh việc bỏ dở là đọc lướt tưởng đã làm. */
+    const stopped = !!task.closedReason;
     return (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-sm dark:border-emerald-900 dark:bg-emerald-950/40">
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-sm",
+          stopped
+            ? "border-rose-300 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/40"
+            : "border-emerald-300 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40",
+        )}
+      >
         <span className="flex min-w-0 items-start gap-2">
-          <CheckCheck className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+          {stopped ? (
+            <Ban
+              className="mt-0.5 size-4 shrink-0 text-rose-600 dark:text-rose-400"
+              aria-hidden="true"
+            />
+          ) : (
+            <CheckCheck
+              className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+              aria-hidden="true"
+            />
+          )}
           <span className="min-w-0 break-words">
             {task.closedReason
               ? `Đã dừng giữa chừng: ${task.closedReason}`
@@ -1856,7 +2516,7 @@ function TaskLifecycleBar({
           disabled={disabled}
           onClick={() => onReopen(task)}
         >
-          <Undo2 className="size-4" />
+          <Undo2 className="size-4" aria-hidden="true" />
           Mở lại
         </Button>
       </div>
@@ -1877,8 +2537,8 @@ function TaskLifecycleBar({
           disabled={disabled}
           onClick={() => onStop(task)}
         >
-          <Ban className="size-4" />
-          Dừng giữa chừng
+          <Ban className="size-4" aria-hidden="true" />
+          Dừng giữa chừng…
         </Button>
         <Button
           type="button"
@@ -1887,7 +2547,7 @@ function TaskLifecycleBar({
           disabled={disabled}
           onClick={() => onMarkDone(task)}
         >
-          <CheckCheck className="size-4" />
+          <CheckCheck className="size-4" aria-hidden="true" />
           Đánh dấu đã xong
         </Button>
       </div>
@@ -1911,17 +2571,32 @@ function Field({
   error?: string;
   children: React.ReactNode;
 }) {
+  /*
+    Ô bên trong có thể là ô chữ, ô chọn của Radix hay cả khối đính kèm tệp -
+    không có một `id` chung để `<label htmlFor>` trỏ vào. Gom thành một nhóm
+    có tên thì trình đọc màn hình vẫn đọc được ô này là ô gì.
+  */
+  const labelId = useId();
   return (
-    <div className={cn("space-y-1.5", wide && "sm:col-span-2")}>
-      <label className="block text-sm font-medium">
+    <div
+      role="group"
+      aria-labelledby={labelId}
+      className={cn("space-y-1.5", wide && "sm:col-span-2")}
+    >
+      <p id={labelId} className="block text-sm font-medium">
         {label}
-        {required ? <span className="text-destructive"> *</span> : null}
-      </label>
+        {required ? (
+          <span className="text-destructive" aria-label="bắt buộc">
+            {" "}
+            *
+          </span>
+        ) : null}
+      </p>
       {children}
       {/* Lỗi đứng trên gợi ý: đang có cái phải sửa thì đó là thứ cần đọc trước. */}
       {error ? (
-        <p className="flex items-start gap-1.5 text-xs text-destructive">
-          <TriangleAlert className="mt-0.5 size-3 shrink-0" />
+        <p role="alert" className="flex items-start gap-1.5 text-xs text-destructive">
+          <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
           <span>{error}</span>
         </p>
       ) : null}
@@ -1967,17 +2642,25 @@ function AxisCard({
   return (
     <button
       type="button"
+      role="radio"
+      aria-checked={active}
       disabled={disabled}
-      onClick={onPick}
+      // Bấm lại trục đang chọn thì thôi - khỏi một lượt lưu vô ích.
+      onClick={active ? undefined : onPick}
       className={cn(
-        "cursor-pointer rounded-md border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-        active ? "border-primary bg-primary/5" : "hover:bg-muted/60",
+        "cursor-pointer rounded-md border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed",
+        active
+          ? "border-primary bg-primary/5"
+          : "hover:bg-muted/60 disabled:opacity-60 disabled:hover:bg-transparent",
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <span className="break-words text-sm font-medium">{axis.name}</span>
         {active ? (
-          <CircleCheck className="mt-0.5 size-4 shrink-0 text-primary" />
+          <CircleCheck
+            className="mt-0.5 size-4 shrink-0 text-primary"
+            aria-hidden="true"
+          />
         ) : null}
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{hints.join(" · ")}</p>
@@ -2082,7 +2765,9 @@ function DaySummary({
                   <span className="shrink-0 tabular-nums">
                     {score?.convertedScore === null ||
                     score?.convertedScore === undefined ? (
-                      <span className="text-muted-foreground">-</span>
+                      <span className="text-xs italic text-muted-foreground">
+                        Chưa chấm
+                      </span>
                     ) : (
                       <>
                         <strong className={tone.text}>
@@ -2107,10 +2792,12 @@ function DaySummary({
         </div>
 
         {/* Nhắc lại luật gửi ngay tại chỗ người dùng đang đứng - đây là chỗ hay
-            bị hiểu nhầm nhất giữa hai bản nghiệp vụ. */}
+            bị hiểu nhầm nhất giữa hai bản nghiệp vụ. Không còn nút "Gửi báo
+            cáo ngày" (xem ghi chú ở đầu trang), nên đừng nhắc tới nó. */}
         <p className="rounded-md border bg-muted/40 p-2.5 text-xs text-muted-foreground">
-          Cả bảng ngày gửi trong một lượt. Phân loại xong hết thì nút{" "}
-          <strong>Gửi báo cáo ngày</strong> mới bật.
+          Nhiệm vụ <strong className="text-foreground">Sẵn sàng</strong> được
+          gom vào <strong className="text-foreground">Báo cáo tổng hợp</strong>{" "}
+          để trình cấp trên. Ở đây chỉ cần phân loại và điền đủ ô.
         </p>
       </CardContent>
     </Card>
