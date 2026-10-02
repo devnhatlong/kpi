@@ -1,15 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import useSWR from "swr";
 import {
   Building2,
   CalendarRange,
   Check,
   ChevronRight,
+  CircleAlert,
   FileDown,
   History,
   Loader2,
+  MoreHorizontal,
   Pencil,
   Plus,
   Search,
@@ -27,7 +29,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -83,8 +94,20 @@ import {
   type TeamReportFormula,
 } from "@/features/team-report/types";
 import { getApiErrorMessage } from "@/lib/api-client";
-import { formatYmd, formatServerHm } from "@/lib/server-time";
+import { formatYmd, formatServerHm, serverYmd } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
+
+/**
+ * Ô không có giá trị: ghi thẳng ra bằng chữ nhỏ, nhạt.
+ *
+ * Một dấu gạch trơ trọi không phân biệt được "để trống" với "chưa chấm", và
+ * trình đọc màn hình đọc nó thành "gạch".
+ */
+function EmptyValue({ children }: { children: ReactNode }) {
+  return (
+    <span className="text-xs italic text-muted-foreground">{children}</span>
+  );
+}
 
 /**
  * Bảng điểm theo trục - con số thật sự vào bảng KPI.
@@ -123,7 +146,7 @@ function AxisScoreBoard({
         )}
       >
         <div className="flex items-center gap-2">
-          <Trophy className="size-4" />
+          <Trophy className="size-4" aria-hidden="true" />
           <h3 className="font-display text-sm font-semibold">
             Tổng điểm báo cáo
           </h3>
@@ -145,7 +168,7 @@ function AxisScoreBoard({
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Chưa chấm được ô nào · trần {formatScore(totalMax)} điểm
+            Chưa chấm được ô nào (tối đa {formatScore(totalMax)} điểm)
           </p>
         )}
       </div>
@@ -161,16 +184,19 @@ function AxisScoreBoard({
               <div className="min-w-0">
                 <p className="text-sm font-medium">{axis.axisName}</p>
                 <p className="text-xs text-muted-foreground">
-                  {axis.taskCount} nhiệm vụ
+                  {axis.taskCount} nhiệm vụ,{" "}
                   {axis.axisScore === null
-                    ? " · chưa đủ dữ liệu để tính"
-                    : ` · đạt ${formatScore(axis.axisScore * 100)}%`}
+                    ? "chưa đủ dữ liệu để tính"
+                    : `đạt ${formatScore(axis.axisScore * 100)}%`}
                 </p>
               </div>
 
               <div className="flex items-center gap-3">
                 {/* Thanh tỉ lệ chỉ để liếc nhanh; con số bên cạnh mới là thứ chốt. */}
-                <div className="hidden h-2 w-28 overflow-hidden rounded-full bg-muted sm:block">
+                <div
+                  aria-hidden="true"
+                  className="hidden h-2 w-28 overflow-hidden rounded-full bg-muted sm:block"
+                >
                   <div
                     className={cn("h-full rounded-full", tone.bar)}
                     style={{
@@ -178,17 +204,19 @@ function AxisScoreBoard({
                     }}
                   />
                 </div>
-                <span className="tabular-nums text-sm">
-                  <strong className={tone.text}>
-                    {axis.convertedScore === null
-                      ? "-"
-                      : formatScore(axis.convertedScore)}
-                  </strong>
-                  <span className="text-muted-foreground">
-                    {" "}
-                    / {axis.maxScore}
+                {axis.convertedScore === null ? (
+                  <EmptyValue>Chưa chấm (tối đa {axis.maxScore})</EmptyValue>
+                ) : (
+                  <span className="tabular-nums text-sm">
+                    <strong className={tone.text}>
+                      {formatScore(axis.convertedScore)}
+                    </strong>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      / {axis.maxScore}
+                    </span>
                   </span>
-                </span>
+                )}
               </div>
             </div>
           );
@@ -321,9 +349,14 @@ export function TeamReportSummaryPanel({
   const [sendOpen, setSendOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
+  /* Duyệt là quyết định CHỐT - xong là không ai sửa được nữa - nên hỏi lại
+     giống như trả lại, dù không cần gõ gì. */
+  const [approveOpen, setApproveOpen] = useState(false);
   const [recipientId, setRecipientId] = useState("");
+  const [recipientError, setRecipientError] = useState(false);
   const [note, setNote] = useState("");
   const [returnReason, setReturnReason] = useState("");
+  const [returnReasonError, setReturnReasonError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   /* Trục nào đang mở. Thu sẵn tất cả: mở báo cáo ra là nhìn điểm trước, cần
@@ -577,9 +610,11 @@ export function TeamReportSummaryPanel({
     }
   };
 
-  const send = async () => {
+  const send = async (event?: FormEvent) => {
+    event?.preventDefault();
     if (!recipientId) {
-      toast.error("Chọn cấp trên nhận báo cáo.");
+      // Báo ngay dưới ô chọn, không bắn toast ở góc màn hình.
+      setRecipientError(true);
       return;
     }
     setBusy(true);
@@ -671,7 +706,11 @@ export function TeamReportSummaryPanel({
    * Chỉ đội làm được, và chỉ khi bản chưa trình hoặc bị trả lại - cấp trên thấy
    * thiếu thì trả lại kèm lý do, không tự bốc việc vào bản của đội.
    */
-  const changeTasks = async (input: { add?: string[]; remove?: string[] }) => {
+  const changeTasks = async (
+    input: { add?: string[]; remove?: string[] },
+    /** Tên việc vừa gỡ - có thì thông báo kèm nút hoàn tác. */
+    removedName?: string,
+  ) => {
     setBusy(true);
     try {
       const result = await changeTeamReportSummaryTasks(
@@ -680,11 +719,27 @@ export function TeamReportSummaryPanel({
         level,
       );
       await onChanged();
-      toast.success(
-        result.rows?.length
-          ? `Báo cáo còn ${result.rows.length} nhiệm vụ.`
-          : "Đã cập nhật danh sách nhiệm vụ.",
-      );
+      const remaining = result.rows?.length
+        ? `Báo cáo còn ${result.rows.length} nhiệm vụ.`
+        : "Đã cập nhật danh sách nhiệm vụ.";
+      /*
+        Gỡ một dòng chạy ngay không hỏi (nút nằm sát tên việc, gỡ vài dòng liền
+        tay mà lần nào cũng hỏi là phiền), nên đường lùi nằm ngay trong thông
+        báo: bấm "Hoàn tác" là đưa đúng dòng đó vào lại, khỏi phải mở hộp thêm
+        rồi dò tìm.
+      */
+      if (removedName && input.remove?.length) {
+        const removed = input.remove;
+        toast.success(`Đã gỡ “${removedName}” khỏi báo cáo.`, {
+          description: remaining,
+          action: {
+            label: "Hoàn tác",
+            onClick: () => void changeTasks({ add: removed }),
+          },
+        });
+      } else {
+        toast.success(remaining);
+      }
       return true;
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không đổi được danh sách."));
@@ -696,7 +751,7 @@ export function TeamReportSummaryPanel({
 
   const decide = async (decision: "APPROVE" | "RETURN") => {
     if (decision === "RETURN" && !returnReason.trim()) {
-      toast.error("Nêu lý do trả lại để đội biết phải sửa gì.");
+      setReturnReasonError(true);
       return;
     }
     setBusy(true);
@@ -706,6 +761,7 @@ export function TeamReportSummaryPanel({
         reason: returnReason.trim() || undefined,
       });
       setReturnOpen(false);
+      setApproveOpen(false);
       setReturnReason("");
       await onChanged();
       toast.success(decision === "RETURN" ? "Đã trả lại." : "Đã duyệt.");
@@ -716,32 +772,54 @@ export function TeamReportSummaryPanel({
     }
   };
 
+  const returned = summary.status === "RETURNED";
+  const canDelete = draft && !reviewer;
+
+  const openSend = () => {
+    /* Bản bị trả lại đã có người nhận từ lượt trước - điền sẵn để khỏi phải
+       chọn lại đúng người đó. */
+    setRecipientId(refId(summary.recipientId) || "");
+    setRecipientError(false);
+    setNote(summary.note ?? "");
+    setSendOpen(true);
+  };
+
   return (
     <Card className="shadow-sm">
       <CardContent className="space-y-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 space-y-1.5">
-            <h2 className="break-words font-display text-lg font-semibold">
-              {summary.title}
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-pretty break-words font-display text-lg font-semibold">
+                {summary.title}
+              </h2>
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "whitespace-nowrap font-normal",
+                  DAY_STATUS_CLASS[summary.status],
+                )}
+              >
+                {draft ? "Nháp" : TEAM_REPORT_STATUS_LABEL[summary.status]}
+              </Badge>
+            </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
               {/* Đơn vị lập đứng ĐẦU dòng thông tin và in đậm: mở hộp duyệt ra,
                   câu hỏi đầu tiên luôn là "bản này của ai". */}
               {unitName ? (
                 <span className="flex items-center gap-1.5 font-medium text-foreground">
-                  <Building2 className="size-3.5" />
+                  <Building2 className="size-3.5" aria-hidden="true" />
                   {unitName}
                 </span>
               ) : null}
               <span className="flex items-center gap-1.5 tabular-nums">
-                <CalendarRange className="size-3.5" />
-                {formatYmd(summary.fromDate)} - {formatYmd(summary.toDate)}
-                {" · "}
-                {TEAM_REPORT_PERIOD_LABEL[summary.period]}
+                <CalendarRange className="size-3.5" aria-hidden="true" />
+                {formatYmd(summary.fromDate)} - {formatYmd(summary.toDate)} (
+                {TEAM_REPORT_PERIOD_LABEL[summary.period]})
               </span>
               {summary.recipientName ? (
                 <span className="flex items-center gap-1.5">
-                  <User className="size-3.5" />
+                  <User className="size-3.5" aria-hidden="true" />
                   Trình {summary.recipientName}
                   {summary.sentAt
                     ? ` lúc ${formatServerHm(summary.sentAt)}`
@@ -751,54 +829,41 @@ export function TeamReportSummaryPanel({
             </div>
           </div>
 
+          {/*
+            Nhóm nút gọn lại: chỉ bày thẳng nút CHÍNH của trạng thái hiện tại
+            (Trình / Duyệt + Trả lại) và nút bật tắt chế độ sửa. Xuất Excel và
+            Xoá nháp là việc thỉnh thoảng mới làm, vào menu "⋯" - bảy nút đứng
+            một hàng thì không ai biết nên bấm nút nào trước.
+          */}
           <div className="flex flex-wrap items-center gap-2">
             {/* Tự lưu nên phải nói rõ đã lưu chưa - không có nút Lưu nào cả. */}
-            {savingCell ? (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" />
-                Đang lưu
-              </span>
-            ) : savedAt ? (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Check className="size-3 text-emerald-600" />
-                Đã lưu lúc {savedAt}
-              </span>
-            ) : null}
-            <Badge
-              variant="secondary"
-              className={cn(
-                "whitespace-nowrap font-normal",
-                DAY_STATUS_CLASS[summary.status],
-              )}
+            <span
+              aria-live="polite"
+              className="flex items-center gap-1.5 text-xs text-muted-foreground"
             >
-              {draft ? "Nháp" : TEAM_REPORT_STATUS_LABEL[summary.status]}
-            </Badge>
-
-            {/* Xuất được ở MỌI trạng thái, cả hai vai: bản nháp cũng cần in ra
-                đọc soát trước khi trình, bản đã duyệt là thứ đem nộp. */}
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="bg-background"
-              disabled={exporting || !summary.rows.length}
-              onClick={() => void exportExcel()}
-            >
-              {exporting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <FileDown className="size-4" />
-              )}
-              Xuất Excel
-            </Button>
+              {savingCell ? (
+                <>
+                  <Loader2
+                    className="size-3 motion-safe:animate-spin"
+                    aria-hidden="true"
+                  />
+                  Đang lưu…
+                </>
+              ) : savedAt ? (
+                <>
+                  <Check
+                    className="size-3 text-emerald-600 dark:text-emerald-400"
+                    aria-hidden="true"
+                  />
+                  Đã lưu lúc {savedAt}
+                </>
+              ) : null}
+            </span>
 
             {/*
               Vào chế độ sửa là một hành động riêng cho CẢ HAI vai, không phải
               trạng thái mặc định: bảng gõ được sẵn thì một cú bấm nhầm là đổi
               một con số mà không ai nhận ra.
-
-              Chỉ khác ở chỗ cấp trên phải nêu lý do trước - họ sửa số của người
-              khác, còn đội sửa bản của chính mình.
             */}
             {canEdit ? (
               editMode ? (
@@ -809,7 +874,7 @@ export function TeamReportSummaryPanel({
                   disabled={busy}
                   onClick={() => setEditMode(false)}
                 >
-                  <Check className="size-4" />
+                  <Check className="size-4" aria-hidden="true" />
                   Xong, khoá lại
                 </Button>
               ) : (
@@ -817,7 +882,6 @@ export function TeamReportSummaryPanel({
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="bg-background"
                   disabled={busy}
                   onClick={() => {
                     setEditMode(true);
@@ -826,7 +890,7 @@ export function TeamReportSummaryPanel({
                     setOpenAxes(new Set(groups.map((group) => group.key)));
                   }}
                 >
-                  <Pencil className="size-4" />
+                  <Pencil className="size-4" aria-hidden="true" />
                   Sửa điểm
                 </Button>
               )
@@ -838,43 +902,27 @@ export function TeamReportSummaryPanel({
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="bg-background"
                   disabled={busy}
                   onClick={() => {
                     setReturnReason("");
+                    setReturnReasonError(false);
                     setReturnOpen(true);
                   }}
                 >
-                  <Undo2 className="size-4" />
-                  Trả lại
+                  <Undo2 className="size-4" aria-hidden="true" />
+                  Trả lại…
                 </Button>
                 <Button
                   type="button"
                   size="sm"
                   disabled={busy}
-                  onClick={() => void decide("APPROVE")}
+                  className="active:scale-[0.98] motion-reduce:active:scale-100"
+                  onClick={() => setApproveOpen(true)}
                 >
-                  <Check className="size-4" />
-                  Duyệt
+                  <Check className="size-4" aria-hidden="true" />
+                  Duyệt…
                 </Button>
               </>
-            ) : null}
-
-            {/* Xoá thì chỉ bản nháp: bản bị trả lại đã từng đi lên, cấp trên có
-                nhắc tới nó trong lý do trả lại. */}
-            {draft && !reviewer ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                aria-label="Xoá bản nháp"
-                title="Xoá bản nháp"
-                className="text-destructive hover:text-destructive"
-                disabled={busy}
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 className="size-4" />
-              </Button>
             ) : null}
 
             {/*
@@ -889,26 +937,71 @@ export function TeamReportSummaryPanel({
                 type="button"
                 size="sm"
                 disabled={busy}
-                onClick={() => {
-                  /* Bản bị trả lại đã có người nhận từ lượt trước - điền sẵn để
-                     khỏi phải chọn lại đúng người đó. */
-                  setRecipientId(refId(summary.recipientId) || "");
-                  setNote(summary.note ?? "");
-                  setSendOpen(true);
-                }}
+                className="active:scale-[0.98] motion-reduce:active:scale-100"
+                onClick={openSend}
               >
-                <Send className="size-4" />
+                <Send className="size-4" aria-hidden="true" />
                 {draft ? "Trình cấp trên" : "Trình lại"}
               </Button>
             ) : null}
+
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-8"
+                  aria-label="Thao tác khác"
+                >
+                  {exporting ? (
+                    <Loader2
+                      className="size-4 motion-safe:animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <MoreHorizontal className="size-4" aria-hidden="true" />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                {/* Xuất được ở MỌI trạng thái, cả hai vai: bản nháp cũng cần
+                    in ra đọc soát trước khi trình, bản đã duyệt là thứ đem nộp. */}
+                <DropdownMenuItem
+                  disabled={exporting || !summary.rows.length}
+                  onSelect={() => void exportExcel()}
+                >
+                  <FileDown className="size-4" aria-hidden="true" />
+                  Xuất Excel
+                </DropdownMenuItem>
+                {/* Xoá thì chỉ bản nháp: bản bị trả lại đã từng đi lên, cấp
+                    trên có nhắc tới nó trong lý do trả lại. */}
+                {canDelete ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      disabled={busy}
+                      onSelect={() => setDeleteOpen(true)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 className="size-4" aria-hidden="true" />
+                      Xoá bản nháp…
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
         {/* Đang mở khoá thì phải thấy rõ - bảng chỉ đọc và bảng gõ được nhìn
             gần giống nhau, mà hậu quả thì khác hẳn. */}
         {editable ? (
-          <p className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-            <Pencil className="size-4 shrink-0" />
+          <p
+            role="status"
+            className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            <Pencil className="size-4 shrink-0" aria-hidden="true" />
             <span>
               Đang sửa điểm. Mỗi ô tự lưu ngay khi chọn hoặc rời ô, ghi thẳng
               vào nhiệm vụ gốc và vào nhật ký bên dưới.
@@ -916,9 +1009,63 @@ export function TeamReportSummaryPanel({
           </p>
         ) : null}
 
-        {summary.returnReason ? (
-          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
-            Cấp trên trả lại: {summary.returnReason}
+        {/*
+          Bản bị trả lại: lý do và việc phải làm tiếp đứng thành một khung ở
+          đầu, kèm luôn nút - không phải một dòng chữ đỏ để người ta tự nghĩ
+          xem giờ bấm gì. Bản đã trình lại thì lý do cũ chỉ còn để tham khảo.
+        */}
+        {returned && summary.returnReason ? (
+          <div
+            role="alert"
+            className="space-y-2.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+          >
+            <p className="flex items-start gap-2">
+              <CircleAlert
+                className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400"
+                aria-hidden="true"
+              />
+              <span className="min-w-0 break-words">
+                <strong className="font-semibold">Cấp trên trả lại:</strong>{" "}
+                {summary.returnReason}
+              </span>
+            </p>
+            {canSend ? (
+              <div className="flex flex-wrap items-center gap-2 pl-6">
+                <span className="text-xs text-amber-800 dark:text-amber-200/80">
+                  Sửa đúng chỗ được nêu, rồi trình lại.
+                </span>
+                {canEdit && !editMode ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7"
+                    disabled={busy}
+                    onClick={() => {
+                      setEditMode(true);
+                      setOpenAxes(new Set(groups.map((group) => group.key)));
+                    }}
+                  >
+                    <Pencil className="size-3.5" aria-hidden="true" />
+                    Sửa điểm
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7"
+                  disabled={busy}
+                  onClick={openSend}
+                >
+                  <Send className="size-3.5" aria-hidden="true" />
+                  Trình lại
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        ) : summary.returnReason ? (
+          <p className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground">
+            Lần trước bị trả lại: {summary.returnReason}
           </p>
         ) : null}
 
@@ -994,6 +1141,8 @@ export function TeamReportSummaryPanel({
               <div className="flex items-center gap-1 rounded-md border pr-1.5 transition-colors hover:bg-muted/60">
                 <button
                   type="button"
+                  aria-expanded={open}
+                  aria-controls={`axis-table-${group.key}`}
                   onClick={() =>
                     setOpenAxes((prev) => {
                       const next = new Set(prev);
@@ -1002,11 +1151,12 @@ export function TeamReportSummaryPanel({
                       return next;
                     })
                   }
-                  className="flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-2 px-3 py-2.5 text-left"
+                  className="flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-2 rounded-md px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   <ChevronRight
+                    aria-hidden="true"
                     className={cn(
-                      "size-4 shrink-0 text-muted-foreground transition-transform",
+                      "size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none",
                       open && "rotate-90",
                     )}
                   />
@@ -1025,7 +1175,7 @@ export function TeamReportSummaryPanel({
                       )}
                     >
                       {group.score.convertedScore === null
-                        ? "chưa chấm được"
+                        ? "Chưa chấm được"
                         : `${formatScore(group.score.convertedScore)}/${group.score.maxScore} điểm`}
                     </Badge>
                   ) : null}
@@ -1046,17 +1196,21 @@ export function TeamReportSummaryPanel({
                     variant="ghost"
                     className="shrink-0 whitespace-nowrap text-muted-foreground"
                     disabled={busy}
+                    aria-label={`Thêm nhiệm vụ thuộc ${group.axisName || "trục này"}`}
                     title={`Thêm nhiệm vụ thuộc ${group.axisName || "trục này"}`}
                     onClick={() => openAddDialog(group.key)}
                   >
-                    <Plus className="size-4" />
+                    <Plus className="size-4" aria-hidden="true" />
                     <span className="hidden sm:inline">Thêm nhiệm vụ</span>
                   </Button>
                 ) : null}
               </div>
 
               {open ? (
-                <div className="overflow-x-auto rounded-md border">
+                <div
+                  id={`axis-table-${group.key}`}
+                  className="overflow-x-auto rounded-md border"
+                >
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1094,17 +1248,18 @@ export function TeamReportSummaryPanel({
                               {canChangeTasks ? (
                                 <button
                                   type="button"
-                                  aria-label="Gỡ khỏi báo cáo"
+                                  aria-label={`Gỡ “${row.name}” khỏi báo cáo`}
                                   title="Gỡ nhiệm vụ này khỏi báo cáo"
                                   disabled={busy}
                                   onClick={() =>
-                                    void changeTasks({
-                                      remove: [String(row.taskId)],
-                                    })
+                                    void changeTasks(
+                                      { remove: [String(row.taskId)] },
+                                      row.name,
+                                    )
                                   }
-                                  className="mt-0.5 shrink-0 cursor-pointer text-muted-foreground transition-colors hover:text-destructive disabled:cursor-not-allowed"
+                                  className="-m-1 mt-0 shrink-0 cursor-pointer rounded-sm p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                  <X className="size-4" />
+                                  <X className="size-4" aria-hidden="true" />
                                 </button>
                               ) : null}
                               <span className="font-medium">{row.name}</span>
@@ -1114,32 +1269,38 @@ export function TeamReportSummaryPanel({
                                 tổ chật bảng. */}
                             {multiUnit && row.departmentName ? (
                               <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Building2 className="size-3 shrink-0" />
+                                <Building2
+                                  className="size-3 shrink-0"
+                                  aria-hidden="true"
+                                />
                                 {row.departmentName}
                               </div>
                             ) : null}
                             {row.closed ? (
-                              <div className="text-xs text-muted-foreground">
-                                đã đóng
-                              </div>
+                              <Badge
+                                variant="secondary"
+                                className="mt-1 font-normal"
+                              >
+                                Đã đóng
+                              </Badge>
                             ) : null}
                           </TableCell>
                           {/* Sản phẩm và hạn là cột riêng - đứng dưới tên
                               nhiệm vụ thì hàng cao, khó dò ngang. */}
                           <TableCell className="max-w-[260px] whitespace-normal break-words align-middle text-sm">
-                            {row.product || (
-                              <span className="text-muted-foreground">-</span>
-                            )}
+                            {row.product || <EmptyValue>Chưa ghi</EmptyValue>}
                           </TableCell>
                           <TableCell className="align-middle text-sm tabular-nums whitespace-nowrap">
                             {row.deadline ? (
                               formatYmd(row.deadline)
                             ) : (
-                              <span className="text-muted-foreground">-</span>
+                              <EmptyValue>Không đặt hạn</EmptyValue>
                             )}
                           </TableCell>
                           <TableCell className="align-middle text-sm">
-                            {row.workContentName || "-"}
+                            {row.workContentName || (
+                              <EmptyValue>Chưa phân loại</EmptyValue>
+                            )}
                           </TableCell>
                           {/*
                           CHỈ ĐỌC: đây là bản đã chụp lại, không phải nhiệm vụ
@@ -1199,8 +1360,14 @@ export function TeamReportSummaryPanel({
                                   {/* Bảng ngang chật nên chỉ một dòng ngắn dưới
                                       ô - viền đỏ đã chỉ đúng chỗ rồi. */}
                                   {cellError ? (
-                                    <p className="mt-1 flex items-start gap-1 text-xs text-destructive">
-                                      <TriangleAlert className="mt-0.5 size-3 shrink-0" />
+                                    <p
+                                      role="alert"
+                                      className="mt-1 flex items-start gap-1 text-xs text-destructive"
+                                    >
+                                      <TriangleAlert
+                                        className="mt-0.5 size-3 shrink-0"
+                                        aria-hidden="true"
+                                      />
                                       <span>{cellError}</span>
                                     </p>
                                   ) : null}
@@ -1237,11 +1404,7 @@ export function TeamReportSummaryPanel({
                                     "tabular-nums text-right",
                                 )}
                               >
-                                {value || (
-                                  <span className="text-muted-foreground">
-                                    -
-                                  </span>
-                                )}
+                                {value || <EmptyValue>Trống</EmptyValue>}
                               </TableCell>
                             );
                           })}
@@ -1340,15 +1503,18 @@ export function TeamReportSummaryPanel({
         {summary.edits?.length ? (
           <div className="rounded-md border">
             <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2.5">
-              <History className="size-4 text-muted-foreground" />
+              <History
+                className="size-4 text-muted-foreground"
+                aria-hidden="true"
+              />
               <h3 className="font-display text-sm font-semibold">
                 Nhật ký thay đổi
               </h3>
-              <Badge variant="secondary" className="font-normal">
+              <Badge variant="secondary" className="font-normal tabular-nums">
                 {summary.edits.length} lượt
               </Badge>
             </div>
-            <ul className="max-h-72 divide-y overflow-y-auto">
+            <ul className="max-h-72 divide-y overflow-y-auto overscroll-contain">
               {[...summary.edits].reverse().map((edit, index) => (
                 <li key={index} className="px-3 py-2 text-sm">
                   <div className="flex flex-wrap items-baseline gap-x-2">
@@ -1358,12 +1524,16 @@ export function TeamReportSummaryPanel({
                       <span className="text-muted-foreground line-through">
                         {edit.from || "trống"}
                       </span>
-                      {" → "}
+                      <span aria-hidden="true"> → </span>
+                      <span className="sr-only"> thành </span>
                       <strong>{edit.to || "trống"}</strong>
                     </span>
+                    {/* Ngày và giờ đều theo GIỜ SERVER. Cắt 10 ký tự đầu của
+                        chuỗi ISO là lấy ngày theo UTC - sửa lúc 0h-7h sáng giờ
+                        Việt Nam thì dòng này ghi sang ngày hôm trước. */}
                     {edit.at ? (
                       <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                        {formatYmd(edit.at.slice(0, 10))}{" "}
+                        {formatYmd(serverYmd(edit.at))}{" "}
                         {formatServerHm(edit.at)}
                       </span>
                     ) : null}
@@ -1382,64 +1552,98 @@ export function TeamReportSummaryPanel({
 
       <Dialog open={sendOpen} onOpenChange={setSendOpen}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {draft ? "Trình báo cáo lên cấp trên" : "Trình lại báo cáo"}
-            </DialogTitle>
-            <DialogDescription className="break-words">
-              {summary.title} · {summary.rows.length} nhiệm vụ
-              {draft ? null : (
-                <>
-                  {" · "}
-                  {/* Nhắc lại vì sao bị trả - trình lại mà chưa chữa đúng chỗ
-                      đó thì lại bị trả tiếp. */}
-                  <span className="text-destructive">
-                    đã bị trả lại: {summary.returnReason || "không nêu lý do"}
-                  </span>
-                </>
-              )}
-            </DialogDescription>
-          </DialogHeader>
+          <form onSubmit={(event) => void send(event)} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>
+                {draft ? "Trình báo cáo lên cấp trên" : "Trình lại báo cáo"}
+              </DialogTitle>
+              <DialogDescription className="break-words">
+                {summary.title} ({summary.rows.length} nhiệm vụ)
+              </DialogDescription>
+            </DialogHeader>
 
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium">
-                Trình lên <span className="text-destructive">*</span>
+            {/* Nhắc lại vì sao bị trả - trình lại mà chưa chữa đúng chỗ đó thì
+                lại bị trả tiếp. */}
+            {draft ? null : (
+              <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                <strong className="font-semibold">Lý do bị trả lại:</strong>{" "}
+                {summary.returnReason || "không nêu lý do"}
               </p>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="summary-recipient">
+                Trình lên <span className="text-destructive">*</span>
+              </Label>
               <SearchableSelect
+                id="summary-recipient"
                 value={recipientId}
-                onValueChange={setRecipientId}
+                onValueChange={(next) => {
+                  setRecipientId(next);
+                  if (recipientError) setRecipientError(false);
+                }}
+                aria-invalid={recipientError}
+                aria-describedby={
+                  recipientError ? "summary-recipient-error" : undefined
+                }
                 options={recipients.map((person) => ({
                   value: person.id,
                   label: recipientLabel(person),
                 }))}
                 placeholder={
                   recipients.length
-                    ? "Chọn cấp trên..."
+                    ? "Chọn cấp trên…"
                     : "Chưa tìm được cấp trên nào có quyền duyệt"
                 }
               />
+              {recipientError ? (
+                <p
+                  id="summary-recipient-error"
+                  role="alert"
+                  className="text-xs text-destructive"
+                >
+                  Chọn người cấp trên nhận báo cáo này.
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
-              <p className="text-sm font-medium">Ghi chú gửi kèm</p>
+              <Label htmlFor="summary-note">
+                Ghi chú gửi kèm{" "}
+                <span className="font-normal text-muted-foreground">
+                  (không bắt buộc)
+                </span>
+              </Label>
               <Textarea
+                id="summary-note"
+                name="note"
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
                 rows={3}
-                placeholder="Không bắt buộc"
+                placeholder="Ví dụ: Đã bổ sung biên bản theo yêu cầu…"
               />
             </div>
-          </div>
 
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setSendOpen(false)}>
-              Huỷ
-            </Button>
-            <Button disabled={busy || !recipientId} onClick={() => void send()}>
-              <Send className="size-4" />
-              Trình cấp trên
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setSendOpen(false)}
+              >
+                Huỷ
+              </Button>
+              <Button type="submit" disabled={busy}>
+                {busy ? (
+                  <Loader2
+                    className="size-4 motion-safe:animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Send className="size-4" aria-hidden="true" />
+                )}
+                {draft ? "Trình cấp trên" : "Trình lại"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -1458,7 +1662,7 @@ export function TeamReportSummaryPanel({
           }
         }}
       >
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="max-h-[85vh] overflow-y-auto overscroll-contain sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>
               {addAxisName
@@ -1476,18 +1680,27 @@ export function TeamReportSummaryPanel({
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-[14rem] flex-1">
-              <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Search
+                className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
               <Input
+                type="search"
+                name="q"
+                aria-label="Tìm nhiệm vụ để thêm"
+                autoComplete="off"
+                spellCheck={false}
                 value={addQuery}
                 onChange={(event) => setAddQuery(event.target.value)}
-                placeholder="Tìm nhiệm vụ hoặc sản phẩm..."
-                className="bg-background pl-8"
+                placeholder="Tìm nhiệm vụ hoặc sản phẩm…"
+                className="pl-8"
               />
             </div>
             {/* Lọc đội đứng trước lọc trục - với bản của phòng, câu hỏi đầu
                 tiên là "việc của đội nào". Ẩn hẳn với bản của đội. */}
             {addDepartments.length ? (
               <SearchableSelect
+                aria-label="Lọc theo đội"
                 value={addDeptId ?? ""}
                 onValueChange={(next) => {
                   setAddDeptId(next || null);
@@ -1501,12 +1714,13 @@ export function TeamReportSummaryPanel({
                   })),
                 ]}
                 placeholder="Tất cả các đội"
-                className="w-full sm:w-56"
+                triggerClassName="w-full sm:w-56"
               />
             ) : null}
             {/* Mở từ khối trục nào thì lọc sẵn trục đó, nhưng vẫn đổi được sang
                 trục khác - kể cả trục báo cáo chưa có dòng nào. */}
             <SearchableSelect
+              aria-label="Lọc theo trục"
               value={addAxisId ?? ""}
               onValueChange={(next) => {
                 setAddAxisId(next || null);
@@ -1520,28 +1734,39 @@ export function TeamReportSummaryPanel({
                 })),
               ]}
               placeholder="Tất cả trục"
-              className="w-full sm:w-56"
+              triggerClassName="w-full sm:w-56"
             />
           </div>
 
-          <div className="max-h-[22rem] space-y-1.5 overflow-y-auto rounded-md border p-2">
-            {addLoading && !addable.length ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                Đang tải...
-              </p>
-            ) : null}
+          <div
+            className="max-h-[22rem] space-y-1.5 overflow-y-auto overscroll-contain rounded-md border p-2"
+            aria-busy={addLoading}
+          >
+            {addLoading && !addable.length
+              ? Array.from({ length: 4 }, (_, index) => (
+                  <div key={index} className="flex gap-2.5 p-2">
+                    <Skeleton className="size-4 shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                  </div>
+                ))
+              : null}
             {!addLoading && !addable.length ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                {addAxisName
-                  ? `Đội không còn nhiệm vụ sẵn sàng nào của ${addAxisName} ngoài báo cáo này.`
-                  : "Đội không còn nhiệm vụ sẵn sàng nào ngoài báo cáo này."}
+                {addQuery.trim()
+                  ? `Không có nhiệm vụ nào khớp “${addQuery.trim()}”.`
+                  : addAxisName
+                    ? `Không còn nhiệm vụ sẵn sàng nào của ${addAxisName} ngoài báo cáo này.`
+                    : "Không còn nhiệm vụ sẵn sàng nào ngoài báo cáo này."}
               </p>
             ) : null}
 
             {addable.map(({ task, alreadySent, inPeriod, departmentName }) => (
               <label
                 key={task._id}
-                className="flex cursor-pointer items-start gap-2.5 rounded-md p-2 hover:bg-muted/60"
+                className="flex cursor-pointer items-start gap-2.5 rounded-md p-2 hover:bg-muted/60 has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-ring"
               >
                 <Checkbox
                   checked={addPicked.has(task._id)}
@@ -1561,9 +1786,11 @@ export function TeamReportSummaryPanel({
                   </span>
                   <span className="block text-xs text-muted-foreground">
                     {refName(task.workContentId) || "Chưa rõ nội dung"}
-                    {task.product ? ` · ${task.product}` : ""}
-                    {task.deadline ? ` · hạn ${formatYmd(task.deadline)}` : ""}
-                    {` · khai ${formatYmd(task.createdDate)}`}
+                    {task.product ? `, ${task.product}` : ""}
+                  </span>
+                  <span className="block text-xs text-muted-foreground tabular-nums">
+                    Khai {formatYmd(task.createdDate)}
+                    {task.deadline ? `, hạn ${formatYmd(task.deadline)}` : ""}
                   </span>
                   <span className="flex flex-wrap items-center gap-1.5">
                     {addDepartments.length && departmentName ? (
@@ -1571,7 +1798,7 @@ export function TeamReportSummaryPanel({
                         variant="secondary"
                         className="gap-1 whitespace-nowrap font-normal"
                       >
-                        <Building2 className="size-3" />
+                        <Building2 className="size-3" aria-hidden="true" />
                         {departmentName}
                       </Badge>
                     ) : null}
@@ -1602,10 +1829,15 @@ export function TeamReportSummaryPanel({
           </div>
 
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setAddOpen(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setAddOpen(false)}
+            >
               Huỷ
             </Button>
             <Button
+              type="button"
               disabled={busy || !addPicked.size}
               onClick={async () => {
                 const ok = await changeTasks({ add: [...addPicked] });
@@ -1616,8 +1848,17 @@ export function TeamReportSummaryPanel({
                 }
               }}
             >
-              <Plus className="size-4" />
-              Thêm {addPicked.size || ""} nhiệm vụ
+              {busy ? (
+                <Loader2
+                  className="size-4 motion-safe:animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Plus className="size-4" aria-hidden="true" />
+              )}
+              {addPicked.size
+                ? `Thêm ${addPicked.size} nhiệm vụ`
+                : "Chọn nhiệm vụ để thêm"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1625,39 +1866,133 @@ export function TeamReportSummaryPanel({
 
       <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
         <DialogContent className="sm:max-w-md">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void decide("RETURN");
+            }}
+            className="space-y-4"
+          >
+            <DialogHeader>
+              <DialogTitle>Trả lại báo cáo</DialogTitle>
+              <DialogDescription className="break-words">
+                {summary.title}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="return-reason">
+                Lý do trả lại <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="return-reason"
+                name="reason"
+                autoFocus
+                value={returnReason}
+                aria-invalid={returnReasonError || undefined}
+                aria-describedby="return-reason-hint"
+                onChange={(event) => {
+                  setReturnReason(event.target.value);
+                  if (returnReasonError) setReturnReasonError(false);
+                }}
+                rows={3}
+                placeholder="Ví dụ: Trục 2 thiếu biên bản kiểm tra ngày 12/9…"
+                className="aria-[invalid]:border-destructive"
+              />
+              <p
+                id="return-reason-hint"
+                role={returnReasonError ? "alert" : undefined}
+                className={cn(
+                  "text-xs",
+                  returnReasonError
+                    ? "text-destructive"
+                    : "text-muted-foreground",
+                )}
+              >
+                {returnReasonError
+                  ? "Nêu lý do trả lại để đội biết phải sửa gì."
+                  : "Đội đọc được lý do này và trình lại sau khi sửa."}
+              </p>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setReturnOpen(false)}
+              >
+                Huỷ
+              </Button>
+              <Button type="submit" variant="destructive" disabled={busy}>
+                {busy ? (
+                  <Loader2
+                    className="size-4 motion-safe:animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <Undo2 className="size-4" aria-hidden="true" />
+                )}
+                Trả lại
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duyệt là chốt hẳn: đội hết quyền sửa, cấp trên cũng không mở khoá
+          được nữa. Nhắc lại con số sắp ký trước khi bấm. */}
+      <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Trả lại báo cáo</DialogTitle>
+            <DialogTitle>Duyệt báo cáo này?</DialogTitle>
             <DialogDescription className="break-words">
               {summary.title}
+              {unitName ? ` của ${unitName}` : ""}.
             </DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-1.5">
-            <p className="text-sm font-medium">
-              Lý do trả lại <span className="text-destructive">*</span>
+          <div className="space-y-2 rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
+            <p className="flex items-baseline justify-between gap-2">
+              <span className="text-muted-foreground">Số nhiệm vụ</span>
+              <strong className="tabular-nums">{summary.rows.length}</strong>
             </p>
-            <Textarea
-              value={returnReason}
-              onChange={(event) => setReturnReason(event.target.value)}
-              rows={3}
-              placeholder="Đội cần sửa gì trước khi trình lại"
-            />
-            <p className="text-xs text-muted-foreground">
-              Đội đọc được lý do này và trình lại sau khi sửa.
-            </p>
+            {totalMax > 0 ? (
+              <p className="flex items-baseline justify-between gap-2">
+                <span className="text-muted-foreground">Tổng điểm</span>
+                <strong className="tabular-nums">
+                  {axisScores.some((axis) => axis.convertedScore !== null)
+                    ? `${formatScore(totalScore)} / ${formatScore(totalMax)}`
+                    : "Chưa chấm"}
+                </strong>
+              </p>
+            ) : null}
           </div>
-
+          <p className="text-sm text-muted-foreground">
+            Sau khi duyệt, không ai sửa được điểm của bản này nữa. Cần chỉnh thì
+            trả lại cho đội thay vì duyệt.
+          </p>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setReturnOpen(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setApproveOpen(false)}
+            >
               Huỷ
             </Button>
             <Button
-              variant="destructive"
+              type="button"
+              autoFocus
               disabled={busy}
-              onClick={() => void decide("RETURN")}
+              onClick={() => void decide("APPROVE")}
             >
-              <Undo2 className="size-4" />
-              Trả lại
+              {busy ? (
+                <Loader2
+                  className="size-4 motion-safe:animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Check className="size-4" aria-hidden="true" />
+              )}
+              Duyệt báo cáo
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1668,21 +2003,33 @@ export function TeamReportSummaryPanel({
           <DialogHeader>
             <DialogTitle>Xoá bản nháp?</DialogTitle>
             <DialogDescription className="break-words">
-              {summary.title} sẽ bị xoá hẳn. Nhiệm vụ bên trong không bị ảnh
-              hưởng - chúng vẫn nằm ở bảng ngày như cũ.
+              &ldquo;{summary.title}&rdquo; sẽ bị xoá hẳn. Nhiệm vụ bên trong
+              không bị ảnh hưởng, chúng vẫn nằm ở bảng ngày như cũ.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleteOpen(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setDeleteOpen(false)}
+            >
               Huỷ
             </Button>
             <Button
+              type="button"
               variant="destructive"
               disabled={busy}
               onClick={() => void remove()}
             >
-              <Trash2 className="size-4" />
-              Xoá
+              {busy ? (
+                <Loader2
+                  className="size-4 motion-safe:animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Trash2 className="size-4" aria-hidden="true" />
+              )}
+              Xoá bản nháp
             </Button>
           </DialogFooter>
         </DialogContent>

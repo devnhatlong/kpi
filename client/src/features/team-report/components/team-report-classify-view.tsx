@@ -1257,10 +1257,12 @@ function QueueList({
             aria-current={active ? "true" : undefined}
             onClick={() => onPick(task._id)}
             className={cn(
-              "w-full cursor-pointer rounded-md border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              /* Góc VUÔNG, mục đang chọn có cạnh trái xanh dày 3px - vạch thẳng
+                 đứng trên góc vuông, không cong theo bo góc. */
+              "w-full cursor-pointer rounded-none border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
               active
-                ? "border-primary bg-primary/5 shadow-[inset_3px_0_0_var(--primary)]"
-                : "hover:bg-muted/60",
+                ? "border-l-[3px] border-l-primary bg-primary/5"
+                : "hover:bg-muted/50",
             )}
           >
             <div

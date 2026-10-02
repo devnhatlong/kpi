@@ -2014,21 +2014,37 @@ export class TeamReportService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
-    const filter: Record<string, unknown> = {
+    const base: Record<string, unknown> = {
       departmentId: actor.departmentId,
     };
-    if (query.status) filter.status = query.status;
+    /* Tìm ở SERVER: tìm trên trang đang xem thì bản nằm trang sau báo "không
+       khớp" dù vẫn còn đó - người dùng tưởng báo cáo đã mất. */
+    if (query.q?.trim()) {
+      base.title = { $regex: this.likeRegex(query.q) };
+    }
+    const filter = query.status ? { ...base, status: query.status } : base;
 
-    const [rows, total] = await Promise.all([
+    const [rows, total, byStatus] = await Promise.all([
       this.summaryModel
         .find(filter)
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
       this.summaryModel.countDocuments(filter),
+      /* Đếm theo trạng thái trên CÙNG từ khoá, bỏ qua bộ lọc trạng thái - để dải
+         lọc hiện "Trả lại (2)" ngay cả khi đang đứng ở "Tất cả". */
+      this.summaryModel.aggregate<{ _id: string; count: number }>([
+        { $match: base },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
     ]);
 
-    return buildPaginatedResponse(rows, total, page, limit, 'OK');
+    return {
+      ...buildPaginatedResponse(rows, total, page, limit, 'OK'),
+      statusCounts: Object.fromEntries(
+        byStatus.map((item) => [item._id, item.count]),
+      ) as Record<string, number>,
+    };
   }
 
   /**

@@ -55,8 +55,8 @@ export const teamReportKeys = {
   /* Cấp lập bản nằm trong khoá: cùng một tài khoản phòng vừa xem bản mình lập
      vừa xem bản các đội trình lên, hai thứ khác nhau mà trùng khoá thì màn này
      nạp lại làm hỏng cache màn kia. */
-  summaries: (status: string, page: number, level = "TEAM") =>
-    ["team-report", "summaries", level, status, page] as const,
+  summaries: (status: string, page: number, level = "TEAM", q = "") =>
+    ["team-report", "summaries", level, status, page, q] as const,
   summaryInbox: (params: TeamReportSummaryInboxQuery) =>
     [
       "team-report",
@@ -411,21 +411,33 @@ export function fetchTeamReportRecipients(
   ).then((data) => data.people);
 }
 
-export function fetchTeamReportSummaries(query: {
+/**
+ * Danh sách bản tổng hợp của đội / phòng.
+ *
+ * Kèm `statusCounts` - số bản theo từng trạng thái trên cùng từ khoá, để dải
+ * lọc hiện được "Trả lại (2)" mà không phải gọi thêm một lượt cho mỗi nút.
+ */
+export async function fetchTeamReportSummaries(query: {
   status?: TeamReportDayStatus | "";
   page?: number;
   limit?: number;
+  q?: string;
   level?: TeamReportSummaryLevel;
 }) {
-  return unwrapPaginated(
-    api.get<ApiResponse<TeamReportSummary[]>>(summaryBase(query.level), {
-      params: {
-        page: query.page ?? 1,
-        limit: query.limit ?? 20,
-        ...(query.status ? { status: query.status } : {}),
-      },
-    }),
-  );
+  const response = await api.get<
+    ApiResponse<TeamReportSummary[]> & {
+      statusCounts?: Partial<Record<TeamReportDayStatus, number>>;
+    }
+  >(summaryBase(query.level), {
+    params: {
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.q?.trim() ? { q: query.q.trim() } : {}),
+    },
+  });
+  const list = await unwrapPaginated(Promise.resolve(response));
+  return { ...list, statusCounts: response.data.statusCounts ?? {} };
 }
 
 /**

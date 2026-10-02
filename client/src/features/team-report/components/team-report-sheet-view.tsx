@@ -916,9 +916,7 @@ export function TeamReportSheetView() {
                   <TableRow
                     key={row.tempId}
                     className={cn(
-                      row.error
-                        ? "bg-destructive/5 shadow-[inset_3px_0_0_var(--destructive)]"
-                        : "bg-primary/5 shadow-[inset_3px_0_0_var(--primary)]",
+                      row.error ? "bg-destructive/5" : "bg-muted/50",
                     )}
                   >
                     <TableCell className="max-w-[420px] whitespace-normal break-words font-medium">
@@ -1098,8 +1096,8 @@ export function TeamReportSheetView() {
                       }
                       className={cn(
                         "transition-colors duration-700 motion-reduce:transition-none",
-                        isFresh &&
-                          "bg-primary/5 shadow-[inset_3px_0_0_var(--primary)]",
+                        // Chỉ tô nền nhạt + nhãn "Mới", không vạch màu bên cạnh.
+                        isFresh && "bg-muted/50",
                       )}
                     >
                       <TableCell

@@ -36,18 +36,28 @@ type SearchableSelectProps = {
   disabled?: boolean;
   className?: string;
   triggerClassName?: string;
+  /** id của nút mở, để `<Label htmlFor>` trỏ vào. */
+  id?: string;
+  /** Tên đọc cho trình đọc màn hình khi không có nhãn hiện. */
+  "aria-label"?: string;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
 };
 
 export function SearchableSelect({
   value,
   onValueChange,
   options,
-  placeholder = "Chọn...",
-  searchPlaceholder = "Tìm kiếm...",
+  placeholder = "Chọn…",
+  searchPlaceholder = "Tìm kiếm…",
   emptyText = "Không có kết quả.",
   disabled,
   className,
   triggerClassName,
+  id,
+  "aria-label": ariaLabel,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
 
@@ -60,19 +70,26 @@ export function SearchableSelect({
     <Popover open={open} onOpenChange={setOpen} modal>
       <PopoverTrigger asChild>
         <Button
+          id={id}
           type="button"
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-label={ariaLabel}
+          aria-invalid={ariaInvalid || undefined}
+          aria-describedby={ariaDescribedBy}
           disabled={disabled}
           className={cn(
-            "w-full justify-between font-normal",
+            "w-full justify-between font-normal aria-[invalid]:border-destructive",
             !selected && "text-muted-foreground",
             triggerClassName,
           )}
         >
           <span className="truncate">{selected?.label ?? placeholder}</span>
-          <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
+          <ChevronsUpDown
+            className="size-4 shrink-0 opacity-50"
+            aria-hidden="true"
+          />
         </Button>
       </PopoverTrigger>
       {/*
