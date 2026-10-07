@@ -281,22 +281,10 @@ export class UsersService {
       không phải thông tin cá nhân người dùng tự khai - mở đường này ra là ai
       cũng tự đặt mình thành Đại tướng. Sửa cấp bậc đi qua màn quản trị người
       dùng, nơi đã chặn bằng quyền.
+
+      `email` cũng vậy: do quản trị cấp, người dùng không tự đổi (xem
+      `UpdateProfileDto`).
     */
-    if (dto.email !== undefined) {
-      const email = dto.email.trim().toLowerCase();
-      if (email) {
-        const emailTaken = await this.userModel.exists({
-          email,
-          _id: { $ne: user._id },
-        });
-        if (emailTaken) {
-          throw new BadRequestException('Email đã được sử dụng.');
-        }
-        user.email = email;
-      } else {
-        user.set('email', undefined);
-      }
-    }
 
     await user.save();
 

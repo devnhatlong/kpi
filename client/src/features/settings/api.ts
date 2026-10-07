@@ -1,9 +1,9 @@
 import type { ApiResponse, AuthUser } from "@/features/auth/types";
 import { api, unwrapData } from "@/lib/api-client";
 
+/** Không có `email`: email do quản trị cấp, server từ chối nếu gửi lên. */
 export type UpdateProfilePayload = {
   fullName?: string;
-  email?: string;
   phone?: string;
   position?: string;
   rank?: string;

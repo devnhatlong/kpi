@@ -38,7 +38,6 @@ type ProfileFormProps = {
 
 function ProfileForm({ user, onSaved }: ProfileFormProps) {
   const [fullName, setFullName] = useState(user.fullName ?? "");
-  const [email, setEmail] = useState(user.email ?? "");
   const [phone, setPhone] = useState(user.phone ?? "");
   const [position, setPosition] = useState(user.position ?? "");
   const [saving, setSaving] = useState(false);
@@ -48,7 +47,6 @@ function ProfileForm({ user, onSaved }: ProfileFormProps) {
     try {
       await updateMyProfile({
         fullName: fullName.trim(),
-        email: email.trim(),
         phone: phone.trim(),
         position: position.trim(),
       });
@@ -99,12 +97,12 @@ function ProfileForm({ user, onSaved }: ProfileFormProps) {
         </div>
         <div className="space-y-2">
           <Label htmlFor="profile-email">Email</Label>
+          {/* Chỉ đọc: email do quản trị cấp, người dùng không tự đổi. */}
           <Input
             id="profile-email"
             type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="a@lamdong.bca"
+            value={user.email || "Chưa có email"}
+            disabled
           />
         </div>
         <div className="space-y-2">
