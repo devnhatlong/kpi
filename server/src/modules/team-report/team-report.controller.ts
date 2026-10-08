@@ -19,6 +19,7 @@ import type { JwtPayloadUser } from '@/common/interfaces/jwt-payload-user.interf
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import {
   ChangeTeamReportSummaryTasksDto,
+  CommentTeamReportSummaryDto,
   ClassifyTeamReportTaskDto,
   CloseTeamReportTaskDto,
   CreateTeamReportSummaryDto,
@@ -217,6 +218,45 @@ export class TeamReportController {
     @Param('id') id: string,
   ) {
     return this.teamReportService.summaryDetail(user.uid, id);
+  }
+
+  /* Không gác mã quyền: đơn vị phối hợp / nhận để biết có thể là tài khoản
+     đội - service lọc theo đúng đơn vị và đúng vai. Chi tiết đọc qua
+     'summary/incoming/:id'. */
+  @ApiOperation({ summary: 'Bản tổng hợp đơn vị tôi PHỐI HỢP' })
+  @Get('summary/coordinating')
+  summaryCoordinating(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: TeamReportSummaryListQueryDto,
+  ) {
+    return this.teamReportService.summaryParticipantInbox(
+      user.uid,
+      'COORDINATE',
+      query,
+    );
+  }
+
+  @ApiOperation({ summary: 'Bản tổng hợp đơn vị tôi NHẬN ĐỂ BIẾT' })
+  @Get('summary/informed')
+  summaryInformed(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: TeamReportSummaryListQueryDto,
+  ) {
+    return this.teamReportService.summaryParticipantInbox(
+      user.uid,
+      'INFORM',
+      query,
+    );
+  }
+
+  @ApiOperation({ summary: 'Đơn vị phối hợp gửi ý kiến cho chủ trì' })
+  @Post('summary/:id/opinion')
+  commentSummary(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: CommentTeamReportSummaryDto,
+  ) {
+    return this.teamReportService.commentSummary(user.uid, id, dto);
   }
 
   @ApiOperation({ summary: 'Duyệt hoặc trả lại một bản tổng hợp' })

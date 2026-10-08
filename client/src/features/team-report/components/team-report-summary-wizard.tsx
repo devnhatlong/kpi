@@ -41,11 +41,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePickerInput } from "@/components/common/date-picker-input";
-import { SearchableSelect } from "@/components/common/searchable-select";
+import {
+  SummaryRecipientFields,
+  hasInactiveUnit,
+} from "@/features/team-report/components/summary-recipient-fields";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
   createTeamReportSummary,
-  fetchTeamReportRecipients,
+  fetchTeamReportRecipientOptions,
   fetchTeamReportSummaryCandidates,
   previewTeamReportSummaryScore,
   sendTeamReportSummary,
@@ -58,7 +61,6 @@ import {
   scoreTone,
 } from "@/features/team-report/status-styles";
 import {
-  recipientLabel,
   formatScore,
   refId,
   refName,
@@ -282,10 +284,18 @@ export function TeamReportSummaryWizard({
     { revalidateOnFocus: false, keepPreviousData: true },
   );
 
-  const { data: recipients = [] } = useSWR(
-    open && step === "send" ? teamReportKeys.recipients(level) : null,
-    () => fetchTeamReportRecipients(undefined, level),
+  const { data: recipientData } = useSWR(
+    open && step === "send"
+      ? ([...teamReportKeys.recipients(level), "with-co"] as const)
+      : null,
+    () => fetchTeamReportRecipientOptions(level),
   );
+  const recipients = useMemo(
+    () => recipientData?.people ?? [],
+    [recipientData],
+  );
+  /* Luồng có bảng đơn vị cố định: không chọn ai, bản đi đúng bảng quản trị đặt. */
+  const units = recipientData?.units ?? null;
 
   /*
     Điểm tạm tính của tập đang tích.
@@ -372,14 +382,6 @@ export function TeamReportSummaryWizard({
     [byAxis, filter],
   );
 
-  const recipientOptions = useMemo(
-    () =>
-      recipients.map((person) => ({
-        value: person.id,
-        label: recipientLabel(person),
-      })),
-    [recipients],
-  );
 
   const toggle = (taskId: string) => {
     if (pickError) setPickError(false);
@@ -431,7 +433,7 @@ export function TeamReportSummaryWizard({
       setStep("pick");
       return;
     }
-    if (send && !recipientId) {
+    if (send && !units && !recipientId) {
       setRecipientError(true);
       return;
     }
@@ -450,7 +452,10 @@ export function TeamReportSummaryWizard({
       if (send) {
         await sendTeamReportSummary(
           summary._id,
-          { recipientId, note: note.trim() || undefined },
+          {
+            ...(units ? {} : { recipientId }),
+            note: note.trim() || undefined,
+          },
           level,
         );
         toast.success("Đã trình báo cáo lên cấp trên.");
@@ -948,39 +953,21 @@ export function TeamReportSummaryWizard({
                 </p>
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="wizard-recipient">
-                  Trình lên <span className="text-destructive">*</span>
-                </Label>
-                <SearchableSelect
-                  id="wizard-recipient"
-                  value={recipientId}
-                  onValueChange={(next) => {
-                    setRecipientId(next);
-                    if (recipientError) setRecipientError(false);
-                  }}
-                  aria-invalid={recipientError}
-                  aria-describedby={
-                    recipientError ? "wizard-recipient-error" : undefined
-                  }
-                  options={recipientOptions}
-                  placeholder={
-                    recipientOptions.length
-                      ? "Chọn cấp trên…"
-                      : "Chưa tìm được cấp trên nào có quyền duyệt"
-                  }
-                />
-                {recipientError ? (
-                  <p
-                    id="wizard-recipient-error"
-                    role="alert"
-                    className="text-xs text-destructive"
-                  >
-                    Chọn người cấp trên nhận báo cáo, hoặc bấm Lưu nháp để trình
-                    sau.
-                  </p>
-                ) : null}
-              </div>
+              <SummaryRecipientFields
+                idPrefix="wizard"
+                recipients={recipients}
+                units={units}
+                recipientId={recipientId}
+                onRecipientChange={(next) => {
+                  setRecipientId(next);
+                  if (recipientError) setRecipientError(false);
+                }}
+                error={
+                  recipientError
+                    ? "Chọn người cấp trên nhận báo cáo, hoặc bấm Lưu nháp để trình sau."
+                    : undefined
+                }
+              />
 
               <div className="space-y-1.5">
                 <Label htmlFor="wizard-note">
@@ -1040,7 +1027,7 @@ export function TeamReportSummaryWizard({
                   </Button>
                   <Button
                     type="button"
-                    disabled={busy}
+                    disabled={busy || hasInactiveUnit(units)}
                     className="active:scale-[0.98] motion-reduce:active:scale-100"
                     onClick={() => void finish(true)}
                   >

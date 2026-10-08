@@ -49,7 +49,10 @@ import {
 } from '@/modules/mission-form-config/schemas/form-template.schema';
 import { FormTemplatesService } from '@/modules/mission-form-config/form-templates.service';
 import { ReportTemplatesService } from '@/modules/mission-form-config/report-templates.service';
-import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
+import {
+  TeamReportAdjustmentRoutingService,
+  type AdjustmentRecipient,
+} from './team-report-adjustment-routing.service';
 import {
   TeamReportTask,
   TeamReportTaskDocument,
@@ -64,6 +67,7 @@ import {
   TeamReportUnitDayDocument,
 } from './schemas/team-report-unit-day.schema';
 import {
+  TeamReportParticipant,
   TeamReportSummary,
   TeamReportSummaryDocument,
   type TeamReportPeriod,
@@ -81,6 +85,7 @@ import {
   PromoteTeamReportDto,
   ReviewTeamReportDayDto,
   SendTeamReportSummaryDto,
+  CommentTeamReportSummaryDto,
   SubmitTeamReportDayDto,
   TeamReportClassifyQueryDto,
   TeamReportInboxQueryDto,
@@ -135,6 +140,9 @@ type Actor = {
   name: string;
   departmentId: Types.ObjectId;
 };
+
+/** Tên trường nhật ký khi đơn vị phối hợp gửi ý kiến - để lọc khỏi bản nhận để biết. */
+const OPINION_FIELD = 'Ý kiến phối hợp';
 
 @Injectable()
 export class TeamReportService {
@@ -1862,9 +1870,27 @@ export class TeamReportService {
       Y phụ trách". Người gửi không khớp luồng nào thì mới rơi về luật mặc
       định bên dưới - mọi cấp trên có quyền duyệt.
     */
+    /*
+      Luồng có BẢNG ĐƠN VỊ cố định: người trình không chọn ai, chỉ xem bản sẽ
+      đi tới đâu với vai gì. Trả `units` để client bày bảng chỉ đọc.
+    */
+    const units = await this.routing.unitsFor('SUMMARY', userId);
+    if (units) {
+      return {
+        message: 'OK',
+        data: {
+          people: [] as AdjustmentRecipient[],
+          configured: true,
+          units,
+        },
+      };
+    }
     const routed = await this.routing.recipients('SUMMARY', userId, q);
     if (routed) {
-      return { message: 'OK', data: { people: routed, configured: true } };
+      return {
+        message: 'OK',
+        data: { people: routed, configured: true, units: null },
+      };
     }
     const department = await this.departmentModel
       .findById(actor.departmentId)
@@ -2069,7 +2095,7 @@ export class TeamReportService {
       throw new BadRequestException('Báo cáo này đã trình rồi.');
     }
 
-    const recipient = await this.requireSummaryRecipient(
+    const { recipient, participants } = await this.resolveSummaryTargets(
       actor,
       dto.recipientId,
     );
@@ -2097,23 +2123,45 @@ export class TeamReportService {
     summary.recipientId = recipient.id;
     summary.recipientName = recipient.name;
     summary.recipientDepartmentId = recipient.departmentId;
+    /* Trình lại sau khi bị trả: chụp lại bảng đơn vị theo cấu hình HIỆN TẠI và
+       xoá ý kiến cũ - ý kiến lần trước nói về một bản số liệu đã khác; câu cũ
+       vẫn còn trong nhật ký sửa. */
+    summary.participants = participants;
+    summary.markModified('participants');
     summary.sentById = actor.id;
     summary.sentByName = actor.name;
     summary.sentAt = new Date();
     summary.returnReason = '';
     if (dto.note?.trim()) summary.note = dto.note.trim();
+    const listOf = (role: 'COORDINATE' | 'INFORM') =>
+      participants
+        .filter((item) => item.role === role)
+        .map((item) => item.departmentName)
+        .join(', ');
+    const extra = [
+      listOf('COORDINATE') ? `phối hợp: ${listOf('COORDINATE')}` : '',
+      listOf('INFORM') ? `nhận để biết: ${listOf('INFORM')}` : '',
+    ]
+      .filter(Boolean)
+      .join('; ');
     this.appendEdit(
       summary,
       actor,
       'Trạng thái',
       'nháp',
-      `đã trình ${recipient.name}`,
+      extra
+        ? `đã trình ${recipient.name} (chủ trì); ${extra}`
+        : `đã trình ${recipient.name}`,
       '',
     );
     await summary.save();
 
     return {
-      message: `Đã trình báo cáo lên ${recipient.name}.`,
+      message: `Đã trình báo cáo lên ${recipient.name}${
+        participants.length
+          ? `, kèm ${participants.length} đơn vị phối hợp / nhận để biết`
+          : ''
+      }.`,
       data: summary,
     };
   }
@@ -2250,7 +2298,10 @@ export class TeamReportService {
     if (await this.routing.isListedRecipient('SUMMARY', userId)) return true;
     if (!user.departmentId) return false;
     const addressed = await this.summaryModel.exists({
-      recipientDepartmentId: user.departmentId,
+      $or: [
+        { recipientDepartmentId: user.departmentId },
+        { 'participants.departmentId': user.departmentId },
+      ],
       status: { $ne: 'DRAFT' },
     });
     return Boolean(addressed);
@@ -2268,6 +2319,17 @@ export class TeamReportService {
   async summaryDetail(userId: string, id: string) {
     const actor = await this.requireActor(userId);
     const summary = await this.requireVisibleSummary(actor, id);
+    const viewerRole = this.summaryRoleOf(summary, actor);
+    // Phối hợp / nhận để biết mở ra lần đầu thì ghi "đã xem" - đội gửi cần
+    // biết các nơi đã đọc chưa, không thì không biết có nên nhắc.
+    if (viewerRole === 'COORDINATOR' || viewerRole === 'INFORMED') {
+      const mine = this.participantOf(summary, actor);
+      if (mine && !mine.seenAt) {
+        mine.seenAt = new Date();
+        summary.markModified('participants');
+        await summary.save();
+      }
+    }
     const templates = await this.templatesOfRows(summary.rows);
     const catalogs = await this.catalogsForTemplates(Object.values(templates));
     const axisScores = await this.axisScoresOf(
@@ -2286,15 +2348,118 @@ export class TeamReportService {
     return {
       message: 'OK',
       data: {
-        summary,
+        summary:
+          viewerRole === 'INFORMED' ? this.withoutOpinions(summary) : summary,
         department: {
           id: String(summary.departmentId),
           name: names.get(String(summary.departmentId)) ?? '',
         },
+        /** Vai của người xem: client dựa vào đây để khoá chấm / duyệt. */
+        viewerRole,
         templates,
         catalogs,
         axisScores,
       },
+    };
+  }
+
+  /**
+   * Hộp đến "Phối hợp" hoặc "Nhận để biết": bản tổng hợp có đơn vị tôi ở đúng
+   * vai đó. Lọc theo ĐƠN VỊ như hộp đến chủ trì.
+   */
+  async summaryParticipantInbox(
+    userId: string,
+    role: 'COORDINATE' | 'INFORM',
+    query: TeamReportSummaryListQueryDto,
+  ) {
+    const actor = await this.requireActor(userId);
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const filter: Record<string, unknown> = {
+      participants: {
+        $elemMatch: { departmentId: actor.departmentId, role },
+      },
+      status: { $ne: 'DRAFT' },
+    };
+    if (query.status) filter.status = query.status;
+    if (query.departmentId) {
+      filter.departmentId = this.requireObjectId(query.departmentId, 'Đơn vị');
+    }
+    if (query.period) filter.period = query.period;
+    if (query.fromDate && isYmd(query.fromDate)) {
+      filter.toDate = { $gte: query.fromDate };
+    }
+    if (query.toDate && isYmd(query.toDate)) {
+      filter.fromDate = { $lte: query.toDate };
+    }
+    if (query.q?.trim()) {
+      filter.title = { $regex: this.likeRegex(query.q) };
+    }
+
+    const [rows, total] = await Promise.all([
+      this.summaryModel
+        .find(filter)
+        .sort({ sentAt: -1, createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('departmentId', 'code name'),
+      this.summaryModel.countDocuments(filter),
+    ]);
+
+    // Hộp "nhận để biết" không được thấy ý kiến phối hợp, kể cả ở danh sách.
+    const data: object[] =
+      role === 'INFORM' ? rows.map((row) => this.withoutOpinions(row)) : rows;
+    return buildPaginatedResponse(data, total, page, limit, 'OK');
+  }
+
+  /**
+   * Đơn vị PHỐI HỢP gửi ý kiến cho đơn vị chủ trì.
+   *
+   * Mỗi đơn vị một ô ý kiến, gửi lại là sửa chính ô đó - chủ trì đọc một câu
+   * chốt của mỗi nơi, không phải dò một chuỗi hội thoại. Chỉ gửi được khi bản
+   * còn chờ duyệt: đã quyết rồi thì ý kiến không còn ai để đọc mà làm theo.
+   */
+  async commentSummary(
+    userId: string,
+    id: string,
+    dto: CommentTeamReportSummaryDto,
+  ) {
+    const actor = await this.requireActor(userId);
+    const summary = await this.summaryModel.findById(
+      this.requireObjectId(id, 'Báo cáo'),
+    );
+    if (!summary) throw new NotFoundException('Không tìm thấy báo cáo.');
+    if (this.summaryRoleOf(summary, actor) !== 'COORDINATOR') {
+      throw new ForbiddenException(
+        'Chỉ đơn vị phối hợp mới gửi được ý kiến cho bản này.',
+      );
+    }
+    if (summary.status !== 'PENDING') {
+      throw new BadRequestException(
+        'Báo cáo đã được chủ trì xử lý - không gửi ý kiến được nữa.',
+      );
+    }
+    const comment = dto.comment.trim();
+    const mine = this.participantOf(summary, actor)!;
+    const before = mine.comment;
+    mine.comment = comment;
+    mine.commentedByName = comment ? actor.name : '';
+    mine.commentedAt = comment ? new Date() : null;
+    mine.seenAt = mine.seenAt ?? new Date();
+    summary.markModified('participants');
+    this.appendEdit(
+      summary,
+      actor,
+      `${OPINION_FIELD} (${mine.departmentName})`,
+      before,
+      comment,
+      '',
+    );
+    await summary.save();
+    return {
+      message: comment ? 'Đã gửi ý kiến cho đơn vị chủ trì.' : 'Đã xoá ý kiến.',
+      data: summary,
     };
   }
 
@@ -2852,14 +3017,92 @@ export class TeamReportService {
     );
     if (!summary) throw new NotFoundException('Không tìm thấy báo cáo.');
 
-    const mine = String(summary.departmentId) === String(actor.departmentId);
-    const incoming =
-      String(summary.recipientDepartmentId ?? '') ===
-        String(actor.departmentId) && summary.status !== 'DRAFT';
-    if (!mine && !incoming) {
+    if (!this.summaryRoleOf(summary, actor)) {
       throw new ForbiddenException('Báo cáo này không thuộc đơn vị bạn.');
     }
     return summary;
+  }
+
+  /**
+   * Đơn vị người xem đứng ở vai nào với bản này; null = không được đọc.
+   *
+   * - OWNER: đơn vị lập - đứng trước mọi vai, phòng tự trình cho chính mình thì
+   *   vẫn là người lập.
+   * - RECIPIENT: đơn vị CHỦ TRÌ - chấm lại, duyệt, trả lại.
+   * - COORDINATOR: đơn vị PHỐI HỢP - xem, gửi ý kiến cho chủ trì.
+   * - INFORMED: đơn vị NHẬN ĐỂ BIẾT - chỉ xem, không thấy ý kiến phối hợp.
+   */
+  private summaryRoleOf(
+    summary: TeamReportSummaryDocument,
+    actor: Actor,
+  ): 'OWNER' | 'RECIPIENT' | 'COORDINATOR' | 'INFORMED' | null {
+    const dept = String(actor.departmentId);
+    if (String(summary.departmentId) === dept) return 'OWNER';
+    if (summary.status === 'DRAFT') return null;
+    if (String(summary.recipientDepartmentId ?? '') === dept) {
+      return 'RECIPIENT';
+    }
+    const mine = this.participantOf(summary, actor);
+    if (!mine) return null;
+    return mine.role === 'COORDINATE' ? 'COORDINATOR' : 'INFORMED';
+  }
+
+  /** Dòng tham gia (phối hợp / nhận để biết) của đơn vị người xem, nếu có. */
+  private participantOf(summary: TeamReportSummaryDocument, actor: Actor) {
+    return (summary.participants ?? []).find(
+      (item) => String(item.departmentId) === String(actor.departmentId),
+    );
+  }
+
+  /**
+   * Bản chụp đã bỏ ý kiến phối hợp - cho đơn vị NHẬN ĐỂ BIẾT. Bỏ cả dòng nhật
+   * ký ghi ý kiến, không thì đọc nhật ký là ra đúng câu đã giấu.
+   */
+  private withoutOpinions(summary: TeamReportSummaryDocument) {
+    const plain = summary.toObject() as TeamReportSummary & {
+      _id: Types.ObjectId;
+    };
+    return {
+      ...plain,
+      participants: (plain.participants ?? []).map((item) => ({
+        ...item,
+        comment: '',
+        commentedByName: '',
+        commentedAt: null,
+      })),
+      edits: (plain.edits ?? []).filter(
+        (edit) => !String(edit.field ?? '').startsWith(OPINION_FIELD),
+      ),
+    };
+  }
+
+  /**
+   * Bản trình đi đâu.
+   *
+   * - Luồng có BẢNG NƠI NHẬN cố định: theo đúng các tài khoản quản trị gán vai
+   *   - người trình không chọn gì, `recipientId` gửi lên (nếu có) bị bỏ qua.
+   * - Còn lại: người trình chọn một người trong danh sách được trình, như cũ.
+   */
+  private async resolveSummaryTargets(
+    actor: Actor,
+    recipientId: string | undefined,
+  ): Promise<{
+    recipient: {
+      id: Types.ObjectId | null;
+      name: string;
+      departmentId: Types.ObjectId | null;
+    };
+    participants: TeamReportParticipant[];
+  }> {
+    const fixed = await this.routing.fixedTargets('SUMMARY', actor);
+    if (fixed) return fixed;
+    if (!recipientId) {
+      throw new BadRequestException('Chọn người cấp trên nhận báo cáo.');
+    }
+    return {
+      recipient: await this.requireSummaryRecipient(actor, recipientId),
+      participants: [],
+    };
   }
 
   /**

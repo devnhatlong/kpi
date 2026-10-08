@@ -30,9 +30,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
+  ParticipantsBlock,
+  participantLabel,
+  silentCoordinatorsOf,
+} from "@/features/team-report/components/participants-block";
+import {
   decideTeamReportAdjustment,
   fetchIncomingTeamReportAdjustment,
   fetchTeamReportAdjustmentInbox,
+  opinionTeamReportAdjustment,
   reviewTeamReportAdjustmentEntry,
   teamReportKeys,
 } from "@/features/team-report/api";
@@ -70,18 +76,37 @@ function monthLabel(month: string): string {
  * hợp. Tách hộp riêng vì bảng này tháng một bản và không chung collection
  * với bản tổng hợp theo kỳ.
  */
+/**
+ * Hộp nào đang xem, theo vai của đơn vị tôi trên bảng: CHỦ TRÌ (duyệt được),
+ * PHỐI HỢP (cho ý kiến) hay NHẬN ĐỂ BIẾT (chỉ xem) - cùng luật với báo cáo
+ * tổng hợp.
+ */
+type InboxBox = "LEAD" | "COORDINATE" | "INFORM";
+
+const EMPTY_TEXT: Record<InboxBox, string> = {
+  LEAD: "Đội trình bảng điểm cộng, trừ & xếp loại lên thì nó nằm ở đây, chờ bạn duyệt hoặc trả lại.",
+  COORDINATE:
+    "Bảng nào đơn vị bạn được gán phối hợp thì nằm ở đây - đọc và gửi ý kiến cho chủ trì.",
+  INFORM:
+    "Bảng nào đơn vị bạn được gán nhận để biết thì nằm ở đây - chỉ để xem.",
+};
+
 export function TeamReportAdjustmentInboxView() {
+  const [box, setBox] = useState<InboxBox>("LEAD");
   const [status, setStatus] = useState<StatusFilter>("PENDING");
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [pickedId, setPickedId] = useState<string | null>(null);
 
-  const list = useSWR(teamReportKeys.adjustmentInbox(status, page), () =>
-    fetchTeamReportAdjustmentInbox({
-      status: status === "ALL" ? "" : status,
-      page,
-      limit: PAGE_SIZE,
-    }),
+  const list = useSWR(
+    [...teamReportKeys.adjustmentInbox(status, page), box],
+    () =>
+      fetchTeamReportAdjustmentInbox({
+        status: status === "ALL" ? "" : status,
+        box,
+        page,
+        limit: PAGE_SIZE,
+      }),
   );
 
   const all = list.data?.data ?? [];
@@ -130,9 +155,28 @@ export function TeamReportAdjustmentInboxView() {
             </div>
           </div>
 
-          <Badge variant="secondary" className="whitespace-nowrap font-normal">
-            {meta?.total ?? 0} bảng
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <SegmentedTabs
+              ariaLabel="Hộp bảng điểm"
+              value={box}
+              onChange={(next) => {
+                setBox(next);
+                setPickedId(null);
+                setPage(1);
+              }}
+              items={[
+                { value: "LEAD" as const, label: "Chủ trì" },
+                { value: "COORDINATE" as const, label: "Phối hợp" },
+                { value: "INFORM" as const, label: "Nhận để biết" },
+              ]}
+            />
+            <Badge
+              variant="secondary"
+              className="whitespace-nowrap font-normal"
+            >
+              {meta?.total ?? 0} bảng
+            </Badge>
+          </div>
         </CardContent>
       </Card>
 
@@ -232,8 +276,7 @@ export function TeamReportAdjustmentInboxView() {
               <FileSpreadsheet className="size-10 text-muted-foreground" />
               <p className="text-sm font-medium">Chưa có bảng nào trình lên</p>
               <p className="max-w-sm text-xs text-muted-foreground">
-                Đội trình bảng điểm cộng, trừ &amp; xếp loại lên thì nó nằm ở
-                đây, chờ bạn duyệt hoặc trả lại.
+                {EMPTY_TEXT[box]}
               </p>
             </CardContent>
           </Card>
@@ -333,7 +376,13 @@ function ReviewPanel({
 
   const { sheet, totals, templates, scoreColumnKeys } = data;
   const catalog = useMemo(() => data.catalog ?? [], [data.catalog]);
-  const pending = sheet.status === "PENDING";
+  /* Chỉ CHỦ TRÌ mới sửa điểm, duyệt, trả lại - phối hợp và nhận để biết chỉ
+     đọc. Server chặn y hệt; ở đây để không bày nút rồi bị từ chối. */
+  const isLead = (data.viewerRole ?? "RECIPIENT") === "RECIPIENT";
+  const pending = sheet.status === "PENDING" && isLead;
+  const participants = sheet.participants ?? [];
+  const { total: coordinatorCount, silent: silentCoordinators } =
+    silentCoordinatorsOf(participants);
 
   const entriesByItem = useMemo(() => {
     const map = new Map<string, TeamReportAdjustmentEntry[]>();
@@ -347,7 +396,12 @@ function ReviewPanel({
   const apply = async (
     result: Omit<TeamReportAdjustmentData, "catalog" | "months">,
   ) => {
-    await onApply({ ...result, catalog, department: data.department });
+    await onApply({
+      ...result,
+      catalog,
+      department: data.department,
+      viewerRole: data.viewerRole,
+    });
   };
 
   const saveCell = async (
@@ -483,6 +537,33 @@ function ReviewPanel({
             ) : null}
           </div>
         </div>
+
+        {participants.length ? (
+          <ParticipantsBlock
+            leadName={sheet.recipientName}
+            participants={participants}
+            status={sheet.status}
+            role={
+              data.viewerRole === "RECIPIENT" || !data.viewerRole
+                ? "REVIEWER"
+                : data.viewerRole
+            }
+            onSubmitOpinion={(comment) =>
+              opinionTeamReportAdjustment(id, comment)
+            }
+            onChanged={onChanged}
+          />
+        ) : null}
+
+        {/* Nhắc, không chặn: ý kiến phối hợp để chủ trì cân nhắc. */}
+        {pending && silentCoordinators.length ? (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+            Còn {silentCoordinators.length}/{coordinatorCount} đơn vị phối hợp
+            chưa cho ý kiến:{" "}
+            {silentCoordinators.map(participantLabel).join(", ")}. Vẫn duyệt
+            được.
+          </p>
+        ) : null}
 
         {sheet.status === "RETURNED" ? (
           <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">

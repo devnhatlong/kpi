@@ -17,6 +17,7 @@ import type { JwtPayloadUser } from '@/common/interfaces/jwt-payload-user.interf
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import {
   AddTeamReportAdjustmentEntryDto,
+  CommentTeamReportSummaryDto,
   DecideTeamReportDayDto,
   SendTeamReportAdjustmentDto,
   TeamReportAdjustmentInboxQueryDto,
@@ -92,6 +93,16 @@ export class TeamReportAdjustmentController {
     @Body() dto: DecideTeamReportDayDto,
   ) {
     return this.service.decide(user.uid, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Đơn vị phối hợp gửi ý kiến cho chủ trì' })
+  @Post('incoming/:id/opinion')
+  opinion(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: CommentTeamReportSummaryDto,
+  ) {
+    return this.service.opinion(user.uid, id, dto);
   }
 
   @ApiOperation({ summary: 'Cấp trên chỉnh một dòng của bản đang chờ duyệt' })

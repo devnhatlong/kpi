@@ -21,6 +21,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { SearchableSelect } from "@/components/common/searchable-select";
+import { SegmentedTabs } from "@/components/common/segmented-tabs";
+import {
+  RouteUnitsEditor,
+  routeUnitsError,
+} from "@/features/mission-form-config/components/report-builder/route-units-editor";
 import { ScopePicker } from "@/features/mission-form-config/components/report-builder/scope-picker";
 import {
   fetchDepartmentLevels,
@@ -59,6 +64,10 @@ const fingerprint = (routes: TeamReportAdjustmentRoute[]) =>
     routes.map((route) => [
       route.name.trim(),
       route.isActive,
+      route.unitMode ?? false,
+      route.unitMode
+        ? (route.units ?? []).map((unit) => `${unit.userId}:${unit.role}`)
+        : [],
       scopeKey(route.sender),
       scopeKey(route.recipients),
     ]),
@@ -117,8 +126,12 @@ export function AdjustmentRoutesEditor({
     : null;
   if (stored.data && stamp !== loadedAt) {
     setLoadedAt(stamp);
-    setDraft(stored.data);
-    setSavedFp(fingerprint(stored.data));
+    const loaded = stored.data.map((route) => ({
+      ...route,
+      unitMode: (route.units?.length ?? 0) > 0,
+    }));
+    setDraft(loaded);
+    setSavedFp(fingerprint(loaded));
     setSelected(0);
   }
 
@@ -188,10 +201,17 @@ export function AdjustmentRoutesEditor({
 
   const save = async () => {
     if (!draft) return;
-    const missing = draft.find((route) => scopeEmpty(route.recipients));
-    if (missing) {
-      toast.error(`Luồng "${missing.name}" chưa chọn gửi cho ai.`);
-      return;
+    for (const route of draft) {
+      if (route.unitMode) {
+        const error = routeUnitsError(route.units ?? [], userById);
+        if (error) {
+          toast.error(`Luồng "${route.name}": bảng nơi nhận ${error}.`);
+          return;
+        }
+      } else if (scopeEmpty(route.recipients)) {
+        toast.error(`Luồng "${route.name}" chưa chọn gửi cho ai.`);
+        return;
+      }
     }
     const noSender = draft.find((route) => scopeEmpty(route.sender));
     if (noSender) {
@@ -200,7 +220,10 @@ export function AdjustmentRoutesEditor({
     }
     setSaving(true);
     try {
-      const saved = await saveTeamReportRoutes(kind, draft);
+      const saved = (await saveTeamReportRoutes(kind, draft)).map((route) => ({
+        ...route,
+        unitMode: (route.units?.length ?? 0) > 0,
+      }));
       await stored.mutate(saved, { revalidate: false });
       setDraft(saved);
       setSavedFp(fingerprint(saved));
@@ -372,23 +395,50 @@ export function AdjustmentRoutesEditor({
                     "Bật thì người ở các đơn vị con cũng đi theo luồng này.",
                 }}
               />
-              <ScopeEditor
-                recipients
-                title="2. Gửi cho ai"
-                hint="Danh sách hiện trong dropdown Trình lên. Đích danh luôn có; còn lại là người đúng MỌI vế đã tick. Phải chọn ít nhất một thứ."
-                scope={current.recipients}
-                onChange={(patch) => patchScope("recipients", patch)}
-                roleOptions={roleOptions}
-                levelOptions={levelOptions}
-                userOptions={userOptions}
-                userById={userById}
-                deptLabels={{
-                  departments: "Đơn vị / khối nhận",
-                  descendants: "Cả cấp dưới của đơn vị đã chọn",
-                  descendantsHint:
-                    "Bật thì người ở các đơn vị con cũng hiện trong danh sách nhận.",
-                }}
-              />
+              {/* Hai loại báo cáo dùng chung cách xác định nơi nhận. */}
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <h4 className="text-sm font-semibold">2. Gửi cho ai</h4>
+                    <p className="text-xs text-muted-foreground">
+                      {current.unitMode
+                        ? "Bản đi đúng tới các tài khoản dưới đây - người trình không chọn, không đổi được."
+                        : "Người trình tự chọn MỘT người trong danh sách lọc dưới đây."}
+                    </p>
+                  </div>
+                  <SegmentedTabs
+                    ariaLabel="Cách xác định nơi nhận"
+                    value={current.unitMode ? "UNITS" : "PICK"}
+                    onChange={(next) =>
+                      patchRoute({ unitMode: next === "UNITS" })
+                    }
+                    items={[
+                      { value: "UNITS" as const, label: "Nơi nhận cố định" },
+                      {
+                        value: "PICK" as const,
+                        label: "Người trình tự chọn",
+                      },
+                    ]}
+                  />
+                </div>
+                {current.unitMode ? (
+                  <RouteUnitsEditor
+                    units={current.units ?? []}
+                    onChange={(units) => patchRoute({ units })}
+                    accounts={users.data ?? []}
+                  />
+                ) : (
+                  <RecipientScopeEditor
+                    scope={current.recipients}
+                    onChange={(patch) => patchScope("recipients", patch)}
+                    roleOptions={roleOptions}
+                    levelOptions={levelOptions}
+                    userOptions={userOptions}
+                    userById={userById}
+                    title="Lọc người được chọn"
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
@@ -398,6 +448,30 @@ export function AdjustmentRoutesEditor({
         </div>
       )}
     </section>
+  );
+}
+
+/** Vế "gửi cho ai" kiểu lọc người - dùng cho bảng điểm cộng / trừ và cho luồng tổng hợp để người trình tự chọn. */
+function RecipientScopeEditor({
+  title,
+  ...props
+}: Omit<
+  Parameters<typeof ScopeEditor>[0],
+  "recipients" | "hint" | "deptLabels" | "title"
+> & { title: string }) {
+  return (
+    <ScopeEditor
+      recipients
+      title={title}
+      hint="Danh sách hiện trong dropdown Trình lên. Đích danh luôn có; còn lại là người đúng MỌI vế đã tick. Phải chọn ít nhất một thứ."
+      deptLabels={{
+        departments: "Đơn vị / khối nhận",
+        descendants: "Cả cấp dưới của đơn vị đã chọn",
+        descendantsHint:
+          "Bật thì người ở các đơn vị con cũng hiện trong danh sách nhận.",
+      }}
+      {...props}
+    />
   );
 }
 

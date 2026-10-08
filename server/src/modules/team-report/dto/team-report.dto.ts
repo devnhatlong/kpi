@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
   IsBoolean,
@@ -17,6 +18,10 @@ import {
 
 import { TEAM_REPORT_DAY_STATUSES } from '../schemas/team-report-day.schema';
 import { TEAM_REPORT_PERIODS } from '../schemas/team-report-summary.schema';
+import {
+  TEAM_REPORT_UNIT_ROLES,
+  type TeamReportUnitRole,
+} from '../schemas/team-report-adjustment-route.schema';
 
 /** Tệp kiểm chứng gửi kèm - id lấy từ module tải tệp dùng chung. */
 export class TeamReportEvidenceDto {
@@ -302,15 +307,27 @@ export class PreviewTeamReportSummaryDto {
 
 /** Trình một bản tổng hợp lên cấp trên đã chọn. */
 export class SendTeamReportSummaryDto {
-  @ApiProperty({ description: 'Người cấp trên nhận bản này' })
+  @ApiPropertyOptional({
+    description:
+      'Người cấp trên nhận bản - chỉ khi luồng để người trình tự chọn; luồng có bảng đơn vị cố định thì bỏ trống',
+  })
+  @IsOptional()
   @IsMongoId()
-  recipientId!: string;
+  recipientId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   @MaxLength(1000)
   note?: string;
+}
+
+/** Nhận xét / đề nghị của đơn vị đồng nhận gửi đơn vị chủ trì. */
+export class CommentTeamReportSummaryDto {
+  @ApiProperty({ example: 'Đề nghị xem lại điểm nhiệm vụ 3 vì…' })
+  @IsString()
+  @MaxLength(2000)
+  comment!: string;
 }
 
 export class TeamReportSummaryListQueryDto {
@@ -591,9 +608,13 @@ export class SendTeamReportAdjustmentDto {
   @Min(0)
   version!: number;
 
-  @ApiProperty({ description: 'Người cấp trên nhận bản' })
+  @ApiPropertyOptional({
+    description:
+      'Người cấp trên nhận bản - chỉ khi luồng để người trình tự chọn; luồng có nơi nhận cố định thì bỏ trống',
+  })
+  @IsOptional()
   @IsMongoId()
-  recipientId!: string;
+  recipientId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -603,6 +624,14 @@ export class SendTeamReportAdjustmentDto {
 }
 
 export class TeamReportAdjustmentInboxQueryDto {
+  @ApiPropertyOptional({
+    enum: ['LEAD', 'COORDINATE', 'INFORM'],
+    description: 'Hộp nào: chủ trì (mặc định), phối hợp, nhận để biết',
+  })
+  @IsOptional()
+  @IsIn(['LEAD', 'COORDINATE', 'INFORM'])
+  box?: 'LEAD' | 'COORDINATE' | 'INFORM';
+
   @ApiPropertyOptional({ enum: TEAM_REPORT_DAY_STATUSES })
   @IsOptional()
   @IsIn([...TEAM_REPORT_DAY_STATUSES])
@@ -670,6 +699,18 @@ export class TeamReportAdjustmentScopeDto {
   senderSubordinatesOnly?: boolean;
 }
 
+export class TeamReportRouteUnitDto {
+  @ApiProperty({ description: 'Tài khoản nhận' })
+  @IsMongoId({ message: 'Tài khoản không hợp lệ.' })
+  userId!: string;
+
+  @ApiProperty({ enum: TEAM_REPORT_UNIT_ROLES })
+  @IsIn([...TEAM_REPORT_UNIT_ROLES], {
+    message: 'Vai của đơn vị không hợp lệ.',
+  })
+  role!: TeamReportUnitRole;
+}
+
 export class TeamReportAdjustmentRouteDto {
   @ApiProperty({ example: 'Phòng / xã gửi về PV01' })
   @IsString()
@@ -680,6 +721,18 @@ export class TeamReportAdjustmentRouteDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    type: () => [TeamReportRouteUnitDto],
+    description:
+      'Bảng tài khoản nhận cố định kèm vai (chỉ luồng báo cáo tổng hợp) - rỗng = người trình tự chọn',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => TeamReportRouteUnitDto)
+  units?: TeamReportRouteUnitDto[];
 
   @ApiProperty({ type: () => TeamReportAdjustmentScopeDto })
   @ValidateNested()

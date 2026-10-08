@@ -58,11 +58,16 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/common/searchable-select";
 import {
+  SummaryRecipientFields,
+  hasInactiveUnit,
+} from "@/features/team-report/components/summary-recipient-fields";
+import {
   changeTeamReportSummaryTasks,
+  commentTeamReportSummary,
   decideTeamReportSummary,
   deleteTeamReportSummary,
   editTeamReportSummaryRows,
-  fetchTeamReportRecipients,
+  fetchTeamReportRecipientOptions,
   fetchTeamReportSummaryCandidates,
   reviewTeamReportSummary,
   sendTeamReportSummary,
@@ -72,6 +77,11 @@ import {
   type TeamReportSummaryLevel,
 } from "@/features/team-report/api";
 import { DynamicColumnCell } from "@/features/team-report/components/dynamic-column-cell";
+import {
+  ParticipantsBlock,
+  participantLabel,
+  silentCoordinatorsOf,
+} from "@/features/team-report/components/participants-block";
 import { EvidenceCell } from "@/features/team-report/components/evidence-cell";
 import { TeamReportCriteriaPreview } from "@/features/team-report/components/team-report-criteria-preview";
 import { exportTeamReportToExcel } from "@/features/team-report/excel";
@@ -80,7 +90,6 @@ import {
   scoreTone,
 } from "@/features/team-report/status-styles";
 import {
-  recipientLabel,
   TEAM_REPORT_PERIOD_LABEL,
   TEAM_REPORT_STATUS_LABEL,
   catalogOfColumn,
@@ -305,12 +314,14 @@ type PanelProps = {
    * Đang đứng ở vai nào.
    *
    * `OWNER` - đội lập bản: trình đi, xoá nháp.
-   * `REVIEWER` - cấp trên nhận bản: duyệt hoặc trả lại.
+   * `REVIEWER` - cấp trên nhận bản (đơn vị chủ trì): duyệt hoặc trả lại.
+   * `COORDINATOR` - đơn vị phối hợp: chỉ đọc, gửi ý kiến cho chủ trì.
+   * `INFORMED` - đơn vị nhận để biết: chỉ đọc.
    *
    * Cùng một khung nội dung vì cách ĐỌC một bản là y hệt nhau; chỉ khác đúng
    * nhóm nút, nên tách hai component là chép đôi cả bảng chấm.
    */
-  role?: "OWNER" | "REVIEWER";
+  role?: "OWNER" | "REVIEWER" | "COORDINATOR" | "INFORMED";
   /**
    * Bản này do ĐỘI lập hay do PHÒNG lập - quyết định gọi bộ route nào.
    *
@@ -392,10 +403,16 @@ export function TeamReportSummaryPanel({
   const [editMode, setEditMode] = useState(false);
 
   const reviewer = role === "REVIEWER";
+  /* Đội lập bản. Không suy bằng `!reviewer`: đồng nhận cũng không phải người
+     duyệt, mà nó tuyệt đối không được sửa, trình hay xoá bản của đội. */
+  const owner = role === "OWNER";
   const draft = summary.status === "DRAFT";
   /* Duyệt / trả lại chỉ khi bản đang chờ: đã duyệt thì rút lại quyết định cấp
      dưới đã thấy, đã trả lại thì bóng đang ở bên đội. */
   const decidable = reviewer && summary.status === "PENDING";
+  /** Đơn vị phối hợp chưa cho ý kiến - nhắc chủ trì trước khi duyệt. */
+  const { total: coordinatorCount, silent: silentCoordinators } =
+    silentCoordinatorsOf(summary.participants ?? []);
 
   /*
     Ai được chấm lại, lúc nào:
@@ -418,20 +435,24 @@ export function TeamReportSummaryPanel({
   */
   const canEdit = reviewer
     ? summary.status === "PENDING"
-    : draft || summary.status === "RETURNED";
+    : owner && (draft || summary.status === "RETURNED");
   const editable = canEdit && editMode;
   /* Đổi danh sách nhiệm vụ: chỉ đội, và chỉ khi bản chưa trình hoặc bị trả lại.
      Không đòi bấm "Sửa điểm" trước - thêm bớt dòng là thao tác riêng, thấy ngay
      nút là làm được. */
-  const canChangeTasks = !reviewer && (draft || summary.status === "RETURNED");
+  const canChangeTasks = owner && (draft || summary.status === "RETURNED");
   /* Trình đi được ở đúng những trạng thái đội đang giữ bóng - cùng luật với
      `sendSummary` bên server, để nút không bao giờ bày ra rồi bị từ chối. */
-  const canSend = !reviewer && (draft || summary.status === "RETURNED");
+  const canSend = owner && (draft || summary.status === "RETURNED");
 
-  const { data: recipients = [] } = useSWR(
-    sendOpen ? teamReportKeys.recipients(level) : null,
-    () => fetchTeamReportRecipients(undefined, level),
+  const { data: recipientData } = useSWR(
+    sendOpen
+      ? ([...teamReportKeys.recipients(level), "with-co"] as const)
+      : null,
+    () => fetchTeamReportRecipientOptions(level),
   );
+  const recipients = recipientData?.people ?? [];
+  const units = recipientData?.units ?? null;
 
   /*
     Kho để thêm: CẢ kho nhiệm vụ của đội, không bó trong kỳ của báo cáo.
@@ -612,7 +633,8 @@ export function TeamReportSummaryPanel({
 
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
-    if (!recipientId) {
+    // Luồng có bảng đơn vị cố định thì không có gì để chọn.
+    if (!units && !recipientId) {
       // Báo ngay dưới ô chọn, không bắn toast ở góc màn hình.
       setRecipientError(true);
       return;
@@ -621,7 +643,10 @@ export function TeamReportSummaryPanel({
     try {
       await sendTeamReportSummary(
         summary._id,
-        { recipientId, note: note.trim() || undefined },
+        {
+          ...(units ? {} : { recipientId }),
+          note: note.trim() || undefined,
+        },
         level,
       );
       setSendOpen(false);
@@ -773,7 +798,7 @@ export function TeamReportSummaryPanel({
   };
 
   const returned = summary.status === "RETURNED";
-  const canDelete = draft && !reviewer;
+  const canDelete = draft && owner;
 
   const openSend = () => {
     /* Bản bị trả lại đã có người nhận từ lượt trước - điền sẵn để khỏi phải
@@ -1076,6 +1101,19 @@ export function TeamReportSummaryPanel({
           </p>
         ) : null}
 
+        {summary.participants?.length ? (
+          <ParticipantsBlock
+            leadName={summary.recipientName}
+            participants={summary.participants ?? []}
+            status={summary.status}
+            role={role}
+            onSubmitOpinion={(comment) =>
+              commentTeamReportSummary(summary._id, comment)
+            }
+            onChanged={onChanged}
+          />
+        ) : null}
+
         {/* Bảng điểm đứng TRƯỚC chi tiết: người duyệt cần con số chốt trước, chi
             tiết chỉ để tra lại vì sao ra con số đó. */}
         {axisScores.length ? (
@@ -1092,7 +1130,7 @@ export function TeamReportSummaryPanel({
           cấp trên: bảng A có đường riêng. Vai duyệt và cấp phòng không thấy -
           họ không có quyền đọc bảng A của đội qua đường này, mà cũng không cần.
         */}
-        {!reviewer && level === "TEAM" ? (
+        {owner && level === "TEAM" ? (
           <TeamReportCriteriaPreview
             fromDate={summary.fromDate}
             toDate={summary.toDate}
@@ -1571,41 +1609,21 @@ export function TeamReportSummaryPanel({
               </p>
             )}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="summary-recipient">
-                Trình lên <span className="text-destructive">*</span>
-              </Label>
-              <SearchableSelect
-                id="summary-recipient"
-                value={recipientId}
-                onValueChange={(next) => {
-                  setRecipientId(next);
-                  if (recipientError) setRecipientError(false);
-                }}
-                aria-invalid={recipientError}
-                aria-describedby={
-                  recipientError ? "summary-recipient-error" : undefined
-                }
-                options={recipients.map((person) => ({
-                  value: person.id,
-                  label: recipientLabel(person),
-                }))}
-                placeholder={
-                  recipients.length
-                    ? "Chọn cấp trên…"
-                    : "Chưa tìm được cấp trên nào có quyền duyệt"
-                }
-              />
-              {recipientError ? (
-                <p
-                  id="summary-recipient-error"
-                  role="alert"
-                  className="text-xs text-destructive"
-                >
-                  Chọn người cấp trên nhận báo cáo này.
-                </p>
-              ) : null}
-            </div>
+            <SummaryRecipientFields
+              idPrefix="summary"
+              recipients={recipients}
+              units={units}
+              recipientId={recipientId}
+              onRecipientChange={(next) => {
+                setRecipientId(next);
+                if (recipientError) setRecipientError(false);
+              }}
+              error={
+                recipientError
+                  ? "Chọn người cấp trên nhận báo cáo này."
+                  : undefined
+              }
+            />
             <div className="space-y-1.5">
               <Label htmlFor="summary-note">
                 Ghi chú gửi kèm{" "}
@@ -1631,7 +1649,7 @@ export function TeamReportSummaryPanel({
               >
                 Huỷ
               </Button>
-              <Button type="submit" disabled={busy}>
+              <Button type="submit" disabled={busy || hasInactiveUnit(units)}>
                 {busy ? (
                   <Loader2
                     className="size-4 motion-safe:animate-spin"
@@ -1966,6 +1984,22 @@ export function TeamReportSummaryPanel({
               </p>
             ) : null}
           </div>
+          {/* Nhắc, không chặn: ý kiến phối hợp là để chủ trì cân nhắc, chờ đủ
+              mới cho duyệt thì một đơn vị chậm là treo cả bản. */}
+          {silentCoordinators.length ? (
+            <p className="flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+              <TriangleAlert
+                className="mt-0.5 size-4 shrink-0"
+                aria-hidden="true"
+              />
+              <span>
+                Còn {silentCoordinators.length}/{coordinatorCount} đơn vị phối
+                hợp chưa cho ý kiến:{" "}
+                {silentCoordinators.map(participantLabel).join(", ")}. Vẫn duyệt
+                được.
+              </span>
+            </p>
+          ) : null}
           <p className="text-sm text-muted-foreground">
             Sau khi duyệt, không ai sửa được điểm của bản này nữa. Cần chỉnh thì
             trả lại cho đội thay vì duyệt.

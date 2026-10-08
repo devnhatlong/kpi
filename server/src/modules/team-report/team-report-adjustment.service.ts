@@ -33,6 +33,7 @@ import {
 import {
   AddTeamReportAdjustmentEntryDto,
   DecideTeamReportDayDto,
+  CommentTeamReportSummaryDto,
   SendTeamReportAdjustmentDto,
   TeamReportAdjustmentInboxQueryDto,
   TeamReportAdjustmentQueryDto,
@@ -42,6 +43,12 @@ import { TeamReportService } from './team-report.service';
 import { isYmd, serverDateYmd } from './team-report.time';
 import { TeamReportAdjustmentAccessService } from './team-report-adjustment-access.service';
 import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
+
+/** Tên trường nhật ký khi đơn vị phối hợp gửi ý kiến - để lọc khỏi bản nhận để biết. */
+const OPINION_FIELD = 'Ý kiến phối hợp';
+
+/** Vai của đơn vị người xem trên một bản đã trình tới. */
+type AdjustmentViewerRole = 'RECIPIENT' | 'COORDINATOR' | 'INFORMED';
 
 type Actor = {
   id: Types.ObjectId;
@@ -383,10 +390,16 @@ export class TeamReportAdjustmentService {
       throw new BadRequestException('Bảng này đã trình rồi.');
     }
 
-    const recipient = await this.requireRecipient(
-      String(actor.id),
-      dto.recipientId,
-    );
+    /* Luồng có NƠI NHẬN cố định: đi đúng bảng quản trị gán (chủ trì + phối
+       hợp + nhận để biết), người trình không chọn. Còn lại chọn một người. */
+    const fixed = await this.routing.fixedTargets('ADJUSTMENT', actor);
+    if (!fixed && !dto.recipientId) {
+      throw new BadRequestException('Chọn người cấp trên nhận bảng.');
+    }
+    const recipient =
+      fixed?.recipient ??
+      (await this.requireRecipient(String(actor.id), dto.recipientId!));
+    const participants = fixed?.participants ?? [];
     // Dòng nhập trước khi quản trị đổi cách áp trần vẫn có thể vượt - soát
     // lại cả bảng trước khi trình, đừng để cấp trên nhận bảng sai luật.
     this.assertItemTotals(sheet.entries, await this.templatesOfSheet(sheet));
@@ -395,6 +408,9 @@ export class TeamReportAdjustmentService {
     sheet.recipientId = recipient.id;
     sheet.recipientName = recipient.name;
     sheet.recipientDepartmentId = recipient.departmentId;
+    // Trình lại sau khi bị trả: chụp lại nơi nhận, ý kiến cũ làm lại từ đầu.
+    sheet.participants = participants;
+    sheet.markModified('participants');
     sheet.sentById = actor.id;
     sheet.sentByName = actor.name;
     sheet.sentAt = new Date();
@@ -429,10 +445,16 @@ export class TeamReportAdjustmentService {
     await this.access.assertCanReceive(userId);
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
-    const filter: Record<string, unknown> = {
-      recipientDepartmentId: actor.departmentId,
-      status: { $ne: 'DRAFT' },
-    };
+    const box = query.box ?? 'LEAD';
+    const filter: Record<string, unknown> =
+      box === 'LEAD'
+        ? { recipientDepartmentId: actor.departmentId }
+        : {
+            participants: {
+              $elemMatch: { departmentId: actor.departmentId, role: box },
+            },
+          };
+    filter.status = { $ne: 'DRAFT' };
     if (query.status) filter.status = query.status;
 
     const [rows, total] = await Promise.all([
@@ -469,10 +491,21 @@ export class TeamReportAdjustmentService {
     };
   }
 
-  /** Cấp trên mở một bản trình tới đơn vị mình. */
+  /**
+   * Mở một bản trình tới đơn vị mình - ở vai chủ trì, phối hợp hoặc nhận để
+   * biết. Phối hợp / nhận để biết mở lần đầu thì ghi "đã xem".
+   */
   async incomingDetail(userId: string, id: string) {
     const actor = await this.requireActor(userId);
-    const sheet = await this.requireIncoming(actor, id);
+    const { sheet, viewerRole } = await this.requireVisibleIncoming(actor, id);
+    if (viewerRole !== 'RECIPIENT') {
+      const mine = this.participantOf(sheet, actor);
+      if (mine && !mine.seenAt) {
+        mine.seenAt = new Date();
+        sheet.markModified('participants');
+        await sheet.save();
+      }
+    }
     const templates = await this.templatesOfSheet(sheet);
     const usedIds = sheet.entries.map((entry) => entry.itemId);
     const items = await this.itemModel
@@ -487,10 +520,50 @@ export class TeamReportAdjustmentService {
           sheet.periodMonth,
           sheet.entries,
           templates,
+          viewerRole,
         )),
         catalog: items,
         department: { id: String(sheet.departmentId), name: names },
+        viewerRole,
       },
+    };
+  }
+
+  /**
+   * Đơn vị PHỐI HỢP gửi / sửa ý kiến cho chủ trì - mỗi đơn vị một câu chốt,
+   * chỉ khi bản còn chờ duyệt. Cùng luật với báo cáo tổng hợp.
+   */
+  async opinion(userId: string, id: string, dto: CommentTeamReportSummaryDto) {
+    const actor = await this.requireActor(userId);
+    const { sheet, viewerRole } = await this.requireVisibleIncoming(actor, id);
+    if (viewerRole !== 'COORDINATOR') {
+      throw new ForbiddenException(
+        'Chỉ đơn vị phối hợp mới gửi được ý kiến cho bảng này.',
+      );
+    }
+    if (sheet.status !== 'PENDING') {
+      throw new BadRequestException(
+        'Bảng đã được chủ trì xử lý - không gửi ý kiến được nữa.',
+      );
+    }
+    const comment = dto.comment.trim();
+    const mine = this.participantOf(sheet, actor)!;
+    const before = mine.comment;
+    mine.comment = comment;
+    mine.commentedByName = comment ? actor.name : '';
+    mine.commentedAt = comment ? new Date() : null;
+    mine.seenAt = mine.seenAt ?? new Date();
+    sheet.markModified('participants');
+    this.appendEdit(
+      sheet,
+      actor,
+      `${OPINION_FIELD} (${mine.departmentName})`,
+      before,
+      comment,
+    );
+    await sheet.save();
+    return {
+      message: comment ? 'Đã gửi ý kiến cho chủ trì.' : 'Đã xoá ý kiến.',
     };
   }
 
@@ -634,6 +707,41 @@ export class TeamReportAdjustmentService {
     );
   }
 
+  /**
+   * Bản được ĐỌC: chủ trì, phối hợp hoặc nhận để biết. Duyệt / chỉnh số vẫn
+   * đi qua `requireIncoming` - chỉ chủ trì.
+   */
+  private async requireVisibleIncoming(actor: Actor, id: string) {
+    await this.access.assertCanReceive(String(actor.id));
+    const sheet = await this.sheetModel.findById(
+      this.requireObjectId(id, 'Bảng'),
+    );
+    if (!sheet || sheet.status === 'DRAFT') {
+      throw new NotFoundException('Không tìm thấy bảng.');
+    }
+    if (
+      String(sheet.recipientDepartmentId ?? '') === String(actor.departmentId)
+    ) {
+      return { sheet, viewerRole: 'RECIPIENT' as AdjustmentViewerRole };
+    }
+    const mine = this.participantOf(sheet, actor);
+    if (!mine) {
+      throw new ForbiddenException('Bảng này không trình tới đơn vị bạn.');
+    }
+    const viewerRole: AdjustmentViewerRole =
+      mine.role === 'COORDINATE' ? 'COORDINATOR' : 'INFORMED';
+    return { sheet, viewerRole };
+  }
+
+  private participantOf(
+    sheet: TeamReportAdjustmentSheetDocument,
+    actor: Actor,
+  ) {
+    return (sheet.participants ?? []).find(
+      (item) => String(item.departmentId) === String(actor.departmentId),
+    );
+  }
+
   private async requireIncoming(actor: Actor, id: string) {
     await this.access.assertCanReceive(String(actor.id));
     const sheet = await this.sheetModel.findById(
@@ -656,6 +764,13 @@ export class TeamReportAdjustmentService {
    */
   async recipients(userId: string, q?: string) {
     await this.requireActor(userId);
+    const units = await this.routing.unitsFor('ADJUSTMENT', userId);
+    if (units) {
+      return {
+        message: 'OK',
+        data: { people: [], configured: true, units },
+      };
+    }
     const configured = await this.routing.recipients('ADJUSTMENT', userId, q);
     if (configured) {
       return { message: 'OK', data: { people: configured, configured: true } };
@@ -693,14 +808,32 @@ export class TeamReportAdjustmentService {
     periodMonth: string,
     entries: TeamReportAdjustmentEntry[],
     templates: SectionTemplates,
+    /** Vai người xem - NHẬN ĐỂ BIẾT thì xoá trắng ý kiến phối hợp. */
+    viewerRole?: AdjustmentViewerRole,
   ) {
+    const hideOpinions = viewerRole === 'INFORMED';
+    const participants = (sheet?.participants ?? []).map((item) => ({
+      departmentId: String(item.departmentId),
+      departmentName: item.departmentName,
+      userId: item.userId ? String(item.userId) : null,
+      userName: item.userName,
+      role: item.role,
+      seenAt: item.seenAt,
+      comment: hideOpinions ? '' : item.comment,
+      commentedByName: hideOpinions ? '' : item.commentedByName,
+      commentedAt: hideOpinions ? null : item.commentedAt,
+    }));
+    const edits = (sheet?.edits ?? []).filter(
+      (edit) => !hideOpinions || !String(edit.field).startsWith(OPINION_FIELD),
+    );
     return {
       sheet: {
         _id: sheet ? String(sheet._id) : null,
         periodMonth,
         entries,
         version: sheet?.version ?? 0,
-        edits: sheet?.edits ?? [],
+        edits,
+        participants,
         updatedAt: sheet?.updatedAt ?? null,
         saved: Boolean(sheet),
         status: sheet?.status ?? 'DRAFT',

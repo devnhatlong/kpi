@@ -17,6 +17,55 @@ import {
 export type TeamReportSummaryDocument = TeamReportSummary & Document;
 
 /**
+ * Một đơn vị PHỐI HỢP hoặc NHẬN ĐỂ BIẾT bản tổng hợp - chụp từ bảng đơn vị của
+ * luồng ngay lúc trình, để đổi cấu hình luồng về sau không đổi ngược vai của
+ * những bản đã đi.
+ *
+ * Đơn vị chủ trì KHÔNG nằm ở đây mà ở `recipientDepartmentId` - giữ đúng một
+ * chỗ cho "nơi được quyết", mọi đường duyệt / chấm lại sẵn có đọc chỗ đó.
+ *
+ * - COORDINATE: xem, gửi một ý kiến cho chủ trì (sửa được, khi còn chờ duyệt).
+ * - INFORM: chỉ xem.
+ *
+ * Hộp đến lọc theo ĐƠN VỊ: ai trong đơn vị đó cũng mở được.
+ */
+@Schema({ _id: false })
+export class TeamReportParticipant {
+  @Prop({ type: Types.ObjectId, ref: Department.name, required: true })
+  departmentId!: Types.ObjectId;
+
+  @Prop({ trim: true, default: '' })
+  departmentName!: string;
+
+  /** Tài khoản quản trị gán trong luồng - để biết đích danh nơi nhận. */
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null })
+  userId!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  userName!: string;
+
+  @Prop({ type: String, enum: ['COORDINATE', 'INFORM'], required: true })
+  role!: 'COORDINATE' | 'INFORM';
+
+  /** Lần đầu có người ở đơn vị này mở bản ra - để đội gửi biết đã xem. */
+  @Prop({ type: Date, default: null })
+  seenAt!: Date | null;
+
+  @Prop({ trim: true, default: '' })
+  comment!: string;
+
+  @Prop({ trim: true, default: '' })
+  commentedByName!: string;
+
+  @Prop({ type: Date, default: null })
+  commentedAt!: Date | null;
+}
+
+export const TeamReportParticipantSchema = SchemaFactory.createForClass(
+  TeamReportParticipant,
+);
+
+/**
  * Kỳ của báo cáo - chỉ là NHÃN, phạm vi thật nằm ở `fromDate`/`toDate`.
  *
  * Thêm kỳ mới thì chỉ cần nối vào đây và khai nhãn bên client; server không suy
@@ -95,6 +144,9 @@ export class TeamReportSummary {
    * Bản ngày suy người nhận từ đơn vị cha vì nó là lượt bắt buộc hằng ngày, đi
    * đúng một đường. Bản tổng hợp thì người lập tự quyết trình cho ai, nên phải
    * lưu đích danh.
+   *
+   * null khi luồng dùng BẢNG ĐƠN VỊ cố định: bản đi tới đơn vị chủ trì, không
+   * tới một người cụ thể - khi đó `recipientName` là tên đơn vị chủ trì.
    */
   @Prop({ type: Types.ObjectId, ref: User.name, default: null, index: true })
   recipientId!: Types.ObjectId | null;
@@ -102,8 +154,13 @@ export class TeamReportSummary {
   @Prop({ trim: true, default: '' })
   recipientName!: string;
 
+  /** Đơn vị CHỦ TRÌ - nơi duy nhất được chấm lại, duyệt, trả lại. */
   @Prop({ type: Types.ObjectId, ref: Department.name, default: null })
   recipientDepartmentId!: Types.ObjectId | null;
+
+  /** Các đơn vị phối hợp / nhận để biết - xem TeamReportParticipant. */
+  @Prop({ type: [TeamReportParticipantSchema], default: [] })
+  participants!: TeamReportParticipant[];
 
   @Prop({ type: Types.ObjectId, ref: User.name, default: null })
   sentById!: Types.ObjectId | null;
@@ -144,6 +201,9 @@ TeamReportSummarySchema.index({ departmentId: 1, createdAt: -1 });
 
 /** Hộp đến của người nhận. */
 TeamReportSummarySchema.index({ recipientId: 1, status: 1, createdAt: -1 });
+
+/** Hộp đến "Phối hợp" / "Nhận để biết" - lọc theo đơn vị tham gia. */
+TeamReportSummarySchema.index({ 'participants.departmentId': 1, sentAt: -1 });
 
 /** Đánh dấu nhiệm vụ đã nằm trong một bản đã trình - tránh trình trùng. */
 TeamReportSummarySchema.index({ departmentId: 1, 'rows.taskId': 1 });

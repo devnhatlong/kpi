@@ -450,7 +450,10 @@ export type TeamReportSummary = {
   rows: TeamReportDayRow[];
   status: TeamReportDayStatus;
   recipientId: Ref;
+  /** Đơn vị CHỦ TRÌ (luồng có bảng đơn vị) hoặc người nhận đã chọn. */
   recipientName: string;
+  /** Các đơn vị phối hợp / nhận để biết, chụp theo luồng lúc trình. */
+  participants?: TeamReportParticipant[];
   sentByName: string;
   sentAt: string | null;
   note: string;
@@ -460,6 +463,50 @@ export type TeamReportSummary = {
   edits: TeamReportEdit[];
   createdAt?: string;
 };
+
+/** Vai của một đơn vị nhận báo cáo tổng hợp, do quản trị gán trong luồng. */
+export type TeamReportUnitRole = "LEAD" | "COORDINATE" | "INFORM";
+
+export const TEAM_REPORT_UNIT_ROLE_LABEL: Record<TeamReportUnitRole, string> = {
+  LEAD: "Chủ trì",
+  COORDINATE: "Phối hợp",
+  INFORM: "Nhận để biết",
+};
+
+/** Một đơn vị phối hợp / nhận để biết bản tổng hợp. */
+export type TeamReportParticipant = {
+  departmentId: string;
+  departmentName: string;
+  /** Tài khoản quản trị gán trong luồng. */
+  userId?: string | null;
+  userName?: string;
+  role: Exclude<TeamReportUnitRole, "LEAD">;
+  seenAt: string | null;
+  /** Ý kiến gửi chủ trì - chỉ đơn vị phối hợp có; bản nhận để biết bị xoá trắng. */
+  comment: string;
+  commentedByName: string;
+  commentedAt: string | null;
+};
+
+/** Một dòng bảng nơi nhận của luồng (theo tài khoản), đã kèm tên để bày ra. */
+export type TeamReportRouteUnitView = {
+  userId: string;
+  fullName: string;
+  username: string;
+  departmentId: string | null;
+  departmentName: string;
+  parentDepartmentName: string;
+  /** Tài khoản còn hoạt động và còn gắn đơn vị. */
+  isActive: boolean;
+  role: TeamReportUnitRole;
+};
+
+/** Vai của người đang xem một bản tổng hợp. */
+export type TeamReportSummaryViewerRole =
+  | "OWNER"
+  | "RECIPIENT"
+  | "COORDINATOR"
+  | "INFORMED";
 
 /** Một dòng trong kho để tích chọn. */
 export type TeamReportSummaryCandidate = {
@@ -640,6 +687,8 @@ export type TeamReportAdjustmentSheet = {
   decidedByName: string;
   decidedAt: string | null;
   returnReason: string;
+  /** Nơi phối hợp / nhận để biết - chụp theo luồng lúc trình. */
+  participants?: TeamReportParticipant[];
 };
 
 /** Một dòng trong hộp đến của cấp trên - không mang theo các dòng chi tiết. */
@@ -667,6 +716,8 @@ export type TeamReportAdjustmentData = {
   months?: string[];
   /** Chỉ có ở đường hộp đến - đơn vị đã lập bản. */
   department?: { id: string; name: string };
+  /** Chỉ có ở đường hộp đến - vai của đơn vị người xem. */
+  viewerRole?: "RECIPIENT" | "COORDINATOR" | "INFORMED";
   /**
    * Đơn vị bày ra ở các ô kiểu chọn đơn vị - server gom theo hợp các cấp mà
    * mọi cột kiểu này khai; từng ô lọc lại theo `departmentLevelIds` của cột.

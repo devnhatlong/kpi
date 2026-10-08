@@ -15,6 +15,10 @@ import {
   TeamReportEdit,
   TeamReportEditSchema,
 } from './team-report-task.schema';
+import {
+  TeamReportParticipant,
+  TeamReportParticipantSchema,
+} from './team-report-summary.schema';
 
 export type TeamReportAdjustmentSheetDocument = TeamReportAdjustmentSheet &
   Document;
@@ -134,6 +138,14 @@ export class TeamReportAdjustmentSheet {
   })
   recipientDepartmentId!: Types.ObjectId | null;
 
+  /**
+   * Các nơi phối hợp / nhận để biết - chụp từ bảng nơi nhận của luồng lúc
+   * trình, cùng khuôn với báo cáo tổng hợp (xem TeamReportParticipant). Nơi
+   * chủ trì vẫn là `recipientDepartmentId` ở trên.
+   */
+  @Prop({ type: [TeamReportParticipantSchema], default: [] })
+  participants!: TeamReportParticipant[];
+
   @Prop({ type: Types.ObjectId, ref: User.name, default: null })
   sentById!: Types.ObjectId | null;
 
@@ -183,4 +195,10 @@ TeamReportAdjustmentSheetSchema.index({
   recipientDepartmentId: 1,
   status: 1,
   periodMonth: -1,
+});
+
+/** Hộp đến "Phối hợp" / "Nhận để biết". */
+TeamReportAdjustmentSheetSchema.index({
+  'participants.departmentId': 1,
+  sentAt: -1,
 });

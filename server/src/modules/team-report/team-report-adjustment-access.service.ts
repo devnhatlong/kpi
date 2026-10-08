@@ -83,7 +83,10 @@ export class TeamReportAdjustmentAccessService {
     if (await this.routing.isListedRecipient('ADJUSTMENT', userId)) return true;
     if (!who.departmentId) return false;
     const addressed = await this.sheetModel.exists({
-      recipientDepartmentId: who.departmentId,
+      $or: [
+        { recipientDepartmentId: who.departmentId },
+        { 'participants.departmentId': who.departmentId },
+      ],
       status: { $ne: 'DRAFT' },
     });
     return Boolean(addressed);

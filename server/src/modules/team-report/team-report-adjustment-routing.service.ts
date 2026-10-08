@@ -22,7 +22,10 @@ import {
   TeamReportAdjustmentRouteDocument,
   TeamReportAdjustmentScope,
   type TeamReportRouteKind,
+  type TeamReportRouteUnit,
+  type TeamReportUnitRole,
 } from './schemas/team-report-adjustment-route.schema';
+import type { TeamReportParticipant } from './schemas/team-report-summary.schema';
 
 /** Người nhận bảng - cùng dạng với người nhận báo cáo tổng hợp. */
 export type AdjustmentRecipient = {
@@ -33,6 +36,20 @@ export type AdjustmentRecipient = {
   departmentName: string;
   /** Đơn vị cha của đơn vị người nhận - để nhãn "tên - phòng / xã". */
   parentDepartmentName: string;
+};
+
+/** Một dòng bảng nơi nhận, đã kèm tên tài khoản và đơn vị để bày ra. */
+export type SummaryRouteUnit = {
+  userId: string;
+  fullName: string;
+  username: string;
+  departmentId: string | null;
+  departmentName: string;
+  /** Đơn vị cha - nhãn "tên - phòng" như dropdown chọn người. */
+  parentDepartmentName: string;
+  /** Tài khoản còn hoạt động VÀ còn gắn đơn vị - thiếu một là không trình được. */
+  isActive: boolean;
+  role: TeamReportUnitRole;
 };
 
 type Person = {
@@ -101,7 +118,8 @@ export class TeamReportAdjustmentRoutingService {
         route.recipients,
         `"${name}" - gửi cho ai`,
       );
-      if (scopeEmpty(recipients)) {
+      const units = await this.normalizeUnits(route.units ?? [], name);
+      if (!units.length && scopeEmpty(recipients)) {
         throw new BadRequestException(`Luồng "${name}" chưa chọn gửi cho ai.`);
       }
       if (scopeEmpty(sender)) {
@@ -112,6 +130,7 @@ export class TeamReportAdjustmentRoutingService {
         name,
         sortOrder: index,
         isActive: route.isActive ?? true,
+        units,
         sender,
         recipients,
         updatedByName: by,
@@ -320,6 +339,101 @@ export class TeamReportAdjustmentRoutingService {
     return [];
   }
 
+  /**
+   * Bảng nơi nhận cố định của luồng khớp người gửi, kèm tên tài khoản
+   * và đơn vị. null = không khớp luồng nào, hoặc luồng để người trình tự chọn.
+   *
+   * Tài khoản đã khoá / mất đơn vị vẫn trả về (`isActive = false`) để người
+   * trình thấy và báo quản trị, thay vì lặng lẽ bỏ đi rồi trình thiếu nơi.
+   */
+  async unitsFor(
+    kind: TeamReportRouteKind,
+    actorId: string,
+  ): Promise<SummaryRouteUnit[] | null> {
+    const route = await this.routeFor(kind, actorId);
+    if (!route?.units?.length) return null;
+    const users = await this.userModel
+      .find({ _id: { $in: route.units.map((unit) => unit.userId) } })
+      .select('fullName username departmentId isActive')
+      .populate({
+        path: 'departmentId',
+        select: 'name parentId isActive',
+        populate: { path: 'parentId', select: 'name' },
+      });
+    const byId = new Map(users.map((user) => [String(user._id), user]));
+    return route.units.map((unit) => {
+      const user = byId.get(String(unit.userId));
+      const dept = user?.departmentId as unknown as {
+        _id?: Types.ObjectId;
+        name?: string;
+        isActive?: boolean;
+        parentId?: { name?: string } | null;
+      } | null;
+      return {
+        userId: String(unit.userId),
+        fullName:
+          user?.fullName?.trim() || user?.username || '(tài khoản đã xoá)',
+        username: user?.username ?? '',
+        departmentId: dept?._id ? String(dept._id) : null,
+        departmentName: dept?.name ?? '',
+        parentDepartmentName: dept?.parentId?.name ?? '',
+        isActive: !!user?.isActive && !!dept?._id && dept.isActive !== false,
+        role: unit.role,
+      };
+    });
+  }
+
+  /**
+   * Bản trình đi đâu theo BẢNG NƠI NHẬN cố định: một chủ trì + các nơi phối
+   * hợp / nhận để biết. null = luồng để người trình tự chọn (nơi gọi lo).
+   *
+   * Dùng chung cho báo cáo tổng hợp và bảng điểm cộng / trừ - một luật, một
+   * chỗ.
+   */
+  async fixedTargets(
+    kind: TeamReportRouteKind,
+    actor: { id: Types.ObjectId | string; departmentId: Types.ObjectId | null },
+  ): Promise<{
+    recipient: {
+      id: Types.ObjectId;
+      name: string;
+      departmentId: Types.ObjectId;
+    };
+    participants: TeamReportParticipant[];
+  } | null> {
+    const units = await this.unitsFor(kind, String(actor.id));
+    if (!units) return null;
+    const inactive = units.find((unit) => !unit.isActive);
+    if (inactive) {
+      throw new BadRequestException(
+        `Tài khoản "${inactive.fullName}" trong luồng trình đã bị khoá hoặc không còn đơn vị - báo quản trị sửa luồng trước khi trình.`,
+      );
+    }
+    const lead = units.find((unit) => unit.role === 'LEAD')!;
+    return {
+      recipient: {
+        id: new Types.ObjectId(lead.userId),
+        name: lead.fullName,
+        departmentId: new Types.ObjectId(lead.departmentId!),
+      },
+      participants: units
+        .filter((unit) => unit.role !== 'LEAD')
+        // Đơn vị lập không tự phối hợp / nhận để biết bản của chính mình.
+        .filter((unit) => unit.departmentId !== String(actor.departmentId))
+        .map((unit) => ({
+          departmentId: new Types.ObjectId(unit.departmentId!),
+          departmentName: unit.departmentName,
+          userId: new Types.ObjectId(unit.userId),
+          userName: unit.fullName,
+          role: unit.role as 'COORDINATE' | 'INFORM',
+          seenAt: null,
+          comment: '',
+          commentedByName: '',
+          commentedAt: null,
+        })),
+    };
+  }
+
   /** Có luồng nào đang dùng cho loại này không. */
   async hasRoutes(kind: TeamReportRouteKind): Promise<boolean> {
     return Boolean(await this.routeModel.exists({ kind, isActive: true }));
@@ -358,6 +472,23 @@ export class TeamReportAdjustmentRoutingService {
       : null;
 
     for (const route of routes) {
+      /* Luồng có bảng tài khoản: đích danh, hoặc cùng đơn vị với một tài khoản
+         trong bảng - hộp đến lọc theo đơn vị nên cả đơn vị đều xử lý được. */
+      if (route.units?.length) {
+        if (
+          route.units.some((unit) => String(unit.userId) === String(user._id))
+        ) {
+          return true;
+        }
+        if (user.departmentId) {
+          const sameUnit = await this.userModel.exists({
+            _id: { $in: route.units.map((unit) => unit.userId) },
+            departmentId: user.departmentId,
+          });
+          if (sameUnit) return true;
+        }
+        continue;
+      }
       const scope = route.recipients;
       if (scope.userIds.some((id) => String(id) === String(user._id))) {
         return true;
@@ -422,6 +553,73 @@ export class TeamReportAdjustmentRoutingService {
   }
 
   /* ----------------------------------------------------------- nội bộ */
+
+  /**
+   * Kiểm bảng nơi nhận: rỗng thì thôi (luồng kiểu chọn người); có thì phải
+   * ĐÚNG MỘT chủ trì - không ai quyết thì bản treo mãi, hai nơi cùng quyết thì
+   * chấm đè lên nhau - mỗi tài khoản một dòng, và mỗi ĐƠN VỊ chỉ một dòng.
+   *
+   * Hai tài khoản cùng đơn vị bị chặn: hộp đến lọc theo đơn vị, hai dòng cùng
+   * đơn vị mà khác vai thì không biết đơn vị đó được duyệt hay chỉ được xem.
+   */
+  private async normalizeUnits(
+    units: { userId: string; role: TeamReportUnitRole }[],
+    routeName: string,
+  ): Promise<TeamReportRouteUnit[]> {
+    if (!units.length) return [];
+    const seen = new Set<string>();
+    for (const unit of units) {
+      if (seen.has(unit.userId)) {
+        throw new BadRequestException(
+          `Luồng "${routeName}": một tài khoản chỉ được giữ một vai.`,
+        );
+      }
+      seen.add(unit.userId);
+    }
+    const leads = units.filter((unit) => unit.role === 'LEAD').length;
+    if (leads !== 1) {
+      throw new BadRequestException(
+        `Luồng "${routeName}" phải có đúng một chủ trì (đang có ${leads}).`,
+      );
+    }
+    const users = await this.userModel
+      .find({ _id: { $in: [...seen].map((id) => new Types.ObjectId(id)) } })
+      .select('fullName username departmentId');
+    if (users.length !== seen.size) {
+      throw new BadRequestException(
+        `Luồng "${routeName}" có tài khoản không tồn tại.`,
+      );
+    }
+    const deptOwner = new Map<string, string>();
+    for (const user of users) {
+      const name = user.fullName?.trim() || user.username;
+      if (!user.departmentId) {
+        throw new BadRequestException(
+          `Luồng "${routeName}": tài khoản ${name} chưa gắn đơn vị - không có hộp đến để nhận.`,
+        );
+      }
+      const dept = String(user.departmentId);
+      const other = deptOwner.get(dept);
+      if (other) {
+        throw new BadRequestException(
+          `Luồng "${routeName}": ${other} và ${name} cùng một đơn vị - mỗi đơn vị chỉ chọn một tài khoản.`,
+        );
+      }
+      deptOwner.set(dept, name);
+    }
+    // Chủ trì đứng đầu, rồi phối hợp, rồi nhận để biết - đúng thứ tự bày ra.
+    const order: Record<TeamReportUnitRole, number> = {
+      LEAD: 0,
+      COORDINATE: 1,
+      INFORM: 2,
+    };
+    return [...units]
+      .sort((x, y) => order[x.role] - order[y.role])
+      .map((unit) => ({
+        userId: new Types.ObjectId(unit.userId),
+        role: unit.role,
+      }));
+  }
 
   private async routeFor(kind: TeamReportRouteKind, actorId: string) {
     const routes = await this.routeModel
@@ -596,6 +794,10 @@ export class TeamReportAdjustmentRoutingService {
       kind: route.kind,
       name: route.name,
       isActive: route.isActive,
+      units: (route.units ?? []).map((unit) => ({
+        userId: String(unit.userId),
+        role: unit.role,
+      })),
       sender: scope(route.sender),
       recipients: scope(route.recipients),
       updatedByName: route.updatedByName,

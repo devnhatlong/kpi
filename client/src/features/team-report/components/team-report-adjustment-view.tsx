@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { SearchableSelect } from "@/components/common/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,6 +27,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  SummaryRecipientFields,
+  hasInactiveUnit,
+} from "@/features/team-report/components/summary-recipient-fields";
 import {
   addTeamReportAdjustmentEntry,
   fetchTeamReportAdjustments,
@@ -43,7 +46,6 @@ import {
 } from "@/features/team-report/components/team-report-adjustment-table";
 import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
 import {
-  recipientLabel,
   TEAM_REPORT_STATUS_LABEL,
   formatScore,
   type TeamReportAdjustmentEntry,
@@ -204,15 +206,18 @@ export function TeamReportAdjustmentView() {
     () => fetchTeamReportAdjustmentRecipients(),
   );
   const recipients = recipientData?.people ?? [];
+  /* Luồng có nơi nhận cố định: không chọn ai, bảng đi đúng nơi quản trị gán. */
+  const units = recipientData?.units ?? null;
+  const canSubmit = units ? !hasInactiveUnit(units) : !!recipientId;
 
   const send = async () => {
-    if (!sheet || !recipientId) return;
+    if (!sheet || !canSubmit) return;
     setSending(true);
     try {
       await applyResult(
         await sendTeamReportAdjustment(month, {
           version: sheet.version,
-          recipientId,
+          ...(units ? {} : { recipientId }),
           note: sendNote.trim() || undefined,
         }),
       );
@@ -513,24 +518,13 @@ export function TeamReportAdjustmentView() {
           </DialogHeader>
 
           <div className="space-y-3">
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium">
-                Trình lên <span className="text-destructive">*</span>
-              </p>
-              <SearchableSelect
-                value={recipientId}
-                onValueChange={setRecipientId}
-                options={recipients.map((person) => ({
-                  value: person.id,
-                  label: recipientLabel(person),
-                }))}
-                placeholder={
-                  recipients.length
-                    ? "Chọn cấp trên..."
-                    : "Chưa tìm được cấp trên nào có quyền duyệt"
-                }
-              />
-            </div>
+            <SummaryRecipientFields
+              idPrefix="adjustment"
+              recipients={recipients}
+              units={units}
+              recipientId={recipientId}
+              onRecipientChange={setRecipientId}
+            />
             <div className="space-y-1.5">
               <p className="text-sm font-medium">Ghi chú gửi kèm</p>
               <Textarea
@@ -551,7 +545,7 @@ export function TeamReportAdjustmentView() {
               Huỷ
             </Button>
             <Button
-              disabled={sending || !recipientId}
+              disabled={sending || !canSubmit}
               onClick={() => void send()}
             >
               <Send className="size-4" />

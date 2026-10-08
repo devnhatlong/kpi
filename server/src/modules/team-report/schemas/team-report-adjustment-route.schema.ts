@@ -62,6 +62,28 @@ const ScopeSchema = SchemaFactory.createForClass(TeamReportAdjustmentScope);
  * Nhiều luồng, xét theo `sortOrder`, khớp luồng đầu tiên. Không khớp luồng nào
  * → mặc định: cấp trên trực tiếp có quyền duyệt.
  */
+/** Vai của một đơn vị nhận báo cáo tổng hợp. */
+export const TEAM_REPORT_UNIT_ROLES = ['LEAD', 'COORDINATE', 'INFORM'] as const;
+export type TeamReportUnitRole = (typeof TEAM_REPORT_UNIT_ROLES)[number];
+
+/**
+ * Một dòng của bảng nơi nhận: TÀI KHOẢN nào, giữ vai gì.
+ *
+ * Chọn tài khoản chứ không chọn đơn vị - cùng cách quản trị đã quen ở chế độ
+ * người trình tự chọn. Đơn vị suy từ tài khoản lúc trình; hộp đến vẫn lọc theo
+ * đơn vị đó, nên ai cùng đơn vị cũng mở được.
+ */
+@Schema({ _id: false })
+export class TeamReportRouteUnit {
+  @Prop({ type: Types.ObjectId, ref: User.name, required: true })
+  userId!: Types.ObjectId;
+
+  @Prop({ type: String, enum: TEAM_REPORT_UNIT_ROLES, required: true })
+  role!: TeamReportUnitRole;
+}
+
+const RouteUnitSchema = SchemaFactory.createForClass(TeamReportRouteUnit);
+
 /** Luồng của loại báo cáo nào. */
 export const TEAM_REPORT_ROUTE_KINDS = ['ADJUSTMENT', 'SUMMARY'] as const;
 export type TeamReportRouteKind = (typeof TEAM_REPORT_ROUTE_KINDS)[number];
@@ -88,6 +110,21 @@ export class TeamReportAdjustmentRoute {
 
   @Prop({ default: true })
   isActive!: boolean;
+
+  /**
+   * Bảng NƠI NHẬN cố định theo tài khoản (chỉ luồng SUMMARY dùng). Có bảng thì
+   * người trình KHÔNG chọn gì - bản đi đúng tới các tài khoản quản trị gán vai:
+   *
+   * - LEAD (chủ trì, đúng 1): chấm lại, duyệt, trả lại.
+   * - COORDINATE (phối hợp, nhiều): xem và gửi ý kiến cho chủ trì.
+   * - INFORM (nhận để biết, nhiều): chỉ xem.
+   *
+   * Rỗng = luồng kiểu cũ: người trình tự chọn một người trong vế `recipients`.
+   * Giữ kiểu cũ cho các luồng TƯƠNG ĐỐI theo người gửi ("đội trình phòng của
+   * chính mình") - kiểu đó không viết được thành một bảng đơn vị cố định.
+   */
+  @Prop({ type: [RouteUnitSchema], default: [] })
+  units!: TeamReportRouteUnit[];
 
   @Prop({ type: ScopeSchema, required: true })
   sender!: TeamReportAdjustmentScope;

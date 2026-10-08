@@ -13,6 +13,9 @@ import type {
   TeamReportRecipient,
   TeamReportSheet,
   TeamReportSummary,
+  TeamReportSummaryViewerRole,
+  TeamReportRouteUnitView,
+  TeamReportUnitRole,
   TeamReportSummaryCandidates,
   TeamReportTask,
   TeamReportTemplate,
@@ -412,6 +415,26 @@ export function fetchTeamReportRecipients(
 }
 
 /**
+ * Bản trình sẽ đi đâu: luồng có bảng đơn vị cố định thì trả `units` (người
+ * trình không chọn gì), còn lại trả `people` để chọn một người như cũ.
+ */
+export function fetchTeamReportRecipientOptions(
+  level?: TeamReportSummaryLevel,
+) {
+  return unwrapData(
+    api.get<
+      ApiResponse<{
+        people: TeamReportRecipient[];
+        units?: TeamReportRouteUnitView[] | null;
+      }>
+    >(`${summaryBase(level)}/recipients`),
+  ).then((data) => ({
+    people: data.people,
+    units: data.units ?? null,
+  }));
+}
+
+/**
  * Danh sách bản tổng hợp của đội / phòng.
  *
  * Kèm `statusCounts` - số bản theo từng trạng thái trên cùng từ khoá, để dải
@@ -463,7 +486,7 @@ export function createTeamReportSummary(input: {
 
 export function sendTeamReportSummary(
   id: string,
-  input: { recipientId: string; note?: string },
+  input: { recipientId?: string; note?: string },
   level?: TeamReportSummaryLevel,
 ) {
   return unwrapData(
@@ -482,6 +505,8 @@ export type TeamReportSummaryDetail = {
   catalogs: TeamReportCatalogs;
   /** Điểm từng trục, do server tính theo công thức khai trong mẫu. */
   axisScores: TeamReportAxisScore[];
+  /** Vai của người xem - đồng nhận thì chỉ xem và nhận xét. */
+  viewerRole?: TeamReportSummaryViewerRole | null;
 };
 
 export function fetchTeamReportSummary(
@@ -530,6 +555,41 @@ export function fetchTeamReportSummaryInbox(
     api.get<ApiResponse<TeamReportSummary[]>>("/team-report/summary/incoming", {
       params,
     }),
+  );
+}
+
+/** Hộp đến "Phối hợp" / "Nhận để biết" - bản có đơn vị tôi ở đúng vai đó. */
+export function fetchTeamReportSummaryParticipantInbox(
+  role: "COORDINATE" | "INFORM",
+  query: TeamReportSummaryInboxQuery,
+) {
+  const params: Record<string, string | number> = {
+    page: query.page ?? 1,
+    limit: query.limit ?? 20,
+  };
+  if (query.status) params.status = query.status;
+  if (query.q?.trim()) params.q = query.q.trim();
+  if (query.departmentId) params.departmentId = query.departmentId;
+  if (query.period) params.period = query.period;
+  if (query.fromDate) params.fromDate = query.fromDate;
+  if (query.toDate) params.toDate = query.toDate;
+  return unwrapPaginated(
+    api.get<ApiResponse<TeamReportSummary[]>>(
+      role === "COORDINATE"
+        ? "/team-report/summary/coordinating"
+        : "/team-report/summary/informed",
+      { params },
+    ),
+  );
+}
+
+/** Đơn vị phối hợp gửi / sửa ý kiến cho chủ trì; chuỗi rỗng = xoá. */
+export function commentTeamReportSummary(id: string, comment: string) {
+  return unwrapData(
+    api.post<ApiResponse<TeamReportSummary>>(
+      `/team-report/summary/${id}/opinion`,
+      { comment },
+    ),
   );
 }
 
@@ -767,6 +827,17 @@ export type TeamReportAdjustmentRoute = {
   kind?: TeamReportRouteKind;
   name: string;
   isActive: boolean;
+  /**
+   * Chỉ luồng SUMMARY: bảng tài khoản nhận cố định kèm vai (chủ trì / phối
+   * hợp / nhận để biết). Rỗng = người trình tự chọn một người như cũ.
+   */
+  units?: Array<{ userId: string; role: TeamReportUnitRole }>;
+  /**
+   * CHỈ ở client: luồng đang soạn theo bảng đơn vị hay theo người tự chọn.
+   * Không suy được từ `units` - bật chế độ bảng mà chưa thêm dòng nào thì
+   * `units` vẫn rỗng. Không gửi lên server.
+   */
+  unitMode?: boolean;
   sender: TeamReportAdjustmentScope;
   recipients: TeamReportAdjustmentScope;
   updatedByName?: string;
@@ -794,6 +865,7 @@ export function saveTeamReportRoutes(
         routes: routes.map((route) => ({
           name: route.name,
           isActive: route.isActive,
+          units: route.unitMode ? (route.units ?? []) : [],
           sender: route.sender,
           recipients: route.recipients,
         })),
@@ -806,7 +878,12 @@ export function saveTeamReportRoutes(
 export function fetchTeamReportAdjustmentRecipients(q?: string) {
   return unwrapData(
     api.get<
-      ApiResponse<{ people: TeamReportRecipient[]; configured: boolean }>
+      ApiResponse<{
+        people: TeamReportRecipient[];
+        configured: boolean;
+        /** Luồng có nơi nhận cố định - người trình không chọn gì. */
+        units?: TeamReportRouteUnitView[] | null;
+      }>
     >("/team-report/adjustments/recipients", { params: q ? { q } : {} }),
   );
 }
@@ -815,7 +892,7 @@ export function fetchTeamReportAdjustmentRecipients(q?: string) {
 
 export function sendTeamReportAdjustment(
   periodMonth: string,
-  input: { version: number; recipientId: string; note?: string },
+  input: { version: number; recipientId?: string; note?: string },
 ) {
   return unwrapData(
     api.post<ApiResponse<TeamReportAdjustmentData>>(
@@ -827,6 +904,8 @@ export function sendTeamReportAdjustment(
 
 export function fetchTeamReportAdjustmentInbox(query: {
   status?: TeamReportDayStatus | "";
+  /** Hộp nào: chủ trì (mặc định), phối hợp, nhận để biết. */
+  box?: "LEAD" | "COORDINATE" | "INFORM";
   page?: number;
   limit?: number;
 }) {
@@ -838,8 +917,19 @@ export function fetchTeamReportAdjustmentInbox(query: {
           page: query.page ?? 1,
           limit: query.limit ?? 20,
           ...(query.status ? { status: query.status } : {}),
+          ...(query.box && query.box !== "LEAD" ? { box: query.box } : {}),
         },
       },
+    ),
+  );
+}
+
+/** Đơn vị phối hợp gửi / sửa ý kiến cho chủ trì; chuỗi rỗng = xoá. */
+export function opinionTeamReportAdjustment(id: string, comment: string) {
+  return unwrapData(
+    api.post<ApiResponse<unknown>>(
+      `/team-report/adjustments/incoming/${id}/opinion`,
+      { comment },
     ),
   );
 }

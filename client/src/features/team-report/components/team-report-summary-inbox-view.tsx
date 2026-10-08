@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import {
   fetchIncomingTeamReportSummary,
+  fetchTeamReportSummaryParticipantInbox,
   fetchTeamReportSummaryInbox,
   fetchTeamReportSummaryInboxSenders,
   teamReportKeys,
@@ -43,6 +44,27 @@ const PAGE_SIZE = 8;
 type StatusFilter = TeamReportDayStatus | "ALL";
 
 /**
+ * Hộp nào đang xem, theo vai của đơn vị tôi trên bản: CHỦ TRÌ (duyệt được),
+ * PHỐI HỢP (cho ý kiến) hay NHẬN ĐỂ BIẾT (chỉ xem). Tách hộp để không lẫn bản
+ * mình phải quyết với bản mình chỉ góp ý hay chỉ cần biết.
+ */
+type InboxBox = "LEAD" | "COORDINATE" | "INFORM";
+
+const PANEL_ROLE = {
+  LEAD: "REVIEWER",
+  COORDINATE: "COORDINATOR",
+  INFORM: "INFORMED",
+} as const;
+
+const EMPTY_TEXT: Record<InboxBox, string> = {
+  LEAD: "Đội trình báo cáo tổng hợp lên thì nó nằm ở đây, chờ bạn duyệt hoặc trả lại.",
+  COORDINATE:
+    "Bản nào đơn vị bạn được gán phối hợp thì nằm ở đây - đọc và gửi ý kiến cho chủ trì.",
+  INFORM:
+    "Bản nào đơn vị bạn được gán nhận để biết thì nằm ở đây - chỉ để xem.",
+};
+
+/**
  * Hộp đến bản tổng hợp của cấp trên: danh sách bên trái, bản đang mở bên phải.
  *
  * Tách hẳn với "Duyệt báo cáo ngày": bản ngày là lượt bắt buộc hằng ngày của cả
@@ -51,6 +73,7 @@ type StatusFilter = TeamReportDayStatus | "ALL";
  * duyệt bản tuần".
  */
 export function TeamReportSummaryInboxView() {
+  const [box, setBox] = useState<InboxBox>("LEAD");
   const [status, setStatus] = useState<StatusFilter>("PENDING");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -87,8 +110,10 @@ export function TeamReportSummaryInboxView() {
     page,
     limit,
   };
-  const list = useSWR(teamReportKeys.summaryInbox(params), () =>
-    fetchTeamReportSummaryInbox(params),
+  const list = useSWR([...teamReportKeys.summaryInbox(params), box], () =>
+    box === "LEAD"
+      ? fetchTeamReportSummaryInbox(params)
+      : fetchTeamReportSummaryParticipantInbox(box, params),
   );
   const senders = useSWR(
     ["team-report", "summary-inbox-senders"],
@@ -144,9 +169,25 @@ export function TeamReportSummaryInboxView() {
             </div>
           </div>
 
-          <Badge variant="secondary" className="whitespace-nowrap font-normal">
-            {meta?.total ?? 0} báo cáo
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <SegmentedTabs
+              ariaLabel="Hộp báo cáo"
+              value={box}
+              onChange={(next) => {
+                setBox(next);
+                setPickedId(null);
+                setPage(1);
+              }}
+              items={[
+                { value: "LEAD" as const, label: "Chủ trì" },
+                { value: "COORDINATE" as const, label: "Phối hợp" },
+                { value: "INFORM" as const, label: "Nhận để biết" },
+              ]}
+            />
+            <Badge variant="secondary" className="whitespace-nowrap font-normal">
+              {meta?.total ?? 0} báo cáo
+            </Badge>
+          </div>
         </CardContent>
       </Card>
 
@@ -339,8 +380,7 @@ export function TeamReportSummaryInboxView() {
               <FileSpreadsheet className="size-10 text-muted-foreground" />
               <p className="text-sm font-medium">Chưa có bản nào trình lên</p>
               <p className="max-w-sm text-xs text-muted-foreground">
-                Đội trình báo cáo tổng hợp lên thì nó nằm ở đây, chờ bạn duyệt
-                hoặc trả lại.
+                {EMPTY_TEXT[box]}
               </p>
             </CardContent>
           </Card>
@@ -360,7 +400,7 @@ export function TeamReportSummaryInboxView() {
         ) : (
           <TeamReportSummaryPanel
             detail={detail.data}
-            role="REVIEWER"
+            role={PANEL_ROLE[box]}
             onChanged={refreshAll}
           />
         )}
