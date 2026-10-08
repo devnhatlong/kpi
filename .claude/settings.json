@@ -460,7 +460,10 @@
       "Bash(sed -i '398s#.*# {/* Hai loại báo cáo dùng chung cách xác định nơi nhận. */}#' adjustment-routes-editor.tsx)",
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/adj-view-patch.js\" team-report-adjustment-view.tsx)",
       "Bash(node C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/adj-view-patch.js team-report-adjustment-view.tsx)",
-      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/adj-inbox-patch.js\" team-report-adjustment-inbox-view.tsx)"
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/adj-inbox-patch.js\" team-report-adjustment-inbox-view.tsx)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/units-ui-patch.js\" \"D:/Project/WebApp/KPI/client/src/features/team-report/components\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/btn-patch.js\" team-report-summary-panel.tsx)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/approve-patch.js\" team-report-adjustment-inbox-view.tsx)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

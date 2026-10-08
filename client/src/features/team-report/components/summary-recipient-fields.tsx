@@ -81,6 +81,19 @@ export function SummaryRecipientFields({
 }
 
 /**
+ * Dòng phụ dưới tên tài khoản: đơn vị và đơn vị cha. Tài khoản đội thường mang
+ * luôn tên đơn vị - khi đó bỏ tên đơn vị đi, chỉ giữ đơn vị cha, không thì một
+ * cái tên đọc hai lần liền nhau.
+ */
+function unitSubtitle(unit: TeamReportRouteUnitView) {
+  const own =
+    unit.departmentName && unit.departmentName !== unit.fullName
+      ? unit.departmentName
+      : "";
+  return [own, unit.parentDepartmentName].filter(Boolean).join(" · ");
+}
+
+/**
  * Bảng "Trình lên" chỉ đọc: mỗi dòng một đơn vị, ba cột vai với dấu tick đã
  * khoá. Bày ĐỦ cả ba cột chứ không chỉ ghi tên vai, để người trình nhìn ra
  * ngay đơn vị nào được quyết, đơn vị nào chỉ góp ý hay chỉ biết.
@@ -89,8 +102,11 @@ function RouteUnitsReadonly({ units }: { units: TeamReportRouteUnitView[] }) {
   return (
     <div className="space-y-1.5">
       <p className="text-sm font-medium">Trình lên</p>
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full text-sm">
+      {/* `table-fixed` + ba cột vai cố định hẹp: cột tên lấy hết phần còn lại.
+          Để trình duyệt tự chia thì ba cột vai ăn đều chiều ngang và tên bị
+          ép còn một chữ mỗi dòng. */}
+      <div className="overflow-hidden rounded-md border">
+        <table className="w-full table-fixed text-sm">
           <thead className="bg-muted/50 text-xs text-muted-foreground">
             <tr>
               <th scope="col" className="px-3 py-2 text-left font-medium">
@@ -100,7 +116,7 @@ function RouteUnitsReadonly({ units }: { units: TeamReportRouteUnitView[] }) {
                 <th
                   key={role}
                   scope="col"
-                  className="w-28 px-2 py-2 text-center font-medium"
+                  className="w-[4.5rem] px-1 py-2 text-center font-medium leading-tight sm:w-24"
                 >
                   {TEAM_REPORT_UNIT_ROLE_LABEL[role]}
                 </th>
@@ -110,8 +126,13 @@ function RouteUnitsReadonly({ units }: { units: TeamReportRouteUnitView[] }) {
           <tbody className="divide-y">
             {units.map((unit) => (
               <tr key={unit.userId}>
-                <td className="px-3 py-2">
-                  <span className={cn(!unit.isActive && "text-destructive")}>
+                <td className="px-3 py-2.5">
+                  <span
+                    className={cn(
+                      "break-words font-medium",
+                      !unit.isActive && "text-destructive",
+                    )}
+                  >
                     {unit.fullName}
                   </span>
                   {!unit.isActive ? (
@@ -120,17 +141,14 @@ function RouteUnitsReadonly({ units }: { units: TeamReportRouteUnitView[] }) {
                       đã khoá / không còn đơn vị
                     </span>
                   ) : null}
-                  {unit.departmentName ? (
-                    <span className="block text-xs text-muted-foreground">
-                      {unit.departmentName}
-                      {unit.parentDepartmentName
-                        ? ` - ${unit.parentDepartmentName}`
-                        : ""}
+                  {unitSubtitle(unit) ? (
+                    <span className="block break-words text-xs text-muted-foreground">
+                      {unitSubtitle(unit)}
                     </span>
                   ) : null}
                 </td>
                 {ROLES.map((role) => (
-                  <td key={role} className="px-2 py-2 text-center">
+                  <td key={role} className="px-1 py-2.5 text-center">
                     <span
                       role="img"
                       aria-label={
@@ -142,7 +160,7 @@ function RouteUnitsReadonly({ units }: { units: TeamReportRouteUnitView[] }) {
                         "inline-flex size-4 items-center justify-center rounded-[4px] border",
                         unit.role === role
                           ? "border-primary bg-primary text-primary-foreground"
-                          : "border-input bg-muted/40",
+                          : "border-input bg-background",
                       )}
                     >
                       {unit.role === role ? (

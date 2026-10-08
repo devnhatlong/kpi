@@ -890,43 +890,37 @@ export function TeamReportSummaryPanel({
               trạng thái mặc định: bảng gõ được sẵn thì một cú bấm nhầm là đổi
               một con số mà không ai nhận ra.
             */}
+            {/* Cùng một bộ nút với hộp duyệt điểm cộng / trừ: một nút bật tắt
+                "Sửa điểm", rồi "Trả lại" và "Duyệt" - hai màn duyệt đứng cạnh
+                nhau mà nút khác kiểu là người duyệt phải học lại mỗi màn. */}
             {canEdit ? (
-              editMode ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => setEditMode(false)}
-                >
-                  <Check className="size-4" aria-hidden="true" />
-                  Xong, khoá lại
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => {
-                    setEditMode(true);
-                    /* Mở luôn các trục: bấm Sửa xong mà bảng vẫn thu hết thì
-                       không có ô nào để gõ, phải đi mở từng trục mới sửa được. */
-                    setOpenAxes(new Set(groups.map((group) => group.key)));
-                  }}
-                >
-                  <Pencil className="size-4" aria-hidden="true" />
-                  Sửa điểm
-                </Button>
-              )
+              <Button
+                type="button"
+                variant={editMode ? "secondary" : "outline"}
+                className={editMode ? undefined : "bg-background"}
+                disabled={busy}
+                onClick={() => {
+                  if (editMode) {
+                    setEditMode(false);
+                    return;
+                  }
+                  setEditMode(true);
+                  /* Mở luôn các trục: bấm Sửa xong mà bảng vẫn thu hết thì
+                     không có ô nào để gõ, phải đi mở từng trục mới sửa được. */
+                  setOpenAxes(new Set(groups.map((group) => group.key)));
+                }}
+              >
+                <Pencil className="size-4" aria-hidden="true" />
+                {editMode ? "Xong sửa điểm" : "Sửa điểm"}
+              </Button>
             ) : null}
 
             {decidable ? (
               <>
                 <Button
                   type="button"
-                  size="sm"
                   variant="outline"
+                  className="bg-background"
                   disabled={busy}
                   onClick={() => {
                     setReturnReason("");
@@ -935,17 +929,16 @@ export function TeamReportSummaryPanel({
                   }}
                 >
                   <Undo2 className="size-4" aria-hidden="true" />
-                  Trả lại…
+                  Trả lại
                 </Button>
                 <Button
                   type="button"
-                  size="sm"
                   disabled={busy}
                   className="active:scale-[0.98] motion-reduce:active:scale-100"
                   onClick={() => setApproveOpen(true)}
                 >
                   <Check className="size-4" aria-hidden="true" />
-                  Duyệt…
+                  Duyệt
                 </Button>
               </>
             ) : null}
@@ -960,7 +953,6 @@ export function TeamReportSummaryPanel({
             {canSend ? (
               <Button
                 type="button"
-                size="sm"
                 disabled={busy}
                 className="active:scale-[0.98] motion-reduce:active:scale-100"
                 onClick={openSend}
@@ -976,7 +968,6 @@ export function TeamReportSummaryPanel({
                   type="button"
                   size="icon"
                   variant="ghost"
-                  className="size-8"
                   aria-label="Thao tác khác"
                 >
                   {exporting ? (
@@ -1589,7 +1580,7 @@ export function TeamReportSummaryPanel({
       </CardContent>
 
       <Dialog open={sendOpen} onOpenChange={setSendOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <form onSubmit={(event) => void send(event)} className="space-y-4">
             <DialogHeader>
               <DialogTitle>

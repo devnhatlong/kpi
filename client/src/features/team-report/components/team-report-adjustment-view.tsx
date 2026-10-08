@@ -497,7 +497,7 @@ export function TeamReportAdjustmentView() {
       </Card>
 
       <Dialog open={sendOpen} onOpenChange={setSendOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>
               Trình bảng {month ? monthLabel(month).toLowerCase() : ""}

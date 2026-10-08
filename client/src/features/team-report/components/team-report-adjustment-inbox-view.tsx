@@ -369,6 +369,9 @@ function ReviewPanel({
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [cellErrors, setCellErrors] = useState<Record<string, string>>({});
   const [returnOpen, setReturnOpen] = useState(false);
+  /* Duyệt là quyết định CHỐT - xong là không ai sửa được nữa - nên hỏi lại
+     như trả lại, dù không cần gõ gì. Cùng luật với báo cáo tổng hợp. */
+  const [approveOpen, setApproveOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [deciding, setDeciding] = useState(false);
   /* Duyệt là đọc; sửa điểm là việc chủ động, phải bật lên mới gõ được. */
@@ -452,6 +455,7 @@ function ReviewPanel({
         }),
       );
       setReturnOpen(false);
+      setApproveOpen(false);
       setReason("");
       toast.success(
         decision === "APPROVE" ? "Đã duyệt bảng." : "Đã trả lại cho đội.",
@@ -528,7 +532,7 @@ function ReviewPanel({
                 <Button
                   type="button"
                   disabled={deciding || busyKey !== null}
-                  onClick={() => void decide("APPROVE")}
+                  onClick={() => setApproveOpen(true)}
                 >
                   <Check className="size-4" />
                   Duyệt
@@ -553,16 +557,6 @@ function ReviewPanel({
             }
             onChanged={onChanged}
           />
-        ) : null}
-
-        {/* Nhắc, không chặn: ý kiến phối hợp để chủ trì cân nhắc. */}
-        {pending && silentCoordinators.length ? (
-          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-            Còn {silentCoordinators.length}/{coordinatorCount} đơn vị phối hợp
-            chưa cho ý kiến:{" "}
-            {silentCoordinators.map(participantLabel).join(", ")}. Vẫn duyệt
-            được.
-          </p>
         ) : null}
 
         {sheet.status === "RETURNED" ? (
@@ -662,6 +656,66 @@ function ReviewPanel({
           </div>
         ) : null}
       </CardContent>
+
+      <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Duyệt bảng này?</DialogTitle>
+            <DialogDescription>
+              {data.department?.name} · {monthLabel(sheet.periodMonth)}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 rounded-md border bg-muted/40 px-3 py-2.5 text-sm tabular-nums">
+            <p className="flex items-baseline justify-between gap-2">
+              <span className="text-muted-foreground">Số dòng</span>
+              <strong>{sheet.entries.length}</strong>
+            </p>
+            <p className="flex items-baseline justify-between gap-2">
+              <span className="text-muted-foreground">Cộng / trừ</span>
+              <strong>
+                +{formatScore(totals.bonus)} / −{formatScore(totals.penalty)}
+              </strong>
+            </p>
+            <p className="flex items-baseline justify-between gap-2">
+              <span className="text-muted-foreground">Chênh lệch</span>
+              <strong>
+                {totals.net > 0 ? "+" : ""}
+                {formatScore(totals.net)}
+              </strong>
+            </p>
+          </div>
+          {/* Nhắc, không chặn: ý kiến phối hợp để chủ trì cân nhắc. */}
+          {silentCoordinators.length ? (
+            <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+              Còn {silentCoordinators.length}/{coordinatorCount} đơn vị phối
+              hợp chưa cho ý kiến:{" "}
+              {silentCoordinators.map(participantLabel).join(", ")}. Vẫn duyệt
+              được.
+            </p>
+          ) : null}
+          <p className="text-sm text-muted-foreground">
+            Sau khi duyệt, không ai sửa được điểm của bảng này nữa. Cần chỉnh
+            thì trả lại cho đội thay vì duyệt.
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setApproveOpen(false)}>
+              Huỷ
+            </Button>
+            <Button
+              autoFocus
+              disabled={deciding}
+              onClick={() => void decide("APPROVE")}
+            >
+              {deciding ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Check className="size-4" />
+              )}
+              Duyệt
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
         <DialogContent className="sm:max-w-md">
