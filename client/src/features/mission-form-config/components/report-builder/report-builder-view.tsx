@@ -333,12 +333,31 @@ export function ReportBuilderView({ templateId }: { templateId: string }) {
       throw new Error(`${blockLabel}: còn trường chưa đặt nhãn hiển thị.`);
     }
 
+    /*
+      Một mẫu bảng dùng chung được cho nhiều trục (Trục 1, 3, 4 cùng một bộ
+      cột). Lưu form khi đang mở một trục thì GIỮ các trục khác của mẫu, chỉ
+      thêm trục đang mở - gửi mỗi trục đang mở là lặng lẽ gỡ các trục kia ra,
+      và đội phân loại thấy chúng thành "chưa có mẫu".
+    */
+    const existing = clean.templateId
+      ? templates.find((item) => entityId(item) === clean.templateId)
+      : undefined;
+    const axisIdsToSave =
+      target.kind === "axis"
+        ? [
+            ...new Set([
+              ...(existing?.axisIds ?? []).map(entityId),
+              target.axisId,
+            ]),
+          ]
+        : [];
+
     const payload: FormTemplateInput = {
       name: clean.name.trim() || blockLabel,
       columns: clean.columns,
       headerGroups: clean.headerGroups,
       footer: clean.footer,
-      axisIds: target.kind === "axis" ? [target.axisId] : [],
+      axisIds: axisIdsToSave,
       forCriteria: target.kind === "criteria",
     };
 

@@ -61,6 +61,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { SearchableSelect } from "@/components/common/searchable-select";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
   classifyTeamReportTask,
@@ -156,6 +157,27 @@ function filterLabel(
     default:
       return `${READINESS_LABEL[value]} (${counts[value]})`;
   }
+}
+
+/** Nhóm điểm quản trị gán sẵn cho nội dung công việc; null = chưa gán. */
+function groupOfContent(
+  contents: TeamReportWorkContent[],
+  contentId: string,
+): string | null {
+  if (!contentId) return null;
+  return contents.find((item) => item._id === contentId)?.scoreGroupId ?? null;
+}
+
+/**
+ * Ô "Nhóm điểm" khoá lại khi nội dung công việc đã có nhóm: server tự ghi nhóm
+ * theo nội dung, để đội chọn tay thì lệch cột "Điểm chuẩn" của phụ lục. Nội
+ * dung không gán nhóm (như "Nhiệm vụ khác") thì vẫn mở cho đội chọn.
+ */
+function scoreGroupLocked(
+  column: TeamReportColumn,
+  contentGroupId: string | null,
+): boolean {
+  return column.semanticKey === "score_group" && !!contentGroupId;
 }
 
 /** Bỏ dấu, bỏ hoa thường - gõ "ra soat" vẫn ra "Rà soát". */
@@ -1768,6 +1790,7 @@ function TaskTableRow({
   const contentOptions = contents.filter(
     (content) => content.axisId === axisId,
   );
+  const contentGroupId = groupOfContent(contents, contentId);
   const scopedCatalogs = narrowCatalogs(catalogs, {
     axisId,
     workContentId: contentId,
@@ -1824,31 +1847,28 @@ function TaskTableRow({
       </TableCell>
 
       <TableCell className="align-middle">
-        <Select
-          value={contentId || "__none__"}
+        <SearchableSelect
+          value={contentId || (axisId ? "__none__" : "")}
           disabled={disabled || !axisId}
+          aria-label={`Nội dung công việc của nhiệm vụ ${task.name}`}
+          triggerClassName="bg-background"
+          placeholder={axisId ? "Chọn" : "Chọn trục trước"}
+          searchPlaceholder="Gõ để tìm nội dung…"
+          options={[
+            { value: "__none__", label: "Chưa chọn" },
+            ...contentOptions.map((content) => ({
+              value: content._id,
+              label: content.name,
+              keywords: content.code,
+            })),
+          ]}
           onValueChange={(value) =>
             onPatch(task, {
               version: task.version,
               workContentId: value === "__none__" ? null : value,
             })
           }
-        >
-          <SelectTrigger
-            aria-label={`Nội dung công việc của nhiệm vụ ${task.name}`}
-            className="w-full"
-          >
-            <SelectValue placeholder={axisId ? "Chọn" : "Chọn trục trước"} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Chưa chọn</SelectItem>
-            {contentOptions.map((content) => (
-              <SelectItem key={content._id} value={content._id}>
-                {content.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        />
       </TableCell>
 
       {columns.map((merged) => {
@@ -1885,7 +1905,7 @@ function TaskTableRow({
               value={value}
               catalogs={scopedCatalogs}
               invalid={!!error}
-              disabled={disabled}
+              disabled={disabled || scoreGroupLocked(column, contentGroupId)}
               evidence={task.evidence}
               onEvidenceChange={(items) =>
                 onPatch(task, { version: task.version, evidence: items })
@@ -2094,6 +2114,10 @@ function TaskDetailBody({
   const options = useMemo(
     () => contents.filter((content) => content.axisId === axisId),
     [contents, axisId],
+  );
+  const contentGroupId = useMemo(
+    () => groupOfContent(contents, contentId),
+    [contents, contentId],
   );
 
   /* Danh mục của các ô chọn phải theo đúng trục và nội dung đang chọn, kẻo bày
@@ -2304,31 +2328,28 @@ function TaskDetailBody({
             <div className="grid gap-4 sm:grid-cols-2">
               {ownWorkContent ? (
                 <Field label="Nội dung công việc" required>
-                  <Select
+                  <SearchableSelect
                     value={contentId || "__none__"}
                     disabled={disabled}
+                    aria-label="Nội dung công việc"
+                    triggerClassName="bg-background"
+                    placeholder="Chọn"
+                    searchPlaceholder="Gõ để tìm nội dung…"
+                    options={[
+                      { value: "__none__", label: "Chưa chọn" },
+                      ...options.map((content) => ({
+                        value: content._id,
+                        label: content.name,
+                        keywords: content.code,
+                      })),
+                    ]}
                     onValueChange={(value) =>
                       onPatch(task, {
                         version: task.version,
                         workContentId: value === "__none__" ? null : value,
                       })
                     }
-                  >
-                    <SelectTrigger
-                      aria-label="Nội dung công việc"
-                      className="w-full"
-                    >
-                      <SelectValue placeholder="Chọn" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Chưa chọn</SelectItem>
-                      {options.map((content) => (
-                        <SelectItem key={content._id} value={content._id}>
-                          {content.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  />
                 </Field>
               ) : null}
 
@@ -2353,7 +2374,9 @@ function TaskDetailBody({
                     hint={
                       isColumnReviewed(task, column.key)
                         ? "Cấp trên đã chấm lại ô này"
-                        : undefined
+                        : scoreGroupLocked(column, contentGroupId)
+                          ? "Tự theo nội dung công việc"
+                          : undefined
                     }
                   >
                     <DynamicColumnCell
@@ -2361,7 +2384,9 @@ function TaskDetailBody({
                       value={value}
                       catalogs={scopedCatalogs}
                       invalid={!!error}
-                      disabled={disabled}
+                      disabled={
+                        disabled || scoreGroupLocked(column, contentGroupId)
+                      }
                       evidence={task.evidence}
                       onEvidenceChange={(items) =>
                         onPatch(task, {

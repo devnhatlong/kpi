@@ -19,6 +19,14 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
+function foldDiacritics(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D");
+}
+
 export type SearchableSelectOption = {
   value: string;
   label: string;
@@ -112,6 +120,8 @@ export function SearchableSelect({
               {options.map((option) => {
                 const searchValue = [
                   option.label,
+                  // Bản không dấu - gõ "bao cao" vẫn ra "Báo cáo".
+                  foldDiacritics(option.label),
                   option.keywords,
                   option.value,
                 ]

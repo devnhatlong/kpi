@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DatePickerInput } from "@/components/common/date-picker-input";
+import { SearchableSelect } from "@/components/common/searchable-select";
 import {
   MultiSelect,
   type MultiSelectOption,
@@ -52,6 +53,10 @@ type DynamicColumnCellProps = {
   onEvidenceChange?: (next: EvidenceItem[]) => void | Promise<void>;
 };
 
+/** Danh mục dài, bày dạng ô chọn có tìm kiếm. */
+const SEARCHABLE_CATALOGS = new Set(["work_content", "work_task", "criterion"]);
+const NONE = "__none__";
+
 /** Viền đỏ dùng chung cho mọi kiểu ô, kể cả ô chọn của Radix. */
 const INVALID_CLASS =
   "border-destructive ring-1 ring-destructive/30 focus-visible:ring-destructive";
@@ -88,6 +93,26 @@ export function DynamicColumnCell({
 
   if (catalog) {
     const items: TeamReportCatalogItem[] = catalogs[catalog] ?? [];
+    /* Danh mục dài (nội dung công việc của một phụ lục có tới ba chục dòng,
+       câu chữ dài và na ná nhau) thì phải gõ tìm được - cuộn dò từng dòng là
+       chọn nhầm. Danh mục ngắn như nhóm điểm giữ dropdown thường. */
+    if (SEARCHABLE_CATALOGS.has(catalog)) {
+      return (
+        <SearchableSelect
+          value={value || NONE}
+          disabled={disabled}
+          aria-invalid={invalid}
+          triggerClassName={cn("bg-background", invalid && INVALID_CLASS)}
+          placeholder="Chọn"
+          searchPlaceholder="Gõ để tìm…"
+          options={[
+            { value: NONE, label: "Chưa chọn" },
+            ...items.map((item) => ({ value: item._id, label: item.name })),
+          ]}
+          onValueChange={(next) => onCommit(next === NONE ? "" : next)}
+        />
+      );
+    }
     return (
       <Select
         value={value || "__none__"}

@@ -444,7 +444,8 @@
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
       "D:\\Project\\WebApp\\KPI\\client\\src\\app\\(dashboard)\\kpi\\promote\\[id]",
-      "D:\\Release\\kpi-data-config_20261008"
+      "D:\\Release\\kpi-data-config_20261008",
+      "\\tmp"
     ]
   }
 }

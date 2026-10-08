@@ -489,6 +489,7 @@ export class TeamReportService {
     await this.assertDayEditable(actor.departmentId, serverDateYmd());
     this.assertClosedNotEdited(task);
     this.assertVersion(task, dto.version);
+    const contentBefore = String(task.workContentId ?? '');
 
     if (dto.axisId !== undefined) {
       const nextAxisId = dto.axisId
@@ -545,6 +546,25 @@ export class TeamReportService {
       task.markModified('catalogValues');
       // Đội tự chấm cũng vào nhật ký - trace được thì phải trace được cả hai bên.
       this.logValueChanges(task, template, before, actor, '');
+    }
+
+    /* Đổi nội dung công việc - dù chọn ở ô riêng hay ở cột của mẫu - thì nhóm
+       điểm đi theo nội dung đó: quản trị đã gán nhóm cho từng nội dung đúng như
+       cột "Điểm chuẩn" của phụ lục, để đội tự chọn là chọn lệch văn bản. */
+    if (task.workContentId && String(task.workContentId) !== contentBefore) {
+      await this.stampTemplate(task);
+      const template = await this.templateOfTask(task);
+      const before = this.snapshotValues(task, template);
+      if (await this.applyContentScoreGroup(task, template)) {
+        task.fieldValues = await this.computeAutoColumns(
+          template,
+          task.fieldValues ?? {},
+          task.catalogValues ?? {},
+        );
+        task.markModified('fieldValues');
+        task.markModified('catalogValues');
+        this.logValueChanges(task, template, before, actor, '');
+      }
     }
 
     task.version += 1;
@@ -1619,6 +1639,47 @@ export class TeamReportService {
       );
     }
     return content._id;
+  }
+
+  /**
+   * Ghi nhóm điểm của nội dung công việc đang chọn vào cột "Nhóm điểm" của mẫu.
+   *
+   * Nội dung không gán nhóm cố định ("Nhiệm vụ khác" - phụ lục ghi "căn cứ
+   * nhiệm vụ cấp trên giao") thì XOÁ TRẮNG ô về "Chưa chọn" để đội tự chọn:
+   * giữ nhóm của nội dung trước là mang một mức điểm không ai chọn cho việc này.
+   *
+   * Chỉ gọi khi nội dung vừa đổi. Trả false khi không có gì thay đổi.
+   */
+  private async applyContentScoreGroup(
+    task: TeamReportTaskDocument,
+    template: ResolvedTemplate | null,
+  ): Promise<boolean> {
+    const column = template?.columns.find(
+      (item) => item.visible && item.semanticKey === 'score_group',
+    );
+    if (!column || !task.workContentId) return false;
+    const content = await this.workContentModel
+      .findById(task.workContentId)
+      .select('scoreGroupId')
+      .populate<{ scoreGroupId: { _id: Types.ObjectId; name: string } | null }>(
+        'scoreGroupId',
+        'name',
+      );
+    const group = content?.scoreGroupId;
+    if (!group) {
+      if (!task.catalogValues?.[column.key]) return false;
+      const rest = { ...task.catalogValues };
+      delete rest[column.key];
+      task.catalogValues = rest;
+      return true;
+    }
+    if (task.catalogValues?.[column.key]?.id === String(group._id))
+      return false;
+    task.catalogValues = {
+      ...(task.catalogValues ?? {}),
+      [column.key]: { id: String(group._id), name: group.name },
+    };
+    return true;
   }
 
   /**
