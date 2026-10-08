@@ -79,6 +79,7 @@ import {
 } from "@/features/team-report/status-styles";
 import { DynamicColumnCell } from "@/features/team-report/components/dynamic-column-cell";
 import { TeamReportDayPicker } from "@/features/team-report/components/team-report-day-picker";
+import type { FormHeaderGroup } from "@/features/mission-form-config/types";
 import {
   READINESS_LABEL,
   TEAM_REPORT_STATUS_LABEL,
@@ -1048,7 +1049,7 @@ export function TeamReportClassifyView() {
               <strong className="text-foreground">
                 {axisChange?.axisId
                   ? (axes.find((item) => item._id === axisChange.axisId)
-                      ?.name ?? "trục mới")
+                    ?.name ?? "trục mới")
                   : "Chưa gán"}
               </strong>{" "}
               sẽ xoá nội dung công việc và mọi ô đã điền theo mẫu cũ, kể cả điểm
@@ -1444,10 +1445,10 @@ function TaskTableView({
     const sources = axis
       ? [templates[axis._id] ?? null]
       : axes
-          .filter((item) =>
-            shown.some((row) => refId(row.task.axisId) === item._id),
-          )
-          .map((item) => templates[item._id] ?? null);
+        .filter((item) =>
+          shown.some((row) => refId(row.task.axisId) === item._id),
+        )
+        .map((item) => templates[item._id] ?? null);
 
     const seen = new Set<string>();
     const merged: TeamReportColumn[] = [];
@@ -2136,8 +2137,8 @@ function TaskDetailBody({
         ? "Chọn nội dung công việc mà nhiệm vụ này thuộc về."
         : missing.length
           ? `Còn ${missing.length} ô bắt buộc chưa điền: ${missing
-              .map((column) => column.title)
-              .join(", ")}.`
+            .map((column) => column.title)
+            .join(", ")}.`
           : "Đã đủ. Nhiệm vụ này sẵn sàng đi trong báo cáo ngày.";
 
   const done = task.isOpen && readiness === "READY";
@@ -2353,57 +2354,88 @@ function TaskDetailBody({
                 </Field>
               ) : null}
 
-              {columns.map((column) => {
-                const catalog = catalogOfColumn(column);
-                const value = catalog
-                  ? (finalCatalogValue(task, column.key)?.id ?? "")
-                  : String(finalFieldValue(task, column.key) ?? "");
-                const error = cellErrors[cellErrorKey(task, column.key)];
+              {groupColumns(columns, template).map((segment) => {
+                const renderField = (column: TeamReportColumn) => {
+                  const catalog = catalogOfColumn(column);
+                  const value = catalog
+                    ? (finalCatalogValue(task, column.key)?.id ?? "")
+                    : String(finalFieldValue(task, column.key) ?? "");
+                  const error = cellErrors[cellErrorKey(task, column.key)];
 
+                  return (
+                    <Field
+                      key={column.key}
+                      label={column.title}
+                      required={column.required}
+                      error={error}
+                      /* Ô chữ dài và ô tệp chiếm cả hàng - ép vào nửa hàng thì
+                         nội dung bị cắt ngắn ngay lúc đang gõ. */
+                      wide={
+                        column.dataType === "text" || column.dataType === "file"
+                      }
+                      hint={
+                        isColumnReviewed(task, column.key)
+                          ? "Cấp trên đã chấm lại ô này"
+                          : scoreGroupLocked(column, contentGroupId)
+                            ? "Tự theo nội dung công việc"
+                            : undefined
+                      }
+                      description={autoFormulaText(column, template)}
+                    >
+                      {column.autoValue ? (
+                        /* Ô tự tính trông như KẾT QUẢ chứ không như ô nhập:
+                           để chữ trơn cạnh một dropdown là người ta đi tìm
+                           chỗ gõ số vào. */
+                        <output className="flex h-9 items-center rounded-md border border-dashed bg-muted/40 px-3 text-sm font-semibold tabular-nums">
+                          {value || "-"}
+                        </output>
+                      ) : (
+                        <DynamicColumnCell
+                          column={column}
+                          value={value}
+                          catalogs={scopedCatalogs}
+                          invalid={!!error}
+                          disabled={
+                            disabled || scoreGroupLocked(column, contentGroupId)
+                          }
+                          evidence={task.evidence}
+                          onEvidenceChange={(items) =>
+                            onPatch(task, {
+                              version: task.version,
+                              evidence: items,
+                            })
+                          }
+                          onCommit={(next) =>
+                            onPatch(task, {
+                              version: task.version,
+                              ...(catalog
+                                ? { catalogValues: { [column.key]: next } }
+                                : { fieldValues: { [column.key]: next } }),
+                            })
+                          }
+                        />
+                      )}
+                    </Field>
+                  );
+                };
+
+                if (!segment.label) return segment.columns.map(renderField);
+                /* Cột thuộc cùng nhóm tiêu đề của mẫu (Kết quả KPI tiến độ
+                   (B), chất lượng (C)…) gom vào một khung mang đúng tên nhóm:
+                   hai cặp "Thực tế hoàn thành % / Điểm tự chấm" giống hệt nhau,
+                   bỏ khung đi là không biết cặp nào chấm cái gì. */
                 return (
-                  <Field
-                    key={column.key}
-                    label={column.title}
-                    required={column.required}
-                    error={error}
-                    /* Ô chữ dài và ô tệp chiếm cả hàng - ép vào nửa hàng thì
-                       nội dung bị cắt ngắn ngay lúc đang gõ. */
-                    wide={
-                      column.dataType === "text" || column.dataType === "file"
-                    }
-                    hint={
-                      isColumnReviewed(task, column.key)
-                        ? "Cấp trên đã chấm lại ô này"
-                        : scoreGroupLocked(column, contentGroupId)
-                          ? "Tự theo nội dung công việc"
-                          : undefined
-                    }
+                  <fieldset
+                    key={segment.key}
+                    className="space-y-3 rounded-lg border bg-muted/20 p-3 sm:col-span-2"
                   >
-                    <DynamicColumnCell
-                      column={column}
-                      value={value}
-                      catalogs={scopedCatalogs}
-                      invalid={!!error}
-                      disabled={
-                        disabled || scoreGroupLocked(column, contentGroupId)
-                      }
-                      evidence={task.evidence}
-                      onEvidenceChange={(items) =>
-                        onPatch(task, {
-                          version: task.version,
-                          evidence: items,
-                        })
-                      }
-                      onCommit={(next) =>
-                        onPatch(task, {
-                          version: task.version,
-                          ...(catalog
-                            ? { catalogValues: { [column.key]: next } }
-                            : { fieldValues: { [column.key]: next } }),
-                        })
-                      }
-                    />
-                  </Field>
+                    <legend className="px-1 font-display text-sm font-semibold">
+                      {segment.label}
+                    </legend>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {segment.columns.map(renderField)}
+                    </div>
+                  </fieldset>
                 );
               })}
             </div>
@@ -2587,6 +2619,7 @@ function Field({
   required,
   wide,
   hint,
+  description,
   error,
   children,
 }: {
@@ -2594,6 +2627,8 @@ function Field({
   required?: boolean;
   wide?: boolean;
   hint?: string;
+  /** Chú thích trung tính dưới ô (cách ô tự tính ra số). */
+  description?: string;
   /** Câu từ chối của server cho đúng ô này. */
   error?: string;
   children: React.ReactNode;
@@ -2630,8 +2665,65 @@ function Field({
       {hint ? (
         <p className="text-xs text-amber-700 dark:text-amber-400">{hint}</p>
       ) : null}
+      {description ? (
+        <p className="text-xs text-muted-foreground">{description}</p>
+      ) : null}
     </div>
   );
+}
+
+/**
+ * Chia cột thành từng đoạn liền nhau theo nhóm tiêu đề của mẫu (`headerPath`).
+ *
+ * Giữ nguyên thứ tự cột quản trị đã xếp; cột không thuộc nhóm nào đứng lẻ.
+ * Chỉ gom các cột LIỀN NHAU - mẫu xếp xen kẽ thì tách thành hai khung chứ
+ * không kéo cột về một chỗ, kẻo thứ tự trên màn khác thứ tự trên bản in.
+ */
+function groupColumns(
+  columns: TeamReportColumn[],
+  template: TeamReportTemplate | null | undefined,
+): Array<{ key: string; label: string; columns: TeamReportColumn[] }> {
+  const names = new Map<string, string>();
+  const walk = (groups: FormHeaderGroup[] = []) => {
+    for (const group of groups) {
+      names.set(group.id, group.name);
+      walk(group.children);
+    }
+  };
+  walk(template?.headerGroups);
+
+  const segments: Array<{
+    key: string;
+    label: string;
+    columns: TeamReportColumn[];
+  }> = [];
+  for (const column of columns) {
+    const path = (column.headerPath ?? []).filter((id) => names.has(id));
+    const key = path.join("/");
+    const last = segments[segments.length - 1];
+    if (last && key && last.key === key) {
+      last.columns.push(column);
+      continue;
+    }
+    segments.push({
+      key: key || `col:${column.key}`,
+      label: path.map((id) => names.get(id)).join(" · "),
+      columns: [column],
+    });
+  }
+  return segments;
+}
+
+/** "Tự tính = Thực tế hoàn thành % × Điểm" - đọc từ cấu hình cột, không đoán. */
+function autoFormulaText(
+  column: TeamReportColumn,
+  template: TeamReportTemplate | null | undefined,
+): string | undefined {
+  const auto = column.autoValue;
+  if (!auto || auto.kind !== "percent_of") return undefined;
+  const title = (key: string) =>
+    template?.columns.find((item) => item.key === key)?.title ?? key;
+  return `Tự tính = ${title(auto.percentColumnKey)} × ${title(auto.baseColumnKey)}`;
 }
 
 /**
@@ -2791,7 +2883,7 @@ function DaySummary({
                   </span>
                   <span className="shrink-0 tabular-nums">
                     {score?.convertedScore === null ||
-                    score?.convertedScore === undefined ? (
+                      score?.convertedScore === undefined ? (
                       <span className="text-xs italic text-muted-foreground">
                         Chưa chấm
                       </span>

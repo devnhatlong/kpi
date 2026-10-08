@@ -133,7 +133,10 @@ export function DynamicColumnCell({
               {item.minScore !== undefined && item.maxScore !== undefined
                 ? ` (${item.minScore}-${item.maxScore})`
                 : ""}
-              {item.percent !== undefined ? ` (${item.percent}%)` : ""}
+              {/* Tên mức đã là "50%" thì không gắn thêm "(50%)". */}
+              {item.percent !== undefined && item.name !== `${item.percent}%`
+                ? ` (${item.percent}%)`
+                : ""}
             </SelectItem>
           ))}
         </SelectContent>

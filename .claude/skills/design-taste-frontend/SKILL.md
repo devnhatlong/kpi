@@ -690,13 +690,13 @@ These patterns came out of real LLM-generated landing-page tests. They are the s
 * **Banned in eyebrows / labels / pills / button text / image captions / nav items.** Replace with line breaks, columns, or hairlines.
 * **Banned in body copy.** Restructure the sentence: two sentences with a period, OR a comma, OR parentheses, OR a colon.
 * **Banned in quote attribution.** Use a normal hyphen with spaces (` - `) or a line break + smaller-weight name.
-* **Banned in en-dash form too (`–`) when used as a separator.** Date ranges (`2018-2026`) use a hyphen. Number ranges (`€40-80k`) use a hyphen.
+* **Banned in en-dash form too (`-`) when used as a separator.** Date ranges (`2018-2026`) use a hyphen. Number ranges (`€40-80k`) use a hyphen.
 
 The ONLY permitted dash characters on the page are:
 * Regular hyphen `-` (for compound words, ranges, line dividers in markup)
 * Minus sign in math (`-5°C`)
 
-If your output contains a single `—` or `–` anywhere visible to the user, the output fails the Pre-Flight Check and must be rewritten.
+If your output contains a single `—` or `-` anywhere visible to the user, the output fails the Pre-Flight Check and must be rewritten.
 
 This rule is non-negotiable. The agent has historically ignored em-dash limits when phrased as "use sparingly." The phrasing here is binary: zero em-dashes.
 
