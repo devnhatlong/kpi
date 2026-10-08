@@ -29,6 +29,7 @@ import {
 import { ScopePicker } from "@/features/mission-form-config/components/report-builder/scope-picker";
 import {
   fetchDepartmentLevels,
+  fetchDepartments,
   fetchRoles,
   fetchUsers,
 } from "@/features/organization/api";
@@ -113,6 +114,16 @@ export function AdjustmentRoutesEditor({
     revalidateOnFocus: false,
   });
   const users = useSWR("users-all", fetchUsers, { revalidateOnFocus: false });
+  /* Tài khoản chỉ mang id đơn vị - tên tra ở đây để bảng nơi nhận bày được
+     "tài khoản · đơn vị". */
+  const departments = useSWR("departments-all", fetchDepartments, {
+    revalidateOnFocus: false,
+  });
+  const departmentNames = useMemo(
+    () =>
+      new Map((departments.data ?? []).map((dept) => [dept._id, dept.name])),
+    [departments.data],
+  );
 
   const [draft, setDraft] = useState<TeamReportAdjustmentRoute[] | null>(null);
   const [savedFp, setSavedFp] = useState("");
@@ -229,7 +240,16 @@ export function AdjustmentRoutesEditor({
       setSavedFp(fingerprint(saved));
       toast.success("Đã lưu luồng trình.");
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Không lưu được luồng trình."));
+      const message = getApiErrorMessage(error, "Không lưu được luồng trình.");
+      /* Nút Lưu lưu CẢ danh sách - lỗi có thể nằm ở luồng khác luồng đang
+         mở. Server ghi tên luồng trong câu báo; nhảy thẳng tới luồng đó để
+         người sửa không phải đi dò. */
+      const name = /Luồng "([^"]+)"/.exec(message)?.[1];
+      const index = name
+        ? draft.findIndex((route) => route.name.trim() === name)
+        : -1;
+      if (index >= 0 && index !== selected) setSelected(index);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -426,6 +446,7 @@ export function AdjustmentRoutesEditor({
                     units={current.units ?? []}
                     onChange={(units) => patchRoute({ units })}
                     accounts={users.data ?? []}
+                    departmentNames={departmentNames}
                   />
                 ) : (
                   <RecipientScopeEditor

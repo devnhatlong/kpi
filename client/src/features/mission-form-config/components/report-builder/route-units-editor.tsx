@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Trash2 } from "lucide-react";
+import { Info, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { SearchableSelect } from "@/components/common/searchable-select";
@@ -21,16 +21,24 @@ const ROLES: TeamReportUnitRole[] = ["LEAD", "COORDINATE", "INFORM"];
 
 const accountId = (account: UserAccount) => account._id ?? account.id;
 
-const departmentOf = (account: UserAccount | undefined) =>
-  account?.departmentId && typeof account.departmentId === "object"
-    ? {
-        id: account.departmentId._id ?? account.departmentId.id ?? "",
-        name: account.departmentId.name ?? "",
-      }
-    : {
-        id: typeof account?.departmentId === "string" ? account.departmentId : "",
-        name: "",
-      };
+/**
+ * Đơn vị của tài khoản. Danh sách tài khoản trả `departmentId` dạng id (không
+ * populate) - tên tra từ danh mục đơn vị. Thiếu TÊN không có nghĩa là chưa gắn
+ * đơn vị; chỉ thiếu ID mới là chưa gắn.
+ */
+const departmentOf = (
+  account: UserAccount | undefined,
+  names?: Map<string, string>,
+) => {
+  const raw = account?.departmentId;
+  const id =
+    raw && typeof raw === "object" ? (raw._id ?? raw.id ?? "") : (raw ?? "");
+  const name =
+    (raw && typeof raw === "object" ? raw.name : undefined) ??
+    names?.get(id) ??
+    "";
+  return { id, name };
+};
 
 /** Câu báo lỗi của bảng, null = hợp lệ. Server kiểm y hệt. */
 export function routeUnitsError(
@@ -55,9 +63,9 @@ export function routeUnitsError(
 }
 
 /**
- * Bảng NƠI NHẬN của một luồng báo cáo tổng hợp: mỗi dòng một tài khoản, chọn
- * đúng một vai. Chọn tài khoản như ở chế độ "Người trình tự chọn"; đơn vị của
- * tài khoản quyết định hộp đến nào nhận bản.
+ * Bảng NƠI NHẬN của một luồng: mỗi dòng một tài khoản, chọn đúng một vai.
+ * Chọn tài khoản như ở chế độ "Người trình tự chọn"; đơn vị của tài khoản
+ * quyết định hộp đến nào nhận bản.
  *
  * Vai bày thành ba cột radio chứ không phải ô tích - một nơi không thể vừa chủ
  * trì vừa phối hợp. Chọn "Chủ trì" ở một dòng thì dòng đang chủ trì trước đó
@@ -68,10 +76,13 @@ export function RouteUnitsEditor({
   units,
   onChange,
   accounts,
+  departmentNames,
 }: {
   units: RouteUnitDraft[];
   onChange: (next: RouteUnitDraft[]) => void;
   accounts: UserAccount[];
+  /** id đơn vị → tên, để bày "tài khoản · đơn vị". */
+  departmentNames: Map<string, string>;
 }) {
   const userById = useMemo(
     () => new Map(accounts.map((account) => [accountId(account), account])),
@@ -99,13 +110,13 @@ export function RouteUnitsEditor({
         );
       })
       .map((account) => {
-        const dept = departmentOf(account);
+        const dept = departmentOf(account, departmentNames);
         return {
           value: accountId(account),
           label: `${account.fullName?.trim() || account.username} · ${account.username}${dept.name ? ` · ${dept.name}` : ""}`,
         };
       });
-  }, [accounts, units, userById]);
+  }, [accounts, units, userById, departmentNames]);
 
   const setRole = (index: number, role: TeamReportUnitRole) =>
     onChange(
@@ -160,7 +171,7 @@ export function RouteUnitsEditor({
               const name = account
                 ? account.fullName?.trim() || account.username
                 : "(tài khoản đã xoá)";
-              const dept = departmentOf(account);
+              const dept = departmentOf(account, departmentNames);
               return (
                 <tr key={unit.userId}>
                   <td className="px-3 py-2">
@@ -178,7 +189,11 @@ export function RouteUnitsEditor({
                     ) : null}
                     <span className="block text-xs text-muted-foreground">
                       {account?.username}
-                      {dept.name ? ` · ${dept.name}` : " · chưa gắn đơn vị"}
+                      {dept.name
+                        ? ` · ${dept.name}`
+                        : dept.id
+                          ? ""
+                          : " · chưa gắn đơn vị"}
                     </span>
                   </td>
                   {ROLES.map((role) => (
@@ -235,15 +250,33 @@ export function RouteUnitsEditor({
         <p className="text-xs text-destructive">Bảng nơi nhận {error}.</p>
       ) : (
         <p className="text-xs text-muted-foreground">
-          <strong className="font-medium text-foreground">Chủ trì</strong>:
-          chấm lại, duyệt, trả lại.{" "}
-          <strong className="font-medium text-foreground">Phối hợp</strong>:
-          xem và gửi ý kiến cho chủ trì.{" "}
+          <strong className="font-medium text-foreground">Chủ trì</strong>: chấm
+          lại, duyệt, trả lại.{" "}
+          <strong className="font-medium text-foreground">Phối hợp</strong>: xem
+          và gửi ý kiến cho chủ trì.{" "}
           <strong className="font-medium text-foreground">Nhận để biết</strong>:
           chỉ xem. Ai cùng đơn vị với tài khoản đã chọn cũng mở được bản trong
           hộp đến.
         </p>
       )}
+
+      {/* Luật khớp luồng phía server: nơi nhận không đi theo chính luồng của
+          mình - nói rõ ngay tại bảng để quản trị biết phải tạo luồng riêng. */}
+      {units.length ? (
+        <p className="flex items-start gap-1.5 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <span>
+            Các tài khoản trong bảng này (và người cùng đơn vị với họ){" "}
+            <strong className="font-medium text-foreground">
+              không đi theo luồng này
+            </strong>{" "}
+            khi chính họ trình, kể cả khi thuộc vế &quot;Ai gửi&quot;. Tạo một
+            luồng riêng cho họ - VD &quot;Đội TMTH → Đội CNTT chủ trì&quot;;
+            không có luồng nào khớp thì bản về cấp trên trực tiếp có quyền
+            duyệt.
+          </span>
+        </p>
+      ) : null}
     </div>
   );
 }

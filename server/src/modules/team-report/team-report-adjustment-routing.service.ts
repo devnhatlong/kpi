@@ -410,6 +410,13 @@ export class TeamReportAdjustmentRoutingService {
       );
     }
     const lead = units.find((unit) => unit.role === 'LEAD')!;
+    // Chặn cuối: dù cấu hình lệch thế nào cũng không để một đơn vị tự trình
+    // cho chính mình rồi tự duyệt.
+    if (lead.departmentId === String(actor.departmentId)) {
+      throw new BadRequestException(
+        'Đơn vị bạn đang là chủ trì của luồng trình này - báo quản trị đặt chủ trì thay thế.',
+      );
+    }
     return {
       recipient: {
         id: new Types.ObjectId(lead.userId),
@@ -636,9 +643,37 @@ export class TeamReportAdjustmentRoutingService {
           .select('levelId ancestors')
       : null;
     for (const route of routes) {
-      if (this.matches(route.sender, user, home)) return route;
+      if (!this.matches(route.sender, user, home)) continue;
+      if (await this.isRouteRecipient(route, user)) continue;
+      return route;
     }
     return null;
+  }
+
+  /**
+   * Người gửi có nằm trong BẢNG NƠI NHẬN của luồng không - đích danh, hoặc
+   * cùng đơn vị với một tài khoản trong bảng (hộp đến lọc theo đơn vị nên cả
+   * đơn vị là một nơi nhận).
+   *
+   * Có thì luồng KHÔNG áp cho người này, xét tiếp luồng sau: nơi nhận của
+   * luồng mà đi theo chính luồng đó thì chủ trì tự trình cho mình, phối hợp
+   * tự góp ý cho bản mình gửi. Quản trị tạo luồng riêng cho họ; không có thì
+   * về cấp trên trực tiếp có quyền duyệt.
+   */
+  private async isRouteRecipient(
+    route: TeamReportAdjustmentRouteDocument,
+    user: Person,
+  ): Promise<boolean> {
+    if (!route.units?.length) return false;
+    const ids = route.units.map((unit) => unit.userId);
+    if (ids.some((id) => String(id) === String(user._id))) return true;
+    if (!user.departmentId) return false;
+    return Boolean(
+      await this.userModel.exists({
+        _id: { $in: ids },
+        departmentId: user.departmentId,
+      }),
+    );
   }
 
   /**

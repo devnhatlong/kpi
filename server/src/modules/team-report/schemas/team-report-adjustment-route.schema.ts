@@ -119,6 +119,11 @@ export class TeamReportAdjustmentRoute {
    * - COORDINATE (phối hợp, nhiều): xem và gửi ý kiến cho chủ trì.
    * - INFORM (nhận để biết, nhiều): chỉ xem.
    *
+   * TÀI KHOẢN CÓ TRONG BẢNG (mọi vai) và người cùng đơn vị với họ KHÔNG đi
+   * theo luồng này khi chính họ trình - dù có khớp vế "Ai gửi". Họ là nơi
+   * nhận của luồng; để họ đi theo luồng thì chủ trì tự trình cho chính mình.
+   * Quản trị tạo luồng riêng cho họ (VD "Đội TMTH → Đội CNTT chủ trì").
+   *
    * Rỗng = luồng kiểu cũ: người trình tự chọn một người trong vế `recipients`.
    * Giữ kiểu cũ cho các luồng TƯƠNG ĐỐI theo người gửi ("đội trình phòng của
    * chính mình") - kiểu đó không viết được thành một bảng đơn vị cố định.
