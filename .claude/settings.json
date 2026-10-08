@@ -470,7 +470,9 @@
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/backup-lead-client.js\" \"D:/Project/WebApp/KPI/client/src/features\")",
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/option2-server.js\" .)",
       "Bash(node C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/option2-server.js .)",
-      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/option2-client.js\" \"D:/Project/WebApp/KPI/client/src/features\")"
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/option2-client.js\" \"D:/Project/WebApp/KPI/client/src/features\")",
+      "Bash(node scripts/export-config-data.js)",
+      "Bash(node scripts/import-config-data.js ../data-export/20261008-2158)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
