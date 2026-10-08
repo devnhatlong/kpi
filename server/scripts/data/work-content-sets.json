@@ -1,0 +1,965 @@
+{
+  "source": "Mẫu KPI - Phụ lục 2..5 (DMNV công tác và KQ tự đánh giá NV)",
+  "sets": [
+    {
+      "code": "BND-PL2",
+      "name": "Phụ lục 2 - Khối An ninh"
+    },
+    {
+      "code": "BND-PL3",
+      "name": "Phụ lục 3 - Khối Cảnh sát"
+    },
+    {
+      "code": "BND-PL4",
+      "name": "Phụ lục 4 - Khối Xây dựng lực lượng"
+    },
+    {
+      "code": "BND-PL5",
+      "name": "Phụ lục 5 - Công an cấp xã"
+    }
+  ],
+  "scoreGroups": [
+    {
+      "name": "Nhóm 1",
+      "description": "Từ 0 đến dưới 50 điểm",
+      "minScore": 0,
+      "maxScore": 50,
+      "maxInclusive": false,
+      "formulaScore": 49
+    },
+    {
+      "name": "Nhóm 2",
+      "description": "Từ 50 đến dưới 70 điểm",
+      "minScore": 50,
+      "maxScore": 70,
+      "maxInclusive": false,
+      "formulaScore": 69
+    },
+    {
+      "name": "Nhóm 3",
+      "description": "Từ 70 đến 100 điểm",
+      "minScore": 70,
+      "maxScore": 100,
+      "maxInclusive": true,
+      "formulaScore": 100
+    },
+    {
+      "name": "01 điểm (Trục 2)",
+      "description": "",
+      "minScore": 0,
+      "maxScore": 1,
+      "maxInclusive": true,
+      "formulaScore": 1
+    },
+    {
+      "name": "02 điểm (Trục 2)",
+      "description": "",
+      "minScore": 0,
+      "maxScore": 2,
+      "maxInclusive": true,
+      "formulaScore": 2
+    },
+    {
+      "name": "03 điểm (Trục 2)",
+      "description": "",
+      "minScore": 0,
+      "maxScore": 3,
+      "maxInclusive": true,
+      "formulaScore": 3
+    },
+    {
+      "name": "04 điểm (Trục 2)",
+      "description": "",
+      "minScore": 0,
+      "maxScore": 4,
+      "maxInclusive": true,
+      "formulaScore": 4
+    }
+  ],
+  "items": [
+    {
+      "axis": 1,
+      "name": "Tham mưu nhiệm vụ trình Tỉnh ủy",
+      "scoreGroup": "Nhóm 3",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tham mưu triển khai các văn bản chiến lược của Đảng trên lĩnh vực công tác công an",
+      "scoreGroup": "Nhóm 3",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tham mưu sơ kết, tổng kết theo chuyên đề (trình Tỉnh ủy)",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tham mưu lãnh đạo các kỳ họp",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Báo cáo định kỳ (trình Tỉnh ủy)",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tham mưu nhiệm vụ trình UBND tỉnh",
+      "scoreGroup": "Nhóm 3",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tham mưu triển khai các văn bản của UBND tỉnh",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tham mưu sơ kết, tổng kết theo chuyên đề (trình UBND tỉnh)",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tham mưu lãnh đạo Công an tỉnh tại các cuộc họp",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Báo cáo định kỳ (trình UBND tỉnh)",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Nhiệm vụ trọng tâm được Đảng ủy CAT, Công an tỉnh giao",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Nhiệm vụ trọng tâm ban hành kèm theo Chỉ thị, nghị quyết công tác hằng năm",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tham mưu triển khai các văn bản chỉ đạo, mệnh lệnh chỉ đạo của Đảng ủy CAT, lãnh đạo Công an tỉnh",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tham mưu sơ kết, tổng kết theo chuyên đề (Công an tỉnh giao)",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tham mưu lãnh đạo CAT họp, chỉ đạo",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Báo cáo định kỳ (Công an tỉnh giao)",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Nhiệm vụ công tác thường xuyên",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Nhiệm vụ khác",
+      "scoreGroup": null,
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác NVCB",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tổ chức nắm tình hình, triển khai các biện pháp công tác nghiệp vụ, đấu tranh với các đối tượng, chuyên án trọng điểm",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác đấu tranh phòng, chống gián điệp và hoạt động xâm phạm ANQG khác của các thế lực thù địch bên ngoài",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác đấu tranh bóc gỡ, vô hiệu hóa các đối tượng phản động, khủng bố, số đối tượng chống đối... và giải quyết các hoạt động xâm phạm an ninh quốc gia khác của lực lượng An ninh nội địa",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác đấu tranh giải quyết các hoạt động xâm phạm ANQG của lực lượng ANCTNB",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác đấu tranh giải quyết các hoạt động xâm phạm an ninh quốc gia của lực lượng an ninh kinh tế",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác đấu tranh bóc gỡ, vô hiệu hóa đối tượng trên không gian mạng và xử lý các hoạt động xâm phạm an ninh, trật tự khác",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác kỹ thuật nghiệp vụ",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác trinh sát của lực lượng ngoại tuyến",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác quản lý xuất, nhập cảnh",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác điều tra, xử lý tội phạm",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Kết quả thực hiện các mặt công tác cảnh vệ",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác tình báo",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tổ chức công tác nắm tình hình, triển khai các biện pháp công tác nghiệp vụ, đấu tranh với các đối tượng, chuyên án trọng điểm",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác NVCB của LLCS",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác đấu tranh phòng, chống tội phạm về trật tự xã hội",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác đấu tranh phòng, chống tội phạm về kinh tế, tham nhũng, buôn lậu, môi trường",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác đấu tranh phòng, chống tội phạm và vi phạm pháp luật về ma túy",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác phòng, chống tội phạm xử lý công nghệ cao",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác quản lý hành chính về TTXH",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác bảo đảm TTATGT",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác PCCC và CNCH",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác giám định và kỹ thuật hình sự",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác quản lý tạm giữ, tạm giam và thi hành án hình sự tại cộng đồng",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác cảnh sát cơ động, bảo vệ mục tiêu",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL3"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác tham mưu trên các lĩnh vực",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Thẩm định, đề xuất phê duyệt các dự án đầu tư xây dựng, mua sắm trang thiết bị, kỹ thuật",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tham mưu huy động các nguồn lực tăng cường cơ sở vật chất, bổ sung trang thiết bị, phương tiện, hiện đại hóa lực lượng CAND",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Triển khai các đề án, dự án, nhiệm vụ phát triển tiềm lực hậu cần, kỹ thuật cho lực lượng CAND",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Triển khai giải ngân các nguồn vốn đầu tư, kinh phí mua sắm",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Tham mưu các giải pháp nâng cao, tăng cường tiềm lực cơ sở vật chất cho lực lượng CAND",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Sơ kết, tổng kết chuyên đề bảo đảm tài chính, hậu cần kỹ thuật",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác tổ chức cán bộ",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác đào tạo",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác chính trị",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác truyền thông CAND",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác thanh tra, kiểm tra trong CAND",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác tham mưu",
+      "scoreGroup": "Nhóm 3",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác bảo đảm an ninh quốc gia",
+      "scoreGroup": "Nhóm 3",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác đấu tranh phòng, chống tội phạm",
+      "scoreGroup": "Nhóm 3",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác quản lý nhà nước về an ninh, trật tự",
+      "scoreGroup": "Nhóm 3",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác nghiệp vụ cơ bản",
+      "scoreGroup": "Nhóm 3",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Công tác xây dựng phong trào toàn dân bảo vệ ANTQ",
+      "scoreGroup": "Nhóm 3",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Việc thực hiện chế độ thông tin, báo cáo",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 1,
+      "name": "Nhiệm vụ đột xuất",
+      "scoreGroup": null,
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 2,
+      "name": "Tham mưu triển khai nhiệm vụ trọng điểm",
+      "scoreGroup": "02 điểm (Trục 2)",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4",
+        "BND-PL5"
+      ],
+      "tasks": [
+        {
+          "name": "Chủ trì tham mưu, triển khai đề án, dự án, chương trình, kế hoạch nhiệm vụ trọng điểm (yêu cầu có tài liệu kiểm chứng)",
+          "sets": [
+            "BND-PL2",
+            "BND-PL3",
+            "BND-PL4",
+            "BND-PL5"
+          ]
+        }
+      ]
+    },
+    {
+      "axis": 2,
+      "name": "Tham mưu tháo gỡ điểm nghẽn, thực hiện nhiệm vụ khó",
+      "scoreGroup": "03 điểm (Trục 2)",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4",
+        "BND-PL5"
+      ],
+      "tasks": [
+        {
+          "name": "Chủ trì tham mưu giải quyết những khó khăn, vướng mắc, nhiệm vụ phức tạp, tồn tại kéo dài hoặc vấn đề khó, mới phát sinh; được lãnh đạo cấp trên ghi nhận bằng văn bản (yêu cầu có tài liệu kiểm chứng)",
+          "sets": [
+            "BND-PL2",
+            "BND-PL3",
+            "BND-PL4",
+            "BND-PL5"
+          ]
+        }
+      ]
+    },
+    {
+      "axis": 2,
+      "name": "Sáng kiến, giải pháp, mô hình mới, cách làm hay; có thành tích xuất sắc",
+      "scoreGroup": "04 điểm (Trục 2)",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4",
+        "BND-PL5"
+      ],
+      "tasks": [
+        {
+          "name": "Có sáng kiến, giải pháp, mô hình, phần mềm, cách làm hay, quy trình công tác mới được áp dụng hiệu quả trong thực tế hoặc góp phần nâng cao hiệu quả công tác, được lãnh đạo cấp trên ghi nhận, biểu dương bằng văn bản; có thành tích xuất sắc được tặng thưởng Bằng khen, Giấy khen hoặc có kết quả xuất sắc tại Hội diễn, Hội thao, Cuộc thi (yêu cầu có tài liệu kiểm chứng)",
+          "sets": [
+            "BND-PL2"
+          ]
+        },
+        {
+          "name": "Có sáng kiến, giải pháp, mô hình, phần mềm, cách làm hay, quy trình công tác mới được áp dụng hiệu quả trong thực tế hoặc góp phần nâng cao hiệu quả công tác, được lãnh đạo cấp trên ghi nhận, biểu dương bằng văn bản; có thành tích xuất sắc được tặng thưởng Bằng khen, Giấy khen (yêu cầu có tài liệu kiểm chứng)",
+          "sets": [
+            "BND-PL3",
+            "BND-PL4",
+            "BND-PL5"
+          ]
+        }
+      ]
+    },
+    {
+      "axis": 2,
+      "name": "Huy động nguồn lực và xây dựng cơ chế",
+      "scoreGroup": "01 điểm (Trục 2)",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4",
+        "BND-PL5"
+      ],
+      "tasks": [
+        {
+          "name": "Chủ động tham mưu lãnh đạo cấp trên ban hành cơ chế, chính sách, quy trình công tác mới; huy động tăng cường nguồn lực bên ngoài Công an theo quy định của pháp luật (về tài chính và con người) phục vụ triển khai nhiệm vụ, nhất là các lĩnh vực trọng tâm (yêu cầu có tài liệu kiểm chứng)",
+          "sets": [
+            "BND-PL2",
+            "BND-PL3",
+            "BND-PL4",
+            "BND-PL5"
+          ]
+        }
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Ban hành các văn bản quán triệt, triển khai thực hiện các nghị quyết, chỉ thị, chương trình, kế hoạch của Đảng ủy CATW, Bộ Công an, ĐU CAT, Công an tỉnh",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Xây dựng, sửa đổi, bổ sung Quy chế làm việc và các chương trình công tác (toàn khóa, hằng năm) của Đảng ủy",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Ban hành các văn bản chỉ đạo hoạt động của cấp ủy, tổ chức đảng trực thuộc",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Tổ chức Đại hội Đảng bộ… và hướng dẫn các tổ chức Đảng tổ chức Đại hội theo Điều lệ Đảng",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Ban hành các văn bản và tổ chức thực hiện công tác kiểm tra, giám sát, thi hành kỷ luật Đảng",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Ban hành và triển khai thực hiện các kế hoạch, chương trình thanh tra, kiểm tra",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Ban hành, triển khai thực hiện các văn bản về công tác tổ chức cán bộ, chế độ chính sách",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4",
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Ban hành và triển khai thực hiện các văn bản về công tác chính trị tư tưởng",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Triển khai thực hiện phong trào thi đua; đề xuất bình xét thi đua, khen thưởng",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Triển khai thực hiện công tác điều lệnh, quân sự, võ thuật, thể dục, thể thao, văn hóa, văn nghệ",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Ban hành các văn bản của đơn vị, địa phương về công tác đoàn thể, quần chúng",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Phối hợp với cơ quan, địa phương trong công tác phòng, chống thiên tai, cứu hộ cứu nạn, phòng thủ dân sự và an sinh xã hội (văn bản, kế hoạch phối hợp; báo cáo kết quả…)",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Bảo đảm an ninh, trật tự, an toàn giao thông, bảo vệ tài sản tại khu vực xảy ra thiên tai, sự cố (Phương án bảo vệ; báo cáo tình hình, vụ việc được xử lý….)",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Thực hiện các chương trình dân vận, hỗ trợ Nhân dân (Chương trình, kế hoạch, báo cáo kết quả…)",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Xây dựng, sửa đổi, bổ sung quy định, quy chế, quy trình phân cấp, phân quyền",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Hướng sẫn các phòng nghiệp vụ, Công an cấp xã thực hiện các quy định về phân cấp, phân quyền",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Theo dõi, đôn đốc, tổng hợp thực hiện phân cấp, phân quyền; kịp thời tháo gỡ khó khăn vướng mắc",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Rà soát, đơn giản hóa thủ tục, hành chính, quy trình công tác gắn với phân cấp, phân quền (báo cáo rà soát, kết quả thực hiện…)",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Thực hiện nhiệm vụ đối ngoại, hội nhập quốc tế",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Ban hành các văn bản để quán triệt, triển khai thực hiện các nghị quyết, chỉ thị, chương trình, kế hoạch của Đảng ủy CAT, Công an tỉnh",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Công tác tham gia phòng, chống thiên tai, cứu hộ cứu nạn, phòng thủ dân sự và an sinh xã hội",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Một số nhiệm vụ, công tác liên quan đối ngoại và hội nhập quốc tế",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Công tác xây dựng Đảng và xây dựng lực lượng",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Công tác cải cách thủ tục hành chính",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 3,
+      "name": "Phân cấp, phân quyền theo quy định của Đảng bộ Công an tỉnh, Bộ Công an",
+      "scoreGroup": "Nhóm 1",
+      "sets": [
+        "BND-PL5"
+      ]
+    },
+    {
+      "axis": 4,
+      "name": "Chỉ tiêu công tác Bộ Công an, Công an tỉnh giao hằng năm",
+      "scoreGroup": "Nhóm 2",
+      "sets": [
+        "BND-PL2",
+        "BND-PL3",
+        "BND-PL4",
+        "BND-PL5"
+      ]
+    }
+  ]
+}

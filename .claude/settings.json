@@ -426,7 +426,20 @@
       "Read(//c/Program Files/MongoDB/**)",
       "Bash(node --env-file=.env -e ' *)",
       "Bash(NODE_PATH=/d/Release/kpi-deploy/server/node_modules node --env-file=/d/Project/WebApp/KPI/server/.env export.js)",
-      "Bash(rm -rf data)"
+      "Bash(rm -rf data)",
+      "Bash(ls -la \"/e/PV01/Mẫu KPI\")",
+      "Read(//e/PV01/Mẫu KPI/**)",
+      "Bash(xargs -I{} sh -c 'echo \"=== {}\"; cat src/modules/mission-form-config/schemas/{}')",
+      "Bash(grep -iE '^\\(xlsx|exceljs\\)$')",
+      "Bash(node C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/extract.js 'E:/PV01/Mẫu KPI' C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/extracted.json)",
+      "Bash(grep -E '^\\(dotenv|mongoose|mongodb\\)$')",
+      "Bash(node scripts/import-work-content-sets.js --dry-run)",
+      "Bash(node scripts/import-work-content-sets.js)",
+      "Bash(grep -E '^\\(ts-node|tsx\\)$')",
+      "Bash(grep -E '^tsconfig-paths$')",
+      "Bash(npx ts-node *)",
+      "Bash(sed -i 's|      const key = `${axis}:${name.toLowerCase\\(\\)}`;|      const key = process.env.BY_STT ? `${axis}:${first}` : `${axis}:${name.toLowerCase\\(\\)}`;|' C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/extract.js)",
+      "Bash(BY_STT=1 node C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/extract.js 'E:/PV01/Mẫu KPI' C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/by-stt.json)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

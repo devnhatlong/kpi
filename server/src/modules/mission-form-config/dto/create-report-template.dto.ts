@@ -45,6 +45,16 @@ export class CreateReportTemplateDto {
   axisIds?: string[];
 
   @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description:
+      'Bộ nội dung công việc (phụ lục) của mẫu; null = dùng toàn bộ danh mục',
+  })
+  @IsOptional()
+  @IsMongoId({ message: 'Bộ nội dung không hợp lệ.' })
+  workContentSetId?: string | null;
+
+  @ApiPropertyOptional({
     enum: REPORT_SCOPE_TYPES,
     description:
       'all = mọi đơn vị; by_level = theo cấp đơn vị; by_department = các đơn vị đã chọn',

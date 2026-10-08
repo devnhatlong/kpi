@@ -65,6 +65,21 @@ export class ReportTemplate {
   })
   axisIds!: Types.ObjectId[];
 
+  /**
+   * Bộ nội dung công việc (phụ lục) của mẫu: đơn vị dùng mẫu này chỉ thấy các
+   * nội dung gắn bộ đó trong dropdown "Nội dung công việc".
+   *
+   * null = không giới hạn, bày toàn bộ danh mục - giữ đúng hành vi của các mẫu
+   * có từ trước khi có bộ.
+   */
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'WorkContentSet',
+    default: null,
+    index: true,
+  })
+  workContentSetId!: Types.ObjectId | null;
+
   @Prop({
     type: String,
     enum: REPORT_SCOPE_TYPES,

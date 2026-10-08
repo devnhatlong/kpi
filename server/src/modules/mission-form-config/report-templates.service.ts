@@ -24,6 +24,10 @@ import {
   type ReportScopeType,
 } from './schemas/report-template.schema';
 import { Axis, AxisDocument } from './schemas/axis.schema';
+import {
+  WorkContentSet,
+  WorkContentSetDocument,
+} from './schemas/work-content-set.schema';
 
 const AXIS_POPULATE = {
   path: 'axisIds',
@@ -33,7 +37,8 @@ const SCOPE_POPULATE = [
   { path: 'levelIds', select: 'code name rank' },
   { path: 'departmentIds', select: 'code name' },
 ];
-const POPULATE_ALL = [AXIS_POPULATE, ...SCOPE_POPULATE];
+const SET_POPULATE = { path: 'workContentSetId', select: 'code name' };
+const POPULATE_ALL = [AXIS_POPULATE, ...SCOPE_POPULATE, SET_POPULATE];
 
 /** Đơn vị khớp mẫu qua đường nào - để màn nhập nói rõ đang dùng mẫu của ai. */
 export type ReportScopeSource =
@@ -56,6 +61,8 @@ export class ReportTemplatesService {
     private readonly levelModel: Model<DepartmentLevelDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    @InjectModel(WorkContentSet.name)
+    private readonly setModel: Model<WorkContentSetDocument>,
   ) {}
 
   async create(dto: CreateReportTemplateDto) {
@@ -77,6 +84,7 @@ export class ReportTemplatesService {
       year: this.resolveYear(dto.year),
       includeCriteria: dto.includeCriteria ?? true,
       axisIds: await this.resolveAxisIds(dto.axisIds ?? []),
+      workContentSetId: await this.resolveSetId(dto.workContentSetId ?? null),
       ...scope,
       includeDescendants: dto.includeDescendants ?? true,
       // Mẫu mới luôn ở trạng thái đang cấu hình - áp dụng là một hành động
@@ -265,6 +273,15 @@ export class ReportTemplatesService {
     if (dto.includeDescendants !== undefined) {
       item.includeDescendants = dto.includeDescendants;
     }
+    const setTouched =
+      dto.workContentSetId !== undefined &&
+      String(dto.workContentSetId ?? '') !==
+        String(item.workContentSetId ?? '');
+    if (setTouched) {
+      item.workContentSetId = await this.resolveSetId(
+        dto.workContentSetId ?? null,
+      );
+    }
 
     const scopeTouched =
       dto.scopeType !== undefined ||
@@ -296,6 +313,7 @@ export class ReportTemplatesService {
         dto.includeCriteria !== undefined ||
         dto.year !== undefined ||
         dto.includeDescendants !== undefined ||
+        setTouched ||
         scopeTouched)
     ) {
       item.status = 'draft';
@@ -485,6 +503,16 @@ export class ReportTemplatesService {
       throw new BadRequestException('Có trục không tồn tại.');
     }
     return objectIds;
+  }
+
+  private async resolveSetId(id: string | null) {
+    if (!id) return null;
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Bộ nội dung không hợp lệ.');
+    }
+    const found = await this.setModel.findById(id).select('_id');
+    if (!found) throw new BadRequestException('Bộ nội dung không tồn tại.');
+    return found._id;
   }
 
   private async nextCode(): Promise<string> {

@@ -48,6 +48,7 @@ import {
   FormTemplateDocument,
 } from '@/modules/mission-form-config/schemas/form-template.schema';
 import { FormTemplatesService } from '@/modules/mission-form-config/form-templates.service';
+import { ReportTemplatesService } from '@/modules/mission-form-config/report-templates.service';
 import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
 import {
   TeamReportTask,
@@ -167,6 +168,7 @@ export class TeamReportService {
     @InjectModel(FormTemplate.name)
     private readonly formTemplateModel: Model<FormTemplateDocument>,
     private readonly formTemplatesService: FormTemplatesService,
+    private readonly reportTemplatesService: ReportTemplatesService,
     private readonly routing: TeamReportAdjustmentRoutingService,
   ) {}
 
@@ -393,6 +395,11 @@ export class TeamReportService {
     };
     if (query.onlyUnclassified) filter.workContentId = null;
 
+    const contentFilter = await this.workContentFilterOf(
+      actor.departmentId,
+      reportDate,
+    );
+
     const [tasks, axes, contents, day] = await Promise.all([
       this.taskModel
         .find(filter)
@@ -404,7 +411,7 @@ export class TeamReportService {
         .select('code name sortOrder maxScore')
         .sort({ sortOrder: 1, code: 1 }),
       this.workContentModel
-        .find({ isActive: true })
+        .find(contentFilter)
         .select('code name axisId scoreGroupId sortOrder')
         .sort({ sortOrder: 1, code: 1 }),
       this.dayModel.findOne({
@@ -418,6 +425,7 @@ export class TeamReportService {
     );
     const catalogs = await this.catalogsForTemplates(
       Object.values(templates).filter(Boolean),
+      contentFilter,
     );
 
     const unclassified = tasks.filter((task) => !task.workContentId).length;
@@ -501,7 +509,11 @@ export class TeamReportService {
 
     if (dto.workContentId !== undefined) {
       task.workContentId = dto.workContentId
-        ? await this.requireWorkContentOfAxis(dto.workContentId, task.axisId)
+        ? await this.requireWorkContentOfAxis(
+            dto.workContentId,
+            task.axisId,
+            await this.workContentFilterOf(actor.departmentId, serverDateYmd()),
+          )
         : null;
     }
 
@@ -1200,9 +1212,12 @@ export class TeamReportService {
         trường cứng, mà người dùng lại chọn ở cột của mẫu.
       */
       if (column.semanticKey === 'work_content') {
+        // Soi theo phụ lục của đơn vị CÓ việc, không theo người đang sửa: phòng
+        // chấm hộ việc của đội thì đội vẫn chỉ được dòng trong phụ lục của đội.
         task.workContentId = await this.requireWorkContentOfAxis(
           id,
           task.axisId,
+          await this.workContentFilterOf(task.departmentId, serverDateYmd()),
         );
       }
     }
@@ -1460,6 +1475,7 @@ export class TeamReportService {
   /** Danh mục cho các cột kiểu chọn có mặt trong những mẫu đang dùng. */
   private async catalogsForTemplates(
     templates: Array<ResolvedTemplate | null>,
+    workContentFilter: Record<string, unknown> = { isActive: true },
   ) {
     const needed = new Set<string>();
     for (const template of templates) {
@@ -1481,7 +1497,7 @@ export class TeamReportService {
     if (needed.has('work_content')) {
       result.work_content = (
         await this.workContentModel
-          .find({ isActive: true })
+          .find(workContentFilter)
           .select('name axisId')
           .sort({ sortOrder: 1, code: 1 })
       ).map((row) => ({
@@ -1583,10 +1599,11 @@ export class TeamReportService {
   private async requireWorkContentOfAxis(
     id: string,
     axisId: Types.ObjectId | null,
+    contentFilter?: Record<string, unknown>,
   ) {
     const content = await this.workContentModel
       .findById(this.requireObjectId(id, 'Nội dung công việc'))
-      .select('axisId');
+      .select('axisId setIds');
     if (!content) {
       throw new BadRequestException('Nội dung công việc không tồn tại.');
     }
@@ -1595,7 +1612,39 @@ export class TeamReportService {
         'Nội dung công việc không thuộc trục đã chọn.',
       );
     }
+    const setId = contentFilter?.setIds as Types.ObjectId | undefined;
+    if (setId && !(content.setIds ?? []).some((item) => item.equals(setId))) {
+      throw new BadRequestException(
+        'Nội dung công việc không thuộc phụ lục của đơn vị.',
+      );
+    }
     return content._id;
+  }
+
+  /**
+   * Điều kiện lọc danh mục nội dung công việc cho một đơn vị.
+   *
+   * Mẫu báo cáo áp dụng cho đơn vị (theo năm của ngày báo cáo) có chọn bộ nội
+   * dung thì chỉ bày nội dung thuộc bộ đó - khối An ninh không thấy dòng của
+   * khối Cảnh sát. Mẫu không chọn bộ, hoặc đơn vị chưa có mẫu, thì giữ nguyên
+   * hành vi cũ: bày toàn bộ danh mục.
+   */
+  private async workContentFilterOf(
+    departmentId: Types.ObjectId | string | null,
+    reportDate: string,
+  ): Promise<Record<string, unknown>> {
+    const filter: Record<string, unknown> = { isActive: true };
+    const year = Number(reportDate.slice(0, 4));
+    const resolved = await this.reportTemplatesService.resolveForDepartment(
+      departmentId ? String(departmentId) : null,
+      Number.isInteger(year) ? year : undefined,
+    );
+    // Mẫu trả về đã populate bộ - lấy `_id`; chưa populate thì chính là id.
+    const setRef = resolved.data.template?.workContentSetId as unknown as
+      { _id: Types.ObjectId } | Types.ObjectId | null | undefined;
+    const setId = setRef instanceof Types.ObjectId ? setRef : setRef?._id;
+    if (setId) filter.setIds = setId;
+    return filter;
   }
 
   // ======================================== báo cáo tổng hợp theo kỳ của đội

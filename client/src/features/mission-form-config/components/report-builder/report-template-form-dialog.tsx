@@ -16,8 +16,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   createReportTemplate,
+  fetchWorkContentSetsAll,
   updateReportTemplate,
+  workContentSetKeys,
 } from "@/features/mission-form-config/api";
 import {
   DEFAULT_SCOPE,
@@ -32,6 +41,10 @@ import {
 } from "@/features/mission-form-config/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { serverDayjs } from "@/lib/server-time";
+import useSWR from "swr";
+
+/** Radix Select không nhận "" làm value - dùng hằng này cho "không giới hạn". */
+const ALL_CONTENTS = "__all__";
 
 type ReportTemplateFormDialogProps = {
   open: boolean;
@@ -57,7 +70,12 @@ export function ReportTemplateFormDialog({
   const [description, setDescription] = useState("");
   const [year, setYear] = useState("");
   const [scope, setScope] = useState<ScopeDraft>(DEFAULT_SCOPE);
+  const [setId, setSetId] = useState("");
   const [saving, setSaving] = useState(false);
+  const { data: sets = [] } = useSWR(
+    open ? workContentSetKeys.list({ all: true }) : null,
+    fetchWorkContentSetsAll,
+  );
 
   /*
     Nạp lại theo mẫu đang sửa ngay trong render chứ không đợi effect - effect
@@ -73,6 +91,7 @@ export function ReportTemplateFormDialog({
     setDescription(edit?.description ?? "");
     setYear(String(edit?.year ?? defaultYear));
     setScope(edit ? scopeFromTemplate(edit) : DEFAULT_SCOPE);
+    setSetId(edit?.workContentSetId ? entityId(edit.workContentSetId) : "");
   }
 
   const submit = async () => {
@@ -102,6 +121,7 @@ export function ReportTemplateFormDialog({
       levelIds: scope.levelIds,
       departmentIds: scope.departmentIds,
       includeDescendants: scope.includeDescendants,
+      workContentSetId: setId || null,
     };
 
     setSaving(true);
@@ -172,6 +192,34 @@ export function ReportTemplateFormDialog({
           <div className="space-y-2">
             <Label>Phạm vi áp dụng</Label>
             <ScopePicker value={scope} onChange={setScope} enabled={open} />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Bộ nội dung công việc (phụ lục)</Label>
+            <Select
+              value={setId || ALL_CONTENTS}
+              onValueChange={(value) =>
+                setSetId(value === ALL_CONTENTS ? "" : value)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_CONTENTS}>
+                  Toàn bộ danh mục (không giới hạn)
+                </SelectItem>
+                {sets.map((item) => (
+                  <SelectItem key={entityId(item)} value={entityId(item)}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Đơn vị dùng mẫu này chỉ thấy các nội dung công việc thuộc phụ lục
+              đã chọn khi phân loại báo cáo.
+            </p>
           </div>
         </div>
 

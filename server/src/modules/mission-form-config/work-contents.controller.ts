@@ -10,13 +10,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 import { Permissions } from '@/common/decorators';
 import { Permission } from '@/common/enums/permission.enum';
 import { PermissionsGuard } from '@/common/guards/permissions.guard';
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import { CreateWorkContentDto } from './dto/create-work-content.dto';
 import { UpdateWorkContentDto } from './dto/update-work-content.dto';
+import { WorkContentQueryDto } from './dto/work-content-query.dto';
 import { WorkContentsService } from './work-contents.service';
 
 @ApiTags('Mission Form Config')
@@ -36,7 +36,7 @@ export class WorkContentsController {
   @ApiOperation({ summary: 'Danh sách nội dung công việc' })
   @Permissions(Permission.TASK_VIEW)
   @Get('all')
-  findAll(@Query() query: PaginationQueryDto) {
+  findAll(@Query() query: WorkContentQueryDto) {
     return this.workContentsService.findAll(query);
   }
 

@@ -44,6 +44,19 @@ export class WorkContent {
   })
   scoreGroupId!: Types.ObjectId | null;
 
+  /**
+   * Các bộ (phụ lục) có dòng này - xem work-content-set.schema.ts.
+   *
+   * Rỗng = chưa gắn bộ nào: mẫu báo cáo có chọn bộ sẽ KHÔNG bày dòng này ra,
+   * chỉ mẫu chưa chọn bộ (dùng toàn bộ danh mục) mới thấy.
+   */
+  @Prop({
+    type: [{ type: Types.ObjectId, ref: 'WorkContentSet' }],
+    default: [],
+    index: true,
+  })
+  setIds!: Types.ObjectId[];
+
   @Prop({ default: 0, min: 0 })
   sortOrder!: number;
 

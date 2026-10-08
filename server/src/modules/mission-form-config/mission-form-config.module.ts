@@ -4,6 +4,10 @@ import { AuthsModule } from '../auth/auth.module';
 import { RolesModule } from '../roles/roles.module';
 import { WorkContent, WorkContentSchema } from './schemas/work-content.schema';
 import { WorkTask, WorkTaskSchema } from './schemas/work-task.schema';
+import {
+  WorkContentSet,
+  WorkContentSetSchema,
+} from './schemas/work-content-set.schema';
 import { Criterion, CriterionSchema } from './schemas/criterion.schema';
 import {
   AdjustmentItem,
@@ -36,6 +40,8 @@ import { WorkContentsController } from './work-contents.controller';
 import { WorkContentsService } from './work-contents.service';
 import { WorkTasksController } from './work-tasks.controller';
 import { WorkTasksService } from './work-tasks.service';
+import { WorkContentSetsController } from './work-content-sets.controller';
+import { WorkContentSetsService } from './work-content-sets.service';
 import { AxesController } from './axes.controller';
 import { AxesService } from './axes.service';
 import { ScoreGroupsController } from './score-groups.controller';
@@ -60,6 +66,7 @@ import {
     MongooseModule.forFeature([
       { name: WorkContent.name, schema: WorkContentSchema },
       { name: WorkTask.name, schema: WorkTaskSchema },
+      { name: WorkContentSet.name, schema: WorkContentSetSchema },
       { name: Axis.name, schema: AxisSchema },
       { name: ScoreGroup.name, schema: ScoreGroupSchema },
       { name: FormTemplate.name, schema: FormTemplateSchema },
@@ -80,6 +87,7 @@ import {
   controllers: [
     WorkContentsController,
     WorkTasksController,
+    WorkContentSetsController,
     AxesController,
     ScoreGroupsController,
     FormTemplatesController,
@@ -91,6 +99,7 @@ import {
   providers: [
     WorkContentsService,
     WorkTasksService,
+    WorkContentSetsService,
     AxesService,
     ScoreGroupsService,
     FormTemplatesService,
@@ -102,6 +111,7 @@ import {
   exports: [
     WorkContentsService,
     WorkTasksService,
+    WorkContentSetsService,
     AxesService,
     ScoreGroupsService,
     FormTemplatesService,

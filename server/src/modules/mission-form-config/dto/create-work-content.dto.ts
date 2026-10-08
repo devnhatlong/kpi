@@ -4,7 +4,8 @@ import {
   StringNotRequired,
   StringRequired,
 } from '@/common/decorators';
-import { IsMongoId } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsArray, IsMongoId, IsOptional } from 'class-validator';
 
 export class CreateWorkContentDto {
   @StringNotRequired('Mã nội dung (để trống sẽ tự sinh)', {
@@ -32,6 +33,15 @@ export class CreateWorkContentDto {
   @StringRequired('Nhóm điểm', { example: '66af9f31f0e4d3e4f4305e93' })
   @IsMongoId({ message: 'Nhóm điểm không hợp lệ.' })
   scoreGroupId!: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Các bộ nội dung (phụ lục) có dòng này',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsMongoId({ each: true, message: 'Bộ nội dung không hợp lệ.' })
+  setIds?: string[];
 
   @NumberNotRequired('Thứ tự hiển thị', { example: 0 })
   sortOrder?: number;

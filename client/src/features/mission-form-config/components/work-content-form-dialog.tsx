@@ -22,11 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   createWorkContent,
   fetchAxesAll,
   fetchScoreGroupsAll,
+  fetchWorkContentSetsAll,
   updateWorkContent,
+  workContentSetKeys,
 } from "@/features/mission-form-config/api";
 import type { WorkContent } from "@/features/mission-form-config/types";
 import { entityId } from "@/features/mission-form-config/types";
@@ -51,6 +54,7 @@ export function WorkContentFormDialog({
   const [note, setNote] = useState("");
   const [axisId, setAxisId] = useState("");
   const [scoreGroupId, setScoreGroupId] = useState("");
+  const [setIds, setSetIds] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState("0");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -62,6 +66,17 @@ export function WorkContentFormDialog({
     open ? ["score-groups", "all", "for-work-content"] : null,
     fetchScoreGroupsAll,
   );
+  const { data: sets = [] } = useSWR(
+    open ? workContentSetKeys.list({ all: true }) : null,
+    fetchWorkContentSetsAll,
+  );
+
+  const toggleSet = (id: string, checked: boolean) =>
+    setSetIds((current) =>
+      checked
+        ? [...new Set([...current, id])]
+        : current.filter((item) => item !== id),
+    );
 
   useEffect(() => {
     if (!open) return;
@@ -78,6 +93,7 @@ export function WorkContentFormDialog({
           ? edit.scoreGroupId
           : (edit.scoreGroupId?._id ?? ""),
       );
+      setSetIds((edit.setIds ?? []).map((set) => entityId(set)));
       setSortOrder(String(edit.sortOrder ?? 0));
       setIsActive(edit.isActive);
     } else {
@@ -85,6 +101,7 @@ export function WorkContentFormDialog({
       setNote("");
       setAxisId("");
       setScoreGroupId("");
+      setSetIds([]);
       setSortOrder("0");
       setIsActive(true);
     }
@@ -115,6 +132,7 @@ export function WorkContentFormDialog({
       note: note.trim(),
       axisId,
       scoreGroupId,
+      setIds,
       sortOrder: sortOrderNum,
       isActive,
     };
@@ -242,6 +260,37 @@ export function WorkContentFormDialog({
             <p className="text-xs text-muted-foreground">
               Mọi nhiệm vụ khai theo nội dung này lấy chung mức điểm chuẩn của
               nhóm đã chọn.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Thuộc phụ lục</Label>
+            {sets.length ? (
+              <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
+                {sets.map((set) => {
+                  const id = entityId(set);
+                  return (
+                    <label
+                      key={id}
+                      className="flex cursor-pointer items-center gap-2 text-sm"
+                    >
+                      <Checkbox
+                        checked={setIds.includes(id)}
+                        onCheckedChange={(value) => toggleSet(id, value === true)}
+                      />
+                      {set.name}
+                    </label>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Chưa có bộ nội dung nào - thêm ở nút &quot;Bộ nội dung&quot;.
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Dòng dùng chung cho nhiều khối thì tick nhiều phụ lục. Đơn vị chỉ
+              thấy nội dung thuộc phụ lục mà mẫu báo cáo của đơn vị chọn.
             </p>
           </div>
 

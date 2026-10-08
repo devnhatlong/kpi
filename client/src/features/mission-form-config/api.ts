@@ -28,6 +28,9 @@ import type {
   ScoreGroupInput,
   WorkContent,
   WorkContentInput,
+  WorkContentListParams,
+  WorkContentSet,
+  WorkContentSetInput,
   WorkTask,
   WorkTaskInput,
 } from "./types";
@@ -198,11 +201,11 @@ export async function deleteAdjustmentItem(id: string) {
   await api.delete(`/mission-form-config/adjustments/${id}`);
 }
 
-export const workContentKeys = {
-  all: ["work-contents"] as const,
+export const workContentSetKeys = {
+  all: ["work-content-sets"] as const,
   list: (params: ListQueryParams) =>
     [
-      "work-contents",
+      "work-content-sets",
       params.page,
       params.limit,
       params.q ?? "",
@@ -210,14 +213,73 @@ export const workContentKeys = {
     ] as const,
 };
 
-export async function fetchWorkContentsPage(
+export async function fetchWorkContentSetsPage(
   params: ListQueryParams,
+): Promise<PaginatedResult<WorkContentSet>> {
+  return unwrapPaginated(
+    api.get<ApiResponse<WorkContentSet[]>>(
+      "/mission-form-config/work-content-sets/all",
+      { params: buildListQuery(params) },
+    ),
+  );
+}
+
+export async function fetchWorkContentSetsAll() {
+  const result = await fetchWorkContentSetsPage({ all: true });
+  return result.data;
+}
+
+export function createWorkContentSet(input: WorkContentSetInput) {
+  return unwrapData(
+    api.post<ApiResponse<WorkContentSet>>(
+      "/mission-form-config/work-content-sets",
+      input,
+    ),
+  );
+}
+
+export function updateWorkContentSet(
+  id: string,
+  input: Partial<WorkContentSetInput>,
+) {
+  return unwrapData(
+    api.patch<ApiResponse<WorkContentSet>>(
+      `/mission-form-config/work-content-sets/${id}`,
+      input,
+    ),
+  );
+}
+
+export async function deleteWorkContentSet(id: string) {
+  await api.delete(`/mission-form-config/work-content-sets/${id}`);
+}
+
+export const workContentKeys = {
+  all: ["work-contents"] as const,
+  list: (params: WorkContentListParams) =>
+    [
+      "work-contents",
+      params.page,
+      params.limit,
+      params.q ?? "",
+      params.all ?? false,
+      params.axisId ?? "",
+      params.setId ?? "",
+    ] as const,
+};
+
+export async function fetchWorkContentsPage(
+  params: WorkContentListParams,
 ): Promise<PaginatedResult<WorkContent>> {
   return unwrapPaginated(
     api.get<ApiResponse<WorkContent[]>>(
       "/mission-form-config/work-contents/all",
       {
-        params: buildListQuery(params),
+        params: {
+          ...buildListQuery(params),
+          ...(params.axisId ? { axisId: params.axisId } : {}),
+          ...(params.setId ? { setId: params.setId } : {}),
+        },
       },
     ),
   );

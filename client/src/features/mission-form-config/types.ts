@@ -36,6 +36,35 @@ export type ScoreGroupRef = {
   formulaScore?: number | null;
 };
 
+/**
+ * Bộ nội dung công việc - danh sách nội dung của một phụ lục (PL2 khối An
+ * ninh, PL3 khối Cảnh sát…). Mẫu báo cáo chọn bộ nào thì đơn vị dùng mẫu đó
+ * chỉ thấy nội dung của bộ đó.
+ */
+export type WorkContentSet = {
+  _id: string;
+  id?: string;
+  code: string;
+  name: string;
+  description?: string;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+export type WorkContentSetInput = {
+  code?: string;
+  name: string;
+  description?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+export type WorkContentSetRef = {
+  _id: string;
+  code: string;
+  name: string;
+};
+
 export type WorkContent = {
   _id: string;
   id?: string;
@@ -48,6 +77,8 @@ export type WorkContent = {
   axisId: string | AxisRef;
   /** null ở bản ghi tạo trước khi có trường này - hiện "Chưa gán". */
   scoreGroupId?: string | ScoreGroupRef | null;
+  /** Các bộ (phụ lục) có dòng này; rỗng = chưa gắn bộ nào. */
+  setIds?: Array<string | WorkContentSetRef>;
   sortOrder: number;
   isActive: boolean;
 };
@@ -59,8 +90,15 @@ export type WorkContentInput = {
   note?: string;
   axisId: string;
   scoreGroupId: string;
+  setIds?: string[];
   sortOrder?: number;
   isActive?: boolean;
+};
+
+/** Lọc danh sách nội dung: theo trục, theo bộ ("none" = chưa gắn bộ nào). */
+export type WorkContentListParams = ListQueryParams & {
+  axisId?: string;
+  setId?: string;
 };
 
 /**
@@ -1331,6 +1369,8 @@ export type ReportTemplate = {
   includeCriteria: boolean;
   /** Theo thứ tự khối B.1, B.2… trên báo cáo. */
   axisIds: Array<AxisRef | string>;
+  /** Bộ nội dung (phụ lục) của mẫu; null = dùng toàn bộ danh mục. */
+  workContentSetId?: WorkContentSetRef | string | null;
   scopeType: ReportScopeType;
   /** Chỉ dùng khi scopeType = by_level. */
   levelIds: Array<DepartmentLevelRef | string>;
@@ -1352,6 +1392,7 @@ export type ReportTemplateInput = {
   year?: number;
   includeCriteria?: boolean;
   axisIds: string[];
+  workContentSetId?: string | null;
   scopeType?: ReportScopeType;
   levelIds?: string[];
   departmentIds?: string[];
