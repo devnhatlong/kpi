@@ -62,6 +62,16 @@ import {
   hasInactiveUnit,
 } from "@/features/team-report/components/summary-recipient-fields";
 import {
+  SummaryConclusionFields,
+  SummaryConclusionView,
+  initialConclusion,
+  rememberConclusion,
+  validateConclusion,
+  type ConclusionDraft,
+  type ConclusionErrors,
+} from "@/features/team-report/components/summary-conclusion-fields";
+import { useAuth } from "@/features/auth/auth-provider";
+import {
   changeTeamReportSummaryTasks,
   commentTeamReportSummary,
   decideTeamReportSummary,
@@ -78,6 +88,7 @@ import {
 } from "@/features/team-report/api";
 import { DynamicColumnCell } from "@/features/team-report/components/dynamic-column-cell";
 import {
+  ApprovalChain,
   ParticipantsBlock,
   participantLabel,
   silentCoordinatorsOf,
@@ -91,7 +102,7 @@ import {
 } from "@/features/team-report/status-styles";
 import {
   TEAM_REPORT_PERIOD_LABEL,
-  TEAM_REPORT_STATUS_LABEL,
+  stagedStatusLabel,
   catalogOfColumn,
   entryColumnKeys,
   formatScore,
@@ -366,6 +377,11 @@ export function TeamReportSummaryPanel({
   const [recipientId, setRecipientId] = useState("");
   const [recipientError, setRecipientError] = useState(false);
   const [note, setNote] = useState("");
+  const [conclusion, setConclusion] = useState<ConclusionDraft | null>(null);
+  const [conclusionErrors, setConclusionErrors] = useState<ConclusionErrors>(
+    {},
+  );
+  const { user } = useAuth();
   const [returnReason, setReturnReason] = useState("");
   const [returnReasonError, setReturnReasonError] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -409,7 +425,10 @@ export function TeamReportSummaryPanel({
   const draft = summary.status === "DRAFT";
   /* Duyệt / trả lại chỉ khi bản đang chờ: đã duyệt thì rút lại quyết định cấp
      dưới đã thấy, đã trả lại thì bóng đang ở bên đội. */
-  const decidable = reviewer && summary.status === "PENDING";
+  /* Duyệt 2 cấp: chỉ người ĐANG CẦM bản mới quyết - cấp 1 đã chuyển lên thì
+     chỉ còn đọc. Server trả `canDecide`; bản cũ không có thì coi như được. */
+  const decidable =
+    reviewer && summary.status === "PENDING" && (detail.canDecide ?? true);
   /** Đơn vị phối hợp chưa cho ý kiến - nhắc chủ trì trước khi duyệt. */
   const { total: coordinatorCount, silent: silentCoordinators } =
     silentCoordinatorsOf(summary.participants ?? []);
@@ -434,7 +453,7 @@ export function TeamReportSummaryPanel({
     DRAFT thì cấp trên chưa nhìn thấy. Riêng RETURNED thì đội đang giữ bóng.
   */
   const canEdit = reviewer
-    ? summary.status === "PENDING"
+    ? decidable
     : owner && (draft || summary.status === "RETURNED");
   const editable = canEdit && editMode;
   /* Đổi danh sách nhiệm vụ: chỉ đội, và chỉ khi bản chưa trình hoặc bị trả lại.
@@ -453,6 +472,7 @@ export function TeamReportSummaryPanel({
   );
   const recipients = recipientData?.people ?? [];
   const units = recipientData?.units ?? null;
+  const finalReviewer = recipientData?.finalReviewer ?? null;
 
   /*
     Kho để thêm: CẢ kho nhiệm vụ của đội, không bó trong kỳ của báo cáo.
@@ -614,12 +634,16 @@ export function TeamReportSummaryPanel({
           `Kỳ ${formatYmd(summary.fromDate)} - ${formatYmd(summary.toDate)}`,
           TEAM_REPORT_PERIOD_LABEL[summary.period],
           `${summary.rows.length} nhiệm vụ`,
-          draft ? "Nháp" : TEAM_REPORT_STATUS_LABEL[summary.status],
+          draft ? "Nháp" : stagedStatusLabel(summary),
           summary.recipientName ? `Trình ${summary.recipientName}` : "",
         ]
           .filter(Boolean)
           .join("   ·   "),
         note: summary.note,
+        // Tổng theo điểm bảng B hiện tại - cấp trên sửa điểm thì tổng đổi theo.
+        conclusion: summary.conclusion
+          ? { ...summary.conclusion, totalScore, maxScore: totalMax }
+          : null,
         rows: summary.rows,
         templates,
         axisScores,
@@ -639,6 +663,11 @@ export function TeamReportSummaryPanel({
       setRecipientError(true);
       return;
     }
+    const checked = conclusion ? validateConclusion(conclusion) : null;
+    if (!checked?.value) {
+      setConclusionErrors(checked?.errors ?? {});
+      return;
+    }
     setBusy(true);
     try {
       await sendTeamReportSummary(
@@ -646,9 +675,11 @@ export function TeamReportSummaryPanel({
         {
           ...(units ? {} : { recipientId }),
           note: note.trim() || undefined,
+          conclusion: checked.value,
         },
         level,
       );
+      rememberConclusion(user?.id, checked.value);
       setSendOpen(false);
       await onChanged();
       toast.success("Đã trình báo cáo lên cấp trên.");
@@ -806,6 +837,11 @@ export function TeamReportSummaryPanel({
     setRecipientId(refId(summary.recipientId) || "");
     setRecipientError(false);
     setNote(summary.note ?? "");
+    // Trình lại: điền sẵn đúng phần đã khai lần trước.
+    setConclusion(
+      initialConclusion(user?.id, summary.conclusion),
+    );
+    setConclusionErrors({});
     setSendOpen(true);
   };
 
@@ -825,7 +861,7 @@ export function TeamReportSummaryPanel({
                   DAY_STATUS_CLASS[summary.status],
                 )}
               >
-                {draft ? "Nháp" : TEAM_REPORT_STATUS_LABEL[summary.status]}
+                {draft ? "Nháp" : stagedStatusLabel(summary)}
               </Badge>
             </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -1092,6 +1128,14 @@ export function TeamReportSummaryPanel({
           </p>
         ) : null}
 
+        <ApprovalChain
+          status={summary.status}
+          leadName={summary.recipientName}
+          finalName={summary.finalRecipientName}
+          stage={summary.stage}
+          firstApproval={summary.firstApproval}
+        />
+
         {summary.participants?.length ? (
           <ParticipantsBlock
             leadName={summary.recipientName}
@@ -1112,6 +1156,20 @@ export function TeamReportSummaryPanel({
             axisScores={axisScores}
             totalScore={totalScore}
             totalMax={totalMax}
+          />
+        ) : null}
+
+        {/* Phần cuối phụ lục đơn vị khai lúc trình - người duyệt đọc ngay dưới
+            bảng điểm để đối chiếu con số đơn vị cam kết với số máy tính. */}
+        {summary.conclusion ? (
+          /* Tổng theo điểm bảng B HIỆN TẠI: cấp trên sửa điểm lúc duyệt thì
+             tổng đổi theo; số lưu lúc trình chỉ là dấu vết. */
+          <SummaryConclusionView
+            conclusion={{
+              ...summary.conclusion,
+              totalScore,
+              maxScore: totalMax,
+            }}
           />
         ) : null}
 
@@ -1604,6 +1662,7 @@ export function TeamReportSummaryPanel({
               idPrefix="summary"
               recipients={recipients}
               units={units}
+              finalReviewer={finalReviewer}
               recipientId={recipientId}
               onRecipientChange={(next) => {
                 setRecipientId(next);
@@ -1615,6 +1674,22 @@ export function TeamReportSummaryPanel({
                   : undefined
               }
             />
+            {conclusion ? (
+              <SummaryConclusionFields
+                idPrefix="summary-conclusion"
+                value={conclusion}
+                onChange={(next) => {
+                  setConclusion(next);
+                  if (Object.keys(conclusionErrors).length) {
+                    setConclusionErrors(validateConclusion(next).errors);
+                  }
+                }}
+                errors={conclusionErrors}
+                score={axisScores.length ? totalScore : null}
+                maxScore={totalMax || null}
+              />
+            ) : null}
+
             <div className="space-y-1.5">
               <Label htmlFor="summary-note">
                 Ghi chú gửi kèm{" "}
@@ -1640,7 +1715,10 @@ export function TeamReportSummaryPanel({
               >
                 Huỷ
               </Button>
-              <Button type="submit" disabled={busy || hasInactiveUnit(units)}>
+              <Button
+                type="submit"
+                disabled={busy || hasInactiveUnit(units, finalReviewer)}
+              >
                 {busy ? (
                   <Loader2
                     className="size-4 motion-safe:animate-spin"
@@ -1959,6 +2037,14 @@ export function TeamReportSummaryPanel({
               {unitName ? ` của ${unitName}` : ""}.
             </DialogDescription>
           </DialogHeader>
+          {/* Duyệt 2 cấp, đang ở cấp 1: duyệt KHÔNG chốt mà chuyển lên duyệt cuối -
+              nói rõ để người duyệt không tưởng mình là người quyết cuối. */}
+          {summary.finalRecipientName && summary.stage !== "FINAL" ? (
+            <p className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+              Đây là <strong>duyệt cấp 1</strong>. Duyệt xong bản chuyển lên{" "}
+              <strong>{summary.finalRecipientName}</strong> duyệt cuối.
+            </p>
+          ) : null}
           <div className="space-y-2 rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
             <p className="flex items-baseline justify-between gap-2">
               <span className="text-muted-foreground">Số nhiệm vụ</span>

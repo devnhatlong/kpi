@@ -29,7 +29,7 @@ import { TeamReportSummaryPanel } from "@/features/team-report/components/team-r
 import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
 import {
   TEAM_REPORT_PERIOD_LABEL,
-  TEAM_REPORT_STATUS_LABEL,
+  stagedStatusLabel,
   refName,
   type TeamReportDayStatus,
   type TeamReportPeriod,
@@ -445,7 +445,7 @@ function InboxRow({
             DAY_STATUS_CLASS[report.status],
           )}
         >
-          {TEAM_REPORT_STATUS_LABEL[report.status]}
+          {stagedStatusLabel(report)}
         </Badge>
       </div>
       <div className="mt-1 text-xs text-muted-foreground">

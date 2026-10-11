@@ -67,6 +67,7 @@ export const ROLE_LABELS: Record<string, string> = {
   VICE_UNIT_ADMIN: "Phó phòng, phó xã",
   MANAGER: "Đội trưởng",
   STAFF: "Cán bộ",
+  REPORT_REVIEWER: "Cán bộ duyệt báo cáo",
 };
 
 export function displayNameOf(user: AuthUser): string {

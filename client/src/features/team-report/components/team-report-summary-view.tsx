@@ -29,7 +29,7 @@ import { TeamReportSummaryWizard } from "@/features/team-report/components/team-
 import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
 import {
   TEAM_REPORT_PERIOD_LABEL,
-  TEAM_REPORT_STATUS_LABEL,
+  stagedStatusLabel,
   type TeamReportDayStatus,
   type TeamReportSummary,
 } from "@/features/team-report/types";
@@ -51,9 +51,6 @@ const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
 
 const isStatusFilter = (value: string | null): value is StatusFilter =>
   STATUS_FILTERS.some((item) => item.value === value);
-
-const statusLabel = (status: TeamReportDayStatus) =>
-  status === "DRAFT" ? "Nháp" : TEAM_REPORT_STATUS_LABEL[status];
 
 /**
  * Báo cáo tổng hợp theo kỳ của đội: danh sách bên trái, bản đang mở bên phải.
@@ -543,7 +540,7 @@ function SummaryListRow({
             DAY_STATUS_CLASS[report.status],
           )}
         >
-          {statusLabel(report.status)}
+          {report.status === "DRAFT" ? "Nháp" : stagedStatusLabel(report)}
         </Badge>
       </div>
       <div className="mt-1 text-xs text-muted-foreground tabular-nums">

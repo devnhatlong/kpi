@@ -16,6 +16,8 @@ import {
   TeamReportEditSchema,
 } from './team-report-task.schema';
 import {
+  TeamReportFirstApproval,
+  TeamReportFirstApprovalSchema,
   TeamReportParticipant,
   TeamReportParticipantSchema,
 } from './team-report-summary.schema';
@@ -145,6 +147,33 @@ export class TeamReportAdjustmentSheet {
    */
   @Prop({ type: [TeamReportParticipantSchema], default: [] })
   participants!: TeamReportParticipant[];
+
+  /**
+   * DUYỆT 2 CẤP - chỉ có khi luồng đặt "Duyệt cuối".
+   *
+   * `recipient*` ở trên là CẤP 1 (chủ trì). Cấp 1 duyệt thì bản chưa chốt mà
+   * chuyển sang `finalRecipient*` duyệt cuối; trả lại ở cấp nào bản cũng về
+   * đơn vị lập. null = luồng một cấp như cũ.
+   */
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null, index: true })
+  finalRecipientId!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  finalRecipientName!: string;
+
+  @Prop({ type: Types.ObjectId, ref: Department.name, default: null })
+  finalRecipientDepartmentId!: Types.ObjectId | null;
+
+  /**
+   * Bước đang chờ khi PENDING: FIRST = chủ trì cấp 1 đang cầm; FINAL = cấp 1
+   * đã duyệt, đang chờ duyệt cuối. Người đang cầm bản suy từ trường này.
+   */
+  @Prop({ type: String, enum: ['FIRST', 'FINAL'], default: 'FIRST' })
+  stage!: 'FIRST' | 'FINAL';
+
+  /** Lần duyệt cấp 1 - giữ lại để bản nào cũng thấy ai đã duyệt trước. */
+  @Prop({ type: TeamReportFirstApprovalSchema, default: null })
+  firstApproval!: TeamReportFirstApproval | null;
 
   @Prop({ type: Types.ObjectId, ref: User.name, default: null })
   sentById!: Types.ObjectId | null;

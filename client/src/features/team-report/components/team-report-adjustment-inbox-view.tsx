@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
+  ApprovalChain,
   ParticipantsBlock,
   participantLabel,
   silentCoordinatorsOf,
@@ -48,7 +49,7 @@ import {
 } from "@/features/team-report/components/team-report-adjustment-table";
 import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
 import {
-  TEAM_REPORT_STATUS_LABEL,
+  stagedStatusLabel,
   formatScore,
   refName,
   type TeamReportAdjustmentData,
@@ -339,7 +340,7 @@ function InboxRow({
             DAY_STATUS_CLASS[row.status],
           )}
         >
-          {TEAM_REPORT_STATUS_LABEL[row.status]}
+          {stagedStatusLabel(row)}
         </Badge>
       </div>
       <div className="mt-1 text-xs text-muted-foreground">
@@ -382,7 +383,9 @@ function ReviewPanel({
   /* Chỉ CHỦ TRÌ mới sửa điểm, duyệt, trả lại - phối hợp và nhận để biết chỉ
      đọc. Server chặn y hệt; ở đây để không bày nút rồi bị từ chối. */
   const isLead = (data.viewerRole ?? "RECIPIENT") === "RECIPIENT";
-  const pending = sheet.status === "PENDING" && isLead;
+  /* Duyệt 2 cấp: chỉ người ĐANG CẦM bản mới sửa / duyệt / trả lại. */
+  const pending =
+    sheet.status === "PENDING" && isLead && (data.canDecide ?? true);
   const participants = sheet.participants ?? [];
   const { total: coordinatorCount, silent: silentCoordinators } =
     silentCoordinatorsOf(participants);
@@ -404,6 +407,7 @@ function ReviewPanel({
       catalog,
       department: data.department,
       viewerRole: data.viewerRole,
+      canDecide: data.canDecide,
     });
   };
 
@@ -505,7 +509,7 @@ function ReviewPanel({
                 DAY_STATUS_CLASS[sheet.status],
               )}
             >
-              {TEAM_REPORT_STATUS_LABEL[sheet.status]}
+              {stagedStatusLabel(sheet)}
             </Badge>
             {pending ? (
               <>
@@ -541,6 +545,14 @@ function ReviewPanel({
             ) : null}
           </div>
         </div>
+
+        <ApprovalChain
+          status={sheet.status}
+          leadName={sheet.recipientName}
+          finalName={sheet.finalRecipientName}
+          stage={sheet.stage}
+          firstApproval={sheet.firstApproval}
+        />
 
         {participants.length ? (
           <ParticipantsBlock
@@ -665,6 +677,14 @@ function ReviewPanel({
               {data.department?.name} · {monthLabel(sheet.periodMonth)}.
             </DialogDescription>
           </DialogHeader>
+          {/* Duyệt 2 cấp, đang ở cấp 1: duyệt KHÔNG chốt mà chuyển lên duyệt cuối -
+              nói rõ để người duyệt không tưởng mình là người quyết cuối. */}
+          {sheet.finalRecipientName && sheet.stage !== "FINAL" ? (
+            <p className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+              Đây là <strong>duyệt cấp 1</strong>. Duyệt xong bản chuyển lên{" "}
+              <strong>{sheet.finalRecipientName}</strong> duyệt cuối.
+            </p>
+          ) : null}
           <div className="space-y-2 rounded-md border bg-muted/40 px-3 py-2.5 text-sm tabular-nums">
             <p className="flex items-baseline justify-between gap-2">
               <span className="text-muted-foreground">Số dòng</span>
@@ -687,8 +707,8 @@ function ReviewPanel({
           {/* Nhắc, không chặn: ý kiến phối hợp để chủ trì cân nhắc. */}
           {silentCoordinators.length ? (
             <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-              Còn {silentCoordinators.length}/{coordinatorCount} đơn vị phối
-              hợp chưa cho ý kiến:{" "}
+              Còn {silentCoordinators.length}/{coordinatorCount} đơn vị phối hợp
+              chưa cho ý kiến:{" "}
               {silentCoordinators.map(participantLabel).join(", ")}. Vẫn duyệt
               được.
             </p>

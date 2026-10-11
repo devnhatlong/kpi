@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
 import { buildHeaderRows } from "@/features/mission-form-config/form-template-utils";
+import { conclusionScoreText } from "@/features/team-report/components/summary-conclusion-fields";
 import type {
   FormHeaderGroup,
   FormTemplateColumn,
@@ -11,6 +12,7 @@ import {
   formatScore,
   refId,
   type TeamReportAxisScore,
+  type TeamReportConclusion,
   type TeamReportDayRow,
   type TeamReportFormula,
   type TeamReportTemplate,
@@ -274,6 +276,8 @@ export type TeamReportExportInput = {
   /** Dòng thông tin dưới tiêu đề: đơn vị, kỳ, người trình, trạng thái... */
   meta: string;
   note?: string;
+  /** Phần cuối phụ lục (tổng điểm, xếp loại, người ký) - bản đã trình mới có. */
+  conclusion?: TeamReportConclusion | null;
   rows: TeamReportDayRow[];
   /** Tra bằng "<id mẫu>:<phiên bản>" - mỗi dòng đóng dấu phiên bản riêng. */
   templates: Record<string, TeamReportTemplate>;
@@ -606,6 +610,45 @@ export async function exportTeamReportToExcel(input: TeamReportExportInput) {
       cell.fill = FOOTER_FILL;
       setOutlineBorder(cell);
     });
+    cursor += 1;
+  }
+
+  /* Phần cuối phụ lục y như bản giấy: hai dòng kết luận, rồi hai khối ký
+     "LÃNH ĐẠO ĐƠN VỊ" / "CÁN BỘ TỔNG HỢP" đặt ngang nhau. */
+  if (input.conclusion) {
+    const c = input.conclusion;
+    cursor += 1;
+    for (const text of [
+      `Tổng điểm KPI tập thể: ${conclusionScoreText(c.totalScore, c.maxScore)}`,
+      `Đề nghị xếp loại tháng: ${c.proposedRating}`,
+    ]) {
+      sheet.mergeCells(cursor, 1, cursor, widest);
+      const cell = sheet.getCell(cursor, 1);
+      cell.value = text;
+      cell.font = { bold: true };
+      cursor += 1;
+    }
+    cursor += 1;
+    const half = Math.max(1, Math.floor(widest / 2));
+    const sign = (col1: number, col2: number, lines: string[]) => {
+      lines.forEach((text, index) => {
+        if (col2 > col1) {
+          sheet.mergeCells(cursor + index, col1, cursor + index, col2);
+        }
+        const cell = sheet.getCell(cursor + index, col1);
+        cell.value = text;
+        cell.alignment = { horizontal: "center" };
+        if (index === 0) cell.font = { bold: true };
+      });
+    };
+    sign(1, half, ["LÃNH ĐẠO ĐƠN VỊ", "", "", c.leaderName]);
+    sign(half + 1, Math.max(half + 1, widest), [
+      "CÁN BỘ TỔNG HỢP",
+      "",
+      "",
+      `${c.compilerName} - ${c.compilerPhone}`,
+    ]);
+    cursor += 4;
   }
 
   if (!rows.length) {

@@ -6,6 +6,7 @@ import type {
   TeamReportAxisScore,
   TeamReportCatalogs,
   TeamReportClassifyBoard,
+  TeamReportConclusion,
   TeamReportCriteriaData,
   TeamReportDay,
   TeamReportDayStatus,
@@ -426,11 +427,13 @@ export function fetchTeamReportRecipientOptions(
       ApiResponse<{
         people: TeamReportRecipient[];
         units?: TeamReportRouteUnitView[] | null;
+        finalReviewer?: TeamReportRouteUnitView | null;
       }>
     >(`${summaryBase(level)}/recipients`),
   ).then((data) => ({
     people: data.people,
     units: data.units ?? null,
+    finalReviewer: data.finalReviewer ?? null,
   }));
 }
 
@@ -486,7 +489,12 @@ export function createTeamReportSummary(input: {
 
 export function sendTeamReportSummary(
   id: string,
-  input: { recipientId?: string; note?: string },
+  input: {
+    recipientId?: string;
+    note?: string;
+    /** Không gửi tổng điểm - server tự cộng bảng B. */
+    conclusion: Omit<TeamReportConclusion, "totalScore" | "maxScore">;
+  },
   level?: TeamReportSummaryLevel,
 ) {
   return unwrapData(
@@ -507,6 +515,8 @@ export type TeamReportSummaryDetail = {
   axisScores: TeamReportAxisScore[];
   /** Vai của người xem - đồng nhận thì chỉ xem và nhận xét. */
   viewerRole?: TeamReportSummaryViewerRole | null;
+  /** Đúng người đang cầm bản (duyệt 2 cấp) - mới được duyệt / trả / sửa. */
+  canDecide?: boolean;
 };
 
 export function fetchTeamReportSummary(
@@ -832,6 +842,8 @@ export type TeamReportAdjustmentRoute = {
    * hợp / nhận để biết). Rỗng = người trình tự chọn một người như cũ.
    */
   units?: Array<{ userId: string; role: TeamReportUnitRole }>;
+  /** Duyệt cuối (duyệt 2 cấp) - tài khoản duyệt sau chủ trì; null = một cấp. */
+  finalUserId?: string | null;
   /**
    * CHỈ ở client: luồng đang soạn theo bảng đơn vị hay theo người tự chọn.
    * Không suy được từ `units` - bật chế độ bảng mà chưa thêm dòng nào thì
@@ -866,6 +878,7 @@ export function saveTeamReportRoutes(
           name: route.name,
           isActive: route.isActive,
           units: route.unitMode ? (route.units ?? []) : [],
+          finalUserId: route.unitMode ? (route.finalUserId ?? null) : null,
           sender: route.sender,
           recipients: route.recipients,
         })),
@@ -883,6 +896,7 @@ export function fetchTeamReportAdjustmentRecipients(q?: string) {
         configured: boolean;
         /** Luồng có nơi nhận cố định - người trình không chọn gì. */
         units?: TeamReportRouteUnitView[] | null;
+        finalReviewer?: TeamReportRouteUnitView | null;
       }>
     >("/team-report/adjustments/recipients", { params: q ? { q } : {} }),
   );

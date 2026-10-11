@@ -114,6 +114,17 @@ const SYSTEM_ROLES: Array<{
     sortOrder: 40,
     permissions: [Permission.TASK_VIEW, Permission.EVALUATION_SELF],
   },
+  {
+    /*
+        Tài khoản CHỈ DUYỆT: đơn vị tách người nhập và người duyệt, tài khoản
+        gửi của đội giữ MANAGER, tài khoản này chỉ mở hộp đến những bản được
+        gán đích danh. Luồng trình loại hẳn vai này khỏi vế "Ai gửi".
+      */
+    code: RoleCode.REPORT_REVIEWER,
+    name: 'Cán bộ duyệt báo cáo',
+    sortOrder: 35,
+    permissions: [Permission.TEAM_REPORT_REVIEW],
+  },
 ];
 
 /**

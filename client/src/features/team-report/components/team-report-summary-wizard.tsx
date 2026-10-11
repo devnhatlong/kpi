@@ -45,6 +45,15 @@ import {
   SummaryRecipientFields,
   hasInactiveUnit,
 } from "@/features/team-report/components/summary-recipient-fields";
+import {
+  SummaryConclusionFields,
+  initialConclusion,
+  rememberConclusion,
+  validateConclusion,
+  type ConclusionDraft,
+  type ConclusionErrors,
+} from "@/features/team-report/components/summary-conclusion-fields";
+import { useAuth } from "@/features/auth/auth-provider";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
   createTeamReportSummary,
@@ -169,6 +178,13 @@ export function TeamReportSummaryWizard({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [recipientId, setRecipientId] = useState("");
   const [note, setNote] = useState("");
+  /* Phần cuối phụ lục - dựng lúc sang bước 3 (lúc đó mới có điểm tạm tính để
+     gợi ý), giữ nguyên nếu người dùng lùi rồi tiến lại. */
+  const [conclusion, setConclusion] = useState<ConclusionDraft | null>(null);
+  const [conclusionErrors, setConclusionErrors] = useState<ConclusionErrors>(
+    {},
+  );
+  const { user } = useAuth();
   const [busy, setBusy] = useState(false);
   /* Lỗi hiện NGAY TẠI Ô, chỉ bật lên sau khi người dùng bấm đi tiếp - chưa
      làm gì đã đỏ lòm thì như bị mắng trước. */
@@ -212,6 +228,8 @@ export function TeamReportSummaryWizard({
       setPicked(new Set());
       setRecipientId("");
       setNote("");
+      setConclusion(null);
+      setConclusionErrors({});
       setTitleError(false);
       setPickError(false);
       setRecipientError(false);
@@ -235,6 +253,7 @@ export function TeamReportSummaryWizard({
       setPickError(true);
       return;
     }
+    setConclusion((prev) => prev ?? initialConclusion(user?.id, null));
     setStep("send");
   };
 
@@ -296,6 +315,7 @@ export function TeamReportSummaryWizard({
   );
   /* Luồng có bảng đơn vị cố định: không chọn ai, bản đi đúng bảng quản trị đặt. */
   const units = recipientData?.units ?? null;
+  const finalReviewer = recipientData?.finalReviewer ?? null;
 
   /*
     Điểm tạm tính của tập đang tích.
@@ -382,7 +402,6 @@ export function TeamReportSummaryWizard({
     [byAxis, filter],
   );
 
-
   const toggle = (taskId: string) => {
     if (pickError) setPickError(false);
     setPicked((prev) => {
@@ -437,6 +456,13 @@ export function TeamReportSummaryWizard({
       setRecipientError(true);
       return;
     }
+    // Phần cuối phụ lục chỉ bắt khi TRÌNH - lưu nháp thì chưa cần.
+    const checked = send && conclusion ? validateConclusion(conclusion) : null;
+    const conclusionValue = checked?.value ?? null;
+    if (send && !conclusionValue) {
+      setConclusionErrors(checked?.errors ?? {});
+      return;
+    }
 
     setBusy(true);
     try {
@@ -449,15 +475,17 @@ export function TeamReportSummaryWizard({
         note: note.trim() || undefined,
         level,
       });
-      if (send) {
+      if (send && conclusionValue) {
         await sendTeamReportSummary(
           summary._id,
           {
             ...(units ? {} : { recipientId }),
             note: note.trim() || undefined,
+            conclusion: conclusionValue,
           },
           level,
         );
+        rememberConclusion(user?.id, conclusionValue);
         toast.success("Đã trình báo cáo lên cấp trên.");
       } else {
         toast.success("Đã lưu bản nháp.");
@@ -486,7 +514,10 @@ export function TeamReportSummaryWizard({
           </DialogHeader>
 
           {/* Ba bước, chỉ để biết đang đứng đâu - bấm chuyển bước bằng nút dưới. */}
-          <ol aria-label="Các bước lập báo cáo" className="flex items-center gap-2">
+          <ol
+            aria-label="Các bước lập báo cáo"
+            className="flex items-center gap-2"
+          >
             {STEPS.map((item, index) => {
               const active = item.key === step;
               const done = STEPS.findIndex((s) => s.key === step) > index;
@@ -517,7 +548,10 @@ export function TeamReportSummaryWizard({
                     {item.label}
                   </span>
                   {index < STEPS.length - 1 ? (
-                    <span className="h-px flex-1 bg-border" aria-hidden="true" />
+                    <span
+                      className="h-px flex-1 bg-border"
+                      aria-hidden="true"
+                    />
                   ) : null}
                 </li>
               );
@@ -670,7 +704,10 @@ export function TeamReportSummaryWizard({
                   ) : null}
                   {axisOptions.length > 1 ? (
                     <Select value={axisFilter} onValueChange={setAxisFilter}>
-                      <SelectTrigger aria-label="Lọc theo trục" className="w-44">
+                      <SelectTrigger
+                        aria-label="Lọc theo trục"
+                        className="w-44"
+                      >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -733,8 +770,8 @@ export function TeamReportSummaryWizard({
 
                 {data?.truncated ? (
                   <p className="text-xs text-amber-700 dark:text-amber-400">
-                    Kỳ này quá nhiều việc nên danh sách bị cắt bớt. Thu hẹp khoảng
-                    ngày để nhìn đủ.
+                    Kỳ này quá nhiều việc nên danh sách bị cắt bớt. Thu hẹp
+                    khoảng ngày để nhìn đủ.
                   </p>
                 ) : null}
 
@@ -803,7 +840,10 @@ export function TeamReportSummaryWizard({
                               variant="secondary"
                               className="gap-1 whitespace-nowrap font-normal"
                             >
-                              <Building2 className="size-3" aria-hidden="true" />
+                              <Building2
+                                className="size-3"
+                                aria-hidden="true"
+                              />
                               {departmentName}
                             </Badge>
                           ) : null}
@@ -893,7 +933,8 @@ export function TeamReportSummaryWizard({
                 */}
                 <div className="space-y-1.5 rounded-md border px-3 py-2.5 text-sm">
                   <p className="tabular-nums">
-                    Đã chọn <strong>{picked.size}</strong> / {all.length} nhiệm vụ
+                    Đã chọn <strong>{picked.size}</strong> / {all.length} nhiệm
+                    vụ
                   </p>
                   {axisFilter === "ALL" && filter === "ALL" ? null : (
                     <p className="text-xs text-muted-foreground">
@@ -919,7 +960,9 @@ export function TeamReportSummaryWizard({
                             </span>
                           ) : (
                             <span className="shrink-0 tabular-nums">
-                              <strong className={scoreTone(axis.axisScore).text}>
+                              <strong
+                                className={scoreTone(axis.axisScore).text}
+                              >
                                 {formatScore(axis.convertedScore)}
                               </strong>
                               <span className="text-muted-foreground">
@@ -957,6 +1000,7 @@ export function TeamReportSummaryWizard({
                 idPrefix="wizard"
                 recipients={recipients}
                 units={units}
+                finalReviewer={finalReviewer}
                 recipientId={recipientId}
                 onRecipientChange={(next) => {
                   setRecipientId(next);
@@ -968,6 +1012,22 @@ export function TeamReportSummaryWizard({
                     : undefined
                 }
               />
+
+              {conclusion ? (
+                <SummaryConclusionFields
+                  idPrefix="wizard-conclusion"
+                  value={conclusion}
+                  onChange={(next) => {
+                    setConclusion(next);
+                    if (Object.keys(conclusionErrors).length) {
+                      setConclusionErrors(validateConclusion(next).errors);
+                    }
+                  }}
+                  errors={conclusionErrors}
+                  score={previewMax > 0 ? previewScore : null}
+                  maxScore={previewMax > 0 ? previewMax : null}
+                />
+              ) : null}
 
               <div className="space-y-1.5">
                 <Label htmlFor="wizard-note">
@@ -1027,7 +1087,7 @@ export function TeamReportSummaryWizard({
                   </Button>
                   <Button
                     type="button"
-                    disabled={busy || hasInactiveUnit(units)}
+                    disabled={busy || hasInactiveUnit(units, finalReviewer)}
                     className="active:scale-[0.98] motion-reduce:active:scale-100"
                     onClick={() => void finish(true)}
                   >

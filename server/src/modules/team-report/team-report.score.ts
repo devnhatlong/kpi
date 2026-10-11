@@ -152,8 +152,54 @@ export function computeAxisFooter(
   catalogs: ScoreCatalogs,
 ): AxisFooterTotals {
   const columnTotals: Record<string, number> = {};
+  const byKey = new Map(columns.map((column) => [column.key, column]));
+  const contentColumn = columns.find(
+    (column) => column.semanticKey === 'work_content',
+  );
   for (const column of columns) {
     if (!formulaValueSource(column)) continue;
+
+    /*
+      Trần THEO MỤC ("Tối đa mục này 02 điểm" của Trục 2): cột khai trần lấy từ
+      cột Nhóm điểm với phạm vi `item_total` thì các dòng cùng NỘI DUNG CÔNG
+      VIỆC cộng lại không vượt trần của mục đó - hai sáng kiến 2 + 2 ở mục tối
+      đa 3 chỉ được 3. Từng dòng thì đã bị chặn lúc nhập.
+    */
+    const capColumn =
+      column.rangeScope === 'item_total' && column.rangeFromColumnKey
+        ? byKey.get(column.rangeFromColumnKey)
+        : undefined;
+    if (capColumn?.semanticKey === 'score_group' && contentColumn) {
+      const items = new Map<string, { sum: number; cap: number | null }>();
+      let loose = 0;
+      let seen = false;
+      for (const row of rows) {
+        const value = cellNumber(row, column, catalogs);
+        if (value === null) continue;
+        seen = true;
+        const itemId =
+          row.reviewCatalogValues?.[contentColumn.key]?.id ??
+          row.catalogValues?.[contentColumn.key]?.id;
+        if (!itemId) {
+          loose += value;
+          continue;
+        }
+        const item = items.get(itemId) ?? { sum: 0, cap: null };
+        item.sum += value;
+        const cap = cellNumber(row, capColumn, catalogs);
+        if (cap !== null)
+          item.cap = item.cap === null ? cap : Math.min(item.cap, cap);
+        items.set(itemId, item);
+      }
+      if (seen) {
+        let sum = loose;
+        for (const item of items.values()) {
+          sum += item.cap === null ? item.sum : Math.min(item.sum, item.cap);
+        }
+        columnTotals[column.key] = sum;
+      }
+      continue;
+    }
 
     /* Điểm chuẩn cộng theo từng dòng như mọi cột khác: mỗi nhiệm vụ mang trần
        điểm của nhóm nó thuộc về, hai việc cùng Nhóm 1 thì mẫu số là 50 + 50. */

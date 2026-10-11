@@ -18,6 +18,8 @@ export type RouteUnitDraft = {
 };
 
 const ROLES: TeamReportUnitRole[] = ["LEAD", "COORDINATE", "INFORM"];
+/** Giá trị "không có duyệt cuối" - Radix không nhận chuỗi rỗng. */
+const NO_FINAL = "__none__";
 
 const accountId = (account: UserAccount) => account._id ?? account.id;
 
@@ -77,12 +79,17 @@ export function RouteUnitsEditor({
   onChange,
   accounts,
   departmentNames,
+  finalUserId,
+  onFinalChange,
 }: {
   units: RouteUnitDraft[];
   onChange: (next: RouteUnitDraft[]) => void;
   accounts: UserAccount[];
   /** id đơn vị → tên, để bày "tài khoản · đơn vị". */
   departmentNames: Map<string, string>;
+  /** Duyệt cuối (duyệt 2 cấp); null = một cấp. */
+  finalUserId: string | null;
+  onFinalChange: (userId: string | null) => void;
 }) {
   const userById = useMemo(
     () => new Map(accounts.map((account) => [accountId(account), account])),
@@ -93,7 +100,35 @@ export function RouteUnitsEditor({
      hộp đến lọc theo đơn vị, hai dòng cùng đơn vị khác vai thì không biết
      đơn vị đó được duyệt hay chỉ được xem. */
   const options = useMemo(() => {
-    const takenUsers = new Set(units.map((unit) => unit.userId));
+    const taken = [...units.map((unit) => unit.userId), finalUserId].filter(
+      (id): id is string => !!id,
+    );
+    const takenUsers = new Set(taken);
+    const takenDepts = new Set(
+      taken.map((id) => departmentOf(userById.get(id)).id).filter(Boolean),
+    );
+    return accounts
+      .filter((account) => {
+        const dept = departmentOf(account);
+        return (
+          account.isActive &&
+          !!dept.id &&
+          !takenUsers.has(accountId(account)) &&
+          !takenDepts.has(dept.id)
+        );
+      })
+      .map((account) => {
+        const dept = departmentOf(account, departmentNames);
+        return {
+          value: accountId(account),
+          label: `${account.fullName?.trim() || account.username} · ${account.username}${dept.name ? ` · ${dept.name}` : ""}`,
+        };
+      });
+  }, [accounts, units, userById, departmentNames, finalUserId]);
+
+  /* Duyệt cuối: không trùng tài khoản hay đơn vị nào trong bảng - một nơi vừa
+     chủ trì vừa duyệt cuối là tự duyệt hai lần. Server kiểm y hệt. */
+  const finalOptions = useMemo(() => {
     const takenDepts = new Set(
       units
         .map((unit) => departmentOf(userById.get(unit.userId)).id)
@@ -105,7 +140,7 @@ export function RouteUnitsEditor({
         return (
           account.isActive &&
           !!dept.id &&
-          !takenUsers.has(accountId(account)) &&
+          !units.some((unit) => unit.userId === accountId(account)) &&
           !takenDepts.has(dept.id)
         );
       })
@@ -245,6 +280,37 @@ export function RouteUnitsEditor({
         searchPlaceholder="Tìm theo tên, tài khoản, đơn vị…"
         triggerClassName="bg-background"
       />
+
+      {units.length ? (
+        <div className="space-y-1.5 rounded-md border bg-muted/30 p-3">
+          <p className="text-sm font-medium">
+            Duyệt cuối{" "}
+            <span className="font-normal text-muted-foreground">
+              (tuỳ chọn - duyệt 2 cấp)
+            </span>
+          </p>
+          <SearchableSelect
+            value={finalUserId ?? NO_FINAL}
+            onValueChange={(value) =>
+              onFinalChange(value === NO_FINAL ? null : value)
+            }
+            options={[
+              { value: NO_FINAL, label: "Không có - chủ trì duyệt là chốt" },
+              ...finalOptions,
+            ]}
+            placeholder="Không có"
+            searchPlaceholder="Tìm theo tên, tài khoản, đơn vị…"
+            triggerClassName="bg-background"
+          />
+          <p className="text-xs text-muted-foreground">
+            Có duyệt cuối thì chủ trì duyệt xong, bản{" "}
+            <strong className="font-medium text-foreground">
+              tự chuyển lên đây
+            </strong>{" "}
+            duyệt mới chốt. Trả lại ở bước nào bản cũng về đơn vị lập.
+          </p>
+        </div>
+      ) : null}
 
       {error ? (
         <p className="text-xs text-destructive">Bảng nơi nhận {error}.</p>

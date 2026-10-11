@@ -51,8 +51,13 @@ import { FormTemplatesService } from '@/modules/mission-form-config/form-templat
 import { ReportTemplatesService } from '@/modules/mission-form-config/report-templates.service';
 import {
   TeamReportAdjustmentRoutingService,
+  isReviewOnlyUser,
   type AdjustmentRecipient,
 } from './team-report-adjustment-routing.service';
+import {
+  departmentLabels,
+  relabelPopulated,
+} from './team-report.department-label';
 import {
   TeamReportTask,
   TeamReportTaskDocument,
@@ -97,6 +102,13 @@ import {
 } from './dto/team-report.dto';
 import { isYmd, serverDateYmd } from './team-report.time';
 import {
+  applyApprove,
+  isApprover,
+  isHandler,
+  leadInboxFilter,
+  resetStages,
+} from './team-report.stages';
+import {
   computeAxisFooter,
   describeFooter,
   type ScoreCatalogs,
@@ -139,6 +151,8 @@ type Actor = {
   id: Types.ObjectId;
   name: string;
   departmentId: Types.ObjectId;
+  /** Tài khoản CHỈ DUYỆT (vai "Cán bộ duyệt báo cáo") - không lập / trình gì. */
+  reviewOnly?: boolean;
 };
 
 /** Tên trường nhật ký khi đơn vị phối hợp gửi ý kiến - để lọc khỏi bản nhận để biết. */
@@ -1178,7 +1192,14 @@ export class TeamReportService {
 
     for (const [key, raw] of Object.entries(input.fieldValues ?? {})) {
       const column = byKey.get(key);
-      if (!column || column.autoValue) continue;
+      // Ô tự tính và ô "Điều kiện, mức điểm" (chép từ nội dung) không nhận số gõ.
+      if (
+        !column ||
+        column.autoValue ||
+        column.semanticKey === 'work_content_note'
+      ) {
+        continue;
+      }
       const value = String(raw ?? '').trim();
 
       if (key === entryKeys.product) task.product = value;
@@ -1650,7 +1671,9 @@ export class TeamReportService {
   }
 
   /**
-   * Ghi nhóm điểm của nội dung công việc đang chọn vào cột "Nhóm điểm" của mẫu.
+   * Ghi nhóm điểm của nội dung công việc đang chọn vào cột "Nhóm điểm" của mẫu,
+   * và chép ghi chú của nội dung vào các cột `work_content_note` (Trục 2: cột
+   * "Điều kiện, mức điểm") - cột đó chỉ đọc, đội không gõ.
    *
    * Nội dung không gán nhóm cố định ("Nhiệm vụ khác" - phụ lục ghi "căn cứ
    * nhiệm vụ cấp trên giao") thì XOÁ TRẮNG ô về "Chưa chọn" để đội tự chọn:
@@ -1665,24 +1688,40 @@ export class TeamReportService {
     const column = template?.columns.find(
       (item) => item.visible && item.semanticKey === 'score_group',
     );
-    if (!column || !task.workContentId) return false;
+    const noteColumns = (template?.columns ?? []).filter(
+      (item) => item.visible && item.semanticKey === 'work_content_note',
+    );
+    if ((!column && !noteColumns.length) || !task.workContentId) return false;
     const content = await this.workContentModel
       .findById(task.workContentId)
-      .select('scoreGroupId')
+      .select('scoreGroupId note')
       .populate<{ scoreGroupId: { _id: Types.ObjectId; name: string } | null }>(
         'scoreGroupId',
         'name',
       );
+
+    let changed = false;
+    const note = content?.note?.trim() ?? '';
+    for (const noteColumn of noteColumns) {
+      if (String(task.fieldValues?.[noteColumn.key] ?? '') === note) continue;
+      const rest = { ...(task.fieldValues ?? {}) };
+      if (note) rest[noteColumn.key] = note;
+      else delete rest[noteColumn.key];
+      task.fieldValues = rest;
+      changed = true;
+    }
+    if (!column) return changed;
+
     const group = content?.scoreGroupId;
     if (!group) {
-      if (!task.catalogValues?.[column.key]) return false;
+      if (!task.catalogValues?.[column.key]) return changed;
       const rest = { ...task.catalogValues };
       delete rest[column.key];
       task.catalogValues = rest;
       return true;
     }
     if (task.catalogValues?.[column.key]?.id === String(group._id))
-      return false;
+      return changed;
     task.catalogValues = {
       ...(task.catalogValues ?? {}),
       [column.key]: { id: String(group._id), name: group.name },
@@ -1882,6 +1921,7 @@ export class TeamReportService {
           people: [] as AdjustmentRecipient[],
           configured: true,
           units,
+          finalReviewer: await this.routing.finalReviewerFor('SUMMARY', userId),
         },
       };
     }
@@ -2003,6 +2043,7 @@ export class TeamReportService {
   /** Lập một bản tổng hợp ở trạng thái nháp - chưa đi đâu cả. */
   async createSummary(userId: string, dto: CreateTeamReportSummaryDto) {
     const actor = await this.requireActor(userId);
+    this.assertCanCompose(actor);
     /*
       Đơn vị đứng ĐẦU cây thì không lập bản tổng hợp.
 
@@ -2095,7 +2136,7 @@ export class TeamReportService {
       throw new BadRequestException('Báo cáo này đã trình rồi.');
     }
 
-    const { recipient, participants } = await this.resolveSummaryTargets(
+    const { recipient, participants, final } = await this.resolveSummaryTargets(
       actor,
       dto.recipientId,
     );
@@ -2123,6 +2164,8 @@ export class TeamReportService {
     summary.recipientId = recipient.id;
     summary.recipientName = recipient.name;
     summary.recipientDepartmentId = recipient.departmentId;
+    // Duyệt 2 cấp (nếu luồng có duyệt cuối) - trình lại thì đi lại từ cấp 1.
+    resetStages(summary, final);
     /* Trình lại sau khi bị trả: chụp lại bảng đơn vị theo cấu hình HIỆN TẠI và
        xoá ý kiến cũ - ý kiến lần trước nói về một bản số liệu đã khác; câu cũ
        vẫn còn trong nhật ký sửa. */
@@ -2133,6 +2176,24 @@ export class TeamReportService {
     summary.sentAt = new Date();
     summary.returnReason = '';
     if (dto.note?.trim()) summary.note = dto.note.trim();
+    // Tổng điểm KPI tập thể = điểm bảng B của chính bản chụp vừa trình.
+    const templates = await this.templatesOfRows(summary.rows);
+    const axisScores = await this.axisScoresOf(
+      summary.rows,
+      templates,
+      await this.catalogsForTemplates(Object.values(templates)),
+    );
+    const sumOf = (pick: (axis: (typeof axisScores)[number]) => number) =>
+      Math.round(axisScores.reduce((sum, axis) => sum + pick(axis), 0) * 100) /
+      100;
+    summary.conclusion = {
+      totalScore: sumOf((axis) => axis.convertedScore ?? 0),
+      maxScore: sumOf((axis) => axis.maxScore),
+      proposedRating: dto.conclusion.proposedRating,
+      compilerName: dto.conclusion.compilerName.trim(),
+      compilerPhone: dto.conclusion.compilerPhone.trim(),
+      leaderName: dto.conclusion.leaderName.trim(),
+    };
     const listOf = (role: 'COORDINATE' | 'INFORM') =>
       participants
         .filter((item) => item.role === role)
@@ -2220,12 +2281,13 @@ export class TeamReportService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
-    const filter: Record<string, unknown> = {
-      recipientDepartmentId: actor.departmentId,
-      // Bản nháp của đội chưa trình đi thì cấp trên không được thấy.
-      status: { $ne: 'DRAFT' },
-    };
-    if (query.status) filter.status = query.status;
+    /* CHỈ bản gán đích danh cho tài khoản này - đơn vị tách người gửi và
+       người duyệt, cùng đơn vị mà không được gán thì không thấy. */
+    // Duyệt 2 cấp: "Chờ duyệt" là bản đang ở bước của tôi - xem team-report.stages.
+    const filter: Record<string, unknown> = leadInboxFilter(
+      actor.id,
+      query.status,
+    );
     // Lọc ở SERVER: hộp đến của phòng / tỉnh nhận từ hàng chục đơn vị, lọc
     // trên trang đang xem là bỏ sót những bản nằm trang sau.
     if (query.departmentId) {
@@ -2251,6 +2313,7 @@ export class TeamReportService {
         .populate('departmentId', 'code name'),
       this.summaryModel.countDocuments(filter),
     ]);
+    await relabelPopulated(this.departmentModel, rows);
 
     return buildPaginatedResponse(rows, total, page, limit, 'OK');
   }
@@ -2258,20 +2321,21 @@ export class TeamReportService {
   /** Các đơn vị từng trình bản tổng hợp tới đơn vị tôi - cho ô lọc hộp đến. */
   async summaryInboxSenders(userId: string) {
     const actor = await this.requireActor(userId);
-    const ids = await this.summaryModel.distinct('departmentId', {
-      recipientDepartmentId: actor.departmentId,
-      status: { $ne: 'DRAFT' },
-    });
+    const ids = await this.summaryModel.distinct(
+      'departmentId',
+      leadInboxFilter(actor.id),
+    );
     const departments = await this.departmentModel
       .find({ _id: { $in: ids } })
       .select('code name sortOrder')
       .sort({ sortOrder: 1, name: 1 });
+    const labels = await departmentLabels(this.departmentModel, ids);
     return {
       message: 'OK',
       data: departments.map((d) => ({
         id: String(d._id),
         code: d.code,
-        name: d.name,
+        name: labels.get(String(d._id)) ?? d.name,
       })),
     };
   }
@@ -2299,8 +2363,9 @@ export class TeamReportService {
     if (!user.departmentId) return false;
     const addressed = await this.summaryModel.exists({
       $or: [
-        { recipientDepartmentId: user.departmentId },
-        { 'participants.departmentId': user.departmentId },
+        { recipientId: user._id },
+        { finalRecipientId: user._id },
+        { 'participants.userId': user._id },
       ],
       status: { $ne: 'DRAFT' },
     });
@@ -2344,7 +2409,9 @@ export class TeamReportService {
       chỗ khác vẫn đem nó đi so và đi lọc - đúng cái bẫy đã làm hỏng vài chỗ
       trước đây. Người duyệt cần biết đang đọc bản của ai, nên phải có tên.
     */
-    const names = await this.departmentNames([summary.departmentId]);
+    const names = await departmentLabels(this.departmentModel, [
+      summary.departmentId,
+    ]);
     return {
       message: 'OK',
       data: {
@@ -2356,6 +2423,8 @@ export class TeamReportService {
         },
         /** Vai của người xem: client dựa vào đây để khoá chấm / duyệt. */
         viewerRole,
+        /** Đúng người đang cầm bản (duyệt 2 cấp) - mới hiện nút duyệt / sửa. */
+        canDecide: isHandler(summary, actor.id),
         templates,
         catalogs,
         axisScores,
@@ -2378,7 +2447,7 @@ export class TeamReportService {
 
     const filter: Record<string, unknown> = {
       participants: {
-        $elemMatch: { departmentId: actor.departmentId, role },
+        $elemMatch: { userId: actor.id, role },
       },
       status: { $ne: 'DRAFT' },
     };
@@ -2406,6 +2475,7 @@ export class TeamReportService {
         .populate('departmentId', 'code name'),
       this.summaryModel.countDocuments(filter),
     ]);
+    await relabelPopulated(this.departmentModel, rows);
 
     // Hộp "nhận để biết" không được thấy ý kiến phối hợp, kể cả ở danh sách.
     const data: object[] =
@@ -2471,42 +2541,62 @@ export class TeamReportService {
       this.requireObjectId(id, 'Báo cáo'),
     );
     if (!summary) throw new NotFoundException('Không tìm thấy báo cáo.');
-    if (
-      String(summary.recipientDepartmentId ?? '') !== String(actor.departmentId)
-    ) {
-      throw new ForbiddenException('Báo cáo này không trình tới đơn vị bạn.');
-    }
     if (summary.status === 'DRAFT') {
       throw new BadRequestException('Báo cáo này chưa được trình lên.');
     }
     if (summary.status === 'APPROVED') {
       throw new BadRequestException('Báo cáo đã được duyệt.');
     }
+    // Duyệt 2 cấp: chỉ người ĐANG CẦM bản mới quyết - cấp 1 đã chuyển lên thì
+    // hết quyền, duyệt cuối chưa tới lượt thì chưa có quyền.
+    if (!isHandler(summary, actor.id)) {
+      throw new ForbiddenException(
+        summary.status === 'PENDING' && isApprover(summary, actor.id)
+          ? 'Báo cáo đang chờ cấp duyệt khác - bạn không quyết ở bước này.'
+          : 'Báo cáo này không trình tới tài khoản bạn.',
+      );
+    }
 
+    let outcome: 'RETURNED' | 'FORWARDED' | 'APPROVED' = 'RETURNED';
     if (dto.decision === 'RETURN') {
       const reason = dto.reason?.trim() ?? '';
       if (!reason) throw new BadRequestException('Lý do trả lại là bắt buộc.');
+      // Trả lại ở bước nào cũng về đơn vị lập; trình lại thì đi lại từ cấp 1.
       summary.status = 'RETURNED';
       summary.returnReason = reason;
     } else {
-      summary.status = 'APPROVED';
+      outcome = applyApprove(summary, actor);
       summary.returnReason = '';
     }
-    summary.decidedById = actor.id;
-    summary.decidedByName = actor.name;
-    summary.decidedAt = new Date();
+    summary.markModified('firstApproval');
+    if (outcome !== 'FORWARDED') {
+      summary.decidedById = actor.id;
+      summary.decidedByName = actor.name;
+      summary.decidedAt = new Date();
+    }
     this.appendEdit(
       summary,
       actor,
       'Trạng thái',
-      'đã trình',
-      dto.decision === 'RETURN' ? 'trả lại' : 'đã duyệt',
+      summary.firstApproval && outcome !== 'FORWARDED'
+        ? 'chờ duyệt cuối'
+        : 'đã trình',
+      outcome === 'RETURNED'
+        ? 'trả lại'
+        : outcome === 'FORWARDED'
+          ? `duyệt cấp 1, chuyển ${summary.finalRecipientName} duyệt cuối`
+          : 'đã duyệt',
       dto.reason?.trim() ?? '',
     );
     await summary.save();
 
     return {
-      message: dto.decision === 'RETURN' ? 'Đã trả lại.' : 'Đã duyệt.',
+      message:
+        outcome === 'RETURNED'
+          ? 'Đã trả lại.'
+          : outcome === 'FORWARDED'
+            ? `Đã duyệt cấp 1 - chuyển ${summary.finalRecipientName} duyệt cuối.`
+            : 'Đã duyệt.',
       data: summary,
     };
   }
@@ -2749,10 +2839,16 @@ export class TeamReportService {
       this.requireObjectId(id, 'Báo cáo'),
     );
     if (!summary) throw new NotFoundException('Không tìm thấy báo cáo.');
-    if (
-      String(summary.recipientDepartmentId ?? '') !== String(actor.departmentId)
-    ) {
-      throw new ForbiddenException('Báo cáo này không trình tới đơn vị bạn.');
+    // Duyệt 2 cấp: người đọc được chưa chắc là người đang cầm bản.
+    if (!isApprover(summary, actor.id)) {
+      throw new ForbiddenException(
+        'Báo cáo này không trình tới tài khoản bạn.',
+      );
+    }
+    if (summary.status === 'PENDING' && !isHandler(summary, actor.id)) {
+      throw new BadRequestException(
+        'Báo cáo đang ở bước của cấp duyệt khác - không chấm lại được lúc này.',
+      );
     }
     /*
       CHỈ bản đang chờ duyệt.
@@ -2997,6 +3093,7 @@ export class TeamReportService {
   }
 
   private async requireOwnSummary(actor: Actor, id: string) {
+    this.assertCanCompose(actor);
     const summary = await this.summaryModel.findOne({
       _id: this.requireObjectId(id, 'Báo cáo'),
       departmentId: actor.departmentId,
@@ -3024,6 +3121,19 @@ export class TeamReportService {
   }
 
   /**
+   * Tài khoản CHỈ DUYỆT không lập, sửa, trình hay xoá báo cáo nào - kể cả báo
+   * cáo cấp phòng (vai này có quyền duyệt, mà quyền duyệt cũng mở đường lập
+   * bản của phòng). Đơn vị tách người nhập và người duyệt.
+   */
+  private assertCanCompose(actor: Actor) {
+    if (actor.reviewOnly) {
+      throw new ForbiddenException(
+        'Tài khoản duyệt chỉ nhận và duyệt báo cáo, không lập hay trình báo cáo.',
+      );
+    }
+  }
+
+  /**
    * Đơn vị người xem đứng ở vai nào với bản này; null = không được đọc.
    *
    * - OWNER: đơn vị lập - đứng trước mọi vai, phòng tự trình cho chính mình thì
@@ -3037,11 +3147,13 @@ export class TeamReportService {
     actor: Actor,
   ): 'OWNER' | 'RECIPIENT' | 'COORDINATOR' | 'INFORMED' | null {
     const dept = String(actor.departmentId);
-    if (String(summary.departmentId) === dept) return 'OWNER';
-    if (summary.status === 'DRAFT') return null;
-    if (String(summary.recipientDepartmentId ?? '') === dept) {
-      return 'RECIPIENT';
+    // Tài khoản chỉ-duyệt cùng đơn vị KHÔNG phải người lập: bản của đội do
+    // tài khoản gửi lo, tài khoản duyệt chỉ thấy bản được gán cho mình.
+    if (String(summary.departmentId) === dept && !actor.reviewOnly) {
+      return 'OWNER';
     }
+    if (summary.status === 'DRAFT') return null;
+    if (isApprover(summary, actor.id)) return 'RECIPIENT';
     const mine = this.participantOf(summary, actor);
     if (!mine) return null;
     return mine.role === 'COORDINATE' ? 'COORDINATOR' : 'INFORMED';
@@ -3049,8 +3161,11 @@ export class TeamReportService {
 
   /** Dòng tham gia (phối hợp / nhận để biết) của đơn vị người xem, nếu có. */
   private participantOf(summary: TeamReportSummaryDocument, actor: Actor) {
-    return (summary.participants ?? []).find(
-      (item) => String(item.departmentId) === String(actor.departmentId),
+    return (summary.participants ?? []).find((item) =>
+      item.userId
+        ? String(item.userId) === String(actor.id)
+        : // Bản cũ chưa ghi tài khoản - còn cách nhận theo đơn vị.
+          String(item.departmentId) === String(actor.departmentId),
     );
   }
 
@@ -3093,6 +3208,11 @@ export class TeamReportService {
       departmentId: Types.ObjectId | null;
     };
     participants: TeamReportParticipant[];
+    final: {
+      id: Types.ObjectId;
+      name: string;
+      departmentId: Types.ObjectId;
+    } | null;
   }> {
     const fixed = await this.routing.fixedTargets('SUMMARY', actor);
     if (fixed) return fixed;
@@ -3102,6 +3222,7 @@ export class TeamReportService {
     return {
       recipient: await this.requireSummaryRecipient(actor, recipientId),
       participants: [],
+      final: null,
     };
   }
 
@@ -3380,7 +3501,7 @@ export class TeamReportService {
   private async requireActor(userId: string): Promise<Actor> {
     const user = await this.userModel
       .findById(this.requireObjectId(userId, 'Người dùng'))
-      .select('fullName username departmentId');
+      .select('fullName username departmentId roleAssignments');
     if (!user) throw new NotFoundException('Không tìm thấy người dùng.');
     if (!user.departmentId) {
       throw new BadRequestException(
@@ -3391,6 +3512,7 @@ export class TeamReportService {
       id: user._id,
       name: user.fullName?.trim() || user.username,
       departmentId: new Types.ObjectId(String(user.departmentId)),
+      reviewOnly: isReviewOnlyUser(user),
     };
   }
 

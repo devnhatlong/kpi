@@ -7,6 +7,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
 import { Permission } from '@/common/enums/permission.enum';
+import { RoleCode } from '@/common/enums/role-code.enum';
 import {
   Department,
   DepartmentDocument,
@@ -57,6 +58,19 @@ type Person = {
   departmentId?: Types.ObjectId | null;
   roleAssignments?: { roleCode: string }[];
 };
+
+/**
+ * Tài khoản CHỈ DUYỆT: mang vai trò "Cán bộ duyệt báo cáo". Đơn vị tách người
+ * nhập và người duyệt - tài khoản này chỉ mở hộp đến những bản được gán đích
+ * danh, không khớp vế "Ai gửi" của luồng nào, không lập / trình báo cáo nào.
+ */
+export function isReviewOnlyUser(user: {
+  roleAssignments?: { roleCode: string }[];
+}): boolean {
+  return (user.roleAssignments ?? []).some(
+    (assignment) => assignment.roleCode === String(RoleCode.REPORT_REVIEWER),
+  );
+}
 
 const escapeRegex = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -119,6 +133,11 @@ export class TeamReportAdjustmentRoutingService {
         `"${name}" - gửi cho ai`,
       );
       const units = await this.normalizeUnits(route.units ?? [], name);
+      const finalUserId = await this.normalizeFinal(
+        units,
+        route.finalUserId ?? null,
+        name,
+      );
       if (!units.length && scopeEmpty(recipients)) {
         throw new BadRequestException(`Luồng "${name}" chưa chọn gửi cho ai.`);
       }
@@ -131,6 +150,7 @@ export class TeamReportAdjustmentRoutingService {
         sortOrder: index,
         isActive: route.isActive ?? true,
         units,
+        finalUserId,
         sender,
         recipients,
         updatedByName: by,
@@ -400,9 +420,21 @@ export class TeamReportAdjustmentRoutingService {
       departmentId: Types.ObjectId;
     };
     participants: TeamReportParticipant[];
+    /** Duyệt cuối (duyệt 2 cấp); null = một cấp. */
+    final: {
+      id: Types.ObjectId;
+      name: string;
+      departmentId: Types.ObjectId;
+    } | null;
   } | null> {
     const units = await this.unitsFor(kind, String(actor.id));
     if (!units) return null;
+    const final = await this.finalReviewerFor(kind, String(actor.id));
+    if (final && !final.isActive) {
+      throw new BadRequestException(
+        `Tài khoản duyệt cuối "${final.fullName}" đã bị khoá hoặc không còn đơn vị - báo quản trị sửa luồng trước khi trình.`,
+      );
+    }
     const inactive = units.find((unit) => !unit.isActive);
     if (inactive) {
       throw new BadRequestException(
@@ -438,7 +470,61 @@ export class TeamReportAdjustmentRoutingService {
           commentedByName: '',
           commentedAt: null,
         })),
+      final: final
+        ? {
+            id: new Types.ObjectId(final.userId),
+            name: final.fullName,
+            departmentId: new Types.ObjectId(final.departmentId!),
+          }
+        : null,
     };
+  }
+
+  /**
+   * Tài khoản DUYỆT CUỐI của luồng khớp người gửi, kèm tên để bày ra; null =
+   * luồng một cấp, hoặc luồng để người trình tự chọn.
+   */
+  async finalReviewerFor(
+    kind: TeamReportRouteKind,
+    actorId: string,
+  ): Promise<SummaryRouteUnit | null> {
+    const route = await this.routeFor(kind, actorId);
+    if (!route?.units?.length || !route.finalUserId) return null;
+    const user = await this.userModel
+      .findById(route.finalUserId)
+      .select('fullName username departmentId isActive')
+      .populate({
+        path: 'departmentId',
+        select: 'name parentId isActive',
+        populate: { path: 'parentId', select: 'name' },
+      });
+    const dept = user?.departmentId as unknown as {
+      _id?: Types.ObjectId;
+      name?: string;
+      isActive?: boolean;
+      parentId?: { name?: string } | null;
+    } | null;
+    return {
+      userId: String(route.finalUserId),
+      fullName:
+        user?.fullName?.trim() || user?.username || '(tài khoản đã xoá)',
+      username: user?.username ?? '',
+      departmentId: dept?._id ? String(dept._id) : null,
+      departmentName: dept?.name ?? '',
+      parentDepartmentName: dept?.parentId?.name ?? '',
+      isActive: !!user?.isActive && !!dept?._id && dept.isActive !== false,
+      // Không phải một vai trong bảng - bày riêng dưới bảng nơi nhận.
+      role: 'LEAD',
+    };
+  }
+
+  /** Tài khoản này là tài khoản CHỈ DUYỆT (không bao giờ được gửi). */
+  async isReviewOnly(userId: string): Promise<boolean> {
+    if (!Types.ObjectId.isValid(userId)) return false;
+    const user = await this.userModel
+      .findById(userId)
+      .select('roleAssignments');
+    return !!user && isReviewOnlyUser(user);
   }
 
   /** Có luồng nào đang dùng cho loại này không. */
@@ -479,20 +565,17 @@ export class TeamReportAdjustmentRoutingService {
       : null;
 
     for (const route of routes) {
-      /* Luồng có bảng tài khoản: đích danh, hoặc cùng đơn vị với một tài khoản
-         trong bảng - hộp đến lọc theo đơn vị nên cả đơn vị đều xử lý được. */
+      /* Luồng có bảng tài khoản: CHỈ đúng tài khoản được gán. Đơn vị tách
+         người gửi và người duyệt - cùng đơn vị mà không được gán thì không mở
+         được hộp đến. */
       if (route.units?.length) {
         if (
-          route.units.some((unit) => String(unit.userId) === String(user._id))
+          route.units.some(
+            (unit) => String(unit.userId) === String(user._id),
+          ) ||
+          String(route.finalUserId ?? '') === String(user._id)
         ) {
           return true;
-        }
-        if (user.departmentId) {
-          const sameUnit = await this.userModel.exists({
-            _id: { $in: route.units.map((unit) => unit.userId) },
-            departmentId: user.departmentId,
-          });
-          if (sameUnit) return true;
         }
         continue;
       }
@@ -569,6 +652,48 @@ export class TeamReportAdjustmentRoutingService {
    * Hai tài khoản cùng đơn vị bị chặn: hộp đến lọc theo đơn vị, hai dòng cùng
    * đơn vị mà khác vai thì không biết đơn vị đó được duyệt hay chỉ được xem.
    */
+  /**
+   * "Duyệt cuối": chỉ có nghĩa khi luồng có bảng nơi nhận; phải là tài khoản
+   * có thật, có đơn vị, và KHÔNG trùng tài khoản / đơn vị nào trong bảng -
+   * một nơi vừa chủ trì vừa duyệt cuối là tự duyệt hai lần bản của mình.
+   */
+  private async normalizeFinal(
+    units: TeamReportRouteUnit[],
+    finalId: string | null,
+    routeName: string,
+  ): Promise<Types.ObjectId | null> {
+    if (!finalId || !units.length) return null;
+    const user = await this.userModel
+      .findById(finalId)
+      .select('fullName username departmentId');
+    if (!user) {
+      throw new BadRequestException(
+        `Luồng "${routeName}": tài khoản duyệt cuối không tồn tại.`,
+      );
+    }
+    const name = user.fullName?.trim() || user.username;
+    if (!user.departmentId) {
+      throw new BadRequestException(
+        `Luồng "${routeName}": tài khoản duyệt cuối ${name} chưa gắn đơn vị.`,
+      );
+    }
+    if (units.some((unit) => String(unit.userId) === String(user._id))) {
+      throw new BadRequestException(
+        `Luồng "${routeName}": ${name} đã có trong bảng nơi nhận - bỏ khỏi bảng hoặc chọn người duyệt cuối khác.`,
+      );
+    }
+    const clash = await this.userModel.exists({
+      _id: { $in: units.map((unit) => unit.userId) },
+      departmentId: user.departmentId,
+    });
+    if (clash) {
+      throw new BadRequestException(
+        `Luồng "${routeName}": ${name} cùng đơn vị với một tài khoản trong bảng nơi nhận.`,
+      );
+    }
+    return user._id;
+  }
+
   private async normalizeUnits(
     units: { userId: string; role: TeamReportUnitRole }[],
     routeName: string,
@@ -637,6 +762,8 @@ export class TeamReportAdjustmentRoutingService {
       .findById(actorId)
       .select('roleAssignments departmentId');
     if (!user) return null;
+    // Tài khoản CHỈ DUYỆT không bao giờ là người gửi - xem isReviewOnly.
+    if (isReviewOnlyUser(user)) return null;
     const home = user.departmentId
       ? await this.departmentModel
           .findById(user.departmentId)
@@ -665,7 +792,10 @@ export class TeamReportAdjustmentRoutingService {
     user: Person,
   ): Promise<boolean> {
     if (!route.units?.length) return false;
-    const ids = route.units.map((unit) => unit.userId);
+    const ids = [
+      ...route.units.map((unit) => unit.userId),
+      ...(route.finalUserId ? [route.finalUserId] : []),
+    ];
     if (ids.some((id) => String(id) === String(user._id))) return true;
     if (!user.departmentId) return false;
     return Boolean(
@@ -829,6 +959,7 @@ export class TeamReportAdjustmentRoutingService {
       kind: route.kind,
       name: route.name,
       isActive: route.isActive,
+      finalUserId: route.finalUserId ? String(route.finalUserId) : null,
       units: (route.units ?? []).map((unit) => ({
         userId: String(unit.userId),
         role: unit.role,

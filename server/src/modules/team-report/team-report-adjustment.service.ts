@@ -40,8 +40,19 @@ import {
   UpdateTeamReportAdjustmentEntryDto,
 } from './dto/team-report.dto';
 import { TeamReportService } from './team-report.service';
+import {
+  departmentLabels,
+  relabelPopulated,
+} from './team-report.department-label';
 import { isYmd, serverDateYmd } from './team-report.time';
 import { TeamReportAdjustmentAccessService } from './team-report-adjustment-access.service';
+import {
+  applyApprove,
+  isApprover,
+  isHandler,
+  leadInboxFilter,
+  resetStages,
+} from './team-report.stages';
 import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
 
 /** Tên trường nhật ký khi đơn vị phối hợp gửi ý kiến - để lọc khỏi bản nhận để biết. */
@@ -410,6 +421,8 @@ export class TeamReportAdjustmentService {
     sheet.recipientDepartmentId = recipient.departmentId;
     // Trình lại sau khi bị trả: chụp lại nơi nhận, ý kiến cũ làm lại từ đầu.
     sheet.participants = participants;
+    // Duyệt 2 cấp (nếu luồng có duyệt cuối) - trình lại thì đi lại từ cấp 1.
+    resetStages(sheet, fixed?.final ?? null);
     sheet.markModified('participants');
     sheet.sentById = actor.id;
     sheet.sentByName = actor.name;
@@ -446,16 +459,16 @@ export class TeamReportAdjustmentService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const box = query.box ?? 'LEAD';
+    // Hộp chủ trì theo bước duyệt 2 cấp - xem team-report.stages.
     const filter: Record<string, unknown> =
       box === 'LEAD'
-        ? { recipientDepartmentId: actor.departmentId }
+        ? leadInboxFilter(actor.id, query.status)
         : {
             participants: {
-              $elemMatch: { departmentId: actor.departmentId, role: box },
+              $elemMatch: { userId: actor.id, role: box },
             },
+            status: query.status ? query.status : { $ne: 'DRAFT' },
           };
-    filter.status = { $ne: 'DRAFT' };
-    if (query.status) filter.status = query.status;
 
     const [rows, total] = await Promise.all([
       this.sheetModel
@@ -467,6 +480,7 @@ export class TeamReportAdjustmentService {
         .populate('departmentId', 'code name'),
       this.sheetModel.countDocuments(filter),
     ]);
+    await relabelPopulated(this.departmentModel, rows);
 
     return {
       message: 'OK',
@@ -476,6 +490,8 @@ export class TeamReportAdjustmentService {
         status: row.status,
         department: row.departmentId,
         recipientName: row.recipientName,
+        finalRecipientName: row.finalRecipientName ?? '',
+        stage: row.stage ?? 'FIRST',
         sentByName: row.sentByName,
         sentAt: row.sentAt,
         decidedByName: row.decidedByName,
@@ -525,6 +541,8 @@ export class TeamReportAdjustmentService {
         catalog: items,
         department: { id: String(sheet.departmentId), name: names },
         viewerRole,
+        /** Đúng người đang cầm bản (duyệt 2 cấp) - mới hiện nút duyệt / sửa. */
+        canDecide: isHandler(sheet, actor.id),
       },
     };
   }
@@ -578,34 +596,46 @@ export class TeamReportAdjustmentService {
       throw new BadRequestException('Chỉ duyệt được bản đang chờ duyệt.');
     }
 
-    const before = sheet.status;
+    const wasFinal = sheet.stage === 'FINAL';
+    let outcome: 'RETURNED' | 'FORWARDED' | 'APPROVED' = 'RETURNED';
     if (dto.decision === 'RETURN') {
       const reason = dto.reason?.trim() ?? '';
       if (!reason) throw new BadRequestException('Lý do trả lại là bắt buộc.');
+      // Trả lại ở bước nào cũng về đơn vị lập; trình lại thì đi lại từ cấp 1.
       sheet.status = 'RETURNED';
       sheet.returnReason = reason;
     } else {
-      sheet.status = 'APPROVED';
+      outcome = applyApprove(sheet, actor);
       sheet.returnReason = '';
     }
-    sheet.decidedById = actor.id;
-    sheet.decidedByName = actor.name;
-    sheet.decidedAt = new Date();
+    sheet.markModified('firstApproval');
+    if (outcome !== 'FORWARDED') {
+      sheet.decidedById = actor.id;
+      sheet.decidedByName = actor.name;
+      sheet.decidedAt = new Date();
+    }
     this.appendEdit(
       sheet,
       actor,
       'Trạng thái',
-      before === 'PENDING' ? 'đã trình' : before,
-      sheet.status === 'APPROVED'
-        ? 'đã duyệt'
-        : `trả lại: ${sheet.returnReason}`,
+      wasFinal ? 'chờ duyệt cuối' : 'đã trình',
+      outcome === 'RETURNED'
+        ? `trả lại: ${sheet.returnReason}`
+        : outcome === 'FORWARDED'
+          ? `duyệt cấp 1, chuyển ${sheet.finalRecipientName} duyệt cuối`
+          : 'đã duyệt',
     );
     sheet.version += 1;
     await sheet.save();
 
     const templates = await this.templatesOfSheet(sheet);
     return {
-      message: sheet.status === 'APPROVED' ? 'Đã duyệt.' : 'Đã trả lại.',
+      message:
+        outcome === 'RETURNED'
+          ? 'Đã trả lại.'
+          : outcome === 'FORWARDED'
+            ? `Đã duyệt cấp 1 - chuyển ${sheet.finalRecipientName} duyệt cuối.`
+            : 'Đã duyệt.',
       data: await this.toClient(
         sheet,
         sheet.periodMonth,
@@ -719,9 +749,7 @@ export class TeamReportAdjustmentService {
     if (!sheet || sheet.status === 'DRAFT') {
       throw new NotFoundException('Không tìm thấy bảng.');
     }
-    if (
-      String(sheet.recipientDepartmentId ?? '') === String(actor.departmentId)
-    ) {
+    if (isApprover(sheet, actor.id)) {
       return { sheet, viewerRole: 'RECIPIENT' as AdjustmentViewerRole };
     }
     const mine = this.participantOf(sheet, actor);
@@ -737,8 +765,11 @@ export class TeamReportAdjustmentService {
     sheet: TeamReportAdjustmentSheetDocument,
     actor: Actor,
   ) {
-    return (sheet.participants ?? []).find(
-      (item) => String(item.departmentId) === String(actor.departmentId),
+    return (sheet.participants ?? []).find((item) =>
+      item.userId
+        ? String(item.userId) === String(actor.id)
+        : // Bản cũ chưa ghi tài khoản - còn cách nhận theo đơn vị.
+          String(item.departmentId) === String(actor.departmentId),
     );
   }
 
@@ -748,12 +779,16 @@ export class TeamReportAdjustmentService {
       this.requireObjectId(id, 'Bảng'),
     );
     if (!sheet) throw new NotFoundException('Không tìm thấy bảng.');
-    if (
-      String(sheet.recipientDepartmentId ?? '') !==
-        String(actor.departmentId) ||
-      sheet.status === 'DRAFT'
-    ) {
-      throw new ForbiddenException('Bảng này không trình tới đơn vị bạn.');
+    /* Đúng tài khoản được gán làm chủ trì - đơn vị tách người gửi và người
+       duyệt, cùng đơn vị mà không được gán thì không duyệt được. */
+    if (!isApprover(sheet, actor.id) || sheet.status === 'DRAFT') {
+      throw new ForbiddenException('Bảng này không trình tới tài khoản bạn.');
+    }
+    // Duyệt 2 cấp: đọc được chưa chắc đang cầm bản.
+    if (sheet.status === 'PENDING' && !isHandler(sheet, actor.id)) {
+      throw new BadRequestException(
+        'Bảng đang ở bước của cấp duyệt khác - bạn không quyết hay chỉnh số lúc này.',
+      );
     }
     return sheet;
   }
@@ -768,7 +803,15 @@ export class TeamReportAdjustmentService {
     if (units) {
       return {
         message: 'OK',
-        data: { people: [], configured: true, units },
+        data: {
+          people: [],
+          configured: true,
+          units,
+          finalReviewer: await this.routing.finalReviewerFor(
+            'ADJUSTMENT',
+            userId,
+          ),
+        },
       };
     }
     const configured = await this.routing.recipients('ADJUSTMENT', userId, q);
@@ -799,8 +842,8 @@ export class TeamReportAdjustmentService {
   }
 
   private async departmentNameOf(id: Types.ObjectId): Promise<string> {
-    const found = await this.departmentModel.findById(id).select('name');
-    return found?.name ?? '';
+    const labels = await departmentLabels(this.departmentModel, [id]);
+    return labels.get(String(id)) ?? '';
   }
 
   private async toClient(
@@ -839,6 +882,9 @@ export class TeamReportAdjustmentService {
         status: sheet?.status ?? 'DRAFT',
         recipientId: sheet?.recipientId ? String(sheet.recipientId) : null,
         recipientName: sheet?.recipientName ?? '',
+        finalRecipientName: sheet?.finalRecipientName ?? '',
+        stage: sheet?.stage ?? 'FIRST',
+        firstApproval: sheet?.firstApproval ?? null,
         sentByName: sheet?.sentByName ?? '',
         sentAt: sheet?.sentAt ?? null,
         note: sheet?.note ?? '',

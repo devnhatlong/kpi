@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Send } from "lucide-react";
+import { Check, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -18,10 +18,7 @@ import { formatServerHm, formatYmd, serverYmd } from "@/lib/server-time";
 
 /** Vai của người đang xem bản - quyết định ô ý kiến có hiện hay không. */
 export type ParticipantViewerRole =
-  | "OWNER"
-  | "REVIEWER"
-  | "COORDINATOR"
-  | "INFORMED";
+  "OWNER" | "REVIEWER" | "COORDINATOR" | "INFORMED";
 
 /** "Tài khoản - đơn vị"; bản cũ chưa có tài khoản thì chỉ tên đơn vị. */
 export function participantLabel(item: TeamReportParticipant) {
@@ -57,14 +54,20 @@ export function ParticipantsBlock({
   onSubmitOpinion: (comment: string) => Promise<unknown>;
   onChanged: () => void | Promise<void>;
 }) {
-  const me = useAuth().user?.departmentId ?? "";
+  const user = useAuth().user;
   const coordinators = participants.filter(
     (item) => item.role === "COORDINATE",
   );
   const informed = participants.filter((item) => item.role === "INFORM");
   const mine =
     role === "COORDINATOR"
-      ? coordinators.find((item) => item.departmentId === me)
+      ? /* Đúng tài khoản được gán - đơn vị tách người gửi và người duyệt.
+           Bản cũ chưa ghi tài khoản thì còn cách nhận theo đơn vị. */
+        coordinators.find((item) =>
+          item.userId
+            ? item.userId === user?.id
+            : item.departmentId === user?.departmentId,
+        )
       : undefined;
   const [draft, setDraft] = useState(mine?.comment ?? "");
   const [saving, setSaving] = useState(false);
@@ -187,6 +190,87 @@ export function ParticipantsBlock({
           Đơn vị bạn nhận để biết - chỉ xem, không cho ý kiến hay duyệt.
         </p>
       ) : null}
+    </section>
+  );
+}
+
+/**
+ * Chuỗi DUYỆT 2 CẤP: chủ trì → duyệt cuối, mỗi bước đã xong hay đang chờ.
+ * Chỉ bày khi bản có duyệt cuối - bản một cấp đã có dòng "Chủ trì" là đủ.
+ */
+export function ApprovalChain({
+  status,
+  leadName,
+  finalName,
+  stage,
+  firstApproval,
+}: {
+  status: TeamReportDayStatus;
+  leadName: string;
+  finalName?: string;
+  stage?: "FIRST" | "FINAL";
+  firstApproval?: { byName: string; at: string } | null;
+}) {
+  if (!finalName) return null;
+  const firstDone = !!firstApproval;
+  const pendingFirst = status === "PENDING" && stage !== "FINAL";
+  const pendingFinal = status === "PENDING" && stage === "FINAL";
+  const step = (
+    label: string,
+    name: string,
+    state: "done" | "waiting" | "idle",
+    note: string,
+  ) => (
+    <li className="flex min-w-0 items-center gap-2">
+      <span
+        className={
+          state === "done"
+            ? "flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white"
+            : state === "waiting"
+              ? "flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-primary"
+              : "flex size-5 shrink-0 items-center justify-center rounded-full border"
+        }
+        aria-hidden="true"
+      >
+        {state === "done" ? <Check className="size-3" /> : null}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xs text-muted-foreground">{label}</span>
+        <span className="block break-words font-medium">{name}</span>
+        {note ? (
+          <span className="block text-xs text-muted-foreground">{note}</span>
+        ) : null}
+      </span>
+    </li>
+  );
+  return (
+    <section className="rounded-lg border p-3 text-sm">
+      <p className="mb-2 font-medium">Duyệt 2 cấp</p>
+      <ol className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {step(
+          "Cấp 1 - chủ trì",
+          leadName,
+          firstDone ? "done" : pendingFirst ? "waiting" : "idle",
+          firstDone
+            ? `Đã duyệt ${at(firstApproval!.at)}`
+            : pendingFirst
+              ? "Đang chờ duyệt"
+              : "",
+        )}
+        <li aria-hidden="true" className="text-muted-foreground">
+          →
+        </li>
+        {step(
+          "Duyệt cuối",
+          finalName,
+          status === "APPROVED" ? "done" : pendingFinal ? "waiting" : "idle",
+          status === "APPROVED"
+            ? "Đã duyệt - chốt"
+            : pendingFinal
+              ? "Đang chờ duyệt"
+              : "Chờ cấp 1 duyệt",
+        )}
+      </ol>
     </section>
   );
 }

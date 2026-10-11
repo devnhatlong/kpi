@@ -2143,6 +2143,34 @@ function TaskDetailBody({
 
   const done = task.isOpen && readiness === "READY";
 
+  /* Ô ngày (thời hạn) lên đứng cạnh "Nội dung công việc": ô chữ "Nhiệm vụ" ngay
+     sau chiếm cả hàng, để nội dung đứng một mình thì nửa hàng bên phải bỏ trống.
+     Ô nội dung có thể là cột của mẫu hoặc ô màn tự vẽ (mẫu thiếu cột đó). */
+  const contentColumn = workContentColumnOf(template);
+  const grouped = groupColumns(columns, template);
+  const contentSegment = grouped.find(
+    (segment) =>
+      !segment.label && segment.columns[0].key === contentColumn?.key,
+  );
+  const besideContent =
+    ownWorkContent || contentSegment
+      ? grouped.find(
+          (segment) => !segment.label && segment.columns[0].dataType === "date",
+        )
+      : undefined;
+  const segments = besideContent
+    ? grouped.flatMap((segment) =>
+        segment === besideContent
+          ? []
+          : segment === contentSegment
+            ? [segment, besideContent]
+            : [segment],
+      )
+    : grouped;
+  if (besideContent && ownWorkContent) {
+    segments.unshift(besideContent);
+  }
+
   return (
     <Card className="shadow-sm">
       <CardContent className="space-y-5 py-4">
@@ -2328,7 +2356,11 @@ function TaskDetailBody({
 
             <div className="grid gap-4 sm:grid-cols-2">
               {ownWorkContent ? (
-                <Field label="Nội dung công việc" required>
+                <Field
+                  label="Nội dung công việc"
+                  required
+                  wide={!besideContent}
+                >
                   <SearchableSelect
                     value={contentId || "__none__"}
                     disabled={disabled}
@@ -2354,7 +2386,7 @@ function TaskDetailBody({
                 </Field>
               ) : null}
 
-              {groupColumns(columns, template).map((segment) => {
+              {segments.map((segment) => {
                 const renderField = (column: TeamReportColumn) => {
                   const catalog = catalogOfColumn(column);
                   const value = catalog
@@ -2371,7 +2403,9 @@ function TaskDetailBody({
                       /* Ô chữ dài và ô tệp chiếm cả hàng - ép vào nửa hàng thì
                          nội dung bị cắt ngắn ngay lúc đang gõ. */
                       wide={
-                        column.dataType === "text" || column.dataType === "file"
+                        column.dataType === "text" ||
+                        column.dataType === "file" ||
+                        (column.key === contentColumn?.key && !besideContent)
                       }
                       hint={
                         isColumnReviewed(task, column.key)

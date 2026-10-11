@@ -131,6 +131,14 @@ export class TeamReportAdjustmentRoute {
   @Prop({ type: [RouteUnitSchema], default: [] })
   units!: TeamReportRouteUnit[];
 
+  /**
+   * DUYỆT CUỐI (tuỳ chọn) - tài khoản duyệt sau chủ trì. Có thì bản đi 2
+   * cấp: chủ trì duyệt xong bản tự chuyển lên đây, ở đây duyệt mới chốt. Chỉ
+   * dùng với bảng nơi nhận cố định; không được trùng tài khoản trong bảng.
+   */
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null })
+  finalUserId!: Types.ObjectId | null;
+
   @Prop({ type: ScopeSchema, required: true })
   sender!: TeamReportAdjustmentScope;
 

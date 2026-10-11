@@ -16,4 +16,10 @@ export enum RoleCode {
     MANAGER = 'MANAGER',
     /** Cán bộ. */
     STAFF = 'STAFF',
+    /**
+     * Cán bộ duyệt báo cáo - tài khoản CHỈ NHẬN & DUYỆT, đứng riêng khỏi tài
+     * khoản gửi của cùng đơn vị (tách người nhập và người duyệt). Không bao
+     * giờ khớp vế "Ai gửi" của luồng trình nào, không lập / trình báo cáo nào.
+     */
+    REPORT_REVIEWER = 'REPORT_REVIEWER',
 }

@@ -19,6 +19,8 @@ type SummaryRecipientFieldsProps = {
   recipients: TeamReportRecipient[];
   /** Bảng đơn vị cố định của luồng; null = người trình tự chọn một người. */
   units: TeamReportRouteUnitView[] | null;
+  /** Duyệt cuối của luồng (duyệt 2 cấp); null = một cấp. */
+  finalReviewer?: TeamReportRouteUnitView | null;
   recipientId: string;
   onRecipientChange: (id: string) => void;
   /** Câu báo khi chưa chọn nơi nhận; rỗng = không lỗi. */
@@ -28,8 +30,14 @@ type SummaryRecipientFieldsProps = {
 const ROLES: TeamReportUnitRole[] = ["LEAD", "COORDINATE", "INFORM"];
 
 /** Bảng có tài khoản đã khoá / mất đơn vị - server sẽ từ chối trình. */
-export function hasInactiveUnit(units: TeamReportRouteUnitView[] | null) {
-  return !!units?.some((unit) => !unit.isActive);
+export function hasInactiveUnit(
+  units: TeamReportRouteUnitView[] | null,
+  finalReviewer?: TeamReportRouteUnitView | null,
+) {
+  return (
+    !!units?.some((unit) => !unit.isActive) ||
+    (!!finalReviewer && !finalReviewer.isActive)
+  );
 }
 
 /**
@@ -46,8 +54,11 @@ export function SummaryRecipientFields({
   recipientId,
   onRecipientChange,
   error,
+  finalReviewer,
 }: SummaryRecipientFieldsProps) {
-  if (units) return <RouteUnitsReadonly units={units} />;
+  if (units) {
+    return <RouteUnitsReadonly units={units} finalReviewer={finalReviewer} />;
+  }
 
   const errorId = `${idPrefix}-recipient-error`;
   return (
@@ -98,7 +109,13 @@ function unitSubtitle(unit: TeamReportRouteUnitView) {
  * khoá. Bày ĐỦ cả ba cột chứ không chỉ ghi tên vai, để người trình nhìn ra
  * ngay đơn vị nào được quyết, đơn vị nào chỉ góp ý hay chỉ biết.
  */
-function RouteUnitsReadonly({ units }: { units: TeamReportRouteUnitView[] }) {
+function RouteUnitsReadonly({
+  units,
+  finalReviewer,
+}: {
+  units: TeamReportRouteUnitView[];
+  finalReviewer?: TeamReportRouteUnitView | null;
+}) {
   return (
     <div className="space-y-1.5">
       <p className="text-sm font-medium">Trình lên</p>
@@ -174,12 +191,29 @@ function RouteUnitsReadonly({ units }: { units: TeamReportRouteUnitView[] }) {
           </tbody>
         </table>
       </div>
+      {finalReviewer ? (
+        <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+          <span className="text-muted-foreground">Duyệt cuối: </span>
+          <strong
+            className={cn(
+              "font-medium",
+              !finalReviewer.isActive && "text-destructive",
+            )}
+          >
+            {finalReviewer.fullName}
+          </strong>
+          <span className="block text-xs text-muted-foreground">
+            Chủ trì duyệt xong, bản tự chuyển lên đây duyệt cuối mới chốt.
+          </span>
+        </p>
+      ) : null}
       <p className="text-xs text-muted-foreground">
         Do quản trị đặt trong luồng trình - không đổi được ở đây.{" "}
         <strong className="font-medium text-foreground">Chủ trì</strong> chấm
         lại, duyệt, trả lại;{" "}
         <strong className="font-medium text-foreground">phối hợp</strong> cho ý
-        kiến; <strong className="font-medium text-foreground">nhận để biết</strong>{" "}
+        kiến;{" "}
+        <strong className="font-medium text-foreground">nhận để biết</strong>{" "}
         chỉ xem.
       </p>
       {hasInactiveUnit(units) ? (

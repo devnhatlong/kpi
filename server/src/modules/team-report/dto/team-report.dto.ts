@@ -8,6 +8,7 @@ import {
   IsIn,
   IsInt,
   IsMongoId,
+  IsNotEmpty,
   IsObject,
   IsOptional,
   IsString,
@@ -17,7 +18,11 @@ import {
 } from 'class-validator';
 
 import { TEAM_REPORT_DAY_STATUSES } from '../schemas/team-report-day.schema';
-import { TEAM_REPORT_PERIODS } from '../schemas/team-report-summary.schema';
+import {
+  TEAM_REPORT_PERIODS,
+  TEAM_REPORT_RATINGS,
+  type TeamReportRating,
+} from '../schemas/team-report-summary.schema';
 import {
   TEAM_REPORT_UNIT_ROLES,
   type TeamReportUnitRole,
@@ -305,8 +310,51 @@ export class PreviewTeamReportSummaryDto {
   taskIds!: string[];
 }
 
+/**
+ * Phần cuối phụ lục đơn vị khai lúc trình. Tổng điểm KPI tập thể KHÔNG có ở
+ * đây - server tự cộng từ bảng B lúc trình, đơn vị không gõ.
+ */
+export class TeamReportConclusionDto {
+  @ApiProperty({ enum: TEAM_REPORT_RATINGS })
+  @IsIn(TEAM_REPORT_RATINGS)
+  proposedRating!: TeamReportRating;
+
+  @ApiProperty({ example: 'Nguyễn Văn A' })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  compilerName!: string;
+
+  @ApiProperty({ example: '0912345678' })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  compilerPhone!: string;
+
+  @ApiProperty({ example: 'Trần Văn B' })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  leaderName!: string;
+}
+
 /** Trình một bản tổng hợp lên cấp trên đã chọn. */
 export class SendTeamReportSummaryDto {
+  @ApiProperty({ type: TeamReportConclusionDto })
+  @IsObject({ message: 'Thiếu phần tổng điểm KPI tập thể / đề nghị xếp loại.' })
+  @ValidateNested()
+  @Type(() => TeamReportConclusionDto)
+  conclusion!: TeamReportConclusionDto;
+
   @ApiPropertyOptional({
     description:
       'Người cấp trên nhận bản - chỉ khi luồng để người trình tự chọn; luồng có bảng đơn vị cố định thì bỏ trống',
@@ -733,6 +781,15 @@ export class TeamReportAdjustmentRouteDto {
   @ValidateNested({ each: true })
   @Type(() => TeamReportRouteUnitDto)
   units?: TeamReportRouteUnitDto[];
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'Duyệt cuối (duyệt 2 cấp) - tài khoản duyệt sau chủ trì',
+  })
+  @IsOptional()
+  @IsMongoId({ message: 'Tài khoản duyệt cuối không hợp lệ.' })
+  finalUserId?: string | null;
 
   @ApiProperty({ type: () => TeamReportAdjustmentScopeDto })
   @ValidateNested()

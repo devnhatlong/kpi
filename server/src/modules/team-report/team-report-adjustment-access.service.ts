@@ -8,7 +8,10 @@ import {
   TeamReportAdjustmentSheet,
   TeamReportAdjustmentSheetDocument,
 } from './schemas/team-report-adjustment-sheet.schema';
-import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
+import {
+  TeamReportAdjustmentRoutingService,
+  isReviewOnlyUser,
+} from './team-report-adjustment-routing.service';
 
 /** Kết quả kiểm quyền, kèm lý do để màn nhập nói được vì sao bị chặn. */
 export type AdjustmentAccessResult = {
@@ -52,6 +55,14 @@ export class TeamReportAdjustmentAccessService {
     if (who.superAdmin) {
       return { allowed: true, configured: true, reason: 'Quản trị hệ thống.' };
     }
+    if (who.reviewOnly) {
+      return {
+        allowed: false,
+        configured: true,
+        reason:
+          'Tài khoản duyệt chỉ nhận và duyệt bảng được gán cho mình, không nhập hay trình bảng.',
+      };
+    }
     const configured = await this.routing.hasRoutes('ADJUSTMENT');
     if (!configured) {
       return {
@@ -84,8 +95,9 @@ export class TeamReportAdjustmentAccessService {
     if (!who.departmentId) return false;
     const addressed = await this.sheetModel.exists({
       $or: [
-        { recipientDepartmentId: who.departmentId },
-        { 'participants.departmentId': who.departmentId },
+        { recipientId: new Types.ObjectId(userId) },
+        { finalRecipientId: new Types.ObjectId(userId) },
+        { 'participants.userId': new Types.ObjectId(userId) },
       ],
       status: { $ne: 'DRAFT' },
     });
@@ -110,6 +122,7 @@ export class TeamReportAdjustmentAccessService {
     return {
       departmentId: user.departmentId ?? null,
       superAdmin: codes.includes(RoleCode.SUPER_ADMIN),
+      reviewOnly: isReviewOnlyUser(user),
     };
   }
 }

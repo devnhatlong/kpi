@@ -47,6 +47,7 @@ import {
 import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
 import {
   TEAM_REPORT_STATUS_LABEL,
+  stagedStatusLabel,
   formatScore,
   type TeamReportAdjustmentEntry,
   type TeamReportAdjustmentItem,
@@ -208,7 +209,10 @@ export function TeamReportAdjustmentView() {
   const recipients = recipientData?.people ?? [];
   /* Luồng có nơi nhận cố định: không chọn ai, bảng đi đúng nơi quản trị gán. */
   const units = recipientData?.units ?? null;
-  const canSubmit = units ? !hasInactiveUnit(units) : !!recipientId;
+  const finalReviewer = recipientData?.finalReviewer ?? null;
+  const canSubmit = units
+    ? !hasInactiveUnit(units, finalReviewer)
+    : !!recipientId;
 
   const send = async () => {
     if (!sheet || !canSubmit) return;
@@ -270,7 +274,11 @@ export function TeamReportAdjustmentView() {
                   DAY_STATUS_CLASS[status],
                 )}
               >
-                {status === "DRAFT" ? "Nháp" : TEAM_REPORT_STATUS_LABEL[status]}
+                {status === "DRAFT"
+                  ? "Nháp"
+                  : sheet
+                    ? stagedStatusLabel(sheet)
+                    : TEAM_REPORT_STATUS_LABEL[status]}
               </Badge>
             ) : null}
             <Button
@@ -522,6 +530,7 @@ export function TeamReportAdjustmentView() {
               idPrefix="adjustment"
               recipients={recipients}
               units={units}
+              finalReviewer={finalReviewer}
               recipientId={recipientId}
               onRecipientChange={setRecipientId}
             />

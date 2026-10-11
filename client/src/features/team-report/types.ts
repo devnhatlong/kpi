@@ -30,6 +30,32 @@ export const TEAM_REPORT_STATUS_LABEL: Record<TeamReportDayStatus, string> = {
   RETURNED: "Trả lại",
 };
 
+/**
+ * Nhãn trạng thái của bản có thể đi DUYỆT 2 CẤP (tổng hợp, cộng / trừ): bản
+ * cấp 1 đã duyệt, đang chờ duyệt cuối thì nói rõ - "Chờ duyệt" chung chung
+ * khiến đội không biết bản đang nằm ở cấp nào.
+ */
+export function stagedStatusLabel(doc: {
+  status: TeamReportDayStatus;
+  stage?: "FIRST" | "FINAL";
+  finalRecipientName?: string;
+}): string {
+  if (doc.status === "PENDING" && doc.stage === "FINAL") {
+    return "Chờ duyệt cuối";
+  }
+  if (doc.status === "PENDING" && doc.finalRecipientName) {
+    return "Chờ duyệt cấp 1";
+  }
+  return TEAM_REPORT_STATUS_LABEL[doc.status];
+}
+
+/** Dấu vết lần duyệt cấp 1 của bản duyệt 2 cấp. */
+export type TeamReportFirstApproval = {
+  byId: string;
+  byName: string;
+  at: string;
+};
+
 /** Tham chiếu đã populate - server trả cả object, chỗ chưa populate trả id trần. */
 export type Ref = { _id: string; code?: string; name?: string } | string | null;
 
@@ -454,14 +480,45 @@ export type TeamReportSummary = {
   recipientName: string;
   /** Các đơn vị phối hợp / nhận để biết, chụp theo luồng lúc trình. */
   participants?: TeamReportParticipant[];
+  /** Duyệt 2 cấp: tài khoản duyệt cuối; rỗng = một cấp. */
+  finalRecipientName?: string;
+  /** Bước đang chờ khi PENDING: FIRST = chủ trì, FINAL = duyệt cuối. */
+  stage?: "FIRST" | "FINAL";
+  /** Lần duyệt cấp 1 của bản 2 cấp. */
+  firstApproval?: TeamReportFirstApproval | null;
   sentByName: string;
   sentAt: string | null;
   note: string;
+  /** Phần cuối phụ lục - khai lúc trình; bản nháp chưa có. */
+  conclusion?: TeamReportConclusion | null;
   decidedByName: string;
   decidedAt: string | null;
   returnReason: string;
   edits: TeamReportEdit[];
   createdAt?: string;
+};
+
+/** Bốn mức "Đề nghị xếp loại tháng" của phụ lục - server kiểm y hệt. */
+export const TEAM_REPORT_RATINGS = [
+  "Hoàn thành xuất sắc nhiệm vụ",
+  "Hoàn thành tốt nhiệm vụ",
+  "Hoàn thành nhiệm vụ",
+  "Không hoàn thành nhiệm vụ",
+] as const;
+export type TeamReportRating = (typeof TEAM_REPORT_RATINGS)[number];
+
+/**
+ * Phần cuối phụ lục: tổng điểm KPI tập thể, đề nghị xếp loại, cán bộ tổng hợp
+ * và lãnh đạo đơn vị. Đơn vị tự gõ - máy chỉ gợi ý tổng điểm.
+ */
+export type TeamReportConclusion = {
+  /** Điểm bảng B - server cộng lúc trình, không ai gõ. */
+  totalScore: number;
+  maxScore: number;
+  proposedRating: TeamReportRating;
+  compilerName: string;
+  compilerPhone: string;
+  leaderName: string;
 };
 
 /** Vai của một đơn vị nhận báo cáo tổng hợp, do quản trị gán trong luồng. */
@@ -689,6 +746,12 @@ export type TeamReportAdjustmentSheet = {
   returnReason: string;
   /** Nơi phối hợp / nhận để biết - chụp theo luồng lúc trình. */
   participants?: TeamReportParticipant[];
+  /** Duyệt 2 cấp: tài khoản duyệt cuối; rỗng = một cấp. */
+  finalRecipientName?: string;
+  /** Bước đang chờ khi PENDING: FIRST = chủ trì, FINAL = duyệt cuối. */
+  stage?: "FIRST" | "FINAL";
+  /** Lần duyệt cấp 1 của bản 2 cấp. */
+  firstApproval?: TeamReportFirstApproval | null;
 };
 
 /** Một dòng trong hộp đến của cấp trên - không mang theo các dòng chi tiết. */
@@ -698,6 +761,8 @@ export type TeamReportAdjustmentInboxRow = {
   status: TeamReportDayStatus;
   department: Ref;
   recipientName: string;
+  finalRecipientName?: string;
+  stage?: "FIRST" | "FINAL";
   sentByName: string;
   sentAt: string | null;
   decidedByName: string;
@@ -718,6 +783,8 @@ export type TeamReportAdjustmentData = {
   department?: { id: string; name: string };
   /** Chỉ có ở đường hộp đến - vai của đơn vị người xem. */
   viewerRole?: "RECIPIENT" | "COORDINATOR" | "INFORMED";
+  /** Đúng người đang cầm bản (duyệt 2 cấp) - mới được duyệt / trả / sửa. */
+  canDecide?: boolean;
   /**
    * Đơn vị bày ra ở các ô kiểu chọn đơn vị - server gom theo hợp các cấp mà
    * mọi cột kiểu này khai; từng ô lọc lại theo `departmentLevelIds` của cột.

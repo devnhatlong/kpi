@@ -91,6 +91,16 @@ export function DynamicColumnCell({
     );
   }
 
+  /* "Điều kiện, mức điểm" của Trục 2: server chép từ nội dung công việc đang
+     chọn - đọc để đối chiếu, không phải ô gõ. */
+  if (column.semanticKey === "work_content_note") {
+    return (
+      <p className="whitespace-pre-line rounded-md border border-dashed bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+        {value || "Chọn nội dung công việc để xem điều kiện."}
+      </p>
+    );
+  }
+
   if (catalog) {
     const items: TeamReportCatalogItem[] = catalogs[catalog] ?? [];
     /* Danh mục dài (nội dung công việc của một phụ lục có tới ba chục dòng,

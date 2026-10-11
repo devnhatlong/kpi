@@ -65,6 +65,64 @@ export const TeamReportParticipantSchema = SchemaFactory.createForClass(
   TeamReportParticipant,
 );
 
+/** Dấu vết lần duyệt cấp 1 của bản duyệt 2 cấp. */
+@Schema({ _id: false })
+export class TeamReportFirstApproval {
+  @Prop({ type: Types.ObjectId, ref: User.name, required: true })
+  byId!: Types.ObjectId;
+
+  @Prop({ trim: true, default: '' })
+  byName!: string;
+
+  @Prop({ type: Date, required: true })
+  at!: Date;
+}
+
+export const TeamReportFirstApprovalSchema = SchemaFactory.createForClass(
+  TeamReportFirstApproval,
+);
+
+/** Mức đề nghị xếp loại tháng - đúng bốn mức của phụ lục. */
+export const TEAM_REPORT_RATINGS = [
+  'Hoàn thành xuất sắc nhiệm vụ',
+  'Hoàn thành tốt nhiệm vụ',
+  'Hoàn thành nhiệm vụ',
+  'Không hoàn thành nhiệm vụ',
+] as const;
+export type TeamReportRating = (typeof TEAM_REPORT_RATINGS)[number];
+
+/**
+ * Phần cuối phụ lục - đơn vị tự khai lúc trình: "Tổng điểm KPI tập thể",
+ * "Đề nghị xếp loại tháng", cán bộ tổng hợp (họ tên, số điện thoại) và lãnh đạo
+ * đơn vị ký.
+ *
+ * Tổng điểm là điểm BẢNG B (cộng điểm quy đổi các trục) do server tính và
+ * chốt lúc trình - đơn vị không gõ được. Lưu kèm điểm tối đa để in "x / 70".
+ */
+@Schema({ _id: false })
+export class TeamReportConclusion {
+  @Prop({ type: Number, required: true, min: 0 })
+  totalScore!: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  maxScore!: number;
+
+  @Prop({ type: String, enum: TEAM_REPORT_RATINGS, required: true })
+  proposedRating!: TeamReportRating;
+
+  @Prop({ trim: true, required: true })
+  compilerName!: string;
+
+  @Prop({ trim: true, required: true })
+  compilerPhone!: string;
+
+  @Prop({ trim: true, required: true })
+  leaderName!: string;
+}
+
+export const TeamReportConclusionSchema =
+  SchemaFactory.createForClass(TeamReportConclusion);
+
 /**
  * Kỳ của báo cáo - chỉ là NHÃN, phạm vi thật nằm ở `fromDate`/`toDate`.
  *
@@ -162,6 +220,33 @@ export class TeamReportSummary {
   @Prop({ type: [TeamReportParticipantSchema], default: [] })
   participants!: TeamReportParticipant[];
 
+  /**
+   * DUYỆT 2 CẤP - chỉ có khi luồng đặt "Duyệt cuối".
+   *
+   * `recipient*` ở trên là CẤP 1 (chủ trì). Cấp 1 duyệt thì bản chưa chốt mà
+   * chuyển sang `finalRecipient*` duyệt cuối; trả lại ở cấp nào bản cũng về
+   * đơn vị lập. null = luồng một cấp như cũ.
+   */
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null, index: true })
+  finalRecipientId!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  finalRecipientName!: string;
+
+  @Prop({ type: Types.ObjectId, ref: Department.name, default: null })
+  finalRecipientDepartmentId!: Types.ObjectId | null;
+
+  /**
+   * Bước đang chờ khi PENDING: FIRST = chủ trì cấp 1 đang cầm; FINAL = cấp 1
+   * đã duyệt, đang chờ duyệt cuối. Người đang cầm bản suy từ trường này.
+   */
+  @Prop({ type: String, enum: ['FIRST', 'FINAL'], default: 'FIRST' })
+  stage!: 'FIRST' | 'FINAL';
+
+  /** Lần duyệt cấp 1 - giữ lại để bản nào cũng thấy ai đã duyệt trước. */
+  @Prop({ type: TeamReportFirstApprovalSchema, default: null })
+  firstApproval!: TeamReportFirstApproval | null;
+
   @Prop({ type: Types.ObjectId, ref: User.name, default: null })
   sentById!: Types.ObjectId | null;
 
@@ -173,6 +258,10 @@ export class TeamReportSummary {
 
   @Prop({ trim: true, default: '' })
   note!: string;
+
+  /** Phần cuối phụ lục - bắt buộc lúc trình; bản nháp chưa có. */
+  @Prop({ type: TeamReportConclusionSchema, default: null })
+  conclusion!: TeamReportConclusion | null;
 
   @Prop({ type: Types.ObjectId, ref: User.name, default: null })
   decidedById!: Types.ObjectId | null;

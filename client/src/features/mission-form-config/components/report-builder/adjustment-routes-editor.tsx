@@ -69,6 +69,7 @@ const fingerprint = (routes: TeamReportAdjustmentRoute[]) =>
       route.unitMode
         ? (route.units ?? []).map((unit) => `${unit.userId}:${unit.role}`)
         : [],
+      route.unitMode ? (route.finalUserId ?? "") : "",
       scopeKey(route.sender),
       scopeKey(route.recipients),
     ]),
@@ -444,7 +445,19 @@ export function AdjustmentRoutesEditor({
                 {current.unitMode ? (
                   <RouteUnitsEditor
                     units={current.units ?? []}
-                    onChange={(units) => patchRoute({ units })}
+                    onChange={(units) =>
+                      patchRoute({
+                        units,
+                        // Duyệt cuối vừa được thêm vào bảng thì bỏ ô duyệt cuối.
+                        finalUserId: units.some(
+                          (unit) => unit.userId === current.finalUserId,
+                        )
+                          ? null
+                          : (current.finalUserId ?? null),
+                      })
+                    }
+                    finalUserId={current.finalUserId ?? null}
+                    onFinalChange={(finalUserId) => patchRoute({ finalUserId })}
                     accounts={users.data ?? []}
                     departmentNames={departmentNames}
                   />
