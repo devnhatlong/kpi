@@ -98,6 +98,7 @@ const scopeEmpty = (scope: TeamReportAdjustmentScope) =>
 const KIND_LABEL: Record<TeamReportRouteKind, string> = {
   ADJUSTMENT: "bảng điểm cộng, trừ & xếp loại",
   SUMMARY: "báo cáo tổng hợp",
+  APPRAISAL: "bảng thẩm định các đơn vị",
 };
 
 export function AdjustmentRoutesEditor({

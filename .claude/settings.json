@@ -541,7 +541,19 @@
       "Bash(grep -n \"^import\\\\|^} from\\\\|  TeamReportDayRow,$\" src/features/team-report/excel.ts)",
       "Bash(cd /c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad && grep -l \"createApplicationContext\" * 2>/dev/null; ls /d/Project/WebApp/KPI/server/scripts /d/Project/WebApp/KPI/server/src/*.ts; grep -rl \"createApplicationContext\" /d/Project/WebApp/KPI/server/src /d/Project/WebApp/KPI/server/scripts 2>/dev/null | head)",
       "Bash(timeout 280 npx ts-node -r tsconfig-paths/register scripts/_tmp_axis2.ts)",
-      "Bash(timeout 280 npx ts-node -r tsconfig-paths/register scripts/_tmp_axis2.ts --yes)"
+      "Bash(timeout 280 npx ts-node -r tsconfig-paths/register scripts/_tmp_axis2.ts --yes)",
+      "Bash(grep -n \"^  async \\\\|^  private \\\\|^  \\\\w.*\\(.*\\) {$\\\\|^export function\\\\|^export async function\\\\|kind\" src/modules/team-report/team-report-adjustment-routing.service.ts)",
+      "Bash(grep -E \"^[A-Z]:\\\\\\\\\\\\\\\\|^D:\")",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{for\\(const f of JSON.parse\\(d\\)\\)for\\(const m of f.messages\\)console.log\\(f.filePath.split\\('src'\\)[1],m.line,m.ruleId,m.severity\\)}\\)\")",
+      "Bash(grep -n \"điểm cộng \\\\*/\\\\|---- điểm cộng\\\\|---- điểm trừ\\\\|---- xếp loại\\\\|const groups = useMemo\\\\|const bonusIndexes\\\\|const patchBonus\" src/features/team-report/components/appraisal-workspace.tsx)",
+      "Bash(grep -n \"const patchBonus = \\(\\\\|const patchPenalty = \\(\\\\|shownBonuses.map\\\\|penalties.map\\(\\({ penalty, index }\\) => \\(\\\\|shownBonuses.length === 0\\\\|penalties.length === 0\\\\|onRemove={\\(\\) => removePenalty\\(index\\)}\\\\|onClick={\\(\\) => removeBonus\\(index\\)}\" src/features/team-report/components/appraisal-workspace.tsx)",
+      "Bash(grep -n \"const BONUS_GRID\\\\|columns={\\\\[\\\\\"Điểm cộng\\\\\", \\\\\"Cụ thể nội dung minh chứng\\\\\"\\\\]}\" src/features/team-report/components/appraisal-workspace.tsx)",
+      "Bash(grep -n \"label={\\\\`Điểm cộng - \\\\${group.name}\\\\`}\" -B2 -A30 src/features/team-report/components/appraisal-workspace.tsx)",
+      "Bash(sed -i '161s/\"WEEK\"/\"MONTH\"/; 218s/const week = currentWeekRange\\(\\);/\\\\/\\\\/ Mặc định kỳ THÁNG - báo cáo tháng là bản đi thẩm định, lập nhiều nhất.\\\\n      const month = currentMonthRange\\(\\);/; ' src/features/team-report/components/team-report-summary-wizard.tsx)",
+      "Bash(sed -i 's/      setPeriod\\(\"WEEK\"\\);/      setPeriod\\(\"MONTH\"\\);/; s/      setFromDate\\(week.from\\);/      setFromDate\\(month.from\\);/; s/      setToDate\\(week.to\\);/      setToDate\\(month.to\\);/; s/      setTitle\\(defaultTitle\\(week.from, week.to\\)\\);/      setTitle\\(defaultTitle\\(month.from, month.to\\)\\);/' src/features/team-report/components/team-report-summary-wizard.tsx)",
+      "Bash(grep -n 'fromDate: { $gte: from, $lte: to }' -B14 src/modules/team-report/team-report-appraisal.service.ts)",
+      "Bash(sed -i '610s/fromDate: { \\\\$gte: from, \\\\$lte: to },/\\\\/\\\\/ Kỳ tháng 15 tháng trước - 14 tháng này: xét theo NGÀY KẾT THÚC \\(14\\\\/10 thuộc\\\\n        \\\\/\\\\/ tháng 10\\), không theo ngày bắt đầu \\(15\\\\/09 lại rơi sang tháng 9\\).\\\\n        toDate: { $gte: from, $lte: to },/' src/modules/team-report/team-report-appraisal.service.ts)",
+      "Bash(sed -i 's/   \\\\* BÁO CÁO THÁNG \\(kỳ MONTH, bắt đầu trong tháng\\) mà CHÍNH/   * BÁO CÁO THÁNG \\(kỳ MONTH, KẾT THÚC trong tháng\\) mà CHÍNH/' src/modules/team-report/team-report-appraisal.service.ts)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

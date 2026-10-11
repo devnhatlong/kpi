@@ -125,11 +125,16 @@ export function currentWeekRange(): { from: string; to: string } {
 }
 
 /** Tháng đang chạy theo giờ server, từ mùng 1 tới ngày cuối tháng. */
+/**
+ * Kỳ đánh giá THÁNG theo quy định: từ ngày 15 tháng trước đến hết ngày 14
+ * tháng này (VD tháng 10 = 15/09 - 14/10), theo giờ server - không phải tháng
+ * dương lịch.
+ */
 export function currentMonthRange(): { from: string; to: string } {
   const now = serverDayjs();
   return {
-    from: now.startOf("month").format("YYYY-MM-DD"),
-    to: now.endOf("month").format("YYYY-MM-DD"),
+    from: now.subtract(1, "month").date(15).format("YYYY-MM-DD"),
+    to: now.date(14).format("YYYY-MM-DD"),
   };
 }
 

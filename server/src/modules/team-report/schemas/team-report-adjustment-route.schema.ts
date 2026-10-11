@@ -85,7 +85,12 @@ export class TeamReportRouteUnit {
 const RouteUnitSchema = SchemaFactory.createForClass(TeamReportRouteUnit);
 
 /** Luồng của loại báo cáo nào. */
-export const TEAM_REPORT_ROUTE_KINDS = ['ADJUSTMENT', 'SUMMARY'] as const;
+/** APPRAISAL = phụ lục theo dõi, thẩm định tháng của các đội PV01. */
+export const TEAM_REPORT_ROUTE_KINDS = [
+  'ADJUSTMENT',
+  'SUMMARY',
+  'APPRAISAL',
+] as const;
 export type TeamReportRouteKind = (typeof TEAM_REPORT_ROUTE_KINDS)[number];
 
 @Schema({ timestamps: true, collection: 'team_report_adjustment_routes' })

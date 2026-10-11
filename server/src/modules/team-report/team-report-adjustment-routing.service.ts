@@ -762,8 +762,10 @@ export class TeamReportAdjustmentRoutingService {
       .findById(actorId)
       .select('roleAssignments departmentId');
     if (!user) return null;
-    // Tài khoản CHỈ DUYỆT không bao giờ là người gửi - xem isReviewOnly.
-    if (isReviewOnlyUser(user)) return null;
+    /* Tài khoản CHỈ DUYỆT không bao giờ là người gửi - xem isReviewOnly. Trừ
+       bảng THẨM ĐỊNH: chính tài khoản duyệt của đội là người thẩm định các đơn
+       vị mình duyệt, nên họ lập và trình bảng đó. */
+    if (kind !== 'APPRAISAL' && isReviewOnlyUser(user)) return null;
     const home = user.departmentId
       ? await this.departmentModel
           .findById(user.departmentId)

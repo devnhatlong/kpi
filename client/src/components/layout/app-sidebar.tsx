@@ -12,6 +12,10 @@ import { useAuth } from "@/features/auth/auth-provider";
 import { userHasAnyPermission, userHasAnyRole } from "@/features/auth/types";
 import { fetchTeamReportAdjustmentAccess } from "@/features/team-report/api";
 import {
+  appraisalKeys,
+  fetchAppraisalAccess,
+} from "@/features/team-report/appraisal";
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -200,6 +204,13 @@ export function AppSidebar() {
   const adjustmentAllowed = adjustmentGate.data?.allowed === true;
   const adjustmentInbox = adjustmentGate.data?.canReceive === true;
   const summaryInbox = adjustmentGate.data?.canReceiveSummary === true;
+  const appraisalGate = useSWR(
+    user ? appraisalKeys.access(user.id) : null,
+    () => fetchAppraisalAccess(),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+  const appraisalAllowed = appraisalGate.data?.allowed === true;
+  const appraisalInbox = appraisalGate.data?.canReceive === true;
 
   // Lọc cả mục con: nhóm chỉ còn lại những trang user thật sự vào được, và
   // nhóm rỗng thì ẩn luôn thay vì bung ra một danh sách trống.
@@ -229,13 +240,22 @@ export function AppSidebar() {
           (!child.gate ||
             (child.gate === "adjustment-access" && adjustmentAllowed) ||
             (child.gate === "adjustment-inbox" && adjustmentInbox) ||
-            (child.gate === "summary-inbox" && summaryInbox)),
+            (child.gate === "summary-inbox" && summaryInbox) ||
+            (child.gate === "appraisal-access" && appraisalAllowed) ||
+            (child.gate === "appraisal-inbox" && appraisalInbox)),
       );
       if (children.length) items.push({ ...item, children });
     }
 
     return items;
-  }, [user, adjustmentAllowed, adjustmentInbox, summaryInbox]);
+  }, [
+    user,
+    adjustmentAllowed,
+    adjustmentInbox,
+    summaryInbox,
+    appraisalAllowed,
+    appraisalInbox,
+  ]);
 
   const allHrefs = useMemo(() => collectNavHrefs(visibleItems), [visibleItems]);
 

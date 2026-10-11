@@ -823,3 +823,116 @@ export class TeamReportDashboardQueryDto {
   @IsString()
   toDate?: string;
 }
+
+/* ------------------------------------------------- bảng thẩm định (PV01) */
+
+export class TeamReportAppraisalBonusDto {
+  @ApiPropertyOptional({ description: 'Tiêu chí ở danh mục Điểm cộng (I)' })
+  @IsOptional()
+  @IsMongoId()
+  itemId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  score?: number | null;
+
+  @ApiPropertyOptional({ description: 'Cụ thể nội dung minh chứng' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  evidence?: string;
+}
+
+export class TeamReportAppraisalPenaltyDto {
+  @ApiPropertyOptional({ description: 'Tiêu chí ở danh mục Điểm cộng (I)' })
+  @IsOptional()
+  @IsMongoId()
+  itemId?: string;
+
+  @ApiPropertyOptional({ description: 'Cụ thể nội dung trừ điểm' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  content?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  score?: number | null;
+}
+
+export class TeamReportAppraisalUnitDto {
+  @ApiProperty()
+  @IsMongoId()
+  departmentId!: string;
+
+  @ApiPropertyOptional({ description: 'Tổng điểm tự chấm' })
+  @IsOptional()
+  @Type(() => Number)
+  @Min(0)
+  selfScore?: number | null;
+
+  @ApiPropertyOptional({ type: [TeamReportAppraisalBonusDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => TeamReportAppraisalBonusDto)
+  bonuses?: TeamReportAppraisalBonusDto[];
+
+  @ApiPropertyOptional({ type: [TeamReportAppraisalPenaltyDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => TeamReportAppraisalPenaltyDto)
+  penalties?: TeamReportAppraisalPenaltyDto[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  upgradeNote?: string;
+
+  @ApiPropertyOptional({ enum: TEAM_REPORT_RATINGS })
+  @IsOptional()
+  @IsIn(['', ...TEAM_REPORT_RATINGS])
+  proposedRating?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  ratingNote?: string;
+}
+
+/** Lưu cả bảng thẩm định (bản nháp / bị trả lại). */
+export class SaveTeamReportAppraisalDto {
+  @ApiPropertyOptional({ description: 'Phiên bản đang sửa - chống ghi đè' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  version?: number;
+
+  @ApiProperty({ type: [TeamReportAppraisalUnitDto] })
+  @IsArray()
+  @ArrayMaxSize(300)
+  @ValidateNested({ each: true })
+  @Type(() => TeamReportAppraisalUnitDto)
+  units!: TeamReportAppraisalUnitDto[];
+
+  @ApiPropertyOptional({ description: 'Lãnh đạo phụ trách' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  leaderName?: string;
+
+  @ApiPropertyOptional({ description: 'Chỉ huy đội' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  commanderName?: string;
+}

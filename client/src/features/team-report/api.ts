@@ -830,7 +830,7 @@ export type TeamReportAdjustmentScope = {
   senderSubordinatesOnly?: boolean;
 };
 
-export type TeamReportRouteKind = "ADJUSTMENT" | "SUMMARY";
+export type TeamReportRouteKind = "ADJUSTMENT" | "SUMMARY" | "APPRAISAL";
 
 export type TeamReportAdjustmentRoute = {
   _id?: string;

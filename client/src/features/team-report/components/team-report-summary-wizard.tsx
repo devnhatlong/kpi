@@ -158,7 +158,7 @@ export function TeamReportSummaryWizard({
 }: WizardProps) {
   const { ready } = useServerTime();
   const [step, setStep] = useState<StepKey>("info");
-  const [period, setPeriod] = useState<TeamReportPeriod>("WEEK");
+  const [period, setPeriod] = useState<TeamReportPeriod>("MONTH");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [title, setTitle] = useState("");
@@ -215,12 +215,13 @@ export function TeamReportSummaryWizard({
   if (open !== wasOpen) {
     setWasOpen(open);
     if (open && ready) {
-      const week = currentWeekRange();
+      // Mặc định kỳ THÁNG - báo cáo tháng là bản đi thẩm định, lập nhiều nhất.
+      const month = currentMonthRange();
       setStep("info");
-      setPeriod("WEEK");
-      setFromDate(week.from);
-      setToDate(week.to);
-      setTitle(defaultTitle(week.from, week.to));
+      setPeriod("MONTH");
+      setFromDate(month.from);
+      setToDate(month.to);
+      setTitle(defaultTitle(month.from, month.to));
       setQuery("");
       setFilter("ALL");
       setAxisFilter("ALL");
@@ -525,7 +526,12 @@ export function TeamReportSummaryWizard({
                 <li
                   key={item.key}
                   aria-current={active ? "step" : undefined}
-                  className="flex flex-1 items-center gap-2"
+                  /* Bước cuối không có vạch nối - để nó co theo chữ, không thì
+                     nó vẫn chiếm một phần ba hàng và bỏ trống mép phải. */
+                  className={cn(
+                    "flex items-center gap-2",
+                    index < STEPS.length - 1 ? "flex-1" : "shrink-0",
+                  )}
                 >
                   <span
                     className={cn(

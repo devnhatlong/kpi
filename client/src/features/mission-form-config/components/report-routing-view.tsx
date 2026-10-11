@@ -44,6 +44,7 @@ export function ReportRoutingView() {
                 value: "ADJUSTMENT" as const,
                 label: "Điểm cộng, trừ & xếp loại",
               },
+              { value: "APPRAISAL" as const, label: "Thẩm định KPI" },
             ]}
           />
         </CardContent>

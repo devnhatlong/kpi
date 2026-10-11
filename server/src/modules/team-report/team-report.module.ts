@@ -74,6 +74,12 @@ import {
   TeamReportAdjustmentSheetSchema,
 } from './schemas/team-report-adjustment-sheet.schema';
 import {
+  TeamReportAppraisal,
+  TeamReportAppraisalSchema,
+} from './schemas/team-report-appraisal.schema';
+import { TeamReportAppraisalController } from './team-report-appraisal.controller';
+import { TeamReportAppraisalService } from './team-report-appraisal.service';
+import {
   AdjustmentItem,
   AdjustmentItemSchema,
 } from '../mission-form-config/schemas/adjustment-item.schema';
@@ -115,6 +121,7 @@ import {
         schema: TeamReportAdjustmentRouteSchema,
       },
       { name: FormTemplate.name, schema: FormTemplateSchema },
+      { name: TeamReportAppraisal.name, schema: TeamReportAppraisalSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),
@@ -128,6 +135,7 @@ import {
     TeamReportCriteriaController,
     TeamReportAdjustmentController,
     TeamReportRoutingController,
+    TeamReportAppraisalController,
   ],
   providers: [
     TeamReportService,
@@ -135,6 +143,7 @@ import {
     TeamReportAdjustmentService,
     TeamReportAdjustmentAccessService,
     TeamReportAdjustmentRoutingService,
+    TeamReportAppraisalService,
   ],
   exports: [TeamReportService],
 })

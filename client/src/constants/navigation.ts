@@ -47,7 +47,12 @@ export type NavSubItem = {
    *
    * `adjustment-access`: ai được nhập bảng điểm cộng / trừ / xếp loại.
    */
-  gate?: "adjustment-access" | "adjustment-inbox" | "summary-inbox";
+  gate?:
+    | "adjustment-access"
+    | "adjustment-inbox"
+    | "summary-inbox"
+    | "appraisal-access"
+    | "appraisal-inbox";
 };
 
 export type NavItem = {
@@ -133,6 +138,28 @@ export const NAV_ITEMS: NavItem[] = [
         icon: Inbox,
         /* Ai thấy = vế "gửi cho ai" của luồng trình (server quyết). */
         gate: "adjustment-inbox",
+      },
+    ],
+  },
+  {
+    /*
+      Phụ lục theo dõi, thẩm định tháng của các đội PV01. Ai lập / ai duyệt do
+      luồng APPRAISAL quyết (server), không theo mã quyền.
+    */
+    title: "Thẩm định KPI",
+    icon: ClipboardCheck,
+    children: [
+      {
+        title: "Thẩm định đơn vị",
+        href: "/team-report/appraisals",
+        icon: ClipboardPen,
+        gate: "appraisal-access",
+      },
+      {
+        title: "Duyệt bảng thẩm định",
+        href: "/team-report/appraisals/incoming",
+        icon: Inbox,
+        gate: "appraisal-inbox",
       },
     ],
   },

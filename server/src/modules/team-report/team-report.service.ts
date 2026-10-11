@@ -2953,6 +2953,25 @@ export class TeamReportService {
       throw new BadRequestException('Không có giá trị nào thay đổi.');
     }
 
+    /* Tổng điểm KPI tập thể chạy theo điểm đã chấm lại - bảng thẩm định lấy
+       con số này làm "tự chấm", để số cũ lúc trình là lệch với bản đã duyệt. */
+    if (summary.conclusion) {
+      const templates = await this.templatesOfRows(summary.rows);
+      const axisScores = await this.axisScoresOf(
+        summary.rows,
+        templates,
+        await this.catalogsForTemplates(Object.values(templates)),
+      );
+      summary.conclusion.totalScore =
+        Math.round(
+          axisScores.reduce(
+            (sum, axis) => sum + (axis.convertedScore ?? 0),
+            0,
+          ) * 100,
+        ) / 100;
+      summary.markModified('conclusion');
+    }
+
     summary.markModified('rows');
     await summary.save();
 
