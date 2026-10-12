@@ -104,6 +104,72 @@ export class TeamReportAppraisalUnit {
   /** Lý do / diễn giải mức xếp loại ("Mức điểm cao, tuy nhiên khống chế…"). */
   @Prop({ trim: true, default: '' })
   ratingNote!: string;
+
+  // ------------------------------------------------- vòng đời TỪNG ĐƠN VỊ
+  /*
+    Trình và duyệt RIÊNG từng đơn vị (user chốt 2026-10-12), không trình cả
+    bảng: báo cáo tháng của các đơn vị được duyệt rải rác trong kỳ, gom đủ mới
+    trình thì đơn vị xong sớm phải chờ đơn vị muộn, còn đơn vị duyệt SAU khi
+    bảng đã trình thì không còn chỗ nào để vào. Bảng (đội + tháng) chỉ còn là
+    chỗ chứa và chỗ ghi người ký.
+  */
+  @Prop({ type: String, enum: TEAM_REPORT_DAY_STATUSES, default: 'DRAFT' })
+  status!: TeamReportDayStatus;
+
+  @Prop({ type: String, enum: ['FIRST', 'FINAL'], default: 'FIRST' })
+  stage!: 'FIRST' | 'FINAL';
+
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null })
+  recipientId!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  recipientName!: string;
+
+  @Prop({ type: Types.ObjectId, ref: Department.name, default: null })
+  recipientDepartmentId!: Types.ObjectId | null;
+
+  @Prop({ type: [TeamReportParticipantSchema], default: [] })
+  participants!: TeamReportParticipant[];
+
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null })
+  finalRecipientId!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  finalRecipientName!: string;
+
+  @Prop({ type: Types.ObjectId, ref: Department.name, default: null })
+  finalRecipientDepartmentId!: Types.ObjectId | null;
+
+  @Prop({ type: TeamReportFirstApprovalSchema, default: null })
+  firstApproval!: TeamReportFirstApproval | null;
+
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null })
+  sentById!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  sentByName!: string;
+
+  @Prop({ type: Date, default: null })
+  sentAt!: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: User.name, default: null })
+  decidedById!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  decidedByName!: string;
+
+  @Prop({ type: Date, default: null })
+  decidedAt!: Date | null;
+
+  @Prop({ trim: true, default: '' })
+  returnReason!: string;
+
+  /** Người ký CHỤP lúc trình đơn vị này - đổi tên về sau không làm đổi bản đã trình. */
+  @Prop({ trim: true, default: '' })
+  leaderName!: string;
+
+  @Prop({ trim: true, default: '' })
+  commanderName!: string;
 }
 
 const UnitSchema = SchemaFactory.createForClass(TeamReportAppraisalUnit);
@@ -111,7 +177,11 @@ const UnitSchema = SchemaFactory.createForClass(TeamReportAppraisalUnit);
 /**
  * PHỤ LỤC THEO DÕI, THẨM ĐỊNH tháng của một đội PV01: đội đánh giá lại kết
  * quả tự chấm của các đơn vị mình theo dõi (mỗi đơn vị một khối dòng), rồi
- * trình theo luồng APPRAISAL (mặc định về Đội CNTT duyệt).
+ * trình TỪNG ĐƠN VỊ theo luồng APPRAISAL (mặc định về Đội CNTT duyệt).
+ *
+ * Các trường trạng thái / người nhận ở cấp bảng bên dưới là của thời trình
+ * cả bảng - giờ vòng đời nằm ở từng đơn vị (`units[].status`…); giữ trường cũ
+ * để bản lưu trước đó vẫn đọc được.
  *
  * Tháng một bản mỗi đội. Tài khoản DUYỆT của đội lập bản - chính họ duyệt
  * báo cáo của các đơn vị trong khối nên họ là người thẩm định.
@@ -214,3 +284,6 @@ TeamReportAppraisalSchema.index(
   { unique: true },
 );
 TeamReportAppraisalSchema.index({ 'participants.userId': 1 });
+// Hộp đến theo từng đơn vị đã trình.
+TeamReportAppraisalSchema.index({ 'units.recipientId': 1, 'units.status': 1 });
+TeamReportAppraisalSchema.index({ 'units.finalRecipientId': 1 });

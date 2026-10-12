@@ -20,6 +20,7 @@ import { User, UserDocument } from '@/modules/users/schemas/user.schema';
 import {
   DecideTeamReportDayDto,
   SaveTeamReportAppraisalDto,
+  SendTeamReportAppraisalDto,
   TeamReportAdjustmentInboxQueryDto,
 } from './dto/team-report.dto';
 import {
@@ -45,6 +46,61 @@ import { serverDateYmd } from './team-report.time';
 type Actor = { id: Types.ObjectId; name: string; departmentId: Types.ObjectId };
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** Đơn vị còn sửa được: chưa trình hoặc bị trả lại. */
+const unitEditable = (unit: { status?: string }) =>
+  !unit.status || unit.status === 'DRAFT' || unit.status === 'RETURNED';
+
+/** Vòng đời của một đơn vị chưa trình lần nào. */
+function blankLifecycle() {
+  return {
+    status: 'DRAFT' as const,
+    stage: 'FIRST' as const,
+    recipientId: null,
+    recipientName: '',
+    recipientDepartmentId: null,
+    participants: [],
+    finalRecipientId: null,
+    finalRecipientName: '',
+    finalRecipientDepartmentId: null,
+    firstApproval: null,
+    sentById: null,
+    sentByName: '',
+    sentAt: null,
+    decidedById: null,
+    decidedByName: '',
+    decidedAt: null,
+    returnReason: '',
+    leaderName: '',
+    commanderName: '',
+  };
+}
+
+/** Trạng thái trình / duyệt của một đơn vị, dạng client đọc. */
+function lifecycleView(unit: TeamReportAppraisalUnit) {
+  return {
+    status: unit.status ?? 'DRAFT',
+    stage: unit.stage ?? 'FIRST',
+    recipientName: unit.recipientName ?? '',
+    finalRecipientName: unit.finalRecipientName ?? '',
+    firstApproval: unit.firstApproval ?? null,
+    sentByName: unit.sentByName ?? '',
+    sentAt: unit.sentAt ?? null,
+    decidedByName: unit.decidedByName ?? '',
+    decidedAt: unit.decidedAt ?? null,
+    returnReason: unit.returnReason ?? '',
+    leaderName: unit.leaderName ?? '',
+    commanderName: unit.commanderName ?? '',
+  };
+}
+
+/** Subdocument → object thường, để chép / gán lại mà không kéo theo mongoose. */
+function plainUnit(unit: TeamReportAppraisalUnit): TeamReportAppraisalUnit {
+  const doc = unit as TeamReportAppraisalUnit & {
+    toObject?: () => TeamReportAppraisalUnit;
+  };
+  return doc.toObject ? doc.toObject() : { ...unit };
+}
 /** Cấp đơn vị in TÊN thay cho mã - mã của các cấp này là số hiệu hành chính. */
 const NAME_LEVELS = new Set(['XA', 'PHUONG', 'DON', 'DACKHU']);
 const round2 = (value: number) => Math.round(value * 100) / 100;
@@ -128,8 +184,8 @@ export class TeamReportAppraisalService {
         Boolean(
           await this.sheetModel.exists({
             $or: [
-              { recipientId: new Types.ObjectId(userId) },
-              { finalRecipientId: new Types.ObjectId(userId) },
+              { 'units.recipientId': new Types.ObjectId(userId) },
+              { 'units.finalRecipientId': new Types.ObjectId(userId) },
             ],
           }),
         ));
@@ -170,16 +226,13 @@ export class TeamReportAppraisalService {
       : approved.map((unit) => this.blankUnit(unit.id, unit.name, items));
     const inSheet = new Set(units.map((unit) => String(unit.departmentId)));
 
-    /* Tự chấm = điểm báo cáo tháng của đơn vị, không ai sửa tay. Bản đang sửa
-       được thì luôn lấy số MỚI NHẤT (báo cáo có thể vừa được chấm lại / duyệt
-       lại); bản đã trình giữ nguyên số lúc trình. */
-    const editable =
-      !sheet || sheet.status === 'DRAFT' || sheet.status === 'RETURNED';
-    if (editable) {
-      for (const unit of units) {
-        const hint = hints[String(unit.departmentId)];
-        if (hint) unit.selfScore = hint.score;
-      }
+    /* Tự chấm = điểm báo cáo tháng của đơn vị, không ai sửa tay. Đơn vị còn
+       sửa được thì luôn lấy số MỚI NHẤT (báo cáo có thể vừa được chấm lại /
+       duyệt lại); đơn vị đã trình giữ nguyên số lúc trình. */
+    for (const unit of units) {
+      if (!unitEditable(unit)) continue;
+      const hint = hints[String(unit.departmentId)];
+      if (hint) unit.selfScore = hint.score;
     }
 
     return {
@@ -209,7 +262,9 @@ export class TeamReportAppraisalService {
               .map((unit) => unit.id)
           : [],
         selfScoreHints: hints,
-        canEdit: editable,
+        /* Bảng luôn mở để thêm / sửa đơn vị chưa trình - từng đơn vị khoá
+           riêng theo trạng thái của nó (`units[].status`). */
+        canEdit: true,
       },
     };
   }
@@ -225,11 +280,6 @@ export class TeamReportAppraisalService {
       departmentId: actor.departmentId,
       periodMonth,
     });
-    if (sheet && sheet.status !== 'DRAFT' && sheet.status !== 'RETURNED') {
-      throw new BadRequestException(
-        'Bảng đã trình - chờ duyệt hoặc bị trả lại mới sửa được.',
-      );
-    }
     if (sheet && dto.version !== undefined && dto.version !== sheet.version) {
       throw new ConflictException(
         'Bảng vừa được sửa ở nơi khác - tải lại trang rồi nhập tiếp.',
@@ -254,14 +304,21 @@ export class TeamReportAppraisalService {
     /* Tự chấm KHÔNG nhận từ client: là tổng điểm trên báo cáo tháng đơn vị
        đã trình (và đã được duyệt), người thẩm định chỉ cộng / trừ trên đó.
        Đơn vị không còn báo cáo nào khớp thì giữ số đã lưu. */
-    const storedSelf = new Map(
+    const stored = new Map(
       (sheet?.units ?? []).map((unit) => [
         String(unit.departmentId),
-        unit.selfScore ?? null,
+        plainUnit(unit),
       ]),
     );
 
-    const units = dto.units.map((unit) => {
+    const units = dto.units.map((unit): TeamReportAppraisalUnit => {
+      /* Đơn vị đã trình (chờ duyệt / đã duyệt) là của cấp trên đang cầm -
+         giữ NGUYÊN bản đã lưu, bỏ qua những gì client gửi cho nó. */
+      const before = stored.get(unit.departmentId);
+      if (before && !unitEditable(before)) {
+        seen.add(unit.departmentId);
+        return before;
+      }
       if (!known.has(unit.departmentId)) {
         throw new BadRequestException('Có đơn vị không còn trong danh mục.');
       }
@@ -278,12 +335,12 @@ export class TeamReportAppraisalService {
       seen.add(unit.departmentId);
       const name = labels.get(unit.departmentId) ?? '';
       return {
+        // Giữ vòng đời đã có (bị trả lại thì vẫn là bị trả lại cho tới khi trình lại).
+        ...(before ?? blankLifecycle()),
+        _id: before?._id ?? new Types.ObjectId(),
         departmentId: new Types.ObjectId(unit.departmentId),
         departmentName: name,
-        selfScore:
-          hints[unit.departmentId]?.score ??
-          storedSelf.get(unit.departmentId) ??
-          null,
+        selfScore: hints[unit.departmentId]?.score ?? before?.selfScore ?? null,
         bonuses: (unit.bonuses ?? [])
           .filter((bonus) => bonus.itemId)
           .map((bonus) => {
@@ -330,6 +387,10 @@ export class TeamReportAppraisalService {
         ratingNote: unit.ratingNote?.trim() ?? '',
       };
     });
+    // Đơn vị đã trình không bỏ khỏi bảng được - client có gửi thiếu cũng giữ lại.
+    for (const [id, unit] of stored) {
+      if (!seen.has(id) && !unitEditable(unit)) units.push(unit);
+    }
 
     if (!sheet) {
       sheet = new this.sheetModel({
@@ -337,7 +398,7 @@ export class TeamReportAppraisalService {
         periodMonth,
       });
     }
-    sheet.units = units as unknown as TeamReportAppraisalUnit[];
+    sheet.units = units;
     sheet.leaderName = dto.leaderName?.trim() ?? sheet.leaderName;
     sheet.commanderName = dto.commanderName?.trim() ?? sheet.commanderName;
     sheet.updatedById = actor.id;
@@ -351,7 +412,18 @@ export class TeamReportAppraisalService {
     };
   }
 
-  async send(userId: string, periodMonth: string) {
+  /**
+   * Trình RIÊNG các đơn vị đã chọn - mỗi đơn vị một lượt duyệt độc lập.
+   *
+   * Trình đúng bản ĐÃ LƯU (client lưu trước rồi mới gọi). Đơn vị đã trình
+   * thì bỏ qua lời yêu cầu thay vì báo lỗi cả lượt - chọn lẫn một đơn vị vừa
+   * trình ở tab khác không đáng để chặn các đơn vị kia.
+   */
+  async send(
+    userId: string,
+    periodMonth: string,
+    dto: SendTeamReportAppraisalDto,
+  ) {
     const actor = await this.requireComposer(userId);
     this.assertMonth(periodMonth);
     const sheet = await this.sheetModel.findOne({
@@ -359,30 +431,34 @@ export class TeamReportAppraisalService {
       periodMonth,
     });
     if (!sheet) throw new BadRequestException('Lưu bảng trước khi trình.');
-    if (sheet.status !== 'DRAFT' && sheet.status !== 'RETURNED') {
-      throw new BadRequestException('Bảng này đã trình rồi.');
-    }
-    if (!sheet.units.length) {
-      throw new BadRequestException('Bảng chưa có đơn vị nào.');
-    }
-    const missing = sheet.units.find(
-      (unit) => unit.selfScore === null || unit.selfScore === undefined,
-    );
-    if (missing) {
-      throw new BadRequestException(
-        `Chưa nhập tổng điểm tự chấm của ${missing.departmentName}.`,
-      );
-    }
-    const noRating = sheet.units.find((unit) => !unit.proposedRating);
-    if (noRating) {
-      throw new BadRequestException(
-        `Chưa chọn đề xuất mức xếp loại của ${noRating.departmentName}.`,
-      );
-    }
-    if (!sheet.leaderName.trim() || !sheet.commanderName.trim()) {
+
+    const leaderName = dto.leaderName.trim();
+    const commanderName = dto.commanderName.trim();
+    if (!leaderName || !commanderName) {
       throw new BadRequestException(
         'Nhập tên Lãnh đạo phụ trách và Chỉ huy đội trước khi trình.',
       );
+    }
+    const wanted = new Set(dto.departmentIds);
+    const picked = sheet.units.filter(
+      (unit) => wanted.has(String(unit.departmentId)) && unitEditable(unit),
+    );
+    if (!picked.length) {
+      throw new BadRequestException(
+        'Chưa chọn đơn vị nào còn chờ trình (chưa trình hoặc bị trả lại).',
+      );
+    }
+    for (const unit of picked) {
+      if (unit.selfScore === null || unit.selfScore === undefined) {
+        throw new BadRequestException(
+          `Chưa có tổng điểm tự chấm của ${unit.departmentName}.`,
+        );
+      }
+      if (!unit.proposedRating) {
+        throw new BadRequestException(
+          `Chưa chọn đề xuất mức xếp loại của ${unit.departmentName}.`,
+        );
+      }
     }
 
     const fixed = await this.routing.fixedTargets('APPRAISAL', actor);
@@ -391,45 +467,92 @@ export class TeamReportAppraisalService {
         'Chưa có luồng trình bảng thẩm định cho tài khoản này - báo quản trị cấu hình ở Luồng trình báo cáo.',
       );
     }
-    sheet.status = 'PENDING';
-    sheet.recipientId = fixed.recipient.id;
-    sheet.recipientName = fixed.recipient.name;
-    sheet.recipientDepartmentId = fixed.recipient.departmentId;
-    resetStages(sheet, fixed.final);
-    sheet.participants = fixed.participants;
-    sheet.markModified('participants');
-    sheet.sentById = actor.id;
-    sheet.sentByName = actor.name;
-    sheet.sentAt = new Date();
-    sheet.returnReason = '';
+    const now = new Date();
+    for (const unit of picked) {
+      unit.status = 'PENDING';
+      unit.recipientId = fixed.recipient.id;
+      unit.recipientName = fixed.recipient.name;
+      unit.recipientDepartmentId = fixed.recipient.departmentId;
+      // Trình lại thì đi lại từ cấp 1.
+      resetStages(unit, fixed.final);
+      unit.participants = fixed.participants;
+      unit.sentById = actor.id;
+      unit.sentByName = actor.name;
+      unit.sentAt = now;
+      unit.decidedById = null;
+      unit.decidedByName = '';
+      unit.decidedAt = null;
+      unit.returnReason = '';
+      unit.leaderName = leaderName;
+      unit.commanderName = commanderName;
+    }
+    // Tên người ký cũng nhớ ở bảng - lần trình sau điền sẵn.
+    sheet.leaderName = leaderName;
+    sheet.commanderName = commanderName;
+    sheet.markModified('units');
     sheet.version += 1;
     await sheet.save();
 
     return {
-      message: `Đã trình bảng thẩm định lên ${fixed.recipient.name}.`,
+      message: `Đã trình ${picked.length} đơn vị lên ${fixed.recipient.name}.`,
       data: await this.toClient(sheet, periodMonth, sheet.units),
     };
   }
 
   // ------------------------------------------------------------ người nhận
 
+  /**
+   * Hộp đến: MỖI DÒNG LÀ MỘT ĐƠN VỊ đã trình (không phải một bảng) - duyệt /
+   * trả lại riêng từng đơn vị. Tách đơn vị ra khỏi bảng rồi lọc bằng đúng luật
+   * hộp "Chủ trì" dùng chung (`leadInboxFilter`) trên các trường của đơn vị.
+   */
   async inbox(userId: string, query: TeamReportAdjustmentInboxQueryDto) {
     const actor = await this.requireActor(userId);
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
-    const filter = leadInboxFilter(actor.id, query.status);
-    const [rows, total] = await Promise.all([
-      this.sheetModel
-        .find(filter)
-        .sort({ sentAt: -1, periodMonth: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
-      this.sheetModel.countDocuments(filter),
+    const [result] = await this.sheetModel.aggregate<{
+      rows: Array<
+        TeamReportAppraisalUnit & {
+          teamId: Types.ObjectId;
+          periodMonth: string;
+        }
+      >;
+      total: Array<{ n: number }>;
+    }>([
+      {
+        $match: {
+          $or: [
+            { 'units.recipientId': actor.id },
+            { 'units.finalRecipientId': actor.id },
+          ],
+        },
+      },
+      { $unwind: '$units' },
+      {
+        $replaceRoot: {
+          newRoot: {
+            $mergeObjects: [
+              '$units',
+              { teamId: '$departmentId', periodMonth: '$periodMonth' },
+            ],
+          },
+        },
+      },
+      { $match: leadInboxFilter(actor.id, query.status) },
+      { $sort: { sentAt: -1, periodMonth: -1 } },
+      {
+        $facet: {
+          rows: [{ $skip: (page - 1) * limit }, { $limit: limit }],
+          total: [{ $count: 'n' }],
+        },
+      },
     ]);
-    const labels = await departmentLabels(
-      this.departmentModel,
-      rows.map((row) => row.departmentId),
-    );
+    const rows = result?.rows ?? [];
+    const total = result?.total[0]?.n ?? 0;
+    const labels = await departmentLabels(this.departmentModel, [
+      ...rows.map((row) => row.teamId),
+      ...rows.map((row) => row.departmentId),
+    ]);
     return {
       message: 'OK',
       data: rows.map((row) => ({
@@ -437,8 +560,13 @@ export class TeamReportAppraisalService {
         periodMonth: row.periodMonth,
         status: row.status,
         stage: row.stage ?? 'FIRST',
-        departmentName: labels.get(String(row.departmentId)) ?? '',
-        unitCount: row.units.length,
+        /** Đội thẩm định (người lập). */
+        departmentName: labels.get(String(row.teamId)) ?? '',
+        /** Đơn vị được thẩm định. */
+        unitName:
+          labels.get(String(row.departmentId)) ?? row.departmentName ?? '',
+        proposedRating: row.proposedRating ?? '',
+        finalScore: appraisalTotals(row).finalScore,
         recipientName: row.recipientName,
         finalRecipientName: row.finalRecipientName ?? '',
         sentByName: row.sentByName,
@@ -456,27 +584,22 @@ export class TeamReportAppraisalService {
     };
   }
 
+  /** Mở MỘT đơn vị đã trình - `id` là id của đơn vị trong bảng. */
   async incomingDetail(userId: string, id: string) {
     const actor = await this.requireActor(userId);
-    const sheet = await this.requireIncoming(actor, id);
-    return {
-      message: 'OK',
-      data: {
-        ...(await this.toClient(sheet, sheet.periodMonth, sheet.units)),
-        canDecide: isHandler(sheet, actor.id),
-      },
-    };
+    const { sheet, unit } = await this.requireIncoming(actor, id);
+    return { message: 'OK', data: await this.incomingView(sheet, unit, actor) };
   }
 
   async decide(userId: string, id: string, dto: DecideTeamReportDayDto) {
     const actor = await this.requireActor(userId);
-    const sheet = await this.requireIncoming(actor, id);
-    if (sheet.status !== 'PENDING') {
-      throw new BadRequestException('Chỉ duyệt được bảng đang chờ duyệt.');
+    const { sheet, unit } = await this.requireIncoming(actor, id);
+    if (unit.status !== 'PENDING') {
+      throw new BadRequestException('Chỉ duyệt được đơn vị đang chờ duyệt.');
     }
-    if (!isHandler(sheet, actor.id)) {
+    if (!isHandler(unit, actor.id)) {
       throw new BadRequestException(
-        'Bảng đang chờ cấp duyệt khác - không quyết được lúc này.',
+        'Đơn vị này đang chờ cấp duyệt khác - không quyết được lúc này.',
       );
     }
     let outcome: 'RETURNED' | 'FORWARDED' | 'APPROVED' = 'RETURNED';
@@ -484,18 +607,18 @@ export class TeamReportAppraisalService {
       const reason = dto.reason?.trim() ?? '';
       if (!reason) throw new BadRequestException('Lý do trả lại là bắt buộc.');
       // Trả lại ở bước nào cũng về đội lập; trình lại thì đi lại từ cấp 1.
-      sheet.status = 'RETURNED';
-      sheet.returnReason = reason;
+      unit.status = 'RETURNED';
+      unit.returnReason = reason;
     } else {
-      outcome = applyApprove(sheet, actor);
-      sheet.returnReason = '';
+      outcome = applyApprove(unit, actor);
+      unit.returnReason = '';
     }
-    sheet.markModified('firstApproval');
     if (outcome !== 'FORWARDED') {
-      sheet.decidedById = actor.id;
-      sheet.decidedByName = actor.name;
-      sheet.decidedAt = new Date();
+      unit.decidedById = actor.id;
+      unit.decidedByName = actor.name;
+      unit.decidedAt = new Date();
     }
+    sheet.markModified('units');
     sheet.version += 1;
     await sheet.save();
     return {
@@ -503,12 +626,26 @@ export class TeamReportAppraisalService {
         outcome === 'RETURNED'
           ? 'Đã trả lại.'
           : outcome === 'FORWARDED'
-            ? `Đã duyệt cấp 1 - chuyển ${sheet.finalRecipientName} duyệt cuối.`
+            ? `Đã duyệt cấp 1 - chuyển ${unit.finalRecipientName} duyệt cuối.`
             : 'Đã duyệt.',
-      data: {
-        ...(await this.toClient(sheet, sheet.periodMonth, sheet.units)),
-        canDecide: isHandler(sheet, actor.id),
-      },
+      data: await this.incomingView(sheet, unit, actor),
+    };
+  }
+
+  /**
+   * Bày một đơn vị cho nơi duyệt: khuôn bảng như bên lập (để dùng lại màn bàn
+   * làm việc) nhưng chỉ một đơn vị, và trạng thái / người ký là CỦA ĐƠN VỊ.
+   */
+  private async incomingView(
+    sheet: TeamReportAppraisalDocument,
+    unit: TeamReportAppraisalUnit,
+    actor: Actor,
+  ) {
+    const base = await this.toClient(sheet, sheet.periodMonth, [unit]);
+    return {
+      ...base,
+      ...lifecycleView(unit),
+      canDecide: isHandler(unit, actor.id),
     };
   }
 
@@ -544,6 +681,8 @@ export class TeamReportAppraisalService {
       returnReason: sheet?.returnReason ?? '',
       updatedAt: sheet?.updatedAt ?? null,
       units: units.map((unit) => ({
+        _id: unit._id ? String(unit._id) : null,
+        ...lifecycleView(unit),
         departmentId: String(unit.departmentId),
         departmentName: unit.departmentName,
         shortName: short.get(String(unit.departmentId)) ?? unit.departmentName,
@@ -597,6 +736,7 @@ export class TeamReportAppraisalService {
     items: AdjustmentItemDocument[],
   ): TeamReportAppraisalUnit {
     return {
+      ...blankLifecycle(),
       _id: new Types.ObjectId(),
       departmentId: new Types.ObjectId(departmentId),
       departmentName: name,
@@ -700,18 +840,22 @@ export class TeamReportAppraisalService {
     return actor;
   }
 
+  /** Đơn vị đã trình tới tôi - tra bằng id đơn vị trong bảng. */
   private async requireIncoming(actor: Actor, id: string) {
     if (!Types.ObjectId.isValid(id)) {
-      throw new NotFoundException('Không tìm thấy bảng.');
+      throw new NotFoundException('Không tìm thấy đơn vị thẩm định.');
     }
-    const sheet = await this.sheetModel.findById(id);
-    if (!sheet || sheet.status === 'DRAFT') {
-      throw new NotFoundException('Không tìm thấy bảng.');
+    const sheet = await this.sheetModel.findOne({
+      'units._id': new Types.ObjectId(id),
+    });
+    const unit = sheet?.units.find((item) => String(item._id) === id);
+    if (!sheet || !unit || unit.status === 'DRAFT') {
+      throw new NotFoundException('Không tìm thấy đơn vị thẩm định.');
     }
-    if (!isApprover(sheet, actor.id)) {
-      throw new ForbiddenException('Bảng này không trình tới tài khoản bạn.');
+    if (!isApprover(unit, actor.id)) {
+      throw new ForbiddenException('Đơn vị này không trình tới tài khoản bạn.');
     }
-    return sheet;
+    return { sheet, unit };
   }
 
   private async requireActor(userId: string): Promise<Actor> {

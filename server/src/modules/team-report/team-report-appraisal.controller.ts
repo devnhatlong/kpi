@@ -17,6 +17,7 @@ import { JwtGuard } from '../auth/guards/jwt.guard';
 import {
   DecideTeamReportDayDto,
   SaveTeamReportAppraisalDto,
+  SendTeamReportAppraisalDto,
   TeamReportAdjustmentInboxQueryDto,
 } from './dto/team-report.dto';
 import { TeamReportAppraisalService } from './team-report-appraisal.service';
@@ -40,7 +41,7 @@ export class TeamReportAppraisalController {
     return { message: 'OK', data: await this.service.access(user.uid) };
   }
 
-  @ApiOperation({ summary: 'Bảng thẩm định trình tới tôi' })
+  @ApiOperation({ summary: 'Các đơn vị thẩm định trình tới tôi' })
   @Get('incoming')
   inbox(
     @CurrentUser() user: JwtPayloadUser,
@@ -49,13 +50,16 @@ export class TeamReportAppraisalController {
     return this.service.inbox(user.uid, query);
   }
 
-  @ApiOperation({ summary: 'Mở một bảng thẩm định trình tới tôi' })
+  @ApiOperation({
+    summary:
+      'Mở một đơn vị thẩm định trình tới tôi (:id = id đơn vị trong bảng)',
+  })
   @Get('incoming/:id')
   incomingDetail(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
     return this.service.incomingDetail(user.uid, id);
   }
 
-  @ApiOperation({ summary: 'Duyệt / trả lại bảng thẩm định' })
+  @ApiOperation({ summary: 'Duyệt / trả lại một đơn vị thẩm định' })
   @Post('incoming/:id/decide')
   decide(
     @CurrentUser() user: JwtPayloadUser,
@@ -84,12 +88,13 @@ export class TeamReportAppraisalController {
     return this.service.save(user.uid, periodMonth, dto);
   }
 
-  @ApiOperation({ summary: 'Trình bảng thẩm định theo luồng' })
+  @ApiOperation({ summary: 'Trình RIÊNG các đơn vị đã chọn theo luồng' })
   @Post(':periodMonth/send')
   send(
     @CurrentUser() user: JwtPayloadUser,
     @Param('periodMonth') periodMonth: string,
+    @Body() dto: SendTeamReportAppraisalDto,
   ) {
-    return this.service.send(user.uid, periodMonth);
+    return this.service.send(user.uid, periodMonth, dto);
   }
 }

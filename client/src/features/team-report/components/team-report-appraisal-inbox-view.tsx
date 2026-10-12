@@ -80,7 +80,8 @@ export function TeamReportAppraisalInboxView() {
                 Duyệt bảng thẩm định
               </h1>
               <p className="text-sm text-muted-foreground">
-                Phụ lục theo dõi, thẩm định tháng các đội trình lên.
+                Phụ lục theo dõi, thẩm định tháng - các đội trình lên từng đơn
+                vị, duyệt / trả lại riêng từng đơn vị.
               </p>
             </div>
           </div>
@@ -107,7 +108,7 @@ export function TeamReportAppraisalInboxView() {
             </div>
           ) : rows.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-              Không có bảng nào.
+              Không có đơn vị nào.
             </p>
           ) : (
             <ul className="divide-y">
@@ -119,14 +120,23 @@ export function TeamReportAppraisalInboxView() {
                     className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-left hover:bg-muted/50"
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block font-medium">
-                        {row.departmentName}
-                      </span>
+                      <span className="block font-medium">{row.unitName}</span>
                       <span className="text-xs text-muted-foreground">
-                        {monthLabel(row.periodMonth)} · {row.unitCount} đơn vị
+                        {monthLabel(row.periodMonth)} · thẩm định bởi{" "}
+                        {row.departmentName}
                         {row.sentAt
                           ? ` · trình lúc ${formatServerHm(row.sentAt)}`
                           : ""}
+                      </span>
+                    </span>
+                    <span className="text-right text-sm tabular-nums">
+                      <span className="block font-semibold">
+                        {row.finalScore === null
+                          ? "-"
+                          : formatScore(row.finalScore)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {row.proposedRating}
                       </span>
                     </span>
                     <Badge
@@ -185,12 +195,9 @@ function AppraisalIncomingDetail({
   };
 
   const decidable = data?.status === "PENDING" && data.canDecide;
-  const finals = (data?.units ?? []).map((unit) => appraisalTotals(unit));
-  const scored = finals.filter((item) => item.finalScore !== null);
-  const average = scored.length
-    ? scored.reduce((sum, item) => sum + (item.finalScore ?? 0), 0) /
-      scored.length
-    : null;
+  // Mở theo MỘT đơn vị - server trả bảng chỉ gồm đúng đơn vị đó.
+  const unit = data?.units[0] ?? null;
+  const finalScore = unit ? appraisalTotals(unit).finalScore : null;
 
   return (
     <div className="space-y-4">
@@ -220,7 +227,8 @@ function AppraisalIncomingDetail({
               <div className="min-w-0 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="font-display text-lg font-semibold">
-                    Thẩm định {monthLabel(data.periodMonth).toLowerCase()}
+                    {unit?.departmentName ?? "Đơn vị"} ·{" "}
+                    {monthLabel(data.periodMonth).toLowerCase()}
                   </h2>
                   <Badge
                     variant="secondary"
@@ -230,13 +238,14 @@ function AppraisalIncomingDetail({
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
+                  Thẩm định bởi{" "}
                   <strong className="font-medium text-foreground">
                     {data.departmentName}
-                  </strong>{" "}
-                  · {data.units.length} đơn vị
-                  {average !== null
-                    ? ` · bình quân sau thẩm định ${formatScore(average)}`
+                  </strong>
+                  {finalScore !== null
+                    ? ` · sau thẩm định ${formatScore(finalScore)}`
                     : ""}
+                  {unit?.proposedRating ? ` · ${unit.proposedRating}` : ""}
                   {data.sentAt
                     ? ` · trình lúc ${formatServerHm(data.sentAt)}`
                     : ""}
@@ -313,16 +322,17 @@ function AppraisalIncomingDetail({
           <DialogHeader>
             <DialogTitle>
               {dialog === "RETURN"
-                ? "Trả lại bảng thẩm định?"
-                : "Duyệt bảng thẩm định?"}
+                ? "Trả lại đơn vị thẩm định?"
+                : "Duyệt đơn vị thẩm định?"}
             </DialogTitle>
             <DialogDescription>
-              {data?.departmentName} -{" "}
-              {data ? monthLabel(data.periodMonth).toLowerCase() : ""}.
+              {unit?.departmentName} -{" "}
+              {data ? monthLabel(data.periodMonth).toLowerCase() : ""} (đội{" "}
+              {data?.departmentName}). Chỉ quyết riêng đơn vị này.
               {dialog === "APPROVE" &&
               data?.finalRecipientName &&
               data.stage !== "FINAL"
-                ? ` Đây là duyệt cấp 1 - duyệt xong bảng chuyển lên ${data.finalRecipientName} duyệt cuối.`
+                ? ` Đây là duyệt cấp 1 - duyệt xong chuyển lên ${data.finalRecipientName} duyệt cuối.`
                 : ""}
             </DialogDescription>
           </DialogHeader>

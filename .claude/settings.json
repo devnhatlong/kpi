@@ -589,7 +589,9 @@
       "PowerShell(npx tsc --noEmit -p . 2>&1)",
       "PowerShell(npx eslint src/features/team-report/components/team-report-adjustment-table.tsx 2>&1)",
       "PowerShell(npx eslint src/features/team-report/components/team-report-appraisal-view.tsx 2>&1)",
-      "PowerShell(npx eslint src/features/team-report/appraisal-excel.ts 2>&1)"
+      "PowerShell(npx eslint src/features/team-report/appraisal-excel.ts 2>&1)",
+      "PowerShell(npx eslint src/features/team-report/appraisal.ts src/features/team-report/components/appraisal-workspace.tsx src/features/team-report/components/team-report-appraisal-view.tsx src/features/team-report/components/team-report-appraisal-inbox-view.tsx 2>&1)",
+      "PowerShell(npx eslint --fix src/modules/team-report/team-report-appraisal.service.ts src/modules/team-report/team-report-appraisal.controller.ts 2>&1)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

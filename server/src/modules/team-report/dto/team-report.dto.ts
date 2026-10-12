@@ -910,6 +910,25 @@ export class TeamReportAppraisalUnitDto {
 }
 
 /** Lưu cả bảng thẩm định (bản nháp / bị trả lại). */
+/** Trình RIÊNG các đơn vị đã chọn trong bảng thẩm định. */
+export class SendTeamReportAppraisalDto {
+  @ApiProperty({ type: [String], description: 'Đơn vị trình lần này' })
+  @IsArray()
+  @ArrayMaxSize(300)
+  @IsMongoId({ each: true })
+  departmentIds!: string[];
+
+  @ApiProperty({ description: 'Lãnh đạo phụ trách' })
+  @IsString()
+  @MaxLength(120)
+  leaderName!: string;
+
+  @ApiProperty({ description: 'Chỉ huy đội' })
+  @IsString()
+  @MaxLength(120)
+  commanderName!: string;
+}
+
 export class SaveTeamReportAppraisalDto {
   @ApiPropertyOptional({ description: 'Phiên bản đang sửa - chống ghi đè' })
   @IsOptional()

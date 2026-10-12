@@ -27,7 +27,34 @@ export type AppraisalPenalty = {
   score: number | null;
 };
 
-export type AppraisalUnit = {
+/**
+ * Vòng đời trình / duyệt của MỘT đơn vị - mỗi đơn vị trình và duyệt riêng.
+ * Đơn vị vừa thêm trên màn (chưa lưu) chưa có, coi như nháp.
+ */
+export type AppraisalUnitLifecycle = {
+  /** Id đơn vị trong bảng - hộp đến mở theo id này. null = chưa lưu. */
+  _id?: string | null;
+  status?: TeamReportDayStatus;
+  stage?: "FIRST" | "FINAL";
+  recipientName?: string;
+  finalRecipientName?: string;
+  firstApproval?: TeamReportFirstApproval | null;
+  sentByName?: string;
+  sentAt?: string | null;
+  decidedByName?: string;
+  decidedAt?: string | null;
+  returnReason?: string;
+  /** Người ký chụp lúc trình đơn vị này. */
+  leaderName?: string;
+  commanderName?: string;
+};
+
+/** Đơn vị còn sửa / trình được: chưa trình hoặc bị trả lại. */
+export function unitEditable(unit: AppraisalUnitLifecycle) {
+  return !unit.status || unit.status === "DRAFT" || unit.status === "RETURNED";
+}
+
+export type AppraisalUnit = AppraisalUnitLifecycle & {
   departmentId: string;
   departmentName: string;
   /**
@@ -96,13 +123,18 @@ export type AppraisalComposerData = AppraisalSheet & {
 
 export type AppraisalIncomingData = AppraisalSheet & { canDecide: boolean };
 
+/** Một dòng hộp đến = MỘT ĐƠN VỊ đã trình (`_id` là id đơn vị trong bảng). */
 export type AppraisalInboxRow = {
   _id: string;
   periodMonth: string;
   status: TeamReportDayStatus;
   stage: "FIRST" | "FINAL";
+  /** Đội thẩm định (người lập). */
   departmentName: string;
-  unitCount: number;
+  /** Đơn vị được thẩm định. */
+  unitName: string;
+  proposedRating: string;
+  finalScore: number | null;
   recipientName: string;
   finalRecipientName: string;
   sentByName: string;
@@ -219,10 +251,15 @@ export function saveAppraisal(
   );
 }
 
-export function sendAppraisal(month: string) {
+/** Trình RIÊNG các đơn vị đã chọn (đã lưu, đủ tự chấm + xếp loại). */
+export function sendAppraisal(
+  month: string,
+  input: { departmentIds: string[]; leaderName: string; commanderName: string },
+) {
   return unwrapData(
     api.post<ApiResponse<AppraisalSheet>>(
       `/team-report/appraisals/${month}/send`,
+      input,
     ),
   );
 }

@@ -31,6 +31,7 @@ import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
   appraisalTotals,
   unitComplete,
+  unitEditable,
   type AppraisalComposerData,
   type AppraisalCriterion,
   type AppraisalUnit,
@@ -43,8 +44,12 @@ import { getApiErrorMessage } from "@/lib/api-client";
 import {
   TEAM_REPORT_RATINGS,
   formatScore,
+  stagedStatusLabel,
   type TeamReportRating,
 } from "@/features/team-report/types";
+import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
+import { Badge } from "@/components/ui/badge";
+import { formatServerHm } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
 type Filter = "ALL" | "TODO" | "ADJUSTED";
@@ -376,6 +381,7 @@ export function AppraisalWorkspace({
                         <span className="line-clamp-2 text-sm font-medium">
                           {unit.departmentName}
                         </span>
+                        <UnitStatusBadge unit={unit} className="mt-1" />
                         <span className="mt-0.5 block text-xs text-muted-foreground tabular-nums">
                           {fmt(unit.selfScore)}
                           {totals.bonusTotal ? (
@@ -411,13 +417,16 @@ export function AppraisalWorkspace({
               key={selected.unit.departmentId}
               unit={selected.unit}
               criteria={criteria}
-              editable={editable}
+              /* Từng đơn vị khoá riêng: đã trình (chờ / đã duyệt) thì chỉ đọc,
+                 các đơn vị khác trong bảng vẫn sửa bình thường. */
+              editable={editable && unitEditable(selected.unit)}
               hint={hints[selected.unit.departmentId]}
               onChange={(next) =>
                 patchUnit(selected.unit.departmentId, next)
               }
               onRemove={
-                editable
+                // Đã trình một lần thì không bỏ khỏi bảng được nữa.
+                editable && !selected.unit.sentAt
                   ? () => removeUnit(selected.unit.departmentId)
                   : undefined
               }
@@ -446,6 +455,33 @@ export function AppraisalWorkspace({
         </div>
       )}
     </div>
+  );
+}
+
+/** Nhãn trạng thái của một đơn vị - nháp chưa trình thì không bày cho đỡ rối. */
+export function UnitStatusBadge({
+  unit,
+  className,
+}: {
+  unit: AppraisalUnit;
+  className?: string;
+}) {
+  if (!unit.status || unit.status === "DRAFT") return null;
+  return (
+    <Badge
+      variant="secondary"
+      className={cn(
+        "whitespace-nowrap font-normal",
+        DAY_STATUS_CLASS[unit.status],
+        className,
+      )}
+    >
+      {stagedStatusLabel({
+        status: unit.status,
+        stage: unit.stage ?? "FIRST",
+        finalRecipientName: unit.finalRecipientName ?? "",
+      })}
+    </Badge>
   );
 }
 
@@ -855,9 +891,12 @@ function UnitEditor({
     <div className="min-w-0 space-y-5 rounded-lg border p-4">
       {/* -------------------------------------------------------- đầu khối */}
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <h3 className="min-w-0 flex-1 text-pretty break-words font-display text-base font-semibold">
-          {unit.departmentName}
-        </h3>
+        <div className="min-w-0 flex-1 space-y-1">
+          <h3 className="text-pretty break-words font-display text-base font-semibold">
+            {unit.departmentName}
+          </h3>
+          <UnitStatusBadge unit={unit} />
+        </div>
         <div className="flex items-center gap-1">
           {positionLabel ? (
             <span className="mr-1 text-xs text-muted-foreground tabular-nums">
@@ -914,6 +953,25 @@ function UnitEditor({
           ) : null}
         </div>
       </div>
+
+      {/* Đơn vị này đang ở đâu - nói ngay đầu khối, khỏi bấm thử ô khoá. */}
+      {unit.status === "PENDING" || unit.status === "APPROVED" ? (
+        <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+          {unit.status === "PENDING"
+            ? `Đã trình ${unit.recipientName || "cấp trên"}${
+                unit.sentAt ? ` lúc ${formatServerHm(unit.sentAt)}` : ""
+              } - đang chờ duyệt, đơn vị này khoá cho tới khi được duyệt hoặc trả lại.`
+            : `${unit.decidedByName || "Cấp trên"} đã duyệt${
+                unit.decidedAt ? ` lúc ${formatServerHm(unit.decidedAt)}` : ""
+              }. Đơn vị này đã chốt.`}
+        </p>
+      ) : unit.status === "RETURNED" ? (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+          <strong className="font-semibold">Bị trả lại:</strong>{" "}
+          {unit.returnReason || "không nêu lý do"} - sửa, lưu rồi trình lại
+          đơn vị này.
+        </p>
+      ) : null}
 
       {/* ---------------------------------------------- dải công thức điểm */}
       <div className="grid grid-cols-2 items-center gap-2 sm:grid-cols-4">

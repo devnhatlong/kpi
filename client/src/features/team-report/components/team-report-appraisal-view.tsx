@@ -9,7 +9,6 @@ import {
   Loader2,
   Save,
   Send,
-  TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,9 +29,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   appraisalKeys,
   fetchAppraisal,
+  appraisalTotals,
   saveAppraisal,
   sendAppraisal,
   unitComplete,
+  unitEditable,
   type AppraisalUnit,
 } from "@/features/team-report/appraisal";
 import { AppraisalWorkspace } from "@/features/team-report/components/appraisal-workspace";
@@ -40,9 +41,12 @@ import {
   SummaryRecipientFields,
   hasInactiveUnit,
 } from "@/features/team-report/components/summary-recipient-fields";
-import { ApprovalChain } from "@/features/team-report/components/participants-block";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
-import { stagedStatusLabel } from "@/features/team-report/types";
+import {
+  formatScore,
+  type TeamReportDayStatus,
+} from "@/features/team-report/types";
 import { useServerTime } from "@/hooks/use-server-time";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { formatServerHm, serverYmd } from "@/lib/server-time";
@@ -132,42 +136,55 @@ export function TeamReportAppraisalView() {
     }
   };
 
+  /*
+    Trình RIÊNG từng đơn vị. Đơn vị trình được = còn sửa được (chưa trình / bị
+    trả lại) VÀ đủ ô bắt buộc (tự chấm + xếp loại). Đơn vị đã trình nằm yên,
+    không cản các đơn vị khác.
+  */
+  const pendingUnits = units.filter(unitEditable);
+  const readyUnits = pendingUnits.filter(unitComplete);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+
   const openSend = () => {
     setLeaderName(data?.leaderName ?? "");
     setCommanderName(data?.commanderName ?? "");
     setNameError(false);
+    // Mặc định chọn hết đơn vị đã đủ - phần lớn lượt trình là "trình hết".
+    setPicked(new Set(readyUnits.map((unit) => unit.departmentId)));
     setSendOpen(true);
   };
 
-  const incomplete = units.filter((unit) => !unitComplete(unit));
-
   /*
-    Trình chỉ mở khi bảng ĐÃ LƯU và đủ ô bắt buộc (tự chấm + xếp loại của mọi
-    đơn vị). Trước đây chỉ chặn trong hộp trình - bấm được nút rồi mới biết
-    thiếu, mà bản trình đi là bản đang lưu chứ không phải bản trên màn.
-    Nói rõ lý do ngay cạnh nút: nút xám không lời là người ta bấm thử mãi.
+    Nút trình chỉ mở khi bảng ĐÃ LƯU và có ít nhất một đơn vị đủ để trình -
+    bản trình đi là bản đang lưu chứ không phải bản trên màn. Nói rõ lý do
+    ngay cạnh nút: nút xám không lời là người ta bấm thử mãi.
   */
   const sendBlocker = !units.length
     ? "Chưa có đơn vị nào để trình."
-    : incomplete.length
-      ? `Còn ${incomplete.length} đơn vị chưa đủ tự chấm / xếp loại.`
-      : dirty || !data?._id
-        ? "Lưu nháp trước rồi mới trình."
-        : null;
+    : dirty || !data?._id
+      ? "Lưu nháp trước rồi mới trình."
+      : !pendingUnits.length
+        ? null
+        : !readyUnits.length
+          ? `Chưa đơn vị nào đủ tự chấm / xếp loại để trình.`
+          : null;
 
   const send = async () => {
     if (!leaderName.trim() || !commanderName.trim()) {
       setNameError(true);
       return;
     }
+    if (!picked.size) return;
     setSaving(true);
     try {
-      // Lưu luôn bản đang sửa + hai tên ký, rồi mới trình.
-      await persist({ leader: leaderName.trim(), commander: commanderName.trim() });
-      await sendAppraisal(month);
+      await sendAppraisal(month, {
+        departmentIds: [...picked],
+        leaderName: leaderName.trim(),
+        commanderName: commanderName.trim(),
+      });
       await mutate();
       setSendOpen(false);
-      toast.success("Đã trình bảng thẩm định.");
+      toast.success(`Đã trình ${picked.size} đơn vị.`);
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Không trình được."));
     } finally {
@@ -175,7 +192,17 @@ export function TeamReportAppraisalView() {
     }
   };
 
-  const status = data?._id ? data.status : null;
+  /** Số đơn vị theo trạng thái - thay cho một trạng thái chung của cả bảng. */
+  const counts = units.reduce(
+    (acc, unit) => {
+      acc[unit.status ?? "DRAFT"] += 1;
+      return acc;
+    },
+    { DRAFT: 0, PENDING: 0, APPROVED: 0, RETURNED: 0 } as Record<
+      TeamReportDayStatus,
+      number
+    >,
+  );
   const routeUnits = data?.route.units ?? null;
   const leadName =
     routeUnits?.find((unit) => unit.role === "LEAD")?.fullName ?? "";
@@ -244,19 +271,33 @@ export function TeamReportAppraisalView() {
           <CardContent className="space-y-4 py-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    "font-normal",
-                    status ? DAY_STATUS_CLASS[status] : "",
-                  )}
-                >
-                  {status
-                    ? status === "DRAFT"
-                      ? "Nháp"
-                      : stagedStatusLabel(data)
-                    : "Chưa lưu"}
-                </Badge>
+                {!data._id ? (
+                  <Badge variant="secondary" className="font-normal">
+                    Chưa lưu
+                  </Badge>
+                ) : (
+                  (
+                    [
+                      ["DRAFT", "Chưa trình"],
+                      ["RETURNED", "Bị trả lại"],
+                      ["PENDING", "Chờ duyệt"],
+                      ["APPROVED", "Đã duyệt"],
+                    ] as const
+                  )
+                    .filter(([key]) => counts[key] > 0)
+                    .map(([key, label]) => (
+                      <Badge
+                        key={key}
+                        variant="secondary"
+                        className={cn(
+                          "font-normal tabular-nums",
+                          key === "DRAFT" ? "" : DAY_STATUS_CLASS[key],
+                        )}
+                      >
+                        {label} {counts[key]}
+                      </Badge>
+                    ))
+                )}
                 {data.updatedAt && !dirty ? (
                   <span className="text-xs text-muted-foreground">
                     Lưu lần cuối {formatServerHm(data.updatedAt)}
@@ -316,43 +357,25 @@ export function TeamReportAppraisalView() {
                   ) : null}
                   <Button
                     type="button"
-                    disabled={saving || !!sendBlocker}
+                    disabled={saving || !!sendBlocker || !readyUnits.length}
                     onClick={openSend}
                   >
                     <Send className="size-4" aria-hidden="true" />
-                    {status === "RETURNED" ? "Trình lại" : "Trình duyệt"}
+                    Trình duyệt
+                    {!sendBlocker && readyUnits.length
+                      ? ` (${readyUnits.length})`
+                      : ""}
                   </Button>
                 </div>
               ) : null}
             </div>
 
-            {status && status !== "DRAFT" ? (
-              <ApprovalChain
-                status={data.status}
-                leadName={data.recipientName}
-                finalName={data.finalRecipientName}
-                stage={data.stage}
-                firstApproval={data.firstApproval}
-              />
-            ) : null}
-            {status === "PENDING" || status === "APPROVED" ? (
-              <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                {status === "PENDING"
-                  ? `Đã trình ${data.recipientName}${
-                      data.sentAt ? ` lúc ${formatServerHm(data.sentAt)}` : ""
-                    } - đang chờ duyệt, bảng khoá cho tới khi được duyệt hoặc trả lại.`
-                  : `${data.decidedByName || "Cấp trên"} đã duyệt${
-                      data.decidedAt
-                        ? ` lúc ${formatServerHm(data.decidedAt)}`
-                        : ""
-                    }. Bảng tháng này đã chốt.`}
-              </p>
-            ) : null}
-            {status === "RETURNED" ? (
+            {counts.RETURNED > 0 ? (
               <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-                <strong className="font-semibold">Bị trả lại:</strong>{" "}
-                {data.returnReason || "không nêu lý do"} - sửa rồi bấm Trình
-                lại.
+                <strong className="font-semibold">
+                  {counts.RETURNED} đơn vị bị trả lại
+                </strong>{" "}
+                - mở từng đơn vị để xem lý do, sửa, lưu rồi trình lại.
               </p>
             ) : null}
 
@@ -369,11 +392,6 @@ export function TeamReportAppraisalView() {
                 teamName: data.departmentName,
                 leaderName: data.leaderName,
                 commanderName: data.commanderName,
-                statusLabel: status
-                  ? status === "DRAFT"
-                    ? "Nháp"
-                    : stagedStatusLabel(data)
-                  : "Chưa lưu",
               }}
             />
 
@@ -402,31 +420,90 @@ export function TeamReportAppraisalView() {
       <Dialog open={sendOpen} onOpenChange={setSendOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>Trình bảng thẩm định {monthLabel(month).toLowerCase()}</DialogTitle>
+            <DialogTitle>
+              Trình thẩm định {monthLabel(month).toLowerCase()}
+            </DialogTitle>
             <DialogDescription>
-              {units.length} đơn vị. Bảng khoá lại cho tới khi được duyệt hoặc
-              trả lại.
+              Mỗi đơn vị được duyệt / trả lại riêng. Đơn vị đã trình khoá lại
+              cho tới khi được duyệt hoặc trả lại; các đơn vị khác vẫn sửa
+              được.
             </DialogDescription>
           </DialogHeader>
 
-          {incomplete.length ? (
-            <div
-              role="alert"
-              className="space-y-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
-            >
-              <p className="flex items-center gap-1.5 font-medium">
-                <TriangleAlert className="size-4" aria-hidden="true" />
-                {incomplete.length} đơn vị chưa đủ tự chấm / xếp loại
-              </p>
-              <p className="text-xs">
-                {incomplete
-                  .slice(0, 5)
-                  .map((unit) => unit.departmentName)
-                  .join("; ")}
-                {incomplete.length > 5 ? `; và ${incomplete.length - 5} đơn vị khác` : ""}
-              </p>
+          {/* Chọn đơn vị trình lần này - chỉ bày đơn vị chưa trình / bị trả
+              lại; đơn vị chưa đủ ô thì bày xám kèm lý do, không chọn được. */}
+          <fieldset className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <legend className="text-sm font-medium">
+                Đơn vị trình lần này{" "}
+                <span className="font-normal text-muted-foreground tabular-nums">
+                  ({picked.size}/{readyUnits.length})
+                </span>
+              </legend>
+              {readyUnits.length > 1 ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7"
+                  onClick={() =>
+                    setPicked(
+                      picked.size === readyUnits.length
+                        ? new Set()
+                        : new Set(readyUnits.map((unit) => unit.departmentId)),
+                    )
+                  }
+                >
+                  {picked.size === readyUnits.length ? "Bỏ chọn hết" : "Chọn hết"}
+                </Button>
+              ) : null}
             </div>
-          ) : null}
+            <ul className="max-h-64 divide-y overflow-y-auto rounded-md border">
+              {pendingUnits.map((unit) => {
+                const ready = unitComplete(unit);
+                const checked = picked.has(unit.departmentId);
+                const inputId = `send-unit-${unit.departmentId}`;
+                return (
+                  <li
+                    key={unit.departmentId}
+                    className={cn(
+                      "flex items-start gap-2.5 px-3 py-2",
+                      !ready && "opacity-60",
+                    )}
+                  >
+                    <Checkbox
+                      id={inputId}
+                      checked={checked}
+                      disabled={!ready}
+                      className="mt-0.5"
+                      onCheckedChange={(next) => {
+                        const copy = new Set(picked);
+                        if (next) copy.add(unit.departmentId);
+                        else copy.delete(unit.departmentId);
+                        setPicked(copy);
+                      }}
+                    />
+                    <label
+                      htmlFor={inputId}
+                      className="min-w-0 flex-1 cursor-pointer text-sm"
+                    >
+                      <span className="block font-medium">
+                        {unit.departmentName}
+                      </span>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {ready
+                          ? `Sau thẩm định ${formatScore(
+                              appraisalTotals(unit).finalScore ?? 0,
+                            )} · ${unit.proposedRating}`
+                          : "Chưa đủ tự chấm / xếp loại - chưa trình được"}
+                        {unit.status === "RETURNED" ? " · trình lại" : ""}
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </fieldset>
 
           {routeUnits ? (
             <SummaryRecipientFields
@@ -491,7 +568,7 @@ export function TeamReportAppraisalView() {
               type="button"
               disabled={
                 saving ||
-                incomplete.length > 0 ||
+                !picked.size ||
                 !routeUnits ||
                 hasInactiveUnit(routeUnits, data?.route.finalReviewer)
               }
@@ -505,7 +582,7 @@ export function TeamReportAppraisalView() {
               ) : (
                 <Send className="size-4" aria-hidden="true" />
               )}
-              Trình duyệt
+              Trình {picked.size} đơn vị
             </Button>
           </DialogFooter>
         </DialogContent>
