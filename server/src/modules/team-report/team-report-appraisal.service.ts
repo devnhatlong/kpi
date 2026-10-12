@@ -32,6 +32,10 @@ import {
   TeamReportSummary,
   TeamReportSummaryDocument,
 } from './schemas/team-report-summary.schema';
+import {
+  TeamReportCommendation,
+  TeamReportCommendationDocument,
+} from './schemas/team-report-commendation.schema';
 import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
 import { departmentLabels } from './team-report.department-label';
 import {
@@ -169,8 +173,85 @@ export class TeamReportAppraisalService {
     private readonly userModel: Model<UserDocument>,
     @InjectModel(Department.name)
     private readonly departmentModel: Model<DepartmentDocument>,
+    @InjectModel(TeamReportCommendation.name)
+    private readonly commendationModel: Model<TeamReportCommendationDocument>,
     private readonly routing: TeamReportAdjustmentRoutingService,
   ) {}
+
+  /**
+   * SOI CHIẾU bảng biểu dương, phê bình các phòng đã gửi trong CÙNG THÁNG: mỗi
+   * đơn vị được nhắc tới ở dòng nào - để người thẩm định đưa nhanh vào điểm
+   * cộng / trừ thay vì gõ lại.
+   *
+   * Dòng biểu dương mang sẵn nhóm nội dung = tiêu chí cộng điểm (cùng danh mục
+   * Điểm cộng I) nên rơi đúng tiêu chí. Dòng phê bình không có tiêu chí - người
+   * thẩm định tự chọn tiêu chí khi đưa vào điểm trừ.
+   *
+   * Lấy bản đã gửi (chờ duyệt / đã duyệt / bị trả lại), không lấy nháp - nháp
+   * phòng còn đang sửa. Trạng thái đi kèm để người thẩm định cân nhắc.
+   */
+  private async commendationHints(
+    periodMonth: string,
+    departmentIds: Array<Types.ObjectId | string>,
+  ) {
+    type Hint = {
+      rowId: string;
+      itemId: string | null;
+      itemName: string;
+      content: string;
+      evidence: string;
+      /** Ghi chú của phòng - thường là mức đề xuất ("đề nghị trừ 1 điểm"). */
+      note: string;
+      fromName: string;
+      status: string;
+    };
+    const result: Record<string, { praises: Hint[]; criticisms: Hint[] }> = {};
+    const ids = [...new Set(departmentIds.map(String))];
+    if (!ids.length) return result;
+    const objectIds = ids.map((id) => new Types.ObjectId(id));
+    const sheets = await this.commendationModel
+      .find({
+        periodMonth,
+        status: { $ne: 'DRAFT' },
+        $or: [
+          { 'praises.departmentIds': { $in: objectIds } },
+          { 'criticisms.departmentIds': { $in: objectIds } },
+        ],
+      })
+      .sort({ sentAt: 1 });
+    const labels = await departmentLabels(
+      this.departmentModel,
+      sheets.map((sheet) => sheet.departmentId),
+    );
+    const wanted = new Set(ids);
+    for (const sheet of sheets) {
+      const fromName = labels.get(String(sheet.departmentId)) ?? '';
+      const push = (
+        rows: typeof sheet.praises,
+        key: 'praises' | 'criticisms',
+      ) => {
+        for (const row of rows) {
+          for (const id of row.departmentIds.map(String)) {
+            if (!wanted.has(id)) continue;
+            result[id] ??= { praises: [], criticisms: [] };
+            result[id][key].push({
+              rowId: String(row._id),
+              itemId: row.itemId ? String(row.itemId) : null,
+              itemName: row.itemName,
+              content: row.content,
+              evidence: row.evidence,
+              note: row.note ?? '',
+              fromName,
+              status: sheet.status,
+            });
+          }
+        }
+      };
+      push(sheet.praises, 'praises');
+      push(sheet.criticisms, 'criticisms');
+    }
+    return result;
+  }
 
   /** Cổng menu: được lập bảng / được nhận bảng. */
   async access(userId: string) {
@@ -262,6 +343,11 @@ export class TeamReportAppraisalService {
               .map((unit) => unit.id)
           : [],
         selfScoreHints: hints,
+        /** Biểu dương / phê bình cùng tháng nhắc tới từng đơn vị - để soi chiếu. */
+        commendationHints: await this.commendationHints(periodMonth, [
+          ...units.map((unit) => unit.departmentId),
+          ...approved.map((unit) => unit.id),
+        ]),
         /* Bảng luôn mở để thêm / sửa đơn vị chưa trình - từng đơn vị khoá
            riêng theo trạng thái của nó (`units[].status`). */
         canEdit: true,

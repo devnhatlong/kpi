@@ -386,6 +386,7 @@ export function TeamReportAppraisalView() {
               hints={data.selfScoreHints}
               suggestedUnits={data.suggestedUnits}
               newlyApprovedIds={data.newlyApprovedIds}
+              commendations={data.commendationHints}
               onChange={setDraft}
               exportInfo={{
                 periodMonth: month,

@@ -30,8 +30,11 @@ import { SearchableSelect } from "@/components/common/searchable-select";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
   appraisalTotals,
+  hintText,
   unitComplete,
   unitEditable,
+  type AppraisalCommendationHint,
+  type AppraisalCommendationHints,
   type AppraisalComposerData,
   type AppraisalCriterion,
   type AppraisalUnit,
@@ -79,6 +82,7 @@ export function AppraisalWorkspace({
   suggestedUnits = [],
   newlyApprovedIds = [],
   exportInfo,
+  commendations = {},
 }: {
   units: AppraisalUnit[];
   criteria: AppraisalCriterion[];
@@ -89,6 +93,8 @@ export function AppraisalWorkspace({
   newlyApprovedIds?: string[];
   /** Có thì bày nút xuất Excel (tổng hợp + riêng từng đơn vị). */
   exportInfo?: Omit<AppraisalExportInput, "units" | "criteria">;
+  /** Biểu dương / phê bình các phòng gửi cùng tháng, theo id đơn vị. */
+  commendations?: AppraisalCommendationHints;
 }) {
   const [mode, setMode] = useState<Mode>("UNIT");
   const [exporting, setExporting] = useState(false);
@@ -382,6 +388,9 @@ export function AppraisalWorkspace({
                           {unit.departmentName}
                         </span>
                         <UnitStatusBadge unit={unit} className="mt-1" />
+                        <CommendationCount
+                          hint={commendations[unit.departmentId]}
+                        />
                         <span className="mt-0.5 block text-xs text-muted-foreground tabular-nums">
                           {fmt(unit.selfScore)}
                           {totals.bonusTotal ? (
@@ -421,6 +430,7 @@ export function AppraisalWorkspace({
                  các đơn vị khác trong bảng vẫn sửa bình thường. */
               editable={editable && unitEditable(selected.unit)}
               hint={hints[selected.unit.departmentId]}
+              commendation={commendations[selected.unit.departmentId]}
               onChange={(next) =>
                 patchUnit(selected.unit.departmentId, next)
               }
@@ -455,6 +465,66 @@ export function AppraisalWorkspace({
         </div>
       )}
     </div>
+  );
+}
+
+/** Một dòng gợi ý: phòng nào đề xuất, nội dung, căn cứ, trạng thái bảng. */
+function HintText({
+  hint,
+  label,
+}: {
+  hint: AppraisalCommendationHint;
+  label?: string;
+}) {
+  return (
+    <span className="min-w-0 flex-1 text-xs">
+      <span className="text-muted-foreground">
+        {label ? `${label} · ` : ""}
+        <strong className="font-medium text-foreground">{hint.fromName}</strong>
+        {hint.status !== "APPROVED" ? (
+          <span className="ml-1 text-amber-700 dark:text-amber-400">
+            ({hint.status === "RETURNED" ? "bị trả lại" : "chưa duyệt"})
+          </span>
+        ) : null}
+        :{" "}
+      </span>
+      <span className="whitespace-pre-wrap break-words">{hint.content}</span>
+      {hint.evidence ? (
+        <span className="block text-muted-foreground">
+          Căn cứ: {hint.evidence}
+        </span>
+      ) : null}
+      {/* Ghi chú thường là mức phòng đề xuất ("đề nghị trừ 1 điểm") - nổi bật
+          hơn căn cứ vì đó là con số người thẩm định cân nhắc để chấm. */}
+      {hint.note?.trim() ? (
+        <span className="mt-0.5 block font-medium text-foreground">
+          Ghi chú: {hint.note}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/** "2 biểu dương · 1 phê bình" ở danh sách - biết đơn vị nào có gì để soi. */
+function CommendationCount({
+  hint,
+}: {
+  hint?: AppraisalCommendationHints[string];
+}) {
+  if (!hint || (!hint.praises.length && !hint.criticisms.length)) return null;
+  return (
+    <span className="mt-1 flex flex-wrap gap-x-2 text-xs">
+      {hint.praises.length ? (
+        <span className="text-emerald-700 dark:text-emerald-400">
+          {hint.praises.length} biểu dương
+        </span>
+      ) : null}
+      {hint.criticisms.length ? (
+        <span className="text-rose-700 dark:text-rose-400">
+          {hint.criticisms.length} phê bình
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -791,11 +861,14 @@ function UnitEditor({
   onNext,
   positionLabel,
   onExport,
+  commendation,
 }: {
   unit: AppraisalUnit;
   criteria: AppraisalCriterion[];
   editable: boolean;
   hint?: { score: number; maxScore: number; title: string };
+  /** Biểu dương / phê bình cùng tháng nhắc tới đơn vị này. */
+  commendation?: AppraisalCommendationHints[string];
   onChange: (next: AppraisalUnit) => void;
   onRemove?: () => void;
   onPrev?: () => void;
@@ -880,6 +953,76 @@ function UnitEditor({
           : unit.penalties.map((penalty, i) =>
               i === index ? { ...penalty, ...patch } : penalty,
             ),
+    });
+
+  /* ---------------------------------------- soi chiếu biểu dương, phê bình */
+
+  /** Đã đưa vào rồi: có dòng mang đúng nội dung đó (so cả chữ, bỏ khoảng). */
+  const usedText = (text: string, rows: string[]) => {
+    const needle = text.trim();
+    return !!needle && rows.some((row) => row.includes(needle));
+  };
+  const bonusUsed = (h: AppraisalCommendationHint) =>
+    usedText(
+      h.content,
+      unit.bonuses.map((bonus) => bonus.evidence),
+    );
+  const penaltyUsed = (h: AppraisalCommendationHint) =>
+    usedText(
+      h.content,
+      unit.penalties.map((penalty) => penalty.content),
+    );
+
+  /**
+   * Đưa một dòng biểu dương vào điểm cộng ĐÚNG tiêu chí của nó. Tiêu chí còn
+   * dòng trống (chưa điểm, chưa minh chứng) thì điền vào đó, không đẻ thêm
+   * dòng rỗng. Điểm để trống - người thẩm định tự chấm.
+   */
+  const addBonusFromHint = (
+    h: AppraisalCommendationHint,
+    group: { id: string; name: string; maxScore: number | null },
+  ) => {
+    const text = hintText(h);
+    const empty = unit.bonuses.findIndex(
+      (bonus) =>
+        bonus.itemId === group.id &&
+        bonus.score === null &&
+        !bonus.evidence.trim(),
+    );
+    set({
+      bonuses:
+        empty >= 0
+          ? unit.bonuses.map((bonus, i) =>
+              i === empty ? { ...bonus, evidence: text } : bonus,
+            )
+          : [
+              ...unit.bonuses,
+              {
+                itemId: group.id,
+                itemName: group.name,
+                maxScore: group.maxScore,
+                score: null,
+                evidence: text,
+              },
+            ],
+    });
+  };
+
+  /** Đưa một dòng phê bình vào điểm trừ ở tiêu chí người thẩm định chọn. */
+  const addPenaltyFromHint = (
+    h: AppraisalCommendationHint,
+    group: { id: string; name: string },
+  ) =>
+    set({
+      penalties: [
+        ...unit.penalties,
+        {
+          itemId: group.id,
+          itemName: group.name,
+          content: hintText(h),
+          score: null,
+        },
+      ],
     });
 
   const removeBonus = (index: number) =>
@@ -1046,6 +1189,59 @@ function UnitEditor({
         </div>
       </section>
 
+      {/* ----------------------------------- soi chiếu: bị đề xuất phê bình */}
+      {commendation?.criticisms.length ? (
+        <section className="space-y-2 rounded-md border border-rose-200 bg-rose-50/40 p-3 dark:border-rose-900/60 dark:bg-rose-950/10">
+          <div>
+            <h4 className="font-display text-sm font-semibold text-rose-900 dark:text-rose-200">
+              Bị đề xuất phê bình, chấn chỉnh ({commendation.criticisms.length})
+            </h4>
+            <p className="text-xs text-muted-foreground">
+              Từ bảng biểu dương, phê bình các phòng gửi tháng này. Phê bình
+              không gắn tiêu chí - chọn tiêu chí để đưa vào điểm trừ, rồi nhập
+              điểm.
+            </p>
+          </div>
+          <ul className="space-y-2">
+            {commendation.criticisms.map((h) => {
+              const used = penaltyUsed(h);
+              return (
+                <li
+                  key={h.rowId}
+                  className="flex flex-wrap items-start justify-between gap-2 rounded-md border bg-background px-3 py-2"
+                >
+                  <HintText hint={h} />
+                  {used ? (
+                    <span className="shrink-0 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                      Đã đưa vào điểm trừ
+                    </span>
+                  ) : editable ? (
+                    <Select
+                      value=""
+                      onValueChange={(id) => {
+                        const group = groups.find((item) => item.id === id);
+                        if (group) addPenaltyFromHint(h, group);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-60 shrink-0 bg-background text-xs">
+                        <SelectValue placeholder="Đưa vào điểm trừ ở tiêu chí…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {groups.map((group) => (
+                          <SelectItem key={group.id} value={group.id}>
+                            {group.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
       {/* ------------------------------------------- cộng / trừ theo tiêu chí */}
       <section className="space-y-2">
         <div>
@@ -1149,6 +1345,37 @@ function UnitEditor({
                     <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
                       Điểm cộng
                     </p>
+                    {/* Soi chiếu: các phòng đề xuất biểu dương đơn vị này ở
+                        đúng nhóm nội dung = tiêu chí này. */}
+                    {(commendation?.praises ?? [])
+                      .filter((h) => h.itemId === group.id)
+                      .map((h) => {
+                        const used = bonusUsed(h);
+                        return (
+                          <div
+                            key={h.rowId}
+                            className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-dashed border-emerald-300 bg-background px-2.5 py-2 dark:border-emerald-900"
+                          >
+                            <HintText hint={h} label="Đề xuất biểu dương" />
+                            {used ? (
+                              <span className="shrink-0 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                                Đã đưa vào
+                              </span>
+                            ) : editable ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 shrink-0 bg-background"
+                                onClick={() => addBonusFromHint(h, group)}
+                              >
+                                <Plus className="size-3.5" aria-hidden="true" />
+                                Đưa vào điểm cộng
+                              </Button>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     {shownBonuses.length === 0 ? (
                       <p className="text-xs italic text-muted-foreground">
                         Không cộng.

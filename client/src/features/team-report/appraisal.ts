@@ -102,7 +102,38 @@ export type AppraisalSheet = {
   units: AppraisalUnit[];
 };
 
+/**
+ * Một dòng biểu dương / phê bình của bảng các phòng gửi cùng tháng có nhắc tới
+ * đơn vị đang thẩm định - để soi chiếu và đưa nhanh vào điểm cộng / trừ.
+ */
+export type AppraisalCommendationHint = {
+  rowId: string;
+  /** Biểu dương: nhóm nội dung = tiêu chí cộng điểm. Phê bình: null. */
+  itemId: string | null;
+  itemName: string;
+  content: string;
+  evidence: string;
+  /** Ghi chú của phòng - thường là mức đề xuất ("đề nghị trừ 1 điểm"). */
+  note: string;
+  /** Phòng đã gửi đề xuất. */
+  fromName: string;
+  status: TeamReportDayStatus;
+};
+
+export type AppraisalCommendationHints = Record<
+  string,
+  { praises: AppraisalCommendationHint[]; criticisms: AppraisalCommendationHint[] }
+>;
+
+/** Chữ đưa vào ô minh chứng / nội dung trừ: nội dung kèm căn cứ trong ngoặc. */
+export function hintText(hint: AppraisalCommendationHint) {
+  const evidence = hint.evidence.trim();
+  return evidence ? `${hint.content.trim()} (${evidence})` : hint.content.trim();
+}
+
 export type AppraisalComposerData = AppraisalSheet & {
+  /** Biểu dương / phê bình cùng tháng theo id đơn vị. */
+  commendationHints: AppraisalCommendationHints;
   criteria: AppraisalCriterion[];
   /** Đơn vị theo luồng; `approved` = đã có báo cáo tháng được duyệt. */
   suggestedUnits: Array<{ id: string; name: string; approved: boolean }>;
