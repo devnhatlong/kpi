@@ -296,3 +296,5 @@ TeamReportSummarySchema.index({ 'participants.departmentId': 1, sentAt: -1 });
 
 /** Đánh dấu nhiệm vụ đã nằm trong một bản đã trình - tránh trình trùng. */
 TeamReportSummarySchema.index({ departmentId: 1, 'rows.taskId': 1 });
+// Tra khoá nhiệm vụ: bản CHỜ DUYỆT nào chứa việc này, của bất kỳ đơn vị nào.
+TeamReportSummarySchema.index({ 'rows.taskId': 1, status: 1 });

@@ -133,6 +133,15 @@ export class TeamReportUnitSummaryController {
     return this.teamReportService.sendSummary(user.uid, id, dto);
   }
 
+  @ApiOperation({
+    summary: 'Rút bản đã trình về nháp - khi cấp trên chưa chấm / duyệt gì',
+  })
+  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  @Post(':id/recall')
+  recall(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
+    return this.teamReportService.recallSummary(user.uid, id);
+  }
+
   @ApiOperation({ summary: 'Chi tiết một bản tổng hợp của phòng' })
   @Permissions(Permission.TEAM_REPORT_REVIEW)
   @Get(':id')

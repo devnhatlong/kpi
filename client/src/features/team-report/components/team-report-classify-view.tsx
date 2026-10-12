@@ -100,12 +100,19 @@ import {
   type TeamReportCatalogs,
   type TeamReportColumn,
   type TeamReportTask,
+  type TeamReportTaskLock,
   type TeamReportTemplate,
   type TeamReportWorkContent,
 } from "@/features/team-report/types";
+import { TaskLockBadge } from "@/features/team-report/components/task-lock-badge";
 import { useServerTime } from "@/hooks/use-server-time";
 import { getApiErrorMessage } from "@/lib/api-client";
-import { formatServerHm, formatYmd, serverYmd } from "@/lib/server-time";
+import {
+  daysBetweenYmd,
+  formatServerHm,
+  formatYmd,
+  serverYmd,
+} from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
 /* Phân loại ít khi hai người cùng đụng một dòng - 30 giây, cùng lý do giảm
@@ -374,6 +381,7 @@ export function TeamReportClassifyView() {
   const contents = useMemo(() => data?.workContents ?? [], [data]);
   const templates = useMemo(() => data?.templates ?? {}, [data]);
   const catalogs = useMemo(() => data?.catalogs ?? {}, [data]);
+  const pendingLocks = useMemo(() => data?.pendingLocks ?? {}, [data]);
 
   const locked = data?.locked ?? false;
   const editable = ready && !locked && reportDate === today;
@@ -390,9 +398,10 @@ export function TeamReportClassifyView() {
         task,
         template: templateOf(task),
         readiness: readinessOf(task, templateOf(task)),
+        lock: pendingLocks[task._id] ?? null,
       })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tasks, templates],
+    [tasks, templates, pendingLocks],
   );
 
   /*
@@ -922,8 +931,10 @@ export function TeamReportClassifyView() {
               disabled={
                 !editable ||
                 busyId === selected.task._id ||
-                !selected.task.isOpen
+                !selected.task.isOpen ||
+                selected.lock?.status === "PENDING"
               }
+              lock={selected.lock}
               /* Riêng nút đóng/mở lại thì vẫn bấm được - không thì việc đã đóng
                  không còn đường nào mở ra. */
               lifecycleDisabled={!editable || busyId === selected.task._id}
@@ -1084,6 +1095,8 @@ type QueueRow = {
   task: TeamReportTask;
   template: TeamReportTemplate | null;
   readiness: TaskReadiness;
+  /** Nằm trong báo cáo đã trình (chờ / đã duyệt) - khoá biểu mẫu. */
+  lock: TeamReportTaskLock | null;
 };
 
 type TaskQueueProps = {
@@ -1270,7 +1283,7 @@ function QueueList({
         </p>
       ) : null}
 
-      {rows.slice(0, shown).map(({ task, readiness }) => {
+      {rows.slice(0, shown).map(({ task, readiness, lock }) => {
         const active = task._id === selectedId;
         const axis = axisName.get(refId(task.axisId) ?? "");
         return (
@@ -1312,6 +1325,7 @@ function QueueList({
               >
                 {READINESS_LABEL[readiness]}
               </Badge>
+              {lock ? <TaskLockBadge lock={lock} /> : null}
               {task.isOpen ? null : (
                 <Badge
                   variant="secondary"
@@ -1774,8 +1788,13 @@ function TaskTableRow({
   const { task, readiness } = row;
   const axisId = refId(task.axisId);
   const contentId = refId(task.workContentId);
-  /* Việc đã chốt thì khoá y như bên dạng nhiệm vụ - một luật, hai chỗ nhìn. */
-  const disabled = !editable || busy || !task.isOpen;
+  /* Việc đã chốt, hay đang nằm trong báo cáo chờ duyệt, thì khoá y như bên dạng
+     nhiệm vụ - một luật, hai chỗ nhìn. */
+  const disabled =
+    !editable || busy || !task.isOpen || row.lock?.status === "PENDING";
+  /* Báo cáo đã duyệt: phân loại đã chốt, các ô còn lại vẫn cập nhật tiếp. */
+  const classificationLocked = disabled || row.lock?.status === "APPROVED";
+  const contentColumnKey = workContentColumnOf(row.template)?.key;
   /* Riêng nút đóng/mở lại KHÔNG theo `isOpen`, không thì việc đã đóng không còn
      đường nào mở ra. */
   const lifecycleDisabled = !editable || busy;
@@ -1822,7 +1841,7 @@ function TaskTableRow({
       <TableCell className="align-middle">
         <Select
           value={axisId || "__none__"}
-          disabled={disabled}
+          disabled={classificationLocked}
           onValueChange={(value) =>
             onPatch(task, {
               version: task.version,
@@ -1850,7 +1869,7 @@ function TaskTableRow({
       <TableCell className="align-middle">
         <SearchableSelect
           value={contentId || (axisId ? "__none__" : "")}
-          disabled={disabled || !axisId}
+          disabled={classificationLocked || !axisId}
           aria-label={`Nội dung công việc của nhiệm vụ ${task.name}`}
           triggerClassName="bg-background"
           placeholder={axisId ? "Chọn" : "Chọn trục trước"}
@@ -1906,7 +1925,11 @@ function TaskTableRow({
               value={value}
               catalogs={scopedCatalogs}
               invalid={!!error}
-              disabled={disabled || scoreGroupLocked(column, contentGroupId)}
+              disabled={
+                (column.key === contentColumnKey
+                  ? classificationLocked
+                  : disabled) || scoreGroupLocked(column, contentGroupId)
+              }
               evidence={task.evidence}
               onEvidenceChange={(items) =>
                 onPatch(task, { version: task.version, evidence: items })
@@ -2052,6 +2075,8 @@ type TaskDetailPanelProps = {
   disabled: boolean;
   /** Khoá riêng nút đóng / mở lại - không đi cùng `disabled`. */
   lifecycleDisabled: boolean;
+  /** Nằm trong báo cáo đã trình - nói rõ vì sao biểu mẫu khoá. */
+  lock: TeamReportTaskLock | null;
   /** Vị trí trong danh sách đang lọc; null = nhiệm vụ đang mở nằm ngoài bộ lọc. */
   position: { index: number; total: number } | null;
   onPrev: (() => void) | null;
@@ -2064,6 +2089,14 @@ type TaskDetailPanelProps = {
   onReopen: (task: TeamReportTask) => void;
   onStop: (task: TeamReportTask) => void;
 };
+
+/** " từ ngày 12/10 (3 ngày)" - để đội biết bản đã nằm chờ bao lâu mà đi nhắc. */
+function pendingSince(sentAt: string | null): string {
+  if (!sentAt) return "";
+  const sent = serverYmd(sentAt);
+  const days = daysBetweenYmd(sent, serverYmd()) ?? 0;
+  return ` từ ngày ${formatYmd(sent)}${days > 0 ? ` (${days} ngày)` : ""}`;
+}
 
 /**
  * Biểu mẫu của MỘT nhiệm vụ, xếp dọc.
@@ -2094,6 +2127,7 @@ function TaskDetailBody({
   savedAt,
   disabled,
   lifecycleDisabled,
+  lock,
   position,
   onPrev,
   onNext,
@@ -2111,6 +2145,9 @@ function TaskDetailBody({
      có chỗ nào phân loại và cả bảng không gửi đi được. */
   const ownWorkContent = !workContentColumnOf(template);
   const missing = missingRequiredColumns(task, template);
+  /* Báo cáo đã duyệt: trục và nội dung công việc đã chốt; tiến độ, kết quả và
+     các ô khác vẫn cập nhật tiếp cho báo cáo sau. */
+  const classificationLocked = disabled || lock?.status === "APPROVED";
 
   const options = useMemo(
     () => contents.filter((content) => content.axisId === axisId),
@@ -2277,8 +2314,32 @@ function TaskDetailBody({
         />
 
         {/* Việc đã chốt thì không nhắc "còn thiếu ô nào" nữa: nó đang khoá, đọc
-            xong cũng không làm gì được, chỉ tổ mời người ta đi tìm ô để gõ. */}
-        {done ? (
+            xong cũng không làm gì được, chỉ tổ mời người ta đi tìm ô để gõ.
+            Đang chờ duyệt cũng vậy - nói lý do khoá thay cho việc kế tiếp. */}
+        {lock ? (
+          <div
+            role="status"
+            className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
+          >
+            <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>
+              Nhiệm vụ đang nằm trong{" "}
+              {lock.own ? (
+                <Link
+                  href={`/team-report/summary?id=${lock.summaryId}`}
+                  className="font-medium underline underline-offset-4"
+                >
+                  {lock.title}
+                </Link>
+              ) : (
+                <strong className="font-medium">{lock.title}</strong>
+              )}{" "}
+              {lock.status === "APPROVED"
+                ? `đã được ${lock.holder || "cấp trên"} duyệt - trục và nội dung công việc đã chốt. Tiến độ, kết quả và các ô khác vẫn cập nhật tiếp cho báo cáo sau; báo cáo đã duyệt giữ nguyên số lúc duyệt.`
+                : `chờ ${lock.holder || "cấp trên"} duyệt${pendingSince(lock.sentAt)}, nên chưa sửa được. Mở lại khi báo cáo được duyệt, bị trả lại, hoặc rút báo cáo về (khi cấp trên chưa chấm gì).`}
+            </span>
+          </div>
+        ) : done ? (
           <NextTodoBanner nextTodo={nextTodo} onGoTo={onGoTo} />
         ) : task.isOpen ? (
           <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2.5 text-sm">
@@ -2320,7 +2381,7 @@ function TaskDetailBody({
                 axis={axis}
                 template={templates[axis._id] ?? null}
                 active={axis._id === axisId}
-                disabled={disabled}
+                disabled={classificationLocked}
                 onPick={() =>
                   onPatch(task, { version: task.version, axisId: axis._id })
                 }
@@ -2363,7 +2424,7 @@ function TaskDetailBody({
                 >
                   <SearchableSelect
                     value={contentId || "__none__"}
-                    disabled={disabled}
+                    disabled={classificationLocked}
                     aria-label="Nội dung công việc"
                     triggerClassName="bg-background"
                     placeholder="Chọn"
@@ -2430,7 +2491,10 @@ function TaskDetailBody({
                           catalogs={scopedCatalogs}
                           invalid={!!error}
                           disabled={
-                            disabled || scoreGroupLocked(column, contentGroupId)
+                            (column.key === contentColumn?.key
+                              ? classificationLocked
+                              : disabled) ||
+                            scoreGroupLocked(column, contentGroupId)
                           }
                           evidence={task.evidence}
                           onEvidenceChange={(items) =>

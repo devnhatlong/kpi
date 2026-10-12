@@ -19,6 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   fetchTeamReportSummaries,
   fetchTeamReportSummary,
   teamReportKeys,
@@ -31,6 +38,7 @@ import {
   TEAM_REPORT_PERIOD_LABEL,
   stagedStatusLabel,
   type TeamReportDayStatus,
+  type TeamReportPeriod,
   type TeamReportSummary,
 } from "@/features/team-report/types";
 import { getApiErrorMessage } from "@/lib/api-client";
@@ -51,6 +59,11 @@ const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
 
 const isStatusFilter = (value: string | null): value is StatusFilter =>
   STATUS_FILTERS.some((item) => item.value === value);
+
+const PERIODS = Object.keys(TEAM_REPORT_PERIOD_LABEL) as TeamReportPeriod[];
+
+const isPeriod = (value: string | null): value is TeamReportPeriod =>
+  PERIODS.includes(value as TeamReportPeriod);
 
 /**
  * Báo cáo tổng hợp theo kỳ của đội: danh sách bên trái, bản đang mở bên phải.
@@ -78,9 +91,9 @@ export function TeamReportSummaryView({
   const unit = level === "UNIT";
 
   /*
-    Trạng thái lọc, trang, từ khoá và bản đang mở nằm trên URL
-    (?status=&page=&q=&id=): F5 không mất chỗ đang đứng, và gửi link một bản
-    cho người bên cạnh là mở đúng bản đó.
+    Trạng thái lọc, loại báo cáo, trang, từ khoá và bản đang mở nằm trên URL
+    (?status=&period=&page=&q=&id=): F5 không mất chỗ đang đứng, và gửi link
+    một bản cho người bên cạnh là mở đúng bản đó.
   */
   const router = useRouter();
   const pathname = usePathname();
@@ -88,6 +101,10 @@ export function TeamReportSummaryView({
   const urlStatus = searchParams.get("status");
   const [status, setStatus] = useState<StatusFilter>(
     isStatusFilter(urlStatus) ? urlStatus : "ALL",
+  );
+  const urlPeriod = searchParams.get("period");
+  const [period, setPeriod] = useState<TeamReportPeriod | "">(
+    isPeriod(urlPeriod) ? urlPeriod : "",
   );
   const [page, setPage] = useState(() =>
     Math.max(1, Number(searchParams.get("page")) || 1),
@@ -102,16 +119,19 @@ export function TeamReportSummaryView({
 
   const syncUrl = (next: {
     status?: StatusFilter;
+    period?: TeamReportPeriod | "";
     page?: number;
     q?: string;
     id?: string | null;
   }) => {
     const params = new URLSearchParams();
     const s = next.status ?? status;
+    const k = next.period ?? period;
     const p = next.page ?? page;
     const q = next.q ?? search;
     const id = next.id === undefined ? pickedId : next.id;
     if (s !== "ALL") params.set("status", s);
+    if (k) params.set("period", k);
     if (p > 1) params.set("page", String(p));
     if (q) params.set("q", q);
     if (id) params.set("id", id);
@@ -123,6 +143,12 @@ export function TeamReportSummaryView({
     setStatus(next);
     setPage(1);
     syncUrl({ status: next, page: 1 });
+  };
+
+  const changePeriod = (next: TeamReportPeriod | "") => {
+    setPeriod(next);
+    setPage(1);
+    syncUrl({ period: next, page: 1 });
   };
 
   const changePage = (next: number) => {
@@ -157,13 +183,14 @@ export function TeamReportSummaryView({
   };
 
   const list = useSWR(
-    teamReportKeys.summaries(status, page, level, search),
+    teamReportKeys.summaries(status, page, level, search, period),
     () =>
       fetchTeamReportSummaries({
         status: status === "ALL" ? "" : status,
         page,
         limit: PAGE_SIZE,
         q: search,
+        period,
         level,
       }),
     { keepPreviousData: true },
@@ -292,6 +319,28 @@ export function TeamReportSummaryView({
               ) : null}
             </div>
 
+            <Select
+              value={period || "ALL"}
+              onValueChange={(next) =>
+                changePeriod(next === "ALL" ? "" : (next as TeamReportPeriod))
+              }
+            >
+              <SelectTrigger
+                aria-label="Lọc theo loại báo cáo"
+                className="bg-background"
+              >
+                <SelectValue placeholder="Mọi loại báo cáo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Mọi loại báo cáo</SelectItem>
+                {PERIODS.map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {TEAM_REPORT_PERIOD_LABEL[key]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <SegmentedTabs
               ariaLabel="Lọc theo trạng thái"
               value={status}
@@ -344,9 +393,13 @@ export function TeamReportSummaryView({
                   <p>
                     {search
                       ? `Không có báo cáo nào có tên khớp “${search}”.`
-                      : status !== "ALL"
-                        ? "Không có báo cáo nào ở trạng thái này."
-                        : "Chưa có báo cáo nào."}
+                      : period
+                        ? `Không có ${TEAM_REPORT_PERIOD_LABEL[period].toLowerCase()} nào${
+                            status !== "ALL" ? " ở trạng thái này" : ""
+                          }.`
+                        : status !== "ALL"
+                          ? "Không có báo cáo nào ở trạng thái này."
+                          : "Chưa có báo cáo nào."}
                   </p>
                   {search ? (
                     <button

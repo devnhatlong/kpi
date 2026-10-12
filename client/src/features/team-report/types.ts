@@ -423,12 +423,32 @@ export type TeamReportUnitDay = {
 
 // ------------------------------------------------------------ phản hồi API
 
+/**
+ * Nhiệm vụ nằm trong một báo cáo tổng hợp ĐÃ TRÌNH - chỉ chặn cấp nhập.
+ * Chờ duyệt: khoá cả nhiệm vụ, cấp trên đang chấm trên chính nhiệm vụ đó.
+ * Đã duyệt: chỉ khoá trục + nội dung công việc; tiến độ vẫn cập nhật tiếp.
+ */
+export type TeamReportTaskLock = {
+  summaryId: string;
+  title: string;
+  /** PENDING = khoá cả nhiệm vụ; APPROVED = chỉ khoá trục + nội dung công việc. */
+  status: "PENDING" | "APPROVED";
+  /** Chờ duyệt: người / đơn vị đang cầm bản. Đã duyệt: người đã duyệt. */
+  holder: string;
+  /** Lúc trình (ISO). */
+  sentAt: string | null;
+  /** Bản do chính đơn vị mình lập - mở được; bản của phòng thì không. */
+  own: boolean;
+};
+
 export type TeamReportSheet = {
   reportDate: string;
   /** Đã gửi lên trên thì bảng của ngày đó khoá, trừ khi bị trả lại. */
   locked: boolean;
   day: TeamReportDay | null;
   tasks: TeamReportTask[];
+  /** Khoá theo id nhiệm vụ - nhiệm vụ không có ở đây thì sửa được. */
+  pendingLocks?: Record<string, TeamReportTaskLock>;
   unclassified: number;
 };
 
@@ -451,12 +471,12 @@ export type TeamReportPeriod =
   "DAY" | "WEEK" | "MONTH" | "QUARTER" | "YEAR" | "CUSTOM";
 
 export const TEAM_REPORT_PERIOD_LABEL: Record<TeamReportPeriod, string> = {
-  DAY: "Trong ngày",
-  WEEK: "Trong tuần",
-  MONTH: "Trong tháng",
-  QUARTER: "Trong quý",
-  YEAR: "Trong năm",
-  CUSTOM: "Tự chọn",
+  DAY: "Báo cáo ngày",
+  WEEK: "Báo cáo tuần",
+  MONTH: "Báo cáo tháng",
+  QUARTER: "Báo cáo quý",
+  YEAR: "Báo cáo năm",
+  CUSTOM: "Báo cáo kỳ tự chọn",
 };
 
 /**

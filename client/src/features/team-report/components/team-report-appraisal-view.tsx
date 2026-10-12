@@ -280,7 +280,9 @@ export function TeamReportAppraisalView() {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={saving || (!dirty && !!data._id)}
+                    disabled={
+                      saving || (!dirty && (!!data._id || !units.length))
+                    }
                     onClick={() => void save()}
                   >
                     {saving ? (

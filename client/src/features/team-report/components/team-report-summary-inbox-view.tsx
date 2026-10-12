@@ -231,10 +231,10 @@ export function TeamReportSummaryInboxView() {
                 }}
               >
                 <SelectTrigger className="bg-background">
-                  <SelectValue placeholder="Mọi kỳ" />
+                  <SelectValue placeholder="Mọi loại báo cáo" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ALL">Mọi kỳ</SelectItem>
+                  <SelectItem value="ALL">Mọi loại báo cáo</SelectItem>
                   {(
                     Object.keys(TEAM_REPORT_PERIOD_LABEL) as TeamReportPeriod[]
                   ).map((key) => (

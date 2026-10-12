@@ -76,6 +76,7 @@ import {
   commentTeamReportSummary,
   decideTeamReportSummary,
   deleteTeamReportSummary,
+  recallTeamReportSummary,
   editTeamReportSummaryRows,
   fetchTeamReportRecipientOptions,
   fetchTeamReportSummaryCandidates,
@@ -370,6 +371,7 @@ export function TeamReportSummaryPanel({
   const unitName = detail.department?.name || refName(summary.departmentId);
   const [sendOpen, setSendOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [recallOpen, setRecallOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   /* Duyệt là quyết định CHỐT - xong là không ai sửa được nữa - nên hỏi lại
      giống như trả lại, dù không cần gõ gì. */
@@ -690,6 +692,22 @@ export function TeamReportSummaryPanel({
     }
   };
 
+  const recall = async () => {
+    setBusy(true);
+    try {
+      await recallTeamReportSummary(summary._id, level);
+      setRecallOpen(false);
+      await onChanged();
+      toast.success("Đã rút báo cáo về nháp - sửa xong thì trình lại.");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không rút về được."));
+      // Cấp trên vừa đụng vào bản - nạp lại để nút biến mất đúng lúc.
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const remove = async () => {
     setBusy(true);
     try {
@@ -986,6 +1004,22 @@ export function TeamReportSummaryPanel({
               đó, đường duy nhất là lập một bản mới trong khi lý do trả lại nằm
               ở bản cũ.
             */}
+            {/* Rút về khi cấp trên chưa đụng gì: nhiệm vụ trong bản đang chờ
+                duyệt bị khoá với đội, bản nằm chờ lâu là đội kẹt không cập nhật
+                được tiến độ. Server tự quyết khi nào được - `canRecall`. */}
+            {owner && detail.canRecall ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="bg-background"
+                disabled={busy}
+                onClick={() => setRecallOpen(true)}
+              >
+                <Undo2 className="size-4" aria-hidden="true" />
+                Rút về
+              </Button>
+            ) : null}
+
             {canSend ? (
               <Button
                 type="button"
@@ -2104,6 +2138,44 @@ export function TeamReportSummaryPanel({
                 <Check className="size-4" aria-hidden="true" />
               )}
               Duyệt báo cáo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={recallOpen} onOpenChange={setRecallOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rút báo cáo về?</DialogTitle>
+            <DialogDescription className="break-words">
+              &ldquo;{summary.title}&rdquo; sẽ rời hộp đến của{" "}
+              {summary.recipientName || "cấp trên"} và về lại dạng nháp. Các
+              nhiệm vụ bên trong mở khoá để cập nhật; sửa xong thì trình lại -
+              lúc trình sẽ lấy đúng số mới nhất.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setRecallOpen(false)}
+            >
+              Huỷ
+            </Button>
+            <Button
+              type="button"
+              disabled={busy}
+              onClick={() => void recall()}
+            >
+              {busy ? (
+                <Loader2
+                  className="size-4 motion-safe:animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Undo2 className="size-4" aria-hidden="true" />
+              )}
+              Rút về
             </Button>
           </DialogFooter>
         </DialogContent>

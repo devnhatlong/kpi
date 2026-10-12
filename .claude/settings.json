@@ -553,14 +553,44 @@
       "Bash(sed -i 's/      setPeriod\\(\"WEEK\"\\);/      setPeriod\\(\"MONTH\"\\);/; s/      setFromDate\\(week.from\\);/      setFromDate\\(month.from\\);/; s/      setToDate\\(week.to\\);/      setToDate\\(month.to\\);/; s/      setTitle\\(defaultTitle\\(week.from, week.to\\)\\);/      setTitle\\(defaultTitle\\(month.from, month.to\\)\\);/' src/features/team-report/components/team-report-summary-wizard.tsx)",
       "Bash(grep -n 'fromDate: { $gte: from, $lte: to }' -B14 src/modules/team-report/team-report-appraisal.service.ts)",
       "Bash(sed -i '610s/fromDate: { \\\\$gte: from, \\\\$lte: to },/\\\\/\\\\/ Kỳ tháng 15 tháng trước - 14 tháng này: xét theo NGÀY KẾT THÚC \\(14\\\\/10 thuộc\\\\n        \\\\/\\\\/ tháng 10\\), không theo ngày bắt đầu \\(15\\\\/09 lại rơi sang tháng 9\\).\\\\n        toDate: { $gte: from, $lte: to },/' src/modules/team-report/team-report-appraisal.service.ts)",
-      "Bash(sed -i 's/   \\\\* BÁO CÁO THÁNG \\(kỳ MONTH, bắt đầu trong tháng\\) mà CHÍNH/   * BÁO CÁO THÁNG \\(kỳ MONTH, KẾT THÚC trong tháng\\) mà CHÍNH/' src/modules/team-report/team-report-appraisal.service.ts)"
+      "Bash(sed -i 's/   \\\\* BÁO CÁO THÁNG \\(kỳ MONTH, bắt đầu trong tháng\\) mà CHÍNH/   * BÁO CÁO THÁNG \\(kỳ MONTH, KẾT THÚC trong tháng\\) mà CHÍNH/' src/modules/team-report/team-report-appraisal.service.ts)",
+      "PowerShell(\\(Get-Command mongodump -ErrorAction SilentlyContinue\\).Source; Get-ChildItem \"C:\\\\Program Files\\\\MongoDB\" -Recurse -Filter mongodump.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName; Test-Path D:\\\\Release; if \\(Test-Path D:\\\\Release\\) { Get-ChildItem D:\\\\Release | Select-Object Name, LastWriteTime })",
+      "PowerShell($roots = @\\(\"C:\\\\Program Files\",\"C:\\\\Program Files \\(x86\\)\",\"$env:LOCALAPPDATA\",\"D:\\\\\"\\); foreach \\($r in $roots\\) { Get-ChildItem $r -Recurse -Filter mongodump.exe -ErrorAction SilentlyContinue -Depth 5 | Select-Object -ExpandProperty FullName }; \\(Get-Command mongod,mongosh -ErrorAction SilentlyContinue\\).Source; docker ps --format \"{{.Names}} {{.Image}}\" 2>$null)",
+      "PowerShell($tool=\"D:\\\\Database_test\\\\mongodb-database-tools-windows-x86_64-100.13.0\\\\bin\\\\mongodump.exe\"; & $tool --version; $out=\"D:\\\\Release\\\\kpi-db-dump_20261011\"; & $tool --host 127.0.0.1 --port 27017 --username raitonguyen --password 123456789Aa --authenticationDatabase admin --db mission --gzip --archive=\"$out.archive.gz\"; Get-Item \"$out.archive.gz\" | Select-Object FullName, Length)",
+      "Bash(python -c \"import docx; print\\('python-docx ok'\\)\")",
+      "Bash(grep -i -E \"^\\(docx|mammoth|jszip\\)$\")",
+      "Bash(cp \"/d/Project/WebApp/KPI/docs/huong-dan-su-dung-ban-moi.docx\" /c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/guide/huong-dan-su-dung-ban-moi.backup.docx && ls -la /c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/guide/)",
+      "Bash(node build-main.js)",
+      "Bash(node ../readdocx.js \"D:/Project/WebApp/KPI/docs/huong-dan-su-dung-ban-moi.docx\" main-after.txt)",
+      "Read(//c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/guide/**)",
+      "Bash(powershell -NoProfile -Command 'try { [xml]\\(Get-Content -Raw -Encoding UTF8 '\\\\''check-main.xml'\\\\''\\) | Out-Null; [xml]\\(Get-Content -Raw -Encoding UTF8 '\\\\''check-settings.xml'\\\\''\\) | Out-Null; '\\\\''XML OK'\\\\'' } catch { '\\\\''XML LOI: '\\\\'' + $_.Exception.Message }; try { $w = New-Object -ComObject Word.Application; '\\\\''WORD CO'\\\\''; $w.Quit\\(\\) } catch { '\\\\''KHONG CO WORD'\\\\'' }')",
+      "Bash(node build-pv01.js)",
+      "Bash(powershell -NoProfile -Command 'try { [xml]\\(Get-Content -Raw -Encoding UTF8 '\\\\''check-pv01.xml'\\\\''\\) | Out-Null; '\\\\''XML OK'\\\\'' } catch { '\\\\''XML LOI: '\\\\'' + $_.Exception.Message }')",
+      "Bash(node ../readdocx.js \"D:/Project/WebApp/KPI/docs/huong-dan-luong-pv01.docx\" pv01.txt)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '.\\\\render.ps1' -Pdf 'D:\\\\Project\\\\WebApp\\\\KPI\\\\docs\\\\huong-dan-luong-pv01.pdf' -OutPrefix \\(Join-Path \\(Get-Location\\) 'pv01'\\) -Pages @\\(2,3,4\\); & '.\\\\render.ps1' -Pdf 'D:\\\\Project\\\\WebApp\\\\KPI\\\\docs\\\\huong-dan-su-dung-ban-moi.pdf' -OutPrefix \\(Join-Path \\(Get-Location\\) 'main'\\) -Pages @\\(2,6\\)\")",
+      "Bash(grep -n \"SZ_CELL\\\\|size = SZ\\\\|\\\\${size}\" lib.js)",
+      "Bash(NO_UPDATE_FIELDS=1 node build-main.js)",
+      "Bash(NO_UPDATE_FIELDS=1 node build-pv01.js)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File word-export.ps1)",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -Command \"& '.\\\\render.ps1' -Pdf 'D:\\\\Project\\\\WebApp\\\\KPI\\\\docs\\\\huong-dan-luong-pv01.pdf' -OutPrefix \\(Join-Path \\(Get-Location\\) 'pv01b'\\) -Pages @\\(3,4\\); & '.\\\\render.ps1' -Pdf 'D:\\\\Project\\\\WebApp\\\\KPI\\\\docs\\\\huong-dan-su-dung-ban-moi.pdf' -OutPrefix \\(Join-Path \\(Get-Location\\) 'mainb'\\) -Pages @\\(2,5\\)\")",
+      "Read(//d/Downloads//**)",
+      "Bash(mkdir -p cv)",
+      "Bash(cp \"/d/Downloads/CV triển khai chính thức phần mềm BC ngày.docx\" cv/source.docx)",
+      "Bash(node readdocx.js cv/source.docx cv/source.txt)",
+      "PowerShell(Get-Process WINWORD -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Id 34504 -Force -Confirm:$false)",
+      "Read(//c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/cv/**)",
+      "Bash(powershell -NoProfile -Command 'try { [xml]\\(Get-Content -Raw -Encoding UTF8 '\\\\''check.xml'\\\\''\\) | Out-Null; '\\\\''XML OK'\\\\'' } catch { '\\\\''XML LOI: '\\\\'' + $_.Exception.Message }')",
+      "Bash(powershell -NoProfile -Command \"Get-Process WINWORD -ErrorAction SilentlyContinue | Measure-Object | Select-Object -ExpandProperty Count\")",
+      "PowerShell(cd D:\\\\Project\\\\WebApp\\\\KPI\\\\client; npx tsc --noEmit -p . 2>&1 | Select-Object -First 20; npx eslint src/features/team-report/components/team-report-classify-view.tsx src/features/team-report/components/team-report-sheet-view.tsx src/features/team-report/components/task-lock-badge.tsx 2>&1 | Select-Object -First 20; cd ..\\\\server; npx tsc --noEmit -p tsconfig.json 2>&1 | Select-Object -First 20; git -C .. show HEAD:server/src/modules/team-report/team-report.service.ts | Select-Object -First 1 | ForEach-Object { [int][char]$_[0] }; [IO.File]::ReadAllBytes\\(\"D:\\\\Project\\\\WebApp\\\\KPI\\\\server\\\\src\\\\modules\\\\team-report\\\\team-report.service.ts\"\\)[0..2])"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
       "D:\\Project\\WebApp\\KPI\\client\\src\\app\\(dashboard)\\kpi\\promote\\[id]",
       "D:\\Release\\kpi-data-config_20261008",
       "\\tmp",
-      "C:\\Users\\PV01\\AppData\\Local\\Temp\\claude\\d--Project-WebApp-KPI\\3bd00d71-508f-4700-9e30-7997f7d3ca62\\scratchpad"
+      "C:\\Users\\PV01\\AppData\\Local\\Temp\\claude\\d--Project-WebApp-KPI\\3bd00d71-508f-4700-9e30-7997f7d3ca62\\scratchpad",
+      "C:\\Users\\PV01\\AppData\\Local\\Temp\\claude\\d--Project-WebApp-KPI\\8876d1e6-7869-48e2-9196-9ac8d734c5dc\\scratchpad\\guide"
     ]
   }
 }

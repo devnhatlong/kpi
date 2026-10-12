@@ -73,6 +73,7 @@ import {
   CLOSED_STOPPED_CLASS,
   READINESS_CLASS,
 } from "@/features/team-report/status-styles";
+import { TaskLockBadge } from "@/features/team-report/components/task-lock-badge";
 import { TeamReportDayPicker } from "@/features/team-report/components/team-report-day-picker";
 import {
   TEAM_REPORT_STATUS_LABEL,
@@ -974,7 +975,15 @@ export function TeamReportSheetView() {
                 {tasks.map((task) => {
                   const busy = busyId === task._id;
                   const isEditing = editingId === task._id;
-                  const canEdit = editable && task.isOpen && !busy;
+                  /* Đang nằm trong báo cáo chờ duyệt thì khoá - cấp trên đang
+                     chấm trên chính nhiệm vụ này. Đã duyệt thì tên / hạn / sản
+                     phẩm vẫn sửa được, chỉ phân loại chốt. */
+                  const lock = data?.pendingLocks?.[task._id] ?? null;
+                  const canEdit =
+                    editable &&
+                    task.isOpen &&
+                    !busy &&
+                    lock?.status !== "PENDING";
 
                   if (isEditing) {
                     return (
@@ -1177,6 +1186,9 @@ export function TeamReportSheetView() {
                         >
                           {status}
                         </Badge>
+                        {lock ? (
+                          <TaskLockBadge lock={lock} className="ml-1.5" />
+                        ) : null}
                       </TableCell>
                       <TableCell className="text-right align-middle">
                         {/* Gom thao tác vào một menu: ba nút cạnh nhau trên mỗi

@@ -155,6 +155,20 @@ type Actor = {
   reviewOnly?: boolean;
 };
 
+/** Nhiệm vụ bị khoá vì nằm trong một báo cáo tổng hợp đã trình. */
+type TeamReportTaskLock = {
+  summaryId: string;
+  title: string;
+  /** PENDING = khoá cả nhiệm vụ; APPROVED = chỉ khoá trục + nội dung công việc. */
+  status: 'PENDING' | 'APPROVED';
+  /** Chờ duyệt: người / đơn vị đang cầm bản. Đã duyệt: người đã duyệt. */
+  holder: string;
+  /** Lúc trình (ISO) - để đội biết bản đã nằm chờ bao lâu. */
+  sentAt: string | null;
+  /** Bản do chính đơn vị người xem lập - mở được; bản của phòng thì không. */
+  own: boolean;
+};
+
 /** Tên trường nhật ký khi đơn vị phối hợp gửi ý kiến - để lọc khỏi bản nhận để biết. */
 const OPINION_FIELD = 'Ý kiến phối hợp';
 
@@ -251,6 +265,13 @@ export class TeamReportService {
         locked: !!day && day.status !== 'RETURNED',
         day,
         tasks,
+        /** Nhiệm vụ nằm trong báo cáo đã trình (chờ / đã duyệt) - khoá, tra theo id. */
+        pendingLocks: Object.fromEntries(
+          await this.sentSummaryLocks(
+            tasks.map((task) => task._id),
+            actor.departmentId,
+          ),
+        ),
         unclassified: tasks.filter((task) => !task.workContentId).length,
       },
     };
@@ -283,6 +304,8 @@ export class TeamReportService {
     const task = await this.requireOwnTask(actor, id);
     await this.assertDayEditable(actor.departmentId, serverDateYmd());
     this.assertClosedNotEdited(task);
+    // Đã duyệt thì tên / hạn / sản phẩm vẫn cập nhật được - chỉ phân loại chốt.
+    this.assertNotPendingReview(await this.taskLockOf(task));
     this.assertVersion(task, dto.version);
 
     const name = dto.name.trim();
@@ -314,11 +337,17 @@ export class TeamReportService {
       bản chụp của ngày đó trỏ tới một nhiệm vụ không còn tồn tại. Muốn dừng thì
       dùng đường "đóng kèm lý do".
     */
-    const sent = await this.dayModel.exists({
-      departmentId: actor.departmentId,
-      'rows.taskId': task._id,
-    });
-    if (sent) {
+    const [sentDay, sentSummary] = await Promise.all([
+      this.dayModel.exists({
+        departmentId: actor.departmentId,
+        'rows.taskId': task._id,
+      }),
+      this.summaryModel.exists({
+        'rows.taskId': task._id,
+        status: { $ne: 'DRAFT' },
+      }),
+    ]);
+    if (sentDay || sentSummary) {
       throw new BadRequestException(
         'Nhiệm vụ đã nằm trong báo cáo đã gửi, chỉ dừng được chứ không xoá.',
       );
@@ -451,6 +480,10 @@ export class TeamReportService {
     );
 
     const unclassified = tasks.filter((task) => !task.workContentId).length;
+    const locks = await this.sentSummaryLocks(
+      tasks.map((task) => task._id),
+      actor.departmentId,
+    );
 
     /* Điểm trục ngay trên màn phân loại: đội phải thấy mình đang được bao nhiêu
        TRƯỚC khi gửi, không phải chờ cấp trên mở ra mới biết. */
@@ -480,6 +513,8 @@ export class TeamReportService {
         locked: !!day && day.status !== 'RETURNED',
         day,
         tasks,
+        /** Nhiệm vụ nằm trong báo cáo đã trình (chờ / đã duyệt) - khoá, tra theo id. */
+        pendingLocks: Object.fromEntries(locks),
         axes,
         workContents: contents,
         /** Bộ cột theo trục, tra bằng id trục. null = trục chưa gán mẫu. */
@@ -510,8 +545,19 @@ export class TeamReportService {
     const task = await this.requireOwnTask(actor, id);
     await this.assertDayEditable(actor.departmentId, serverDateYmd());
     this.assertClosedNotEdited(task);
+    const lock = await this.taskLockOf(task);
+    this.assertNotPendingReview(lock);
     this.assertVersion(task, dto.version);
+    const axisBefore = String(task.axisId ?? '');
     const contentBefore = String(task.workContentId ?? '');
+    // Chặn sớm đường đổi trục / nội dung trực tiếp, trước khi đổi trục kéo theo
+    // xoá giá trị và chép lại bộ cột.
+    this.assertClassificationKept(
+      lock,
+      (dto.axisId !== undefined && (dto.axisId || '') !== axisBefore) ||
+        (dto.workContentId !== undefined &&
+          (dto.workContentId || '') !== contentBefore),
+    );
 
     if (dto.axisId !== undefined) {
       const nextAxisId = dto.axisId
@@ -588,6 +634,15 @@ export class TeamReportService {
         this.logValueChanges(task, template, before, actor, '');
       }
     }
+
+    /* Kiểm SAU khi áp xong: nội dung công việc đổi được cả qua ô riêng lẫn qua
+       cột của mẫu, so trước-sau là bắt được cả hai đường. Chưa lưu gì nên ném
+       ra là bỏ trọn lượt sửa này. */
+    this.assertClassificationKept(
+      lock,
+      String(task.axisId ?? '') !== axisBefore ||
+        String(task.workContentId ?? '') !== contentBefore,
+    );
 
     task.version += 1;
     await task.save();
@@ -2227,6 +2282,69 @@ export class TeamReportService {
     };
   }
 
+  /**
+   * Rút bản đã trình về nháp.
+   *
+   * Lúc chờ duyệt, nhiệm vụ trong bản bị khoá với cấp nhập. Bản tháng nằm chờ
+   * cả tuần là cả tuần đội không cập nhật được tiến độ - phải có đường tự gỡ,
+   * không thì cách duy nhất là gọi điện xin cấp trên trả lại.
+   *
+   * Chỉ rút được khi cấp trên CHƯA ĐỤNG gì: chưa chấm lại, chưa duyệt cấp 1,
+   * phối hợp chưa gửi ý kiến. Đã đụng thì rút về là xoá ngang công của họ -
+   * lúc đó phải để cấp trên trả lại.
+   */
+  async recallSummary(userId: string, id: string) {
+    const actor = await this.requireActor(userId);
+    const summary = await this.requireOwnSummary(actor, id);
+
+    if (summary.status !== 'PENDING') {
+      throw new BadRequestException('Chỉ rút được bản đang chờ duyệt.');
+    }
+    if (!this.canRecall(summary)) {
+      throw new BadRequestException(
+        'Cấp trên đã chấm, duyệt hoặc góp ý bản này nên không rút về được - ' +
+          'đề nghị cấp trên trả lại.',
+      );
+    }
+
+    const sentTo = summary.recipientName;
+    summary.status = 'DRAFT';
+    summary.stage = 'FIRST';
+    summary.firstApproval = null;
+    summary.sentAt = null;
+    // Phối hợp / nhận để biết cũng rút theo: hộp đến của họ chỉ bày bản đã trình.
+    this.appendEdit(
+      summary,
+      actor,
+      'Trạng thái',
+      `đã trình ${sentTo}`,
+      'nháp',
+      'Đơn vị lập rút về',
+    );
+    await summary.save();
+
+    return { message: 'Đã rút báo cáo về nháp.', data: summary };
+  }
+
+  /**
+   * Bản đang chờ duyệt mà cấp trên chưa đụng gì - rút về được.
+   *
+   * "Đụng" = có dòng nhật ký SAU lúc trình của một tài khoản khác tài khoản đã
+   * trình (chấm lại, ý kiến phối hợp...) hoặc đã có lượt duyệt cấp 1. So theo
+   * tài khoản chứ không theo đơn vị: tài khoản duyệt có thể cùng đơn vị lập.
+   */
+  private canRecall(summary: TeamReportSummaryDocument) {
+    if (summary.status !== 'PENDING') return false;
+    if (summary.stage !== 'FIRST' || summary.firstApproval) return false;
+    const sentAt = summary.sentAt?.getTime() ?? 0;
+    const sender = String(summary.sentById ?? '');
+    return !(summary.edits ?? []).some(
+      (edit) =>
+        new Date(edit.at).getTime() >= sentAt &&
+        String(edit.byId ?? '') !== sender,
+    );
+  }
+
   /** Danh sách bản tổng hợp đội đã lập. */
   async listSummaries(userId: string, query: TeamReportSummaryListQueryDto) {
     const actor = await this.requireActor(userId);
@@ -2241,6 +2359,8 @@ export class TeamReportService {
     if (query.q?.trim()) {
       base.title = { $regex: this.likeRegex(query.q) };
     }
+    // Lọc loại báo cáo nằm trong `base`: số đếm theo trạng thái là của loại đang xem.
+    if (query.period) base.period = query.period;
     const filter = query.status ? { ...base, status: query.status } : base;
 
     const [rows, total, byStatus] = await Promise.all([
@@ -2425,6 +2545,8 @@ export class TeamReportService {
         viewerRole,
         /** Đúng người đang cầm bản (duyệt 2 cấp) - mới hiện nút duyệt / sửa. */
         canDecide: isHandler(summary, actor.id),
+        /** Đơn vị lập rút về được - cấp trên chưa đụng gì. */
+        canRecall: viewerRole === 'OWNER' && this.canRecall(summary),
         templates,
         catalogs,
         axisScores,
@@ -3608,6 +3730,91 @@ export class TeamReportService {
         'Báo cáo ngày này đã gửi lên trên, không sửa được nữa.',
       );
     }
+  }
+
+  /**
+   * Báo cáo tổng hợp ĐÃ TRÌNH (chờ duyệt hoặc đã duyệt) chứa từng nhiệm vụ - tra
+   * theo id nhiệm vụ. Chỉ chặn CẤP NHẬP (đơn vị chủ nhiệm vụ); cấp trên chấm lại
+   * và gom vào báo cáo của mình theo đường riêng, không qua đây.
+   *
+   * - CHỜ DUYỆT: khoá cả nhiệm vụ. Cấp trên đang đọc bản chụp và chấm lại ghi
+   *   thẳng vào nhiệm vụ gốc - đội sửa song song là ghi đè nhau, đổi trục là xoá
+   *   luôn điểm cấp trên vừa chấm. Gỡ bằng "Rút về" hoặc cấp trên trả lại.
+   * - ĐÃ DUYỆT: chỉ khoá trục và nội dung công việc. Việc còn chạy thì tiến độ,
+   *   kết quả vẫn phải cập nhật được cho báo cáo sau - bản đã duyệt giữ bản chụp
+   *   nên không đổi số. Còn phân loại đã được chốt: đổi trục là cùng một việc bị
+   *   tính vào trục A ở bản tuần, trục B ở bản tháng.
+   *
+   * Tìm theo MỌI báo cáo chứa nhiệm vụ, không riêng của đội: bản của phòng cũng
+   * gom việc của các đội.
+   */
+  private async sentSummaryLocks(
+    taskIds: Types.ObjectId[],
+    viewerDepartmentId?: Types.ObjectId,
+  ) {
+    const locks = new Map<string, TeamReportTaskLock>();
+    if (!taskIds.length) return locks;
+    const wanted = new Set(taskIds.map(String));
+    const summaries = await this.summaryModel
+      .find({
+        status: { $in: ['PENDING', 'APPROVED'] },
+        'rows.taskId': { $in: taskIds },
+      })
+      .select(
+        'departmentId title status stage recipientName finalRecipientName decidedByName sentAt rows.taskId',
+      )
+      // Bản chờ duyệt đứng trước: khoá chặt hơn, nói nó mới đúng.
+      .sort({ status: -1, sentAt: 1 });
+    for (const summary of summaries) {
+      const approved = summary.status === 'APPROVED';
+      const holder = approved
+        ? summary.decidedByName
+        : summary.stage === 'FINAL' && summary.finalRecipientName
+          ? summary.finalRecipientName
+          : summary.recipientName;
+      for (const row of summary.rows) {
+        const id = String(row.taskId);
+        if (!wanted.has(id) || locks.has(id)) continue;
+        locks.set(id, {
+          summaryId: String(summary._id),
+          title: summary.title,
+          status: approved ? 'APPROVED' : 'PENDING',
+          holder,
+          sentAt: summary.sentAt ? summary.sentAt.toISOString() : null,
+          own:
+            !!viewerDepartmentId &&
+            String(summary.departmentId) === String(viewerDepartmentId),
+        });
+      }
+    }
+    return locks;
+  }
+
+  private async taskLockOf(task: TeamReportTaskDocument) {
+    return (
+      (await this.sentSummaryLocks([task._id])).get(String(task._id)) ?? null
+    );
+  }
+
+  /** Khoá cả nhiệm vụ khi nó nằm trong một bản đang chờ duyệt. */
+  private assertNotPendingReview(lock: TeamReportTaskLock | null) {
+    if (lock?.status !== 'PENDING') return;
+    throw new BadRequestException(
+      `Nhiệm vụ đang nằm trong "${lock.title}" chờ ${lock.holder || 'cấp trên'} duyệt - ` +
+        'không sửa được cho tới khi được duyệt, bị trả lại hoặc rút báo cáo về.',
+    );
+  }
+
+  /** Đã duyệt: phân loại đã chốt - trục và nội dung công việc không đổi được nữa. */
+  private assertClassificationKept(
+    lock: TeamReportTaskLock | null,
+    classificationChanged: boolean,
+  ) {
+    if (lock?.status !== 'APPROVED' || !classificationChanged) return;
+    throw new BadRequestException(
+      `Nhiệm vụ đã được ${lock.holder || 'cấp trên'} duyệt trong "${lock.title}" - ` +
+        'trục và nội dung công việc đã chốt, không đổi được. Các ô khác vẫn cập nhật bình thường.',
+    );
   }
 
   /**

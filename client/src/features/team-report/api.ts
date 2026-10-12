@@ -59,8 +59,13 @@ export const teamReportKeys = {
   /* Cấp lập bản nằm trong khoá: cùng một tài khoản phòng vừa xem bản mình lập
      vừa xem bản các đội trình lên, hai thứ khác nhau mà trùng khoá thì màn này
      nạp lại làm hỏng cache màn kia. */
-  summaries: (status: string, page: number, level = "TEAM", q = "") =>
-    ["team-report", "summaries", level, status, page, q] as const,
+  summaries: (
+    status: string,
+    page: number,
+    level = "TEAM",
+    q = "",
+    period = "",
+  ) => ["team-report", "summaries", level, status, page, q, period] as const,
   summaryInbox: (params: TeamReportSummaryInboxQuery) =>
     [
       "team-report",
@@ -448,6 +453,7 @@ export async function fetchTeamReportSummaries(query: {
   page?: number;
   limit?: number;
   q?: string;
+  period?: TeamReportPeriod | "";
   level?: TeamReportSummaryLevel;
 }) {
   const response = await api.get<
@@ -460,6 +466,7 @@ export async function fetchTeamReportSummaries(query: {
       limit: query.limit ?? 20,
       ...(query.status ? { status: query.status } : {}),
       ...(query.q?.trim() ? { q: query.q.trim() } : {}),
+      ...(query.period ? { period: query.period } : {}),
     },
   });
   const list = await unwrapPaginated(Promise.resolve(response));
@@ -505,6 +512,18 @@ export function sendTeamReportSummary(
   );
 }
 
+/** Rút bản đã trình về nháp - chỉ được khi cấp trên chưa chấm / duyệt gì. */
+export function recallTeamReportSummary(
+  id: string,
+  level?: TeamReportSummaryLevel,
+) {
+  return unwrapData(
+    api.post<ApiResponse<TeamReportSummary>>(
+      `${summaryBase(level)}/${id}/recall`,
+    ),
+  );
+}
+
 export type TeamReportSummaryDetail = {
   summary: TeamReportSummary;
   /** Đơn vị lập bản - server trả riêng vì `summary.departmentId` không populate. */
@@ -517,6 +536,8 @@ export type TeamReportSummaryDetail = {
   viewerRole?: TeamReportSummaryViewerRole | null;
   /** Đúng người đang cầm bản (duyệt 2 cấp) - mới được duyệt / trả / sửa. */
   canDecide?: boolean;
+  /** Đơn vị lập rút về được - bản chờ duyệt mà cấp trên chưa đụng gì. */
+  canRecall?: boolean;
 };
 
 export function fetchTeamReportSummary(
