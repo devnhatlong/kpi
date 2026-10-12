@@ -141,6 +141,20 @@ export function TeamReportAppraisalView() {
 
   const incomplete = units.filter((unit) => !unitComplete(unit));
 
+  /*
+    Trình chỉ mở khi bảng ĐÃ LƯU và đủ ô bắt buộc (tự chấm + xếp loại của mọi
+    đơn vị). Trước đây chỉ chặn trong hộp trình - bấm được nút rồi mới biết
+    thiếu, mà bản trình đi là bản đang lưu chứ không phải bản trên màn.
+    Nói rõ lý do ngay cạnh nút: nút xám không lời là người ta bấm thử mãi.
+  */
+  const sendBlocker = !units.length
+    ? "Chưa có đơn vị nào để trình."
+    : incomplete.length
+      ? `Còn ${incomplete.length} đơn vị chưa đủ tự chấm / xếp loại.`
+      : dirty || !data?._id
+        ? "Lưu nháp trước rồi mới trình."
+        : null;
+
   const send = async () => {
     if (!leaderName.trim() || !commanderName.trim()) {
       setNameError(true);
@@ -295,9 +309,14 @@ export function TeamReportAppraisalView() {
                     )}
                     Lưu nháp
                   </Button>
+                  {sendBlocker ? (
+                    <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                      {sendBlocker}
+                    </span>
+                  ) : null}
                   <Button
                     type="button"
-                    disabled={saving || !units.length}
+                    disabled={saving || !!sendBlocker}
                     onClick={openSend}
                   >
                     <Send className="size-4" aria-hidden="true" />
@@ -345,6 +364,17 @@ export function TeamReportAppraisalView() {
               suggestedUnits={data.suggestedUnits}
               newlyApprovedIds={data.newlyApprovedIds}
               onChange={setDraft}
+              exportInfo={{
+                periodMonth: month,
+                teamName: data.departmentName,
+                leaderName: data.leaderName,
+                commanderName: data.commanderName,
+                statusLabel: status
+                  ? status === "DRAFT"
+                    ? "Nháp"
+                    : stagedStatusLabel(data)
+                  : "Chưa lưu",
+              }}
             />
 
             {data._id && (data.leaderName || data.commanderName) ? (

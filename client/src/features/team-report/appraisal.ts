@@ -30,6 +30,11 @@ export type AppraisalPenalty = {
 export type AppraisalUnit = {
   departmentId: string;
   departmentName: string;
+  /**
+   * Tên gọn cho cột "Đơn vị" khi in: mã đơn vị; xã / phường / đồn giữ tên.
+   * Server trả - đơn vị vừa thêm tay chưa lưu thì chưa có, in tên đầy đủ.
+   */
+  shortName?: string;
   selfScore: number | null;
   bonuses: AppraisalBonus[];
   penalties: AppraisalPenalty[];

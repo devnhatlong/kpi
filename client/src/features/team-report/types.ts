@@ -133,8 +133,8 @@ export function narrowCatalogs(
   if (catalogs.work_task) {
     narrowed.work_task = scope.workContentId
       ? catalogs.work_task.filter(
-          (item) => item.workContentId === scope.workContentId,
-        )
+        (item) => item.workContentId === scope.workContentId,
+      )
       : [];
   }
   return narrowed;
@@ -268,7 +268,7 @@ export type TeamReportTask = {
   /* giai đoạn 1 - những trường ai trong đội cũng gõ được */
   name: string;
   deadline: string;
-  /** Sản phẩm phải ra: "Kế hoạch số 12", "Báo cáo chuyên đề"... Ô chữ tự do. */
+  /** Sản phẩm: "Kế hoạch số 12", "Báo cáo chuyên đề"... Ô chữ tự do. */
   product: string;
   /* Không có điểm ở đây: điểm nằm trong bộ cột của mẫu ở giai đoạn 2. */
   evidence: TeamReportEvidence[];

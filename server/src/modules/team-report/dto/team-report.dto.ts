@@ -53,7 +53,7 @@ export class CreateTeamReportTaskDto {
   @IsString()
   deadline?: string;
 
-  @ApiPropertyOptional({ description: 'Sản phẩm phải ra, ô chữ tự do' })
+  @ApiPropertyOptional({ description: 'Sản phẩm, ô chữ tự do' })
   @IsOptional()
   @IsString()
   @MaxLength(500)

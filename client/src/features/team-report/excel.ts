@@ -222,13 +222,13 @@ function formulaText(
 }
 
 /** Tên sheet Excel: bỏ ký tự cấm và cắt còn 31 ký tự. */
-function sheetName(raw: string, fallback: string): string {
+export function sheetName(raw: string, fallback: string): string {
   const cleaned = raw.replace(/[[\]:*?/\\]/g, " ").trim();
   return (cleaned || fallback).slice(0, 31);
 }
 
 /** Bỏ dấu tiếng Việt để đặt tên file an toàn trên mọi máy. */
-function slugify(raw: string): string {
+export function slugify(raw: string): string {
   return (
     raw
       .normalize("NFD")
@@ -242,7 +242,7 @@ function slugify(raw: string): string {
   );
 }
 
-function setOutlineBorder(cell: ExcelJS.Cell) {
+export function setOutlineBorder(cell: ExcelJS.Cell) {
   cell.border = {
     top: { style: "thin" },
     left: { style: "thin" },

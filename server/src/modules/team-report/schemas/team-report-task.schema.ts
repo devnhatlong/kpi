@@ -90,7 +90,7 @@ export class TeamReportTask {
   deadline!: string;
 
   /**
-   * Sản phẩm phải ra của nhiệm vụ - "Kế hoạch số 12", "Báo cáo chuyên đề"...
+   * Sản phẩm của nhiệm vụ - "Kế hoạch số 12", "Báo cáo chuyên đề"...
    *
    * Ô chữ tự do chứ không lấy từ danh mục: sản phẩm là thứ đội tự đặt ra lúc
    * khai, chưa biết nhiệm vụ thuộc trục nào nên cũng chưa có danh mục nào để

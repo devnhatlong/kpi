@@ -6,6 +6,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  FileDown,
   History,
   Loader2,
   RefreshCw,
@@ -45,6 +46,8 @@ import {
   AdjustmentSectionTable,
 } from "@/features/team-report/components/team-report-adjustment-table";
 import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
+import { exportAdjustmentToExcel } from "@/features/team-report/adjustment-excel";
+import { useAuth } from "@/features/auth/auth-provider";
 import {
   TEAM_REPORT_STATUS_LABEL,
   stagedStatusLabel,
@@ -214,6 +217,33 @@ export function TeamReportAdjustmentView() {
     ? !hasInactiveUnit(units, finalReviewer)
     : !!recipientId;
 
+  const { user } = useAuth();
+  const [exporting, setExporting] = useState(false);
+  const exportExcel = async () => {
+    if (!data || !sheet || !templates || !totals) return;
+    setExporting(true);
+    try {
+      await exportAdjustmentToExcel({
+        periodMonth: month,
+        unitName: user?.departmentName ?? undefined,
+        statusLabel: !sheet.saved
+          ? "Chưa nhập"
+          : status === "DRAFT"
+            ? "Nháp"
+            : stagedStatusLabel(sheet),
+        catalog,
+        entries: sheet.entries,
+        templates,
+        totals,
+        catalogs: { department: data.departmentChoices ?? [] },
+      });
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không xuất được Excel."));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const send = async () => {
     if (!sheet || !canSubmit) return;
     setSending(true);
@@ -289,6 +319,20 @@ export function TeamReportAdjustmentView() {
             >
               <RefreshCw className="size-4" />
               Làm mới
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-background"
+              disabled={!data || !catalog.length || exporting}
+              onClick={() => void exportExcel()}
+            >
+              {exporting ? (
+                <Loader2 className="size-4 motion-safe:animate-spin" />
+              ) : (
+                <FileDown className="size-4" />
+              )}
+              Xuất Excel
             </Button>
             {canSend ? (
               <Button

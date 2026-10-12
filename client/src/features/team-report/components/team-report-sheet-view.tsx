@@ -353,9 +353,9 @@ export function TeamReportSheetView() {
     () =>
       newDraft.name.trim()
         ? findSimilar(newDraft.name, [
-            ...tasks.map((task) => task.name),
-            ...pending.map((row) => row.draft.name),
-          ])
+          ...tasks.map((task) => task.name),
+          ...pending.map((row) => row.draft.name),
+        ])
         : null,
     [newDraft.name, tasks, pending],
   );
@@ -423,9 +423,9 @@ export function TeamReportSheetView() {
         prev.map((item) =>
           item.tempId === row.tempId
             ? {
-                ...item,
-                error: getApiErrorMessage(error, "Không thêm được nhiệm vụ."),
-              }
+              ...item,
+              error: getApiErrorMessage(error, "Không thêm được nhiệm vụ."),
+            }
             : item,
         ),
       );
@@ -770,7 +770,7 @@ export function TeamReportSheetView() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="new-task-product" className="text-xs">
-                    Sản phẩm phải ra
+                    Sản phẩm
                   </Label>
                   <Input
                     id="new-task-product"
@@ -872,19 +872,19 @@ export function TeamReportSheetView() {
               <TableBody>
                 {showSkeleton
                   ? Array.from({ length: 4 }, (_, index) => (
-                      <TableRow key={`skeleton-${index}`}>
-                        {[0, 1, 2, 3, 4, 5].map((cell) => (
-                          <TableCell key={cell}>
-                            <Skeleton
-                              className={cn(
-                                "h-4",
-                                cell === 0 ? "w-4/5" : "w-2/3",
-                              )}
-                            />
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))
+                    <TableRow key={`skeleton-${index}`}>
+                      {[0, 1, 2, 3, 4, 5].map((cell) => (
+                        <TableCell key={cell}>
+                          <Skeleton
+                            className={cn(
+                              "h-4",
+                              cell === 0 ? "w-4/5" : "w-2/3",
+                            )}
+                          />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
                   : null}
 
                 {showEmpty ? (
@@ -1030,13 +1030,13 @@ export function TeamReportSheetView() {
                           <Input
                             form="edit-task-form"
                             name="product"
-                            aria-label="Sản phẩm phải ra"
+                            aria-label="Sản phẩm"
                             autoComplete="off"
                             value={draft.product}
                             onChange={(e) =>
                               setDraft({ ...draft, product: e.target.value })
                             }
-                            placeholder="Sản phẩm phải ra…"
+                            placeholder="Sản phẩm…"
                           />
                         </TableCell>
                         <TableCell>

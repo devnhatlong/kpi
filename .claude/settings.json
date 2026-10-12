@@ -582,7 +582,14 @@
       "Read(//c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/8876d1e6-7869-48e2-9196-9ac8d734c5dc/scratchpad/cv/**)",
       "Bash(powershell -NoProfile -Command 'try { [xml]\\(Get-Content -Raw -Encoding UTF8 '\\\\''check.xml'\\\\''\\) | Out-Null; '\\\\''XML OK'\\\\'' } catch { '\\\\''XML LOI: '\\\\'' + $_.Exception.Message }')",
       "Bash(powershell -NoProfile -Command \"Get-Process WINWORD -ErrorAction SilentlyContinue | Measure-Object | Select-Object -ExpandProperty Count\")",
-      "PowerShell(cd D:\\\\Project\\\\WebApp\\\\KPI\\\\client; npx tsc --noEmit -p . 2>&1 | Select-Object -First 20; npx eslint src/features/team-report/components/team-report-classify-view.tsx src/features/team-report/components/team-report-sheet-view.tsx src/features/team-report/components/task-lock-badge.tsx 2>&1 | Select-Object -First 20; cd ..\\\\server; npx tsc --noEmit -p tsconfig.json 2>&1 | Select-Object -First 20; git -C .. show HEAD:server/src/modules/team-report/team-report.service.ts | Select-Object -First 1 | ForEach-Object { [int][char]$_[0] }; [IO.File]::ReadAllBytes\\(\"D:\\\\Project\\\\WebApp\\\\KPI\\\\server\\\\src\\\\modules\\\\team-report\\\\team-report.service.ts\"\\)[0..2])"
+      "PowerShell(cd D:\\\\Project\\\\WebApp\\\\KPI\\\\client; npx tsc --noEmit -p . 2>&1 | Select-Object -First 20; npx eslint src/features/team-report/components/team-report-classify-view.tsx src/features/team-report/components/team-report-sheet-view.tsx src/features/team-report/components/task-lock-badge.tsx 2>&1 | Select-Object -First 20; cd ..\\\\server; npx tsc --noEmit -p tsconfig.json 2>&1 | Select-Object -First 20; git -C .. show HEAD:server/src/modules/team-report/team-report.service.ts | Select-Object -First 1 | ForEach-Object { [int][char]$_[0] }; [IO.File]::ReadAllBytes\\(\"D:\\\\Project\\\\WebApp\\\\KPI\\\\server\\\\src\\\\modules\\\\team-report\\\\team-report.service.ts\"\\)[0..2])",
+      "PowerShell(npx eslint src/modules/team-report/team-report-appraisal.service.ts 2>&1)",
+      "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1)",
+      "PowerShell(npx eslint src/modules/team-report/team-report.department-label.ts 2>&1)",
+      "PowerShell(npx tsc --noEmit -p . 2>&1)",
+      "PowerShell(npx eslint src/features/team-report/components/team-report-adjustment-table.tsx 2>&1)",
+      "PowerShell(npx eslint src/features/team-report/components/team-report-appraisal-view.tsx 2>&1)",
+      "PowerShell(npx eslint src/features/team-report/appraisal-excel.ts 2>&1)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

@@ -6,10 +6,13 @@ import {
   ChevronRight,
   CircleCheck,
   CircleDashed,
+  FileDown,
+  Loader2,
   Plus,
   Search,
   Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +35,11 @@ import {
   type AppraisalCriterion,
   type AppraisalUnit,
 } from "@/features/team-report/appraisal";
+import {
+  exportAppraisalToExcel,
+  type AppraisalExportInput,
+} from "@/features/team-report/appraisal-excel";
+import { getApiErrorMessage } from "@/lib/api-client";
 import {
   TEAM_REPORT_RATINGS,
   formatScore,
@@ -65,6 +73,7 @@ export function AppraisalWorkspace({
   hints = {},
   suggestedUnits = [],
   newlyApprovedIds = [],
+  exportInfo,
 }: {
   units: AppraisalUnit[];
   criteria: AppraisalCriterion[];
@@ -73,8 +82,28 @@ export function AppraisalWorkspace({
   hints?: AppraisalComposerData["selfScoreHints"];
   suggestedUnits?: AppraisalComposerData["suggestedUnits"];
   newlyApprovedIds?: string[];
+  /** Có thì bày nút xuất Excel (tổng hợp + riêng từng đơn vị). */
+  exportInfo?: Omit<AppraisalExportInput, "units" | "criteria">;
 }) {
   const [mode, setMode] = useState<Mode>("UNIT");
+  const [exporting, setExporting] = useState(false);
+
+  /* Xuất ĐÚNG thứ đang thấy trên màn - kể cả thay đổi chưa lưu: người dùng
+     bấm xuất là muốn bản in khớp cái họ đang nhìn. */
+  const runExport = async (picked: AppraisalUnit[], single: boolean) => {
+    if (!exportInfo) return;
+    setExporting(true);
+    try {
+      await exportAppraisalToExcel(
+        { ...exportInfo, criteria, units: picked },
+        { single },
+      );
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không xuất được Excel."));
+    } finally {
+      setExporting(false);
+    }
+  };
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("ALL");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -235,15 +264,36 @@ export function AppraisalWorkspace({
             aria-label="Tiến độ thẩm định"
           />
         </div>
-        <SegmentedTabs
-          ariaLabel="Cách xem"
-          value={mode}
-          onChange={setMode}
-          items={[
-            { value: "UNIT" as const, label: "Từng đơn vị" },
-            { value: "TABLE" as const, label: "Bảng tổng" },
-          ]}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <SegmentedTabs
+            ariaLabel="Cách xem"
+            value={mode}
+            onChange={setMode}
+            items={[
+              { value: "UNIT" as const, label: "Từng đơn vị" },
+              { value: "TABLE" as const, label: "Bảng tổng" },
+            ]}
+          />
+          {exportInfo ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-background"
+              disabled={exporting}
+              onClick={() => void runExport(units, false)}
+            >
+              {exporting ? (
+                <Loader2
+                  className="size-4 motion-safe:animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <FileDown className="size-4" aria-hidden="true" />
+              )}
+              Xuất tổng hợp
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {mode === "TABLE" ? (
@@ -385,6 +435,11 @@ export function AppraisalWorkspace({
               }
               positionLabel={
                 position >= 0 ? `${position + 1}/${visible.length}` : ""
+              }
+              onExport={
+                exportInfo && !exporting
+                  ? () => void runExport([selected.unit], true)
+                  : undefined
               }
             />
           ) : null}
@@ -699,6 +754,7 @@ function UnitEditor({
   onPrev,
   onNext,
   positionLabel,
+  onExport,
 }: {
   unit: AppraisalUnit;
   criteria: AppraisalCriterion[];
@@ -709,6 +765,8 @@ function UnitEditor({
   onPrev?: () => void;
   onNext?: () => void;
   positionLabel: string;
+  /** Xuất riêng đơn vị này ra Excel. */
+  onExport?: () => void;
 }) {
   const totals = appraisalTotals(unit);
   const set = (patch: Partial<AppraisalUnit>) => onChange({ ...unit, ...patch });
@@ -828,6 +886,19 @@ function UnitEditor({
           >
             <ChevronRight className="size-4" />
           </Button>
+          {onExport ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 bg-background"
+              onClick={onExport}
+              title="Xuất riêng đơn vị này ra Excel"
+            >
+              <FileDown className="size-3.5" aria-hidden="true" />
+              Xuất riêng
+            </Button>
+          ) : null}
           {onRemove ? (
             <Button
               type="button"
@@ -883,48 +954,37 @@ function UnitEditor({
 
       {/* ---------------------------------------------------- tự chấm */}
       <section className="space-y-1.5">
-        <Label htmlFor={`self-${unit.departmentId}`}>
-          Tổng điểm tự chấm <span className="text-destructive">*</span>
-        </Label>
+        <p className="text-sm font-medium">Tổng điểm tự chấm</p>
+        {/* CHỈ ĐỌC: là tổng điểm trên báo cáo tháng đơn vị đã trình - người
+            thẩm định cộng / trừ trên đó, không sửa con số gốc. Server cũng
+            tự lấy lại từ báo cáo, không nhận số client gửi. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <ScoreInput
-            id={`self-${unit.departmentId}`}
-            className="w-36"
-            label="Tổng điểm tự chấm"
-            value={unit.selfScore}
-            disabled={!editable}
-            onCommit={(selfScore) => set({ selfScore })}
-          />
-          {/* Nói rõ con số lấy từ đâu - ô có sẵn số mà không ai biết nguồn
-              thì người ta không dám sửa, mà cũng không dám để. */}
-          {hint ? (
-            <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>
+          <output className="flex h-9 w-36 items-center justify-end gap-1 rounded-md border border-dashed bg-muted/40 px-3 text-sm font-semibold tabular-nums">
+            {fmt(unit.selfScore)}
+            <span className="text-xs font-normal text-muted-foreground">
+              điểm
+            </span>
+          </output>
+          <p className="text-xs text-muted-foreground">
+            {hint ? (
+              <>
                 Lấy từ báo cáo tháng đơn vị đã trình{" "}
                 <span className="text-foreground">&quot;{hint.title}&quot;</span>
-                :{" "}
-                <strong className="text-foreground tabular-nums">
-                  {formatScore(hint.score)}
-                  {hint.maxScore ? ` / ${formatScore(hint.maxScore)}` : ""}
-                </strong>
-              </span>
-              {editable && unit.selfScore !== hint.score ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7"
-                  onClick={() => set({ selfScore: hint.score })}
-                >
-                  Lấy lại số này
-                </Button>
-              ) : null}
-            </p>
-          ) : editable ? (
-            <p className="text-xs text-muted-foreground">
-              Đơn vị chưa trình báo cáo tháng - nhập tay theo bản giấy.
-            </p>
-          ) : null}
+                {hint.maxScore ? (
+                  <>
+                    {" "}
+                    - trên tổng{" "}
+                    <strong className="text-foreground tabular-nums">
+                      {formatScore(hint.maxScore)}
+                    </strong>
+                  </>
+                ) : null}
+                . Không sửa ở đây; cần điều chỉnh thì cộng / trừ bên dưới.
+              </>
+            ) : (
+              "Lấy từ báo cáo tháng đơn vị đã trình lúc lập bảng."
+            )}
+          </p>
         </div>
       </section>
 

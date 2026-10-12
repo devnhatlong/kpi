@@ -278,6 +278,13 @@ function AppraisalIncomingDetail({
               units={data.units}
               criteria={[]}
               editable={false}
+              exportInfo={{
+                periodMonth: data.periodMonth,
+                teamName: data.departmentName,
+                leaderName: data.leaderName,
+                commanderName: data.commanderName,
+                statusLabel: stagedStatusLabel(data),
+              }}
             />
 
             <div className="grid gap-3 border-t pt-4 text-center text-sm sm:grid-cols-2">

@@ -7,6 +7,7 @@ import {
   FileSpreadsheet,
   History,
   Inbox,
+  FileDown,
   Loader2,
   Pencil,
   Scale,
@@ -48,6 +49,7 @@ import {
   AdjustmentSectionTable,
 } from "@/features/team-report/components/team-report-adjustment-table";
 import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
+import { exportAdjustmentToExcel } from "@/features/team-report/adjustment-excel";
 import {
   stagedStatusLabel,
   formatScore,
@@ -474,6 +476,27 @@ function ReviewPanel({
 
   const noop = () => undefined;
 
+  const [exporting, setExporting] = useState(false);
+  const exportExcel = async () => {
+    setExporting(true);
+    try {
+      await exportAdjustmentToExcel({
+        periodMonth: sheet.periodMonth,
+        unitName: data.department?.name,
+        statusLabel: stagedStatusLabel(sheet),
+        catalog,
+        entries: sheet.entries,
+        templates,
+        totals,
+        catalogs: { department: data.departmentChoices ?? [] },
+      });
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Không xuất được Excel."));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <Card className="shadow-sm">
       <CardContent className="space-y-5 py-4">
@@ -511,6 +534,20 @@ function ReviewPanel({
             >
               {stagedStatusLabel(sheet)}
             </Badge>
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-background"
+              disabled={exporting || !catalog.length}
+              onClick={() => void exportExcel()}
+            >
+              {exporting ? (
+                <Loader2 className="size-4 motion-safe:animate-spin" />
+              ) : (
+                <FileDown className="size-4" />
+              )}
+              Xuất Excel
+            </Button>
             {pending ? (
               <>
                 <Button

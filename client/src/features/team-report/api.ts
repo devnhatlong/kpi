@@ -129,7 +129,7 @@ export function fetchTeamReportSheet(params: {
 export type TeamReportTaskInput = {
   name: string;
   deadline?: string;
-  /** Sản phẩm phải ra - ô chữ tự do, đội tự đặt lúc khai. */
+  /** Sản phẩm - ô chữ tự do, đội tự đặt lúc khai. */
   product?: string;
 };
 

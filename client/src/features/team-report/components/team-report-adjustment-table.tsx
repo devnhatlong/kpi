@@ -57,6 +57,21 @@ export const LEFT_SEMANTICS = new Set([
  * trước cột nào. Nửa trái (ánh xạ `adjustment_*`) bày từ danh mục và gộp dọc
  * theo mục; nửa phải là các dòng đội tự thêm dưới từng mục, ô nào cũng tự lưu.
 
+/**
+ * Bề rộng cố định (px) của hai cột chữ dài ở nửa trái - tên mục ("Nội dung
+ * cộng điểm" / "Nội dung, điều kiện trừ điểm" / "Mức xử lý") và điều kiện -
+ * đủ đọc, nhường chỗ cho nửa phải đội gõ kết quả.
+ */
+const FIXED_WIDTH: Record<string, number> = {
+  adjustment_name: 220,
+  adjustment_rule: 300,
+};
+
+function fixedWidth(column: TeamReportColumn) {
+  const width = FIXED_WIDTH[column.semanticKey];
+  return width ? { width, minWidth: width, maxWidth: width } : undefined;
+}
+
 /** Nhóm nhiều `<TableRow>` mà không thêm phần tử DOM - `<tbody>` không nhận `<div>`. */
 function FragmentRows({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
@@ -169,7 +184,7 @@ export function AdjustmentSectionTable({
                 {columns.map((column) => (
                   <TableHead
                     key={column.key}
-                    style={{ minWidth: column.width }}
+                    style={fixedWidth(column) ?? { minWidth: column.width }}
                     className={cn(
                       "align-middle",
                       (column.semanticKey === "stt" ||
@@ -248,6 +263,7 @@ export function AdjustmentSectionTable({
                     <TableCell
                       key={column.key}
                       rowSpan={span}
+                      style={fixedWidth(column)}
                       className={cn(
                         "border-b-2 align-top",
                         column.semanticKey === "stt" &&
@@ -350,8 +366,8 @@ export function AdjustmentSectionTable({
                           <Button
                             type="button"
                             size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs text-muted-foreground"
+                            variant="outline"
+                            className="h-8 bg-background"
                             disabled={busyKey !== null || !item.isActive}
                             onClick={() => onAdd(item)}
                           >

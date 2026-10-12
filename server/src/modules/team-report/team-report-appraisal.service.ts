@@ -45,6 +45,8 @@ import { serverDateYmd } from './team-report.time';
 type Actor = { id: Types.ObjectId; name: string; departmentId: Types.ObjectId };
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+/** Cấp đơn vị in TÊN thay cho mã - mã của các cấp này là số hiệu hành chính. */
+const NAME_LEVELS = new Set(['XA', 'PHUONG', 'DON', 'DACKHU']);
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
 /**
@@ -168,16 +170,15 @@ export class TeamReportAppraisalService {
       : approved.map((unit) => this.blankUnit(unit.id, unit.name, items));
     const inSheet = new Set(units.map((unit) => String(unit.departmentId)));
 
-    /* Tự chấm còn trống thì điền sẵn điểm báo cáo tháng của đơn vị - đội chỉ
-       sửa khi cần. Chỉ điền ở bản đang sửa được; bản đã trình giữ nguyên. */
+    /* Tự chấm = điểm báo cáo tháng của đơn vị, không ai sửa tay. Bản đang sửa
+       được thì luôn lấy số MỚI NHẤT (báo cáo có thể vừa được chấm lại / duyệt
+       lại); bản đã trình giữ nguyên số lúc trình. */
     const editable =
       !sheet || sheet.status === 'DRAFT' || sheet.status === 'RETURNED';
     if (editable) {
       for (const unit of units) {
         const hint = hints[String(unit.departmentId)];
-        if (hint && (unit.selfScore === null || unit.selfScore === undefined)) {
-          unit.selfScore = hint.score;
-        }
+        if (hint) unit.selfScore = hint.score;
       }
     }
 
@@ -244,11 +245,21 @@ export class TeamReportAppraisalService {
       .find({ _id: { $in: ids } })
       .select('_id');
     const known = new Set(existing.map((dept) => String(dept._id)));
+    const hints = await this.selfScoreHints(actor.id, periodMonth);
     // Chỉ đơn vị có báo cáo tháng tôi đã duyệt (hoặc đã nằm sẵn trong bảng).
     const allowed = new Set([
-      ...Object.keys(await this.selfScoreHints(actor.id, periodMonth)),
+      ...Object.keys(hints),
       ...(sheet?.units ?? []).map((unit) => String(unit.departmentId)),
     ]);
+    /* Tự chấm KHÔNG nhận từ client: là tổng điểm trên báo cáo tháng đơn vị
+       đã trình (và đã được duyệt), người thẩm định chỉ cộng / trừ trên đó.
+       Đơn vị không còn báo cáo nào khớp thì giữ số đã lưu. */
+    const storedSelf = new Map(
+      (sheet?.units ?? []).map((unit) => [
+        String(unit.departmentId),
+        unit.selfScore ?? null,
+      ]),
+    );
 
     const units = dto.units.map((unit) => {
       if (!known.has(unit.departmentId)) {
@@ -269,7 +280,10 @@ export class TeamReportAppraisalService {
       return {
         departmentId: new Types.ObjectId(unit.departmentId),
         departmentName: name,
-        selfScore: unit.selfScore ?? null,
+        selfScore:
+          hints[unit.departmentId]?.score ??
+          storedSelf.get(unit.departmentId) ??
+          null,
         bonuses: (unit.bonuses ?? [])
           .filter((bonus) => bonus.itemId)
           .map((bonus) => {
@@ -510,6 +524,7 @@ export class TeamReportAppraisalService {
           await departmentLabels(this.departmentModel, [sheet.departmentId])
         ).get(String(sheet.departmentId)) ?? '')
       : '';
+    const short = await this.shortNames(units);
     return {
       _id: sheet ? String(sheet._id) : null,
       periodMonth,
@@ -531,6 +546,7 @@ export class TeamReportAppraisalService {
       units: units.map((unit) => ({
         departmentId: String(unit.departmentId),
         departmentName: unit.departmentName,
+        shortName: short.get(String(unit.departmentId)) ?? unit.departmentName,
         selfScore: unit.selfScore ?? null,
         bonuses: unit.bonuses.map((bonus) => ({
           itemId: bonus.itemId ? String(bonus.itemId) : null,
@@ -551,6 +567,27 @@ export class TeamReportAppraisalService {
         ...appraisalTotals(unit),
       })),
     };
+  }
+
+  /**
+   * Tên gọn của đơn vị cho cột "Đơn vị" khi in: MÃ đơn vị (PA01.1, PV06…) cho
+   * gọn cột. Riêng xã / phường / đồn / đặc khu mã là số hiệu hành chính (25054)
+   * đọc không ra ai, nên giữ nguyên tên.
+   */
+  private async shortNames(units: TeamReportAppraisalUnit[]) {
+    const result = new Map<string, string>();
+    if (!units.length) return result;
+    const departments = await this.departmentModel
+      .find({ _id: { $in: units.map((unit) => unit.departmentId) } })
+      .select('code levelId')
+      .populate<{ levelId: { code?: string } | null }>('levelId', 'code');
+    for (const department of departments) {
+      const level = department.levelId?.code ?? '';
+      if (department.code && !NAME_LEVELS.has(level)) {
+        result.set(String(department._id), department.code);
+      }
+    }
+    return result;
   }
 
   /** Mỗi tiêu chí một dòng trống - đúng khung giấy, đội chỉ việc điền. */

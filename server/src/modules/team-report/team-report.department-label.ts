@@ -10,7 +10,8 @@ const PREFIX_BY_LEVEL: Record<string, string> = { DOI: 'Đội', TO: 'Tổ' };
  *
  * Hàng trăm tổ / đội mang cùng tên trơn "Tổng hợp", "Tham mưu" - chỉ ghi tên là
  * người duyệt không biết bản của tổ nào. Tổ / đội thì thêm tiền tố cấp (nếu tên
- * chưa có sẵn) và tên đơn vị cha; cấp khác giữ nguyên tên.
+ * chưa có sẵn) và tên đơn vị cha; phòng thì mã đứng trước tên; cấp khác giữ
+ * nguyên tên.
  */
 export async function departmentLabels(
   departmentModel: Model<any>,
@@ -20,6 +21,7 @@ export async function departmentLabels(
   if (!unique.length) return new Map();
   const rows = await departmentModel.aggregate<{
     _id: Types.ObjectId;
+    code?: string;
     name: string;
     level?: { code?: string };
     parent?: { name?: string };
@@ -43,6 +45,7 @@ export async function departmentLabels(
     },
     {
       $project: {
+        code: 1,
         name: 1,
         level: { $first: '$level' },
         parent: { $first: '$parent' },
@@ -74,11 +77,15 @@ export async function relabelPopulated(
 }
 
 function labelOf(row: {
+  code?: string;
   name: string;
   level?: { code?: string };
   parent?: { name?: string };
 }) {
   const name = row.name ?? '';
+  /* Phòng: mã đứng trước ("PX03 - Phòng Công tác đảng…") - người đọc quen gọi
+     phòng theo mã, tên đầy đủ để đằng sau cho rõ. */
+  if (row.level?.code === 'PHONG' && row.code) return `${row.code} - ${name}`;
   const prefix = PREFIX_BY_LEVEL[row.level?.code ?? ''];
   if (!prefix) return name;
   // So cả CHỮ, không so tiền tố: "Tổng hợp" bắt đầu bằng "Tổ" nhưng chưa có "Tổ".
