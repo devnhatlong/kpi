@@ -99,6 +99,7 @@ const KIND_LABEL: Record<TeamReportRouteKind, string> = {
   ADJUSTMENT: "bảng điểm cộng, trừ & xếp loại",
   SUMMARY: "báo cáo tổng hợp",
   APPRAISAL: "bảng thẩm định các đơn vị",
+  COMMENDATION: "bảng đề xuất biểu dương, phê bình",
 };
 
 export function AdjustmentRoutesEditor({

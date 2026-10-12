@@ -39,6 +39,9 @@ const EXCLUDED = new Set([
   // Báo cáo tổng hợp
   'team_report_summaries',
   'mission_summary_reports',
+  // Bảng thẩm định, bảng biểu dương / phê bình
+  'team_report_appraisals',
+  'team_report_commendations',
   // Tệp minh chứng đính kèm báo cáo
   'uploads.files',
   'uploads.chunks',

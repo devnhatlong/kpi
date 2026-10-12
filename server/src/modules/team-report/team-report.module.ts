@@ -83,6 +83,16 @@ import {
   AdjustmentItem,
   AdjustmentItemSchema,
 } from '../mission-form-config/schemas/adjustment-item.schema';
+import {
+  DepartmentLevel,
+  DepartmentLevelSchema,
+} from '../department-levels/schemas/department-level.schema';
+import {
+  TeamReportCommendation,
+  TeamReportCommendationSchema,
+} from './schemas/team-report-commendation.schema';
+import { TeamReportCommendationController } from './team-report-commendation.controller';
+import { TeamReportCommendationService } from './team-report-commendation.service';
 
 /**
  * Báo cáo ngày cấp đội - bản nghiệp vụ mới, tách hẳn khỏi `personal-mission`.
@@ -122,6 +132,11 @@ import {
       },
       { name: FormTemplate.name, schema: FormTemplateSchema },
       { name: TeamReportAppraisal.name, schema: TeamReportAppraisalSchema },
+      {
+        name: TeamReportCommendation.name,
+        schema: TeamReportCommendationSchema,
+      },
+      { name: DepartmentLevel.name, schema: DepartmentLevelSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),
@@ -136,6 +151,7 @@ import {
     TeamReportAdjustmentController,
     TeamReportRoutingController,
     TeamReportAppraisalController,
+    TeamReportCommendationController,
   ],
   providers: [
     TeamReportService,
@@ -144,6 +160,7 @@ import {
     TeamReportAdjustmentAccessService,
     TeamReportAdjustmentRoutingService,
     TeamReportAppraisalService,
+    TeamReportCommendationService,
   ],
   exports: [TeamReportService],
 })

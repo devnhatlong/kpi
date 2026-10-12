@@ -1,0 +1,430 @@
+"use client";
+
+import { useState } from "react";
+import useSWR from "swr";
+import {
+  ArrowLeft,
+  Check,
+  FileDown,
+  Inbox,
+  Loader2,
+  Undo2,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import { SegmentedTabs } from "@/components/common/segmented-tabs";
+import {
+  commendationKeys,
+  decideCommendation,
+  fetchCommendationInbox,
+  fetchCommendationIncoming,
+  type CommendationInboxBox,
+} from "@/features/team-report/commendation";
+import { exportCommendationToExcel } from "@/features/team-report/commendation-excel";
+import { CommendationTables } from "@/features/team-report/components/commendation-tables";
+import { ApprovalChain } from "@/features/team-report/components/participants-block";
+import { commendationExportRows } from "@/features/team-report/components/team-report-commendation-view";
+import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
+import {
+  stagedStatusLabel,
+  type TeamReportDayStatus,
+} from "@/features/team-report/types";
+import { getApiErrorMessage } from "@/lib/api-client";
+import { formatServerHm } from "@/lib/server-time";
+import { cn } from "@/lib/utils";
+
+type StatusBox = "PENDING" | "APPROVED" | "RETURNED" | "";
+
+const monthLabel = (month: string) => {
+  const [y, m] = month.split("-");
+  return `Tháng ${m}/${y}`;
+};
+
+/**
+ * Hộp đến bảng biểu dương, phê bình của các đội Phòng Tham mưu.
+ *
+ * Hai hộp: CHỦ TRÌ (duyệt / trả lại) và THEO DÕI (nhận để biết - chỉ đọc).
+ * Hộp đến theo tài khoản, không theo đơn vị.
+ */
+export function TeamReportCommendationInboxView() {
+  const [box, setBox] = useState<CommendationInboxBox>("LEAD");
+  const [status, setStatus] = useState<StatusBox>("PENDING");
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const list = useSWR(commendationKeys.inbox(box, status, 1), () =>
+    fetchCommendationInbox({
+      box,
+      status: status as TeamReportDayStatus | "",
+      limit: 50,
+    }),
+  );
+
+  if (openId) {
+    return (
+      <CommendationIncomingDetail
+        id={openId}
+        onBack={() => setOpenId(null)}
+        onChanged={() => void list.mutate()}
+      />
+    );
+  }
+
+  const rows = list.data?.data ?? [];
+
+  return (
+    <div className="space-y-4">
+      <Card className="shadow-sm">
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Inbox className="size-5" />
+            </span>
+            <div>
+              <h1 className="font-display text-xl font-semibold tracking-tight">
+                Bảng biểu dương, phê bình
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Các phòng gửi về để theo dõi - đội chủ trì duyệt / trả lại, các
+                đội khác nhận để biết.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <SegmentedTabs
+              ariaLabel="Hộp"
+              value={box}
+              onChange={(next) => {
+                setBox(next);
+                // Hộp theo dõi không có "chờ tôi duyệt" - mở sẵn tất cả.
+                setStatus(next === "LEAD" ? "PENDING" : "");
+              }}
+              items={[
+                { value: "LEAD" as const, label: "Chủ trì duyệt" },
+                { value: "INFORM" as const, label: "Theo dõi" },
+              ]}
+            />
+            <SegmentedTabs
+              ariaLabel="Trạng thái"
+              value={status}
+              onChange={setStatus}
+              items={[
+                { value: "PENDING" as const, label: "Chờ duyệt" },
+                { value: "APPROVED" as const, label: "Đã duyệt" },
+                { value: "RETURNED" as const, label: "Đã trả lại" },
+                { value: "" as const, label: "Tất cả" },
+              ]}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardContent className="p-0">
+          {list.isLoading ? (
+            <div className="space-y-2 p-4">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          ) : rows.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+              Không có bảng nào.
+            </p>
+          ) : (
+            <ul className="divide-y">
+              {rows.map((row) => (
+                <li key={row._id}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenId(row._id)}
+                    className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-left hover:bg-muted/50"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span
+                        className={cn(
+                          "block",
+                          row.seen ? "font-medium" : "font-semibold",
+                        )}
+                      >
+                        {row.departmentName}
+                        {row.seen ? null : (
+                          <span className="ml-2 text-xs font-medium text-primary">
+                            Mới
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {monthLabel(row.periodMonth)} · {row.praiseCount} biểu
+                        dương · {row.criticismCount} phê bình
+                        {row.sentAt
+                          ? ` · gửi lúc ${formatServerHm(row.sentAt)}`
+                          : ""}
+                      </span>
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className={cn("font-normal", DAY_STATUS_CLASS[row.status])}
+                    >
+                      {stagedStatusLabel(row)}
+                    </Badge>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function CommendationIncomingDetail({
+  id,
+  onBack,
+  onChanged,
+}: {
+  id: string;
+  onBack: () => void;
+  onChanged: () => void;
+}) {
+  const { data, error, isLoading, mutate } = useSWR(
+    commendationKeys.incoming(id),
+    () => fetchCommendationIncoming(id),
+  );
+  const [dialog, setDialog] = useState<"APPROVE" | "RETURN" | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const decide = async () => {
+    if (!dialog) return;
+    if (dialog === "RETURN" && !reason.trim()) return;
+    setBusy(true);
+    try {
+      await decideCommendation(id, {
+        decision: dialog,
+        reason: dialog === "RETURN" ? reason.trim() : undefined,
+      });
+      setDialog(null);
+      setReason("");
+      await mutate();
+      onChanged();
+      toast.success(dialog === "RETURN" ? "Đã trả lại." : "Đã duyệt.");
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Không thực hiện được."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportExcel = async () => {
+    if (!data) return;
+    setExporting(true);
+    try {
+      await exportCommendationToExcel({
+        periodMonth: data.periodMonth,
+        unitName: data.departmentName,
+        statusLabel: stagedStatusLabel(data),
+        criteria: data.criteria,
+        praises: commendationExportRows(data.praises, []),
+        criticisms: commendationExportRows(data.criticisms, []),
+      });
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Không xuất được Excel."));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const decidable = data?.status === "PENDING" && data.canDecide;
+
+  return (
+    <div className="space-y-4">
+      <Button
+        type="button"
+        variant="outline"
+        className="bg-background"
+        onClick={onBack}
+      >
+        <ArrowLeft className="size-4" aria-hidden="true" />
+        Danh sách
+      </Button>
+
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {getApiErrorMessage(error, "Không mở được bảng.")}
+        </p>
+      ) : null}
+      {isLoading || !data ? (
+        error ? null : (
+          <Skeleton className="h-96 w-full" />
+        )
+      ) : (
+        <Card className="shadow-sm">
+          <CardContent className="space-y-4 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-display text-lg font-semibold">
+                    {data.departmentName} ·{" "}
+                    {monthLabel(data.periodMonth).toLowerCase()}
+                  </h2>
+                  <Badge
+                    variant="secondary"
+                    className={cn("font-normal", DAY_STATUS_CLASS[data.status])}
+                  >
+                    {stagedStatusLabel(data)}
+                  </Badge>
+                  {data.viewerRole !== "RECIPIENT" ? (
+                    <Badge variant="outline" className="font-normal">
+                      Nhận để theo dõi
+                    </Badge>
+                  ) : null}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {data.sentByName ? `${data.sentByName} gửi` : "Đã gửi"}
+                  {data.sentAt
+                    ? ` lúc ${formatServerHm(data.sentAt)}`
+                    : ""}{" "}
+                  · {data.praises.length} biểu dương ·{" "}
+                  {data.criticisms.length} phê bình
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="bg-background"
+                  disabled={exporting}
+                  onClick={() => void exportExcel()}
+                >
+                  {exporting ? (
+                    <Loader2
+                      className="size-4 motion-safe:animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <FileDown className="size-4" aria-hidden="true" />
+                  )}
+                  Xuất Excel
+                </Button>
+                {decidable ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="bg-background"
+                      onClick={() => setDialog("RETURN")}
+                    >
+                      <Undo2 className="size-4" aria-hidden="true" />
+                      Trả lại
+                    </Button>
+                    <Button type="button" onClick={() => setDialog("APPROVE")}>
+                      <Check className="size-4" aria-hidden="true" />
+                      Duyệt
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            <ApprovalChain
+              status={data.status}
+              leadName={data.recipientName}
+              finalName={data.finalRecipientName}
+              stage={data.stage}
+              firstApproval={data.firstApproval}
+            />
+            {data.status === "RETURNED" ? (
+              <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                <strong className="font-semibold">Đã trả lại:</strong>{" "}
+                {data.returnReason}
+              </p>
+            ) : null}
+
+            <CommendationTables
+              praises={data.praises}
+              criticisms={data.criticisms}
+              criteria={data.criteria ?? []}
+              editable={false}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog
+        open={dialog !== null}
+        onOpenChange={(open) => !open && setDialog(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {dialog === "RETURN"
+                ? "Trả lại bảng biểu dương, phê bình?"
+                : "Duyệt bảng biểu dương, phê bình?"}
+            </DialogTitle>
+            <DialogDescription>
+              {data?.departmentName} -{" "}
+              {data ? monthLabel(data.periodMonth).toLowerCase() : ""}.
+              {dialog === "APPROVE" &&
+              data?.finalRecipientName &&
+              data.stage !== "FINAL"
+                ? ` Đây là duyệt cấp 1 - duyệt xong chuyển lên ${data.finalRecipientName} duyệt cuối.`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {dialog === "RETURN" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="commendation-return-reason">
+                Lý do trả lại <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="commendation-return-reason"
+                value={reason}
+                rows={3}
+                onChange={(event) => setReason(event.target.value)}
+                placeholder="Nêu rõ dòng / nội dung cần sửa…"
+              />
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setDialog(null)}
+            >
+              Huỷ
+            </Button>
+            <Button
+              type="button"
+              variant={dialog === "RETURN" ? "destructive" : "default"}
+              disabled={busy || (dialog === "RETURN" && !reason.trim())}
+              onClick={() => void decide()}
+            >
+              {busy ? (
+                <Loader2
+                  className="size-4 motion-safe:animate-spin"
+                  aria-hidden="true"
+                />
+              ) : null}
+              {dialog === "RETURN" ? "Trả lại" : "Duyệt"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

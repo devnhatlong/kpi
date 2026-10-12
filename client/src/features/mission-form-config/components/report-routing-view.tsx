@@ -45,6 +45,7 @@ export function ReportRoutingView() {
                 label: "Điểm cộng, trừ & xếp loại",
               },
               { value: "APPRAISAL" as const, label: "Thẩm định KPI" },
+              { value: "COMMENDATION" as const, label: "Biểu dương, phê bình" },
             ]}
           />
         </CardContent>

@@ -86,10 +86,12 @@ const RouteUnitSchema = SchemaFactory.createForClass(TeamReportRouteUnit);
 
 /** Luồng của loại báo cáo nào. */
 /** APPRAISAL = phụ lục theo dõi, thẩm định tháng của các đội PV01. */
+/** COMMENDATION = bảng đề xuất biểu dương, phê bình tháng của các phòng. */
 export const TEAM_REPORT_ROUTE_KINDS = [
   'ADJUSTMENT',
   'SUMMARY',
   'APPRAISAL',
+  'COMMENDATION',
 ] as const;
 export type TeamReportRouteKind = (typeof TEAM_REPORT_ROUTE_KINDS)[number];
 

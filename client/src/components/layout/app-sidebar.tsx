@@ -16,6 +16,10 @@ import {
   fetchAppraisalAccess,
 } from "@/features/team-report/appraisal";
 import {
+  commendationKeys,
+  fetchCommendationAccess,
+} from "@/features/team-report/commendation";
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -211,6 +215,13 @@ export function AppSidebar() {
   );
   const appraisalAllowed = appraisalGate.data?.allowed === true;
   const appraisalInbox = appraisalGate.data?.canReceive === true;
+  const commendationGate = useSWR(
+    user ? commendationKeys.access(user.id) : null,
+    () => fetchCommendationAccess(),
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
+  );
+  const commendationAllowed = commendationGate.data?.allowed === true;
+  const commendationInbox = commendationGate.data?.canReceive === true;
 
   // Lọc cả mục con: nhóm chỉ còn lại những trang user thật sự vào được, và
   // nhóm rỗng thì ẩn luôn thay vì bung ra một danh sách trống.
@@ -242,7 +253,9 @@ export function AppSidebar() {
             (child.gate === "adjustment-inbox" && adjustmentInbox) ||
             (child.gate === "summary-inbox" && summaryInbox) ||
             (child.gate === "appraisal-access" && appraisalAllowed) ||
-            (child.gate === "appraisal-inbox" && appraisalInbox)),
+            (child.gate === "appraisal-inbox" && appraisalInbox) ||
+            (child.gate === "commendation-access" && commendationAllowed) ||
+            (child.gate === "commendation-inbox" && commendationInbox)),
       );
       if (children.length) items.push({ ...item, children });
     }
@@ -255,6 +268,8 @@ export function AppSidebar() {
     summaryInbox,
     appraisalAllowed,
     appraisalInbox,
+    commendationAllowed,
+    commendationInbox,
   ]);
 
   const allHrefs = useMemo(() => collectNavHrefs(visibleItems), [visibleItems]);

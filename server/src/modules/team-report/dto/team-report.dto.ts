@@ -955,3 +955,61 @@ export class SaveTeamReportAppraisalDto {
   @MaxLength(120)
   commanderName?: string;
 }
+
+/* ---------------------------------------- bảng đề xuất biểu dương, phê bình */
+
+/** Một dòng biểu dương / phê bình. */
+export class TeamReportCommendationRowDto {
+  @ApiPropertyOptional({
+    description: 'Nhóm nội dung (mục Điểm cộng I) - chỉ dòng biểu dương',
+  })
+  @IsOptional()
+  @IsMongoId()
+  itemId?: string | null;
+
+  @ApiProperty({ type: [String], description: 'Đơn vị, địa phương' })
+  @IsArray()
+  @ArrayMaxSize(300)
+  @IsMongoId({ each: true })
+  departmentIds!: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  content?: string;
+
+  @ApiPropertyOptional({ description: 'Căn cứ, tài liệu kiểm chứng' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  evidence?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
+export class SaveTeamReportCommendationDto {
+  @ApiPropertyOptional({ description: 'Phiên bản đang sửa - chống ghi đè' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  version?: number;
+
+  @ApiProperty({ type: [TeamReportCommendationRowDto] })
+  @IsArray()
+  @ArrayMaxSize(300)
+  @ValidateNested({ each: true })
+  @Type(() => TeamReportCommendationRowDto)
+  praises!: TeamReportCommendationRowDto[];
+
+  @ApiProperty({ type: [TeamReportCommendationRowDto] })
+  @IsArray()
+  @ArrayMaxSize(300)
+  @ValidateNested({ each: true })
+  @Type(() => TeamReportCommendationRowDto)
+  criticisms!: TeamReportCommendationRowDto[];
+}

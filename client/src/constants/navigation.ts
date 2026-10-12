@@ -9,6 +9,7 @@ import {
   FormInput,
   Gauge,
   Inbox,
+  Megaphone,
   KeyRound,
   Layers,
   ListTree,
@@ -52,7 +53,9 @@ export type NavSubItem = {
     | "adjustment-inbox"
     | "summary-inbox"
     | "appraisal-access"
-    | "appraisal-inbox";
+    | "appraisal-inbox"
+    | "commendation-access"
+    | "commendation-inbox";
 };
 
 export type NavItem = {
@@ -160,6 +163,29 @@ export const NAV_ITEMS: NavItem[] = [
         href: "/team-report/appraisals/incoming",
         icon: Inbox,
         gate: "appraisal-inbox",
+      },
+    ],
+  },
+  {
+    /*
+      Bảng đề xuất biểu dương, phê bình tháng. Chỉ TRƯỞNG PHÒNG lập (luồng
+      COMMENDATION: vai trưởng phòng ở cấp phòng - trưởng xã không có), các
+      đội Phòng Tham mưu nhận theo dõi. Server quyết, không theo mã quyền.
+    */
+    title: "Biểu dương, phê bình",
+    icon: Megaphone,
+    children: [
+      {
+        title: "Đề xuất biểu dương, phê bình",
+        href: "/team-report/commendations",
+        icon: ClipboardPen,
+        gate: "commendation-access",
+      },
+      {
+        title: "Theo dõi biểu dương, phê bình",
+        href: "/team-report/commendations/incoming",
+        icon: Inbox,
+        gate: "commendation-inbox",
       },
     ],
   },
