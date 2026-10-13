@@ -36,6 +36,10 @@ import {
   TeamReportCommendation,
   TeamReportCommendationDocument,
 } from './schemas/team-report-commendation.schema';
+import {
+  DepartmentLevel,
+  DepartmentLevelDocument,
+} from '@/modules/department-levels/schemas/department-level.schema';
 import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
 import { departmentLabels } from './team-report.department-label';
 import {
@@ -175,6 +179,8 @@ export class TeamReportAppraisalService {
     private readonly departmentModel: Model<DepartmentDocument>,
     @InjectModel(TeamReportCommendation.name)
     private readonly commendationModel: Model<TeamReportCommendationDocument>,
+    @InjectModel(DepartmentLevel.name)
+    private readonly levelModel: Model<DepartmentLevelDocument>,
     private readonly routing: TeamReportAdjustmentRoutingService,
   ) {}
 
@@ -209,9 +215,19 @@ export class TeamReportAppraisalService {
     const ids = [...new Set(departmentIds.map(String))];
     if (!ids.length) return result;
     const objectIds = ids.map((id) => new Types.ObjectId(id));
+    /* Chỉ bảng CẤP PHÒNG - bảng của các đội gửi trưởng phòng là bản nội bộ
+       trong phòng, chưa qua trưởng phòng tổng hợp nên không phải đề xuất
+       chính thức gửi các đội PV01. */
+    const phong = await this.levelModel
+      .findOne({ code: 'PHONG' })
+      .select('_id');
+    const phongDepartments = phong
+      ? await this.departmentModel.find({ levelId: phong._id }).select('_id')
+      : [];
     const sheets = await this.commendationModel
       .find({
         periodMonth,
+        departmentId: { $in: phongDepartments.map((dept) => dept._id) },
         status: { $ne: 'DRAFT' },
         $or: [
           { 'praises.departmentIds': { $in: objectIds } },
@@ -420,6 +436,26 @@ export class TeamReportAppraisalService {
       }
       seen.add(unit.departmentId);
       const name = labels.get(unit.departmentId) ?? '';
+      /* Trần "tối đa N điểm" là của CẢ TIÊU CHÍ, không phải từng dòng: nhiều
+         thành tích cùng tiêu chí cộng lại vẫn không vượt N. Chặn khi lưu để
+         bảng không ghi một con số cộng mà phần tính điểm sẽ cắt bớt. */
+      const perItem = new Map<string, number>();
+      for (const bonus of unit.bonuses ?? []) {
+        if (!bonus.itemId || bonus.score === null || bonus.score === undefined)
+          continue;
+        perItem.set(
+          bonus.itemId,
+          (perItem.get(bonus.itemId) ?? 0) + bonus.score,
+        );
+      }
+      for (const [itemId, sum] of perItem) {
+        const item = itemById.get(itemId);
+        if (item && item.maxScore !== null && sum > item.maxScore + 1e-9) {
+          throw new BadRequestException(
+            `${name}: tổng điểm cộng "${item.name}" là ${round2(sum)}, vượt mức tối đa ${item.maxScore} của tiêu chí.`,
+          );
+        }
+      }
       return {
         // Giữ vòng đời đã có (bị trả lại thì vẫn là bị trả lại cho tới khi trình lại).
         ...(before ?? blankLifecycle()),

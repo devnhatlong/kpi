@@ -17,6 +17,7 @@ import { JwtGuard } from '../auth/guards/jwt.guard';
 import {
   DecideTeamReportDayDto,
   SaveTeamReportCommendationDto,
+  SendTeamReportCommendationDto,
   TeamReportAdjustmentInboxQueryDto,
 } from './dto/team-report.dto';
 import { TeamReportCommendationService } from './team-report-commendation.service';
@@ -88,12 +89,16 @@ export class TeamReportCommendationController {
     return this.service.save(user.uid, periodMonth, dto);
   }
 
-  @ApiOperation({ summary: 'Gửi bảng theo luồng tới các đội Phòng Tham mưu' })
+  @ApiOperation({
+    summary:
+      'Gửi bảng theo luồng: đội → trưởng phòng trực thuộc; phòng → các đội PV01',
+  })
   @Post(':periodMonth/send')
   send(
     @CurrentUser() user: JwtPayloadUser,
     @Param('periodMonth') periodMonth: string,
+    @Body() dto: SendTeamReportCommendationDto,
   ) {
-    return this.service.send(user.uid, periodMonth);
+    return this.service.send(user.uid, periodMonth, dto);
   }
 }

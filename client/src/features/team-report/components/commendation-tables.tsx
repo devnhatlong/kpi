@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Building2, Plus, Trash2, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,17 +37,29 @@ export function CommendationTables({
   departmentChoices = [],
   editable,
   onChange,
+  sourceTags = false,
+  ownerName = "",
 }: {
+  /** Đơn vị lập bảng (phòng) - nhãn nguồn của dòng phòng tự nhập. */
+  ownerName?: string;
   praises: CommendationRow[];
   criticisms: CommendationRow[];
   criteria: Array<{ id: string; name: string }>;
   departmentChoices?: CommendationDepartmentChoice[];
   editable: boolean;
+  /**
+   * Bày nhãn nguồn ở mọi dòng ("Đội X đề xuất" / "Phòng nhập") - bảng của
+   * phòng có lấy dòng từ các đội. Không truyền thì tự bật khi có dòng lấy từ
+   * đội (màn nhận đọc bảng của phòng).
+   */
+  sourceTags?: boolean;
   onChange?: (next: {
     praises: CommendationRow[];
     criticisms: CommendationRow[];
   }) => void;
 }) {
+  const showSource =
+    sourceTags || [...praises, ...criticisms].some((row) => !!row.sourceName);
   const options = useMemo(
     () =>
       departmentChoices.map((choice) => ({
@@ -77,6 +89,22 @@ export function CommendationTables({
 
   /** Ô đơn vị: chọn nhiều khi sửa, chữ nối khi đọc. */
   const unitsCell = (
+    row: CommendationRow,
+    patch: (next: Partial<CommendationRow>) => void,
+    label: string,
+  ) => (
+    <>
+      {unitsInput(row, patch, label)}
+      {/* Nguồn của dòng: đội nào đề xuất (trưởng phòng lấy từ bảng đội) hay
+          phòng tự nhập. Chỉ bày ở bảng có trộn hai nguồn - bảng của đội thì
+          mọi dòng đều của đội, ghi ra là thừa. */}
+      {showSource ? (
+        <SourceTag name={row.sourceName} ownerName={ownerName} />
+      ) : null}
+    </>
+  );
+
+  const unitsInput = (
     row: CommendationRow,
     patch: (next: Partial<CommendationRow>) => void,
     label: string,
@@ -162,9 +190,7 @@ export function CommendationTables({
                     đã có văn bản ghi nhận hoặc đề xuất biểu dương
                   </span>
                 </th>
-                <th className={cn(TH, "w-56")}>
-                  Căn cứ, tài liệu kiểm chứng
-                </th>
+                <th className={cn(TH, "w-56")}>Căn cứ, tài liệu kiểm chứng</th>
                 <th className={cn(TH, "w-36")}>Ghi chú</th>
                 {editable ? <th className={cn(TH, "w-11")} /> : null}
               </tr>
@@ -224,12 +250,16 @@ export function CommendationTables({
                             )}
                           </td>
                           <td className={TD}>
-                            {noteCell(row.note, (note) => patch(index, { note }))}
+                            {noteCell(row.note, (note) =>
+                              patch(index, { note }),
+                            )}
                           </td>
                           {editable ? (
                             <td className={TD}>
                               {removeButton(() =>
-                                setPraises(praises.filter((_, j) => j !== index)),
+                                setPraises(
+                                  praises.filter((_, j) => j !== index),
+                                ),
                               )}
                             </td>
                           ) : null}
@@ -240,7 +270,10 @@ export function CommendationTables({
                         {lead}
                         <td
                           colSpan={editable ? 5 : 4}
-                          className={cn(TD, "text-xs italic text-muted-foreground")}
+                          className={cn(
+                            TD,
+                            "text-xs italic text-muted-foreground",
+                          )}
                         >
                           Chưa có nội dung biểu dương ở nhóm này.
                         </td>
@@ -298,9 +331,7 @@ export function CommendationTables({
                     đã có văn bản thể hiện hoặc cần phê bình, chấn chỉnh
                   </span>
                 </th>
-                <th className={cn(TH, "w-56")}>
-                  Căn cứ, tài liệu kiểm chứng
-                </th>
+                <th className={cn(TH, "w-56")}>Căn cứ, tài liệu kiểm chứng</th>
                 <th className={cn(TH, "w-36")}>Ghi chú</th>
                 {editable ? <th className={cn(TH, "w-11")} /> : null}
               </tr>
@@ -353,7 +384,9 @@ export function CommendationTables({
                     {editable ? (
                       <td className={TD}>
                         {removeButton(() =>
-                          setCriticisms(criticisms.filter((_, j) => j !== index)),
+                          setCriticisms(
+                            criticisms.filter((_, j) => j !== index),
+                          ),
                         )}
                       </td>
                     ) : null}
@@ -383,6 +416,34 @@ export function CommendationTables({
         </div>
       </section>
     </div>
+  );
+}
+
+/** Nhãn nguồn của một dòng: đội nào đề xuất, hoặc phòng lập bảng tự nhập. */
+function SourceTag({ name, ownerName }: { name?: string; ownerName: string }) {
+  if (name) {
+    // "Đội X - Phòng Y" → chỉ giữ tên đội cho gọn; tên đầy đủ ở tooltip.
+    const team = name.split(" - ")[0] ?? name;
+    return (
+      <span
+        title={`${name} đề xuất`}
+        className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-800 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-300"
+      >
+        <Users className="size-3 shrink-0" aria-hidden="true" />
+        <span className="truncate">{team} đề xuất</span>
+      </span>
+    );
+  }
+  return (
+    <span
+      title={ownerName ? `${ownerName} đề xuất` : undefined}
+      className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-full border bg-muted/50 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+    >
+      <Building2 className="size-3 shrink-0" aria-hidden="true" />
+      <span className="truncate">
+        {ownerName ? `${ownerName} đề xuất` : "Phòng đề xuất"}
+      </span>
+    </span>
   );
 }
 

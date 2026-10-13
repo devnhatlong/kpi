@@ -3,6 +3,7 @@ import { api, unwrapData, unwrapPaginated } from "@/lib/api-client";
 import type {
   TeamReportDayStatus,
   TeamReportFirstApproval,
+  TeamReportRecipient,
   TeamReportRouteUnitView,
 } from "@/features/team-report/types";
 
@@ -25,6 +26,19 @@ export type CommendationRow = {
   /** Căn cứ, tài liệu kiểm chứng. */
   evidence: string;
   note: string;
+  /** Dòng phòng lấy từ bảng của một đội trong phòng - id dòng gốc + tên đội. */
+  sourceRowId?: string | null;
+  sourceName?: string;
+};
+
+/** Bảng của một đội trong phòng gửi lên trưởng phòng - nguồn lấy dòng. */
+export type CommendationTeamSheet = {
+  _id: string;
+  departmentName: string;
+  status: TeamReportDayStatus;
+  sentAt: string | null;
+  praises: CommendationRow[];
+  criticisms: CommendationRow[];
 };
 
 export type CommendationDepartmentChoice = {
@@ -67,11 +81,19 @@ export type CommendationSheet = {
 export type CommendationComposerData = CommendationSheet & {
   criteria: Array<{ id: string; name: string }>;
   departmentChoices: CommendationDepartmentChoice[];
-  /** Nơi nhận theo luồng COMMENDATION; units null = chưa có luồng. */
+  /**
+   * Nơi nhận theo luồng COMMENDATION:
+   * - `units`: bảng nơi nhận cố định (trưởng phòng → các đội PV01);
+   * - `people`: luồng tự chọn (đội → trưởng phòng trực thuộc);
+   * cả hai null = chưa có luồng.
+   */
   route: {
     units: TeamReportRouteUnitView[] | null;
     finalReviewer: TeamReportRouteUnitView | null;
+    people: TeamReportRecipient[] | null;
   };
+  /** Bảng các đội trong phòng gửi lên tôi tháng này (trưởng phòng). */
+  teamSheets: CommendationTeamSheet[];
   canEdit: boolean;
 };
 
@@ -164,6 +186,7 @@ export function saveCommendation(
     content: row.content,
     evidence: row.evidence,
     note: row.note,
+    sourceRowId: row.sourceRowId ?? null,
   });
   return unwrapData(
     api.put<ApiResponse<CommendationSheet>>(
@@ -180,12 +203,27 @@ export function saveCommendation(
   );
 }
 
-export function sendCommendation(month: string) {
+/** Gửi bảng. `recipientId` chỉ dùng cho luồng tự chọn (đội → trưởng phòng). */
+export function sendCommendation(month: string, recipientId?: string) {
   return unwrapData(
     api.post<ApiResponse<CommendationSheet>>(
       `/team-report/commendations/${month}/send`,
+      recipientId ? { recipientId } : {},
     ),
   );
+}
+
+/** Chép một dòng của bảng đội thành dòng của bảng phòng (giữ nguồn). */
+export function rowFromTeam(
+  row: CommendationRow,
+  teamName: string,
+): CommendationRow {
+  return {
+    ...row,
+    _id: null,
+    sourceRowId: row._id,
+    sourceName: teamName,
+  };
 }
 
 export function fetchCommendationInbox(query: {

@@ -26,6 +26,7 @@ import { User, UserDocument } from '@/modules/users/schemas/user.schema';
 import {
   DecideTeamReportDayDto,
   SaveTeamReportCommendationDto,
+  SendTeamReportCommendationDto,
   TeamReportAdjustmentInboxQueryDto,
   TeamReportCommendationRowDto,
 } from './dto/team-report.dto';
@@ -77,12 +78,25 @@ const DEFAULT_RECEIVERS = [
   'pv01.phongtrao.duyet',
 ];
 
+/** Hai luồng mặc định, nhận ra theo CẤP của vế người gửi (đổi tên không sao). */
+const DEFAULT_ROUTES = {
+  /** Trưởng phòng → các đội Phòng Tham mưu (bảng nơi nhận cố định). */
+  unit: { name: 'Trưởng phòng → các đội Phòng Tham mưu', level: 'PHONG' },
+  /**
+   * Đội thuộc phòng → trưởng phòng TRỰC THUỘC (cờ "cấp trên trực thuộc" của
+   * người gửi). Đội = vai MANAGER ở cấp ĐỘI: tổ của xã cũng mang vai MANAGER
+   * nhưng ở cấp TỔ nên không khớp - đúng yêu cầu tổ của xã không có bảng này.
+   */
+  team: { name: 'Các đội → trưởng phòng trực thuộc', level: 'DOI' },
+} as const;
+
 /**
- * "Bảng đề xuất biểu dương, phê bình" tháng của các phòng.
+ * "Bảng đề xuất biểu dương, phê bình" tháng.
  *
- * Phòng lập, tháng một bản (nhập dần trong tháng rồi gửi), gửi theo luồng
- * COMMENDATION tới các đội Phòng Tham mưu: chủ trì duyệt / trả lại, các đội
- * khác nhận để theo dõi. Cùng vòng đời và duyệt 2 cấp với bảng cộng / trừ.
+ * Hai tầng: ĐỘI thuộc phòng lập rồi gửi trưởng phòng trực thuộc duyệt; TRƯỞNG
+ * PHÒNG lấy dòng từ bảng các đội đã duyệt + tự nhập, gửi các đội Phòng Tham
+ * mưu (chủ trì duyệt / trả lại, các đội khác theo dõi). Mỗi đơn vị tháng một
+ * bản. Cùng vòng đời và duyệt 2 cấp với bảng cộng / trừ.
  */
 @Injectable()
 export class TeamReportCommendationService implements OnModuleInit {
@@ -143,6 +157,7 @@ export class TeamReportCommendationService implements OnModuleInit {
       departmentId: actor.departmentId,
       periodMonth,
     });
+    const units = await this.routing.unitsFor(KIND, userId);
     return {
       message: 'OK',
       data: {
@@ -150,9 +165,14 @@ export class TeamReportCommendationService implements OnModuleInit {
         criteria: await this.criteria(),
         departmentChoices: await this.departmentChoices(),
         route: {
-          units: await this.routing.unitsFor(KIND, userId),
+          units,
           finalReviewer: await this.routing.finalReviewerFor(KIND, userId),
+          /* Luồng tự chọn (đội → trưởng phòng trực thuộc): danh sách người
+             được gửi tới. null khi luồng có bảng nơi nhận cố định. */
+          people: units ? null : await this.routing.recipients(KIND, userId),
         },
+        /** Bảng các đội trong phòng gửi lên tôi tháng này - nguồn lấy dòng. */
+        teamSheets: await this.teamSheets(actor, periodMonth),
         canEdit:
           !sheet || sheet.status === 'DRAFT' || sheet.status === 'RETURNED',
       },
@@ -191,6 +211,15 @@ export class TeamReportCommendationService implements OnModuleInit {
       .select('_id');
     const knownIds = new Set(known.map((dept) => String(dept._id)));
     const labels = await departmentLabels(this.departmentModel, allIds);
+    /* Dòng lấy từ bảng đội: chỉ nhận id dòng có thật trong bảng đội gửi lên
+       mình; tên đội lấy từ đó (client không tự khai được nguồn). */
+    const sources = new Map(
+      (await this.teamSheets(actor, periodMonth)).flatMap((team) =>
+        [...team.praises, ...team.criticisms].map(
+          (row) => [row._id, team.departmentName] as const,
+        ),
+      ),
+    );
 
     const toRow = (
       row: TeamReportCommendationRowDto,
@@ -215,6 +244,11 @@ export class TeamReportCommendationService implements OnModuleInit {
         content: row.content?.trim() ?? '',
         evidence: row.evidence?.trim() ?? '',
         note: row.note?.trim() ?? '',
+        sourceRowId:
+          row.sourceRowId && sources.has(row.sourceRowId)
+            ? new Types.ObjectId(row.sourceRowId)
+            : null,
+        sourceName: (row.sourceRowId && sources.get(row.sourceRowId)) || '',
       };
     };
     // Dòng trống hẳn (bấm "Thêm" rồi thôi) thì bỏ, không lưu thành dòng rỗng.
@@ -245,8 +279,16 @@ export class TeamReportCommendationService implements OnModuleInit {
     };
   }
 
-  /** Gửi theo luồng: một đội chủ trì duyệt, các đội khác nhận để theo dõi. */
-  async send(userId: string, periodMonth: string) {
+  /**
+   * Gửi theo luồng. Luồng có bảng nơi nhận cố định (trưởng phòng → các đội
+   * PV01): đi đúng bảng đó. Luồng tự chọn (đội → trưởng phòng trực thuộc):
+   * người gửi chọn một người trong danh sách luồng cho phép.
+   */
+  async send(
+    userId: string,
+    periodMonth: string,
+    dto: SendTeamReportCommendationDto = {},
+  ) {
     const actor = await this.requireComposer(userId);
     this.assertMonth(periodMonth);
     const sheet = await this.sheetModel.findOne({
@@ -286,17 +328,16 @@ export class TeamReportCommendationService implements OnModuleInit {
     }
 
     const fixed = await this.routing.fixedTargets(KIND, actor);
-    if (!fixed) {
-      throw new BadRequestException(
-        'Chưa có luồng gửi bảng biểu dương, phê bình cho tài khoản này - báo quản trị cấu hình ở Luồng trình báo cáo.',
-      );
-    }
+    const recipient =
+      fixed?.recipient ??
+      (await this.requireRecipient(userId, dto.recipientId));
+    const participants = fixed?.participants ?? [];
     sheet.status = 'PENDING';
-    sheet.recipientId = fixed.recipient.id;
-    sheet.recipientName = fixed.recipient.name;
-    sheet.recipientDepartmentId = fixed.recipient.departmentId;
-    resetStages(sheet, fixed.final);
-    sheet.participants = fixed.participants;
+    sheet.recipientId = recipient.id;
+    sheet.recipientName = recipient.name;
+    sheet.recipientDepartmentId = recipient.departmentId;
+    resetStages(sheet, fixed?.final ?? null);
+    sheet.participants = participants;
     sheet.markModified('participants');
     sheet.sentById = actor.id;
     sheet.sentByName = actor.name;
@@ -309,10 +350,8 @@ export class TeamReportCommendationService implements OnModuleInit {
     await sheet.save();
 
     return {
-      message: `Đã gửi bảng lên ${fixed.recipient.name}${
-        fixed.participants.length
-          ? `, kèm ${fixed.participants.length} đội theo dõi`
-          : ''
+      message: `Đã gửi bảng lên ${recipient.name}${
+        participants.length ? `, kèm ${participants.length} đội theo dõi` : ''
       }.`,
       data: await this.toClient(sheet, periodMonth, actor.departmentId),
     };
@@ -460,21 +499,8 @@ export class TeamReportCommendationService implements OnModuleInit {
       ...(sheet?.praises ?? []),
       ...(sheet?.criticisms ?? []),
     ]);
-    const rowView = (row: TeamReportCommendationRow) => ({
-      _id: String(row._id),
-      itemId: row.itemId ? String(row.itemId) : null,
-      itemName: row.itemName,
-      departmentIds: row.departmentIds.map(String),
-      departmentNames: row.departmentNames,
-      /** Tên gọn khi in: phòng in MÃ (PC03), cấp xã giữ tên. */
-      departmentShortNames: row.departmentIds.map(
-        (id, index) =>
-          short.get(String(id)) ?? row.departmentNames[index] ?? '',
-      ),
-      content: row.content,
-      evidence: row.evidence,
-      note: row.note,
-    });
+    const rowView = (row: TeamReportCommendationRow) =>
+      this.rowView(row, short);
     return {
       _id: sheet ? String(sheet._id) : null,
       periodMonth,
@@ -494,6 +520,88 @@ export class TeamReportCommendationService implements OnModuleInit {
       decidedAt: sheet?.decidedAt ?? null,
       returnReason: sheet?.returnReason ?? '',
       updatedAt: sheet?.updatedAt ?? null,
+    };
+  }
+
+  private rowView(row: TeamReportCommendationRow, short: Map<string, string>) {
+    return {
+      _id: String(row._id),
+      itemId: row.itemId ? String(row.itemId) : null,
+      itemName: row.itemName,
+      departmentIds: row.departmentIds.map(String),
+      departmentNames: row.departmentNames,
+      /** Tên gọn khi in: phòng in MÃ (PC03), cấp xã giữ tên. */
+      departmentShortNames: row.departmentIds.map(
+        (id, index) =>
+          short.get(String(id)) ?? row.departmentNames[index] ?? '',
+      ),
+      content: row.content,
+      evidence: row.evidence,
+      note: row.note,
+      sourceRowId: row.sourceRowId ? String(row.sourceRowId) : null,
+      sourceName: row.sourceName ?? '',
+    };
+  }
+
+  /**
+   * Bảng các ĐỘI TRONG PHÒNG gửi lên đúng tài khoản tôi trong tháng (chờ
+   * duyệt hoặc đã duyệt) - nguồn để trưởng phòng lấy dòng vào bảng của phòng.
+   *
+   * Khoá cả hai điều kiện: gửi đích danh tôi (hộp đến theo tài khoản) VÀ đơn
+   * vị lập là đơn vị con của đơn vị tôi - để bảng của phòng khác trình lên
+   * một đội PV01 không lọt vào đây.
+   */
+  private async teamSheets(actor: Actor, periodMonth: string) {
+    const children = await this.departmentModel
+      .find({ parentId: actor.departmentId })
+      .select('_id');
+    if (!children.length) return [];
+    const sheets = await this.sheetModel
+      .find({
+        periodMonth,
+        recipientId: actor.id,
+        departmentId: { $in: children.map((dept) => dept._id) },
+        status: { $in: ['PENDING', 'APPROVED'] },
+      })
+      .sort({ sentAt: 1 });
+    const labels = await departmentLabels(
+      this.departmentModel,
+      sheets.map((sheet) => sheet.departmentId),
+    );
+    const short = await this.shortNames(
+      sheets.flatMap((sheet) => [...sheet.praises, ...sheet.criticisms]),
+    );
+    return sheets.map((sheet) => ({
+      _id: String(sheet._id),
+      departmentName: labels.get(String(sheet.departmentId)) ?? '',
+      status: sheet.status,
+      sentAt: sheet.sentAt,
+      praises: sheet.praises.map((row) => this.rowView(row, short)),
+      criticisms: sheet.criticisms.map((row) => this.rowView(row, short)),
+    }));
+  }
+
+  /** Người nhận luồng tự chọn - phải nằm trong danh sách luồng cho phép. */
+  private async requireRecipient(userId: string, recipientId?: string) {
+    const allowed = await this.routing.recipients(KIND, userId);
+    if (!allowed) {
+      throw new BadRequestException(
+        'Chưa có luồng gửi bảng biểu dương, phê bình cho tài khoản này - báo quản trị cấu hình ở Luồng trình báo cáo.',
+      );
+    }
+    if (!recipientId) {
+      throw new BadRequestException('Chọn người cấp trên nhận bảng.');
+    }
+    const picked = allowed.find((person) => person.id === recipientId);
+    if (!picked?.departmentId) {
+      throw new BadRequestException(
+        'Người nhận không hợp lệ - phải là cấp trên trong luồng quản trị đã đặt.',
+      );
+    }
+    return {
+      id: new Types.ObjectId(picked.id),
+      name: picked.fullName,
+      departmentId: new Types.ObjectId(picked.departmentId),
     };
   }
 
@@ -581,50 +689,78 @@ export class TeamReportCommendationService implements OnModuleInit {
     throw new ForbiddenException('Bảng này không gửi tới tài khoản bạn.');
   }
 
+  /**
+   * Tạo TỪNG luồng mặc định còn thiếu. Nhận ra luồng đã có theo cấp ở vế
+   * người gửi chứ không theo tên - quản trị đổi tên thì không bị tạo lại; xoá
+   * hẳn thì lần khởi động sau tạo lại (muốn tắt thì bỏ tick "đang dùng").
+   */
   private async seedDefaultRoute() {
-    if (await this.routeModel.exists({ kind: KIND })) return;
-    const phong = await this.levelModel
-      .findOne({ code: 'PHONG' })
-      .select('_id');
-    const users = await this.userModel
-      .find({ username: { $in: DEFAULT_RECEIVERS } })
-      .select('username');
-    if (!phong || !users.length) return;
-    const lead =
-      users.find((user) => user.username === DEFAULT_LEAD) ?? users[0];
-    await this.routeModel.create({
-      kind: KIND,
-      name: 'Trưởng phòng → các đội Phòng Tham mưu',
-      sortOrder: 0,
-      isActive: true,
-      units: users.map((user) => ({
-        userId: user._id,
-        role: String(user._id) === String(lead._id) ? 'LEAD' : 'INFORM',
-      })),
-      finalUserId: null,
-      sender: {
-        roleCodes: ['UNIT_ADMIN'],
-        levelIds: [phong._id],
-        departmentIds: [],
-        includeDescendants: true,
-        userIds: [],
-        senderSuperiorOnly: false,
-        senderSubordinatesOnly: false,
-      },
-      recipients: {
-        roleCodes: [],
-        levelIds: [],
-        departmentIds: [],
-        includeDescendants: true,
-        userIds: [],
-        senderSuperiorOnly: false,
-        senderSubordinatesOnly: false,
-      },
-      updatedByName: 'Hệ thống',
+    const levels = await this.levelModel
+      .find({ code: { $in: ['PHONG', 'DOI'] } })
+      .select('code');
+    const levelId = (code: string) =>
+      levels.find((level) => level.code === code)?._id;
+    const scope = (patch: Record<string, unknown> = {}) => ({
+      roleCodes: [],
+      levelIds: [],
+      departmentIds: [],
+      includeDescendants: true,
+      userIds: [],
+      senderSuperiorOnly: false,
+      senderSubordinatesOnly: false,
+      ...patch,
     });
-    this.logger.log(
-      `Đã tạo luồng mặc định bảng biểu dương, phê bình (${users.length} đội nhận).`,
-    );
+    const exists = (level: Types.ObjectId) =>
+      this.routeModel.exists({ kind: KIND, 'sender.levelIds': level });
+
+    // 1. Trưởng phòng → các đội Phòng Tham mưu (bảng nơi nhận cố định).
+    const phong = levelId(DEFAULT_ROUTES.unit.level);
+    if (phong && !(await exists(phong))) {
+      const users = await this.userModel
+        .find({ username: { $in: DEFAULT_RECEIVERS } })
+        .select('username');
+      if (users.length) {
+        const lead =
+          users.find((user) => user.username === DEFAULT_LEAD) ?? users[0];
+        await this.routeModel.create({
+          kind: KIND,
+          name: DEFAULT_ROUTES.unit.name,
+          sortOrder: 0,
+          isActive: true,
+          units: users.map((user) => ({
+            userId: user._id,
+            role: String(user._id) === String(lead._id) ? 'LEAD' : 'INFORM',
+          })),
+          finalUserId: null,
+          sender: scope({ roleCodes: ['UNIT_ADMIN'], levelIds: [phong] }),
+          recipients: scope(),
+          updatedByName: 'Hệ thống',
+        });
+        this.logger.log(
+          `Đã tạo luồng mặc định "${DEFAULT_ROUTES.unit.name}" (${users.length} đội nhận).`,
+        );
+      }
+    }
+
+    // 2. Đội thuộc phòng → trưởng phòng trực thuộc (người gửi tự chọn).
+    const doi = levelId(DEFAULT_ROUTES.team.level);
+    if (doi && !(await exists(doi))) {
+      await this.routeModel.create({
+        kind: KIND,
+        name: DEFAULT_ROUTES.team.name,
+        sortOrder: 1,
+        isActive: true,
+        units: [],
+        finalUserId: null,
+        sender: scope({ roleCodes: ['MANAGER'], levelIds: [doi] }),
+        recipients: scope({
+          roleCodes: ['UNIT_ADMIN'],
+          senderSuperiorOnly: true,
+        }),
+        updatedByName: 'Hệ thống',
+      });
+      this.logger.log(`Đã tạo luồng mặc định "${DEFAULT_ROUTES.team.name}".`);
+    }
   }
 
   private async requireComposer(userId: string) {

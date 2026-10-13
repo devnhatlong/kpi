@@ -54,17 +54,31 @@ export class TeamReportCommendationRow {
 
   @Prop({ trim: true, default: '' })
   note!: string;
+
+  /**
+   * Dòng phòng LẤY TỪ bảng của một đội trong phòng (đã duyệt) - id dòng gốc
+   * và tên đội, để không lấy trùng và để biết dòng nào do đội nào đề xuất.
+   * null = phòng tự nhập.
+   */
+  @Prop({ type: Types.ObjectId, default: null })
+  sourceRowId!: Types.ObjectId | null;
+
+  @Prop({ trim: true, default: '' })
+  sourceName!: string;
 }
 
 const RowSchema = SchemaFactory.createForClass(TeamReportCommendationRow);
 
 /**
  * "Bảng tổng hợp nội dung biểu dương, phê bình, chấn chỉnh Công an các đơn vị,
- * địa phương" của MỘT PHÒNG cho MỘT THÁNG.
+ * địa phương" của MỘT ĐƠN VỊ (phòng hoặc đội thuộc phòng) cho MỘT THÁNG.
  *
- * Chỉ trưởng phòng (vai UNIT_ADMIN ở cấp phòng - cấp xã không có) lập, theo
- * luồng COMMENDATION; mặc định gửi các đội Phòng Tham mưu (tài khoản duyệt)
- * theo dõi - một đội chủ trì duyệt / trả lại, các đội còn lại nhận để biết.
+ * Hai tầng, theo luồng COMMENDATION:
+ * - ĐỘI thuộc phòng (vai MANAGER ở cấp đội - tổ của xã không có) lập, gửi
+ *   trưởng phòng trực thuộc duyệt / trả lại.
+ * - TRƯỞNG PHÒNG (vai UNIT_ADMIN ở cấp phòng - cấp xã không có) lấy dòng từ
+ *   bảng các đội đã duyệt + tự nhập, gửi các đội Phòng Tham mưu: một đội chủ
+ *   trì duyệt / trả lại, các đội còn lại nhận để biết.
  */
 @Schema({ timestamps: true, collection: 'team_report_commendations' })
 export class TeamReportCommendation {

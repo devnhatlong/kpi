@@ -990,6 +990,21 @@ export class TeamReportCommendationRowDto {
   @IsString()
   @MaxLength(1000)
   note?: string;
+
+  @ApiPropertyOptional({
+    description: 'Dòng lấy từ bảng của một đội trong phòng - id dòng gốc',
+  })
+  @IsOptional()
+  @IsMongoId()
+  sourceRowId?: string | null;
+}
+
+/** Gửi bảng: luồng cố định thì bỏ trống; luồng tự chọn thì chọn cấp trên. */
+export class SendTeamReportCommendationDto {
+  @ApiPropertyOptional({ description: 'Người nhận (luồng tự chọn)' })
+  @IsOptional()
+  @IsMongoId()
+  recipientId?: string;
 }
 
 export class SaveTeamReportCommendationDto {

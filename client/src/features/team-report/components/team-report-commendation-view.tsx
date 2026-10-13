@@ -39,6 +39,7 @@ import {
   type CommendationExportRow,
 } from "@/features/team-report/commendation-excel";
 import { CommendationTables } from "@/features/team-report/components/commendation-tables";
+import { CommendationTeamSheets } from "@/features/team-report/components/commendation-team-sheets";
 import { ApprovalChain } from "@/features/team-report/components/participants-block";
 import {
   SummaryRecipientFields,
@@ -117,6 +118,15 @@ export function TeamReportCommendationView() {
   const [saving, setSaving] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [recipientId, setRecipientId] = useState("");
+  const [recipientError, setRecipientError] = useState(false);
+
+  const openSend = () => {
+    const choices = data?.route.people ?? [];
+    setRecipientId(choices.length === 1 ? choices[0]!.id : "");
+    setRecipientError(false);
+    setSendOpen(true);
+  };
 
   // Đổi tháng là bỏ bản nháp của tháng cũ.
   const [draftMonth, setDraftMonth] = useState(month);
@@ -170,12 +180,20 @@ export function TeamReportCommendationView() {
         : null;
 
   const send = async () => {
+    if (!routeUnits && !recipientId) {
+      setRecipientError(true);
+      return;
+    }
     setSaving(true);
     try {
-      await sendCommendation(month);
+      await sendCommendation(month, routeUnits ? undefined : recipientId);
       await mutate();
       setSendOpen(false);
-      toast.success("Đã gửi bảng tới các đội Phòng Tham mưu.");
+      toast.success(
+        routeUnits
+          ? "Đã gửi bảng tới các đội Phòng Tham mưu."
+          : "Đã gửi bảng lên trưởng phòng.",
+      );
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Không gửi được."));
     } finally {
@@ -203,6 +221,10 @@ export function TeamReportCommendationView() {
 
   const status = data?._id ? data.status : null;
   const routeUnits = data?.route.units ?? null;
+  /* Luồng tự chọn: ĐỘI gửi trưởng phòng trực thuộc - thường đúng một người,
+     chọn sẵn cho đỡ một cú bấm. */
+  const people = data?.route.people ?? null;
+  const team = !routeUnits && !!people;
   const leadName =
     routeUnits?.find((unit) => unit.role === "LEAD")?.fullName ?? "";
 
@@ -220,8 +242,8 @@ export function TeamReportCommendationView() {
               </h1>
               <p className="text-sm text-muted-foreground">
                 Nội dung biểu dương, phê bình, chấn chỉnh Công an các đơn vị,
-                địa phương - mỗi tháng một bảng, gửi các đội Phòng Tham mưu theo
-                dõi.
+                địa phương - mỗi tháng một bảng. Đội gửi trưởng phòng trực
+                thuộc; trưởng phòng tổng hợp rồi gửi các đội Phòng Tham mưu.
               </p>
             </div>
           </div>
@@ -310,6 +332,10 @@ export function TeamReportCommendationView() {
                       ? `, ${routeUnits.length - 1} đội theo dõi`
                       : ""}
                   </span>
+                ) : editable && team ? (
+                  <span className="text-xs text-muted-foreground">
+                    · Gửi trưởng phòng trực thuộc duyệt
+                  </span>
                 ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -367,7 +393,7 @@ export function TeamReportCommendationView() {
                     <Button
                       type="button"
                       disabled={saving || !!sendBlocker}
-                      onClick={() => setSendOpen(true)}
+                      onClick={openSend}
                     >
                       <Send className="size-4" aria-hidden="true" />
                       {status === "RETURNED" ? "Gửi lại" : "Gửi"}
@@ -407,6 +433,17 @@ export function TeamReportCommendationView() {
               </p>
             ) : null}
 
+            {/* Trưởng phòng: lấy dòng từ bảng các đội trong phòng đã duyệt. */}
+            {data.teamSheets?.length ? (
+              <CommendationTeamSheets
+                sheets={data.teamSheets}
+                praises={praises}
+                criticisms={criticisms}
+                editable={editable}
+                onTake={setDraft}
+              />
+            ) : null}
+
             <CommendationTables
               praises={praises}
               criticisms={criticisms}
@@ -414,6 +451,9 @@ export function TeamReportCommendationView() {
               departmentChoices={data.departmentChoices}
               editable={editable}
               onChange={setDraft}
+              /* Bảng của phòng có đội gửi lên: dòng nào cũng ghi nguồn. */
+              sourceTags={!!data.teamSheets?.length}
+              ownerName={data.departmentName}
             />
           </CardContent>
         </Card>
@@ -431,14 +471,20 @@ export function TeamReportCommendationView() {
               bình. Bảng khoá lại cho tới khi được duyệt hoặc trả lại.
             </DialogDescription>
           </DialogHeader>
-          {routeUnits ? (
+          {routeUnits || people ? (
             <SummaryRecipientFields
               idPrefix="commendation"
-              recipients={[]}
+              recipients={people ?? []}
               units={routeUnits}
               finalReviewer={data?.route.finalReviewer}
-              recipientId=""
-              onRecipientChange={() => undefined}
+              recipientId={recipientId}
+              onRecipientChange={(id) => {
+                setRecipientId(id);
+                setRecipientError(false);
+              }}
+              error={
+                recipientError ? "Chọn trưởng phòng nhận bảng." : undefined
+              }
             />
           ) : (
             <p
@@ -461,8 +507,9 @@ export function TeamReportCommendationView() {
               type="button"
               disabled={
                 saving ||
-                !routeUnits ||
-                hasInactiveUnit(routeUnits, data?.route.finalReviewer)
+                (routeUnits
+                  ? hasInactiveUnit(routeUnits, data?.route.finalReviewer)
+                  : !people?.length)
               }
               onClick={() => void send()}
             >

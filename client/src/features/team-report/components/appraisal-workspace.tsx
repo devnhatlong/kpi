@@ -120,8 +120,7 @@ export function AppraisalWorkspace({
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const rows = useMemo(
-    () =>
-      units.map((unit) => ({ unit, totals: appraisalTotals(unit) })),
+    () => units.map((unit) => ({ unit, totals: appraisalTotals(unit) })),
     [units],
   );
   const doneCount = rows.filter((row) => unitComplete(row.unit)).length;
@@ -231,8 +230,7 @@ export function AppraisalWorkspace({
             báo cáo tháng do chính tài khoản này duyệt
           </strong>
           , kèm sẵn điểm tự chấm. Tháng này bạn chưa duyệt báo cáo tháng nào -
-          duyệt ở mục Báo cáo tổng hợp → Duyệt báo cáo, đơn vị sẽ tự hiện ở
-          đây.
+          duyệt ở mục Báo cáo tổng hợp → Duyệt báo cáo, đơn vị sẽ tự hiện ở đây.
         </p>
         {editable && missingSuggestions.length ? (
           <AddUnitPicker options={missingSuggestions} onPick={addUnit} />
@@ -431,9 +429,7 @@ export function AppraisalWorkspace({
               editable={editable && unitEditable(selected.unit)}
               hint={hints[selected.unit.departmentId]}
               commendation={commendations[selected.unit.departmentId]}
-              onChange={(next) =>
-                patchUnit(selected.unit.departmentId, next)
-              }
+              onChange={(next) => patchUnit(selected.unit.departmentId, next)}
               onRemove={
                 // Đã trình một lần thì không bỏ khỏi bảng được nữa.
                 editable && !selected.unit.sentAt
@@ -481,9 +477,12 @@ function HintText({
       <span className="text-muted-foreground">
         {label ? `${label} · ` : ""}
         <strong className="font-medium text-foreground">{hint.fromName}</strong>
-        {hint.status !== "APPROVED" ? (
+        {/* Không ghi "chưa duyệt": đề xuất đã gửi lên là dùng để đối chiếu
+            được, trạng thái duyệt bảng của phòng không liên quan tới việc thẩm
+            định. Chỉ báo khi bảng bị trả lại - nội dung có thể còn đổi. */}
+        {hint.status === "RETURNED" ? (
           <span className="ml-1 text-amber-700 dark:text-amber-400">
-            ({hint.status === "RETURNED" ? "bị trả lại" : "chưa duyệt"})
+            (phòng đang sửa lại)
           </span>
         ) : null}
         :{" "}
@@ -714,9 +713,7 @@ function onlyDecimal(raw: string): string {
   const cleaned = raw.replace(/[^0-9.,]/g, "");
   const at = cleaned.search(/[.,]/);
   if (at < 0) return cleaned;
-  return (
-    cleaned.slice(0, at + 1) + cleaned.slice(at + 1).replace(/[.,]/g, "")
-  );
+  return cleaned.slice(0, at + 1) + cleaned.slice(at + 1).replace(/[.,]/g, "");
 }
 
 /** Ô số giữ chuỗi đang gõ ("1," giữa chừng), chốt số khi rời ô. */
@@ -738,7 +735,8 @@ function ScoreInput({
   className?: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
-  const shown = draft ?? (value === null ? "" : String(value).replace(".", ","));
+  const shown =
+    draft ?? (value === null ? "" : String(value).replace(".", ","));
   const parsed = Number(shown.trim().replace(",", "."));
   const invalid =
     shown.trim() !== "" &&
@@ -878,7 +876,8 @@ function UnitEditor({
   onExport?: () => void;
 }) {
   const totals = appraisalTotals(unit);
-  const set = (patch: Partial<AppraisalUnit>) => onChange({ ...unit, ...patch });
+  const set = (patch: Partial<AppraisalUnit>) =>
+    onChange({ ...unit, ...patch });
 
   /* Tiêu chí theo danh mục, cộng thêm tiêu chí cũ chỉ còn trong bản đã lưu
      (danh mục đổi sau khi lập) - không để mất dòng nào. */
@@ -972,6 +971,10 @@ function UnitEditor({
       h.content,
       unit.penalties.map((penalty) => penalty.content),
     );
+  const [criticismsOpen, setCriticismsOpen] = useState(false);
+  const criticismsPending = (commendation?.criticisms ?? []).filter(
+    (h) => !penaltyUsed(h),
+  ).length;
 
   /**
    * Đưa một dòng biểu dương vào điểm cộng ĐÚNG tiêu chí của nó. Tiêu chí còn
@@ -1111,8 +1114,8 @@ function UnitEditor({
       ) : unit.status === "RETURNED" ? (
         <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
           <strong className="font-semibold">Bị trả lại:</strong>{" "}
-          {unit.returnReason || "không nêu lý do"} - sửa, lưu rồi trình lại
-          đơn vị này.
+          {unit.returnReason || "không nêu lý do"} - sửa, lưu rồi trình lại đơn
+          vị này.
         </p>
       ) : null}
 
@@ -1170,7 +1173,9 @@ function UnitEditor({
             {hint ? (
               <>
                 Lấy từ báo cáo tháng đơn vị đã trình{" "}
-                <span className="text-foreground">&quot;{hint.title}&quot;</span>
+                <span className="text-foreground">
+                  &quot;{hint.title}&quot;
+                </span>
                 {hint.maxScore ? (
                   <>
                     {" "}
@@ -1191,54 +1196,85 @@ function UnitEditor({
 
       {/* ----------------------------------- soi chiếu: bị đề xuất phê bình */}
       {commendation?.criticisms.length ? (
-        <section className="space-y-2 rounded-md border border-rose-200 bg-rose-50/40 p-3 dark:border-rose-900/60 dark:bg-rose-950/10">
-          <div>
-            <h4 className="font-display text-sm font-semibold text-rose-900 dark:text-rose-200">
-              Bị đề xuất phê bình, chấn chỉnh ({commendation.criticisms.length})
-            </h4>
-            <p className="text-xs text-muted-foreground">
-              Từ bảng biểu dương, phê bình các phòng gửi tháng này. Phê bình
-              không gắn tiêu chí - chọn tiêu chí để đưa vào điểm trừ, rồi nhập
-              điểm.
-            </p>
-          </div>
-          <ul className="space-y-2">
-            {commendation.criticisms.map((h) => {
-              const used = penaltyUsed(h);
-              return (
-                <li
-                  key={h.rowId}
-                  className="flex flex-wrap items-start justify-between gap-2 rounded-md border bg-background px-3 py-2"
-                >
-                  <HintText hint={h} />
-                  {used ? (
-                    <span className="shrink-0 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                      Đã đưa vào điểm trừ
-                    </span>
-                  ) : editable ? (
-                    <Select
-                      value=""
-                      onValueChange={(id) => {
-                        const group = groups.find((item) => item.id === id);
-                        if (group) addPenaltyFromHint(h, group);
-                      }}
+        <section className="rounded-md border border-rose-200 bg-rose-50/40 dark:border-rose-900/60 dark:bg-rose-950/10">
+          {/* Mặc định THU GỌN: một đơn vị có thể bị nhiều phòng đề xuất,
+              bày hết ra là đẩy phần chấm điểm xuống tận dưới. Tiêu đề nói
+              đủ số lượng và còn bao nhiêu chưa đưa vào để biết có nên mở. */}
+          <button
+            type="button"
+            aria-expanded={criticismsOpen}
+            onClick={() => setCriticismsOpen((open) => !open)}
+            className="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <ChevronRight
+              className={cn(
+                "size-4 shrink-0 text-rose-800 transition-transform dark:text-rose-300",
+                criticismsOpen && "rotate-90",
+              )}
+              aria-hidden="true"
+            />
+            <span className="min-w-0 flex-1 font-display text-sm font-semibold text-rose-900 dark:text-rose-200">
+              Bị đề xuất phê bình, chấn chỉnh
+            </span>
+            <span className="shrink-0 rounded-full border border-rose-300 bg-background px-2 py-0.5 text-xs font-medium tabular-nums text-rose-800 dark:border-rose-900 dark:text-rose-300">
+              {commendation.criticisms.length} đề xuất
+            </span>
+            {criticismsPending > 0 ? (
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                {criticismsPending} chưa đưa vào
+              </span>
+            ) : (
+              <span className="shrink-0 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                Đã đưa vào hết
+              </span>
+            )}
+          </button>
+          {criticismsOpen ? (
+            <div className="space-y-2 border-t border-rose-200 px-3 pb-3 pt-2 dark:border-rose-900/60">
+              <p className="text-xs text-muted-foreground">
+                Từ bảng biểu dương, phê bình các phòng gửi tháng này. Phê bình
+                không gắn tiêu chí - chọn tiêu chí để đưa vào điểm trừ, rồi nhập
+                điểm.
+              </p>
+              <ul className="space-y-2">
+                {commendation.criticisms.map((h) => {
+                  const used = penaltyUsed(h);
+                  return (
+                    <li
+                      key={h.rowId}
+                      className="flex flex-wrap items-start justify-between gap-2 rounded-md border bg-background px-3 py-2"
                     >
-                      <SelectTrigger className="h-8 w-60 shrink-0 bg-background text-xs">
-                        <SelectValue placeholder="Đưa vào điểm trừ ở tiêu chí…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {groups.map((group) => (
-                          <SelectItem key={group.id} value={group.id}>
-                            {group.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+                      <HintText hint={h} />
+                      {used ? (
+                        <span className="shrink-0 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                          Đã đưa vào điểm trừ
+                        </span>
+                      ) : editable ? (
+                        <Select
+                          value=""
+                          onValueChange={(id) => {
+                            const group = groups.find((item) => item.id === id);
+                            if (group) addPenaltyFromHint(h, group);
+                          }}
+                        >
+                          <SelectTrigger className="h-8 w-60 shrink-0 bg-background text-xs">
+                            <SelectValue placeholder="Đưa vào điểm trừ ở tiêu chí…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {groups.map((group) => (
+                              <SelectItem key={group.id} value={group.id}>
+                                {group.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -1342,22 +1378,36 @@ function UnitEditor({
                 <div className="grid gap-3 xl:grid-cols-2">
                   {/* ---------------------------------------------- cộng */}
                   <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50/40 p-2.5 dark:border-emerald-900/60 dark:bg-emerald-950/10">
-                    <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                    <p className="flex flex-wrap items-baseline justify-between gap-x-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
                       Điểm cộng
+                      {group.maxScore !== null ? (
+                        <span
+                          className={cn(
+                            "font-normal tabular-nums",
+                            over ? "text-destructive" : "text-muted-foreground",
+                          )}
+                        >
+                          {over
+                            ? `Vượt tối đa - chỉ tính ${formatScore(group.maxScore)} điểm`
+                            : `Tổng các dòng tối đa ${formatScore(group.maxScore)} · còn ${formatScore(
+                                Math.max(0, group.maxScore - used),
+                              )}`}
+                        </span>
+                      ) : null}
                     </p>
                     {/* Soi chiếu: các phòng đề xuất biểu dương đơn vị này ở
                         đúng nhóm nội dung = tiêu chí này. */}
                     {(commendation?.praises ?? [])
                       .filter((h) => h.itemId === group.id)
                       .map((h) => {
-                        const used = bonusUsed(h);
+                        const taken = bonusUsed(h);
                         return (
                           <div
                             key={h.rowId}
                             className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-dashed border-emerald-300 bg-background px-2.5 py-2 dark:border-emerald-900"
                           >
                             <HintText hint={h} label="Đề xuất biểu dương" />
-                            {used ? (
+                            {taken ? (
                               <span className="shrink-0 text-xs font-medium text-emerald-700 dark:text-emerald-400">
                                 Đã đưa vào
                               </span>
@@ -1410,7 +1460,16 @@ function UnitEditor({
                         <ScoreInput
                           label={`Điểm cộng - ${group.name}`}
                           value={bonus.score}
-                          max={group.maxScore}
+                          /* Trần là của CẢ TIÊU CHÍ: dòng này chỉ được phần
+                             còn lại sau các dòng khác cùng tiêu chí. */
+                          max={
+                            group.maxScore === null
+                              ? null
+                              : Math.max(
+                                  0,
+                                  group.maxScore - (used - (bonus.score ?? 0)),
+                                )
+                          }
                           disabled={!editable}
                           onCommit={(score) =>
                             patchBonus(index, { score }, group)
@@ -1447,8 +1506,11 @@ function UnitEditor({
 
                   {/* ----------------------------------------------- trừ */}
                   <div className="space-y-2 rounded-md border border-rose-200 bg-rose-50/40 p-2.5 dark:border-rose-900/60 dark:bg-rose-950/10">
-                    <p className="text-xs font-semibold text-rose-800 dark:text-rose-300">
+                    <p className="flex flex-wrap items-baseline justify-between gap-x-2 text-xs font-semibold text-rose-800 dark:text-rose-300">
                       Điểm trừ
+                      <span className="font-normal text-muted-foreground">
+                        Không giới hạn
+                      </span>
                     </p>
                     {shownPenalties.length === 0 ? (
                       <p className="text-xs italic text-muted-foreground">
@@ -1565,9 +1627,7 @@ function UnitEditor({
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor={`upgrade-${unit.departmentId}`}>
             Đề nghị nâng mức xếp loại{" "}
-            <span className="font-normal text-muted-foreground">
-              (nếu có)
-            </span>
+            <span className="font-normal text-muted-foreground">(nếu có)</span>
           </Label>
           <Textarea
             id={`upgrade-${unit.departmentId}`}

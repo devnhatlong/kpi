@@ -98,8 +98,9 @@ export function TeamReportCommendationInboxView() {
                 Bảng biểu dương, phê bình
               </h1>
               <p className="text-sm text-muted-foreground">
-                Các phòng gửi về để theo dõi - đội chủ trì duyệt / trả lại, các
-                đội khác nhận để biết.
+                Trưởng phòng: duyệt bảng các đội trong phòng gửi lên. Các đội
+                Phòng Tham mưu: bảng các phòng gửi về - đội chủ trì duyệt / trả
+                lại, các đội khác theo dõi.
               </p>
             </div>
           </div>
@@ -360,6 +361,7 @@ function CommendationIncomingDetail({
               criticisms={data.criticisms}
               criteria={data.criteria ?? []}
               editable={false}
+              ownerName={data.departmentName}
             />
           </CardContent>
         </Card>
