@@ -435,8 +435,11 @@ export function pathRequiresPermissions(
 */
 export const SIDEBAR_BRAND = {
   title: "Công an tỉnh Lâm Đồng",
-  subtitle: "Hệ thống KPI Công an Lâm Đồng",
-  /** Tên trên sidebar ngắt đúng chỗ - để chữ tự ngắt thì rơi giữa cụm từ. */
-  subtitleLines: ["Hệ thống KPI", "Công an Lâm Đồng"],
+  subtitle: "Phần mềm chấm điểm KPI trong Công an tỉnh Lâm Đồng",
+  /**
+   * Tên trên sidebar ngắt đúng chỗ - để chữ tự ngắt thì rơi giữa cụm từ. Cạnh
+   * logo chỉ còn ~168px nên bỏ chữ "trong"; tên đầy đủ ở tooltip / tab.
+   */
+  subtitleLines: ["Phần mềm chấm điểm KPI", "Công an tỉnh Lâm Đồng"],
   logo: "/icons/logo_cand.png",
 } as const;

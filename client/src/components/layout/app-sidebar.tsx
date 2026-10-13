@@ -323,9 +323,9 @@ export function AppSidebar() {
                   cho đọc được. Lấy token của trang chính thì chế độ tối chữ sẽ
                   chìm vào nền.
                 */}
-                {/* 15px, không giãn chữ: vừa khít "CÔNG AN LÂM ĐỒNG" trong
-                    ~168px còn lại cạnh logo - to hơn nữa là bị cắt "…". */}
-                <div className="min-w-0 flex-1 text-left font-display text-[15px] font-bold uppercase leading-[1.25] text-sidebar-primary">
+                {/* Chữ thường, không in hoa: tên dài, in hoa thì "PHẦN MỀM
+                    CHẤM ĐIỂM KPI" không vừa ~168px cạnh logo. */}
+                <div className="min-w-0 flex-1 text-left font-display text-sm font-bold leading-[1.3] text-sidebar-primary">
                   {SIDEBAR_BRAND.subtitleLines.map((line) => (
                     <span key={line} className="block truncate">
                       {line}

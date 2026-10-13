@@ -3,12 +3,13 @@ import Image from "next/image";
 import { LoginForm } from "@/features/auth/components/LoginForm";
 
 export const metadata: Metadata = {
-  // Khuôn ở layout gốc tự nối " - Hệ thống KPI Công an Lâm Đồng".
+  // Khuôn ở layout gốc tự nối " - Phần mềm chấm điểm KPI".
   title: "Đăng nhập",
-  description: "Đăng nhập vào Hệ thống KPI Công an Lâm Đồng.",
+  description:
+    "Đăng nhập vào Phần mềm chấm điểm KPI trong Công an tỉnh Lâm Đồng.",
   openGraph: {
-    title: "Đăng nhập - Hệ thống KPI Công an Lâm Đồng",
-    description: "Hệ thống KPI Công an Lâm Đồng.",
+    title: "Đăng nhập - Phần mềm chấm điểm KPI trong Công an tỉnh Lâm Đồng",
+    description: "Phần mềm chấm điểm KPI trong Công an tỉnh Lâm Đồng.",
   },
 };
 
@@ -61,10 +62,14 @@ export default function LoginPage() {
         <div className="relative space-y-10">
           <div>
             {/* TÊN PHẦN MỀM - tiêu đề chính của trang. */}
-            {/* Hai dòng CÙNG CỠ - đọc liền một tên, chỉ khác màu. */}
-            <h1 className="font-display text-6xl font-bold leading-[1.05] tracking-tight xl:text-7xl">
-              <span className="block">Hệ thống KPI</span>
-              <span className="block text-yellow-100">Công an Lâm Đồng</span>
+            {/* Hai vế CÙNG CỠ - đọc liền một tên, chỉ khác màu. Tên dài nên
+                để chữ tự xuống dòng theo bề rộng cột, không ép từng vế một
+                dòng (màn laptop nhỏ sẽ tràn). */}
+            <h1 className="font-display text-5xl font-bold leading-[1.08] tracking-tight xl:text-6xl">
+              <span className="block">Phần mềm chấm điểm KPI</span>
+              <span className="block text-yellow-100">
+                trong Công an tỉnh Lâm Đồng
+              </span>
             </h1>
             <p className="mt-6 font-display text-2xl font-semibold text-white/90">
               Đánh giá hiệu suất công tác minh bạch.
@@ -119,10 +124,10 @@ export default function LoginPage() {
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Công an tỉnh Lâm Đồng
               </div>
-              <div className="font-display text-2xl font-bold leading-tight text-primary">
-                Hệ thống KPI
+              <div className="font-display text-xl font-bold leading-tight text-primary">
+                Phần mềm chấm điểm KPI
                 <br />
-                Công an Lâm Đồng
+                trong Công an tỉnh Lâm Đồng
               </div>
             </div>
           </div>

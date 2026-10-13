@@ -610,7 +610,10 @@
       "Read(//c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/3bd00d71-508f-4700-9e30-7997f7d3ca62/scratchpad/shots/short/**)",
       "PowerShell($f=\"D:\\\\Project\\\\WebApp\\\\KPI\\\\client\\\\src\\\\app\\\\\\(auth\\)\\\\login\\\\page.tsx\"; $c=[IO.File]::ReadAllText\\($f\\); $n=\\([regex]::Matches\\($c,'Hệ thống quản lý và chấm điểm nhiệm vụ'\\)\\).Count; $c=$c.Replace\\('Hệ thống quản lý và chấm điểm nhiệm vụ','Hệ thống KPI Công an Lâm Đồng'\\); [IO.File]::WriteAllText\\($f,$c,\\(New-Object Text.UTF8Encoding $false\\)\\); \"replaced $n\")",
       "PowerShell(npx eslint \"src/app/\\(auth\\)/login/page.tsx\" 2>&1)",
-      "PowerShell(npx eslint src/components/layout/app-sidebar.tsx 2>&1)"
+      "PowerShell(npx eslint src/components/layout/app-sidebar.tsx 2>&1)",
+      "Bash(PYTHONIOENCODING=utf8 PYTHONPATH=pylib python build_short_guide.py short_guide.docx shots/short)",
+      "Bash(sed -i 's/width=Cm\\(10\\)\\)/width=Cm\\(8.5\\)\\)/' build_short_guide.py)",
+      "Bash(SP=\"/c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/3bd00d71-508f-4700-9e30-7997f7d3ca62/scratchpad\"; cp \"$SP/short_guide.docx\" \"/d/Project/WebApp/KPI/docs/Hướng dẫn sử dụng nhanh - Hệ thống KPI Công an Lâm Đồng.docx\" && ls /d/Project/WebApp/KPI/docs/)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
