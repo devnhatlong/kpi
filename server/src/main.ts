@@ -35,7 +35,7 @@ async function bootstrap() {
   // Swagger setup
   const config = new DocumentBuilder()
     .setTitle('Mission API')
-    .setDescription('Xây dựng API cho hệ thống quản lý và chấm điểm nhiệm vụ')
+    .setDescription('API của Hệ thống KPI Công an Lâm Đồng')
     .setVersion('1.0')
     .build();
   const documentFactory = () => SwaggerModule.createDocument(app, config);

@@ -19,10 +19,10 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata: Metadata = {
   title: {
-    default: "Quản lý nhiệm vụ - Công an Lâm Đồng",
-    template: "%s - Quản lý nhiệm vụ",
+    default: "Hệ thống KPI Công an Lâm Đồng",
+    template: "%s - Hệ thống KPI Công an Lâm Đồng",
   },
-  description: "Hệ thống chấm điểm và quản lý nhiệm vụ",
+  description: "Hệ thống KPI Công an Lâm Đồng",
 };
 
 export default function RootLayout({

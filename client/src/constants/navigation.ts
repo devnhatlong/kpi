@@ -435,6 +435,6 @@ export function pathRequiresPermissions(
 */
 export const SIDEBAR_BRAND = {
   title: "Công an tỉnh Lâm Đồng",
-  subtitle: "Hệ thống quản lý và chấm điểm nhiệm vụ",
+  subtitle: "Hệ thống KPI Công an Lâm Đồng",
   logo: "/icons/logo_cand.png",
 } as const;

@@ -3,13 +3,12 @@ import Image from "next/image";
 import { LoginForm } from "@/features/auth/components/LoginForm";
 
 export const metadata: Metadata = {
-  title: "Đăng nhập - Hệ thống chấm điểm nhiệm vụ Công an tỉnh Lâm Đồng",
-  description:
-    "Đăng nhập vào hệ thống chấm điểm và quản lý nhiệm vụ cán bộ, chiến sĩ Công an tỉnh Lâm Đồng.",
+  // Khuôn ở layout gốc tự nối " - Hệ thống KPI Công an Lâm Đồng".
+  title: "Đăng nhập",
+  description: "Đăng nhập vào Hệ thống KPI Công an Lâm Đồng.",
   openGraph: {
-    title: "Đăng nhập - nhiệm vụ Công an tỉnh Lâm Đồng",
-    description:
-      "Hệ thống chấm điểm nhiệm vụ dành cho lực lượng Công an tỉnh Lâm Đồng.",
+    title: "Đăng nhập - Hệ thống KPI Công an Lâm Đồng",
+    description: "Hệ thống KPI Công an Lâm Đồng.",
   },
 };
 
@@ -57,7 +56,7 @@ export default function LoginPage() {
               Công an tỉnh Lâm Đồng
             </div>
             <div className="text-base text-white/80">
-              Hệ thống quản lý và chấm điểm nhiệm vụ
+              Hệ thống KPI Công an Lâm Đồng
             </div>
           </div>
         </div>
@@ -121,7 +120,7 @@ export default function LoginPage() {
                 Công an tỉnh Lâm Đồng
               </div>
               <div className="text-sm text-muted-foreground">
-                Hệ thống quản lý và chấm điểm nhiệm vụ
+                Hệ thống KPI Công an Lâm Đồng
               </div>
             </div>
           </div>
