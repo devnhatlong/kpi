@@ -608,7 +608,9 @@
       "Bash(rm -rf short)",
       "Bash(KPI_USER=pv01.cntt KPI_PASS=123456 node shoot-short.js)",
       "Read(//c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/3bd00d71-508f-4700-9e30-7997f7d3ca62/scratchpad/shots/short/**)",
-      "PowerShell($f=\"D:\\\\Project\\\\WebApp\\\\KPI\\\\client\\\\src\\\\app\\\\\\(auth\\)\\\\login\\\\page.tsx\"; $c=[IO.File]::ReadAllText\\($f\\); $n=\\([regex]::Matches\\($c,'Hệ thống quản lý và chấm điểm nhiệm vụ'\\)\\).Count; $c=$c.Replace\\('Hệ thống quản lý và chấm điểm nhiệm vụ','Hệ thống KPI Công an Lâm Đồng'\\); [IO.File]::WriteAllText\\($f,$c,\\(New-Object Text.UTF8Encoding $false\\)\\); \"replaced $n\")"
+      "PowerShell($f=\"D:\\\\Project\\\\WebApp\\\\KPI\\\\client\\\\src\\\\app\\\\\\(auth\\)\\\\login\\\\page.tsx\"; $c=[IO.File]::ReadAllText\\($f\\); $n=\\([regex]::Matches\\($c,'Hệ thống quản lý và chấm điểm nhiệm vụ'\\)\\).Count; $c=$c.Replace\\('Hệ thống quản lý và chấm điểm nhiệm vụ','Hệ thống KPI Công an Lâm Đồng'\\); [IO.File]::WriteAllText\\($f,$c,\\(New-Object Text.UTF8Encoding $false\\)\\); \"replaced $n\")",
+      "PowerShell(npx eslint \"src/app/\\(auth\\)/login/page.tsx\" 2>&1)",
+      "PowerShell(npx eslint src/components/layout/app-sidebar.tsx 2>&1)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
