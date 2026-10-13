@@ -613,7 +613,12 @@
       "PowerShell(npx eslint src/components/layout/app-sidebar.tsx 2>&1)",
       "Bash(PYTHONIOENCODING=utf8 PYTHONPATH=pylib python build_short_guide.py short_guide.docx shots/short)",
       "Bash(sed -i 's/width=Cm\\(10\\)\\)/width=Cm\\(8.5\\)\\)/' build_short_guide.py)",
-      "Bash(SP=\"/c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/3bd00d71-508f-4700-9e30-7997f7d3ca62/scratchpad\"; cp \"$SP/short_guide.docx\" \"/d/Project/WebApp/KPI/docs/Hướng dẫn sử dụng nhanh - Hệ thống KPI Công an Lâm Đồng.docx\" && ls /d/Project/WebApp/KPI/docs/)"
+      "Bash(SP=\"/c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/3bd00d71-508f-4700-9e30-7997f7d3ca62/scratchpad\"; cp \"$SP/short_guide.docx\" \"/d/Project/WebApp/KPI/docs/Hướng dẫn sử dụng nhanh - Hệ thống KPI Công an Lâm Đồng.docx\" && ls /d/Project/WebApp/KPI/docs/)",
+      "Bash(KPI_USER=pv01.cntt KPI_PASS=123456 node shoot-sample.js)",
+      "Bash(sed -i 's/getByRole\\(\"button\", { name: \"Lập báo cáo\" }\\).click\\(\\)/getByRole\\(\"button\", { name: \"Lập báo cáo\" }\\).first\\(\\).click\\(\\)/' shoot-sample.js)",
+      "Bash(cp /c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/3bd00d71-508f-4700-9e30-7997f7d3ca62/scratchpad/short_guide.docx 'Hướng dẫn sử dụng nhanh - Phần mềm chấm điểm KPI.docx')",
+      "Bash(cp /c/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/3bd00d71-508f-4700-9e30-7997f7d3ca62/scratchpad/short_guide.pdf 'Hướng dẫn sử dụng nhanh - Phần mềm chấm điểm KPI.pdf')",
+      "Bash(rm -f \"Hướng dẫn sử dụng nhanh - Hệ thống KPI Công an Lâm Đồng.docx\")"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
