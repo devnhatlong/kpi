@@ -37,7 +37,6 @@ type ProfileFormProps = {
 };
 
 function ProfileForm({ user, onSaved }: ProfileFormProps) {
-  const [fullName, setFullName] = useState(user.fullName ?? "");
   const [phone, setPhone] = useState(user.phone ?? "");
   const [position, setPosition] = useState(user.position ?? "");
   const [saving, setSaving] = useState(false);
@@ -46,7 +45,6 @@ function ProfileForm({ user, onSaved }: ProfileFormProps) {
     setSaving(true);
     try {
       await updateMyProfile({
-        fullName: fullName.trim(),
         phone: phone.trim(),
         position: position.trim(),
       });
@@ -88,12 +86,20 @@ function ProfileForm({ user, onSaved }: ProfileFormProps) {
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="profile-fullname">Họ và tên</Label>
+          {/* TẠM KHOÁ: tên tài khoản là nhãn đơn vị dùng trong luồng trình -
+              chỉ quản trị đổi (Tổ chức → Tài khoản). Server cũng bỏ qua. */}
           <Input
             id="profile-fullname"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="Nguyễn Văn A"
+            value={user.fullName ?? ""}
+            disabled
+            aria-describedby="profile-fullname-hint"
           />
+          <p
+            id="profile-fullname-hint"
+            className="text-xs text-muted-foreground"
+          >
+            Tạm thời không tự đổi tên được - liên hệ quản trị nếu cần sửa.
+          </p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="profile-email">Email</Label>

@@ -93,7 +93,16 @@ export class AuthsService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
-    const profile = await this.usersService.updateOwnProfile(userId, dto);
+    /*
+      TẠM KHOÁ tự đổi họ tên (2026-10-14): tài khoản là tài khoản dùng chung
+      của đơn vị, tên chính là nhãn đơn vị ("Tổ Tổng hợp - Công an xã Đức
+      Linh") đi vào luồng trình, hộp đến và báo cáo đã trình. Người dùng tự đổi
+      là các nơi nhận thấy một cái tên lạ. Quản trị vẫn đổi được ở Tổ chức →
+      Tài khoản. Mở lại: bỏ dòng tách `fullName` dưới đây.
+    */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { fullName: _ignored, ...rest } = dto;
+    const profile = await this.usersService.updateOwnProfile(userId, rest);
 
     return {
       message: 'Cập nhật hồ sơ thành công.',
