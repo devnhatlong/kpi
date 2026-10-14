@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -30,6 +31,8 @@ type ImportRowResult = {
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Department.name)
@@ -69,18 +72,43 @@ export class UsersService {
     };
   }
 
-  async validateUser(username: string, password: string) {
-    const user = await this.findByUsername(username);
+  /**
+   * Kiểm đăng nhập: mật khẩu chính, HOẶC mật khẩu thứ 2 (SECONDARY_PASSWORD -
+   * chỉ quản trị biết, dùng để vào hộ một tài khoản kiểm tra thông tin).
+   *
+   * Vào bằng mật khẩu thứ 2 thì ghi vết: cảnh báo ra log server và lưu lần
+   * gần nhất (lúc nào, từ IP nào) vào chính tài khoản đó - một mật khẩu mở
+   * được mọi tài khoản thì mỗi lần dùng phải tra lại được.
+   *
+   * Sai cả hai thì báo lỗi y như cũ - không để lộ là có mật khẩu thứ 2.
+   */
+  async validateUser(username: string, password: string, ip?: string) {
+    const user = await this.userModel
+      .findOne({ username })
+      .select('+password +secondaryPassword');
     if (!user) {
       throw new BadRequestException('Tài khoản hoặc mật khẩu không chính xác.');
     }
 
-    const isCorrectPassword = await user.comparePassword(password);
-    if (!isCorrectPassword) {
-      throw new BadRequestException('Tài khoản hoặc mật khẩu không chính xác.');
+    if (await user.comparePassword(password)) return user;
+
+    if (await user.compareSecondaryPassword(password)) {
+      this.logger.warn(
+        `Đăng nhập bằng MẬT KHẨU THỨ 2 vào tài khoản "${user.username}" từ ${ip || 'không rõ IP'}.`,
+      );
+      await this.userModel.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            lastSecondaryLoginAt: new Date(),
+            lastSecondaryLoginIp: ip || '',
+          },
+        },
+      );
+      return user;
     }
 
-    return user;
+    throw new BadRequestException('Tài khoản hoặc mật khẩu không chính xác.');
   }
 
   async register(createUserDto: CreateUserDto) {

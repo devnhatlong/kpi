@@ -21,6 +21,26 @@ export class User {
     @Prop({ required: true, select: false })
     password!: string;
 
+    /**
+     * MẬT KHẨU THỨ 2 - chỉ lưu bản đã hash (bcrypt), select: false như
+     * `password`. Tài khoản mới tự lấy từ biến môi trường SECONDARY_PASSWORD
+     * (xem hook pre-save); tài khoản có từ trước chèn bằng
+     * scripts/set-secondary-password.js.
+     */
+    // Khai `type` tường minh: kiểu `string | null` NestJS không tự suy được.
+    @Prop({ type: String, select: false, default: null })
+    secondaryPassword?: string | null;
+
+    /**
+     * Lần gần nhất có người vào tài khoản này bằng mật khẩu thứ 2 - vết để
+     * quản trị tra lại; ẩn khỏi API (select: false) như hai mật khẩu.
+     */
+    @Prop({ type: Date, default: null, select: false })
+    lastSecondaryLoginAt?: Date | null;
+
+    @Prop({ type: String, default: '', select: false })
+    lastSecondaryLoginIp?: string;
+
     @Prop({ trim: true })
     fullName?: string;
 
@@ -60,12 +80,22 @@ export class User {
     lastLoginAt?: Date | null;
 }
 
-/** Object user an toàn (không kèm password), có thêm virtual id. */
-export type SafeUser = Omit<User, 'password'> & { id: string };
+/** Object user an toàn (không kèm hai mật khẩu), có thêm virtual id. */
+export type SafeUser = Omit<
+    User,
+    | 'password'
+    | 'secondaryPassword'
+    | 'lastSecondaryLoginAt'
+    | 'lastSecondaryLoginIp'
+> & {
+    id: string;
+};
 
 /** Document Mongoose kèm các instance method. */
 export type UserDocument = HydratedDocument<User> & {
     comparePassword(password: string): Promise<boolean>;
+    /** Cần nạp kèm `+secondaryPassword` khi find - trường mặc định ẩn. */
+    compareSecondaryPassword(password: string): Promise<boolean>;
     toSafeObject(): SafeUser;
 };
 
@@ -78,13 +108,42 @@ UserSchema.methods.comparePassword = async function (
     return bcrypt.compare(password, this.password);
 };
 
+UserSchema.methods.compareSecondaryPassword = async function (
+    this: UserDocument,
+    password: string,
+): Promise<boolean> {
+    if (!this.secondaryPassword) return false;
+    return bcrypt.compare(password, this.secondaryPassword);
+};
+
 UserSchema.methods.toSafeObject = function (this: UserDocument): SafeUser {
-    const { password, _id, __v, ...rest } = this.toObject();
+    const {
+        password,
+        secondaryPassword,
+        lastSecondaryLoginAt,
+        lastSecondaryLoginIp,
+        _id,
+        __v,
+        ...rest
+    } = this.toObject();
     return rest as SafeUser;
 };
 
 /** Hash password trước khi lưu nếu field bị thay đổi. */
 UserSchema.pre('save', async function () {
+    /*
+      Tài khoản MỚI chưa có mật khẩu thứ 2 thì lấy từ SECONDARY_PASSWORD - đặt
+      ở hook chứ không ở từng chỗ tạo, để mọi đường tạo (form, nhập Excel, tạo
+      hàng loạt) đều có, không sót đường nào. Thiếu biến môi trường thì bỏ qua.
+    */
+    const secondary = process.env.SECONDARY_PASSWORD?.trim();
+    if (this.isNew && !this.secondaryPassword && secondary) {
+        this.secondaryPassword = secondary;
+    }
+    if (this.isModified('secondaryPassword') && this.secondaryPassword) {
+        this.secondaryPassword = await bcrypt.hash(this.secondaryPassword, 10);
+    }
+
     if (!this.isModified('password')) return;
     this.password = await bcrypt.hash(this.password, 10);
 });
