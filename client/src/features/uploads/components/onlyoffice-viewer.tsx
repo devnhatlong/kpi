@@ -92,7 +92,10 @@ export function OnlyOfficeViewer({
 
   return (
     <Dialog open={!!file} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex h-[92vh] w-[96vw] max-w-[96vw] flex-col gap-2 p-3 sm:max-w-[96vw]">
+      {/* Căn giữa bằng inset-0 + m-auto thay cho translate(-50%,-50%) của
+          DialogContent: 96vw/92vh hay ra số lẻ nửa pixel, transform lẻ làm
+          iframe OnlyOffice bị raster lệch điểm ảnh - cả chữ lẫn giao diện nhoè. */}
+      <DialogContent className="inset-0 m-auto flex h-[92vh] w-[96vw] max-w-[96vw] translate-x-0 translate-y-0 flex-col gap-2 p-3 data-[state=closed]:zoom-out-100 data-[state=open]:zoom-in-100 sm:max-w-[96vw]">
         <DialogHeader className="flex-row items-center justify-between gap-3 space-y-0 pr-8">
           <div className="min-w-0">
             <DialogTitle className="truncate text-base">
