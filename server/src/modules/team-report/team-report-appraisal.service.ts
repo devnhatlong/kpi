@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -49,6 +48,7 @@ import {
   leadInboxFilter,
   resetStages,
 } from './team-report.stages';
+import { conflict, saveIfUnchanged } from './team-report.concurrency';
 import { serverDateYmd } from './team-report.time';
 
 type Actor = { id: Types.ObjectId; name: string; departmentId: Types.ObjectId };
@@ -382,11 +382,11 @@ export class TeamReportAppraisalService {
       departmentId: actor.departmentId,
       periodMonth,
     });
-    if (sheet && dto.version !== undefined && dto.version !== sheet.version) {
-      throw new ConflictException(
-        'Bảng vừa được sửa ở nơi khác - tải lại trang rồi nhập tiếp.',
-      );
-    }
+    /* Bản client đang sửa phải đúng là bản đang lưu - kể cả bảng chưa lưu lần
+       nào (version 0): hai người cùng mở bảng trống, người sau lưu không được
+       đè mất phần người trước vừa lưu. */
+    const expected = dto.version ?? 0;
+    if ((sheet?.version ?? 0) !== expected) throw conflict();
 
     const items = await this.bonusItems(true);
     const itemById = new Map(items.map((item) => [String(item._id), item]));
@@ -525,8 +525,8 @@ export class TeamReportAppraisalService {
     sheet.commanderName = dto.commanderName?.trim() ?? sheet.commanderName;
     sheet.updatedById = actor.id;
     sheet.updatedByName = actor.name;
-    sheet.version += 1;
-    await sheet.save();
+    sheet.version = expected + 1;
+    await saveIfUnchanged(sheet, expected);
 
     return {
       message: 'Đã lưu.',
@@ -613,7 +613,7 @@ export class TeamReportAppraisalService {
     sheet.commanderName = commanderName;
     sheet.markModified('units');
     sheet.version += 1;
-    await sheet.save();
+    await saveIfUnchanged(sheet, sheet.version - 1);
 
     return {
       message: `Đã trình ${picked.length} đơn vị lên ${fixed.recipient.name}.`,
@@ -742,7 +742,7 @@ export class TeamReportAppraisalService {
     }
     sheet.markModified('units');
     sheet.version += 1;
-    await sheet.save();
+    await saveIfUnchanged(sheet, sheet.version - 1);
     return {
       message:
         outcome === 'RETURNED'

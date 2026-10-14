@@ -42,6 +42,11 @@ import { CommendationTables } from "@/features/team-report/components/commendati
 import { CommendationTeamSheets } from "@/features/team-report/components/commendation-team-sheets";
 import { ApprovalChain } from "@/features/team-report/components/participants-block";
 import {
+  isConflict,
+  mergeRows,
+  sameFields,
+} from "@/features/team-report/merge-rows";
+import {
   SummaryRecipientFields,
   hasInactiveUnit,
 } from "@/features/team-report/components/summary-recipient-fields";
@@ -62,6 +67,33 @@ function monthLabel(month: string): string {
   const [y, m] = month.split("-");
   return `Tháng ${m}/${y}`;
 }
+
+type CommendationDraft = {
+  praises: CommendationRow[];
+  criticisms: CommendationRow[];
+};
+type CommendationBase = CommendationDraft & { version: number };
+
+/** Gộp theo id dòng; so đúng các trường người dùng nhập. */
+const mergeCommendationRows = (
+  base: CommendationRow[],
+  mine: CommendationRow[],
+  theirs: CommendationRow[],
+) =>
+  mergeRows(
+    base,
+    mine,
+    theirs,
+    (row) => row._id,
+    sameFields((row: CommendationRow) => [
+      row.itemId,
+      row.departmentIds,
+      row.content,
+      row.evidence,
+      row.note,
+      row.sourceRowId ?? null,
+    ]),
+  );
 
 /**
  * Dòng in ra Excel. Đơn vị: phòng in MÃ (PC03), cấp xã giữ tên - như mẫu.
@@ -105,16 +137,35 @@ export function TeamReportCommendationView() {
   const month = pickedMonth ?? (ready ? serverYmd().slice(0, 7) : "");
   const thisMonth = ready ? serverYmd().slice(0, 7) : "";
 
+  const [draft, setDraft] = useState<CommendationDraft | null>(null);
+  /*
+    Bản đã đọc về LÚC BẮT ĐẦU SỬA. `version` của nó lưu kèm để server so -
+    không lấy `data.version` lúc bấm lưu: SWR tải lại ngầm thì số đó đã là của
+    bản người khác vừa lưu, gửi lên là đè mất bản đó. Nội dung của nó là gốc
+    để gộp khi lưu bị 409.
+  */
+  const [base, setBase] = useState<CommendationBase | null>(null);
+  const dirty = draft !== null;
+
+  /* Nhiều người dùng chung tài khoản: chưa sửa gì thì tự làm mới (định kỳ và
+     khi quay lại tab) để ai mở ra cũng thấy bản mới nhất. Đang sửa thì thôi -
+     bản nháp đã tách khỏi `data`, làm mới chỉ tốn lượt gọi. */
   const { data, error, isLoading, mutate } = useSWR(
     month ? commendationKeys.sheet(month) : null,
     () => fetchCommendation(month),
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: !dirty, refreshInterval: dirty ? 0 : 20_000 },
   );
 
-  const [draft, setDraft] = useState<{
-    praises: CommendationRow[];
-    criticisms: CommendationRow[];
-  } | null>(null);
+  const edit = (next: CommendationDraft) => {
+    if (draft === null && data) {
+      setBase({
+        version: data.version,
+        praises: data.praises,
+        criticisms: data.criticisms,
+      });
+    }
+    setDraft(next);
+  };
   const [saving, setSaving] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -135,7 +186,6 @@ export function TeamReportCommendationView() {
     setDraft(null);
   }
 
-  const dirty = draft !== null;
   const praises = draft?.praises ?? data?.praises ?? [];
   const criticisms = draft?.criticisms ?? data?.criticisms ?? [];
   const editable = !!data?.canEdit;
@@ -147,18 +197,68 @@ export function TeamReportCommendationView() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
+  /*
+    Lưu. Bị 409 (người khác vừa lưu) thì không bắt tải lại trang: đọc bản mới,
+    gộp theo từng dòng với phần mình sửa rồi lưu lại luôn. Chỉ dừng lại hỏi
+    khi hai bên cùng sửa một dòng - lúc đó giữ bản của mình trên màn để xem.
+  */
   const save = async () => {
     if (!data) return;
     setSaving(true);
+    let current: CommendationBase = base ?? data;
+    let mine: CommendationDraft = { praises, criticisms };
     try {
-      await saveCommendation(month, {
-        version: data._id ? data.version : undefined,
-        praises,
-        criticisms,
-      });
-      setDraft(null);
-      await mutate();
-      toast.success("Đã lưu bảng biểu dương, phê bình.");
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          await saveCommendation(month, { version: current.version, ...mine });
+          setDraft(null);
+          setBase(null);
+          await mutate();
+          toast.success(
+            attempt
+              ? "Đã gộp với phần người khác vừa lưu và lưu bảng."
+              : "Đã lưu bảng biểu dương, phê bình.",
+          );
+          return;
+        } catch (err) {
+          if (!isConflict(err) || attempt >= 2) throw err;
+          const fresh = await mutate();
+          if (!fresh) throw err;
+          if (!fresh.canEdit) {
+            setDraft(null);
+            setBase(null);
+            toast.error(
+              "Bảng vừa được gửi đi ở nơi khác - không sửa được nữa, đã tải bản mới.",
+            );
+            return;
+          }
+          const praiseMerge = mergeCommendationRows(
+            current.praises,
+            mine.praises,
+            fresh.praises,
+          );
+          const criticismMerge = mergeCommendationRows(
+            current.criticisms,
+            mine.criticisms,
+            fresh.criticisms,
+          );
+          current = fresh;
+          mine = { praises: praiseMerge.rows, criticisms: criticismMerge.rows };
+          const conflicts = praiseMerge.conflicts + criticismMerge.conflicts;
+          if (conflicts) {
+            setBase({
+              version: fresh.version,
+              praises: fresh.praises,
+              criticisms: fresh.criticisms,
+            });
+            setDraft(mine);
+            toast.warning(
+              `Người khác vừa lưu bảng, đã gộp phần của họ. Có ${conflicts} dòng cả hai cùng sửa - đang giữ bản của bạn, xem lại rồi bấm Lưu nháp.`,
+            );
+            return;
+          }
+        }
+      }
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Không lưu được."));
     } finally {
@@ -440,7 +540,7 @@ export function TeamReportCommendationView() {
                 praises={praises}
                 criticisms={criticisms}
                 editable={editable}
-                onTake={setDraft}
+                onTake={edit}
               />
             ) : null}
 
@@ -450,7 +550,7 @@ export function TeamReportCommendationView() {
               criteria={data.criteria}
               departmentChoices={data.departmentChoices}
               editable={editable}
-              onChange={setDraft}
+              onChange={edit}
               /* Bảng của phòng có đội gửi lên: dòng nào cũng ghi nguồn. */
               sourceTags={!!data.teamSheets?.length}
               ownerName={data.departmentName}

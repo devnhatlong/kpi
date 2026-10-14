@@ -41,12 +41,17 @@ function loadDocsApi(serverUrl: string): Promise<void> {
       el.src = src;
       el.async = true;
       el.onload = () => resolve();
-      el.onerror = () =>
+      el.onerror = () => {
+        // Không giữ lần nạp hỏng: sửa server xong mở tệp lại là thử lại được,
+        // không bắt người dùng tải lại cả trang.
+        scriptLoads.delete(src);
+        el.remove();
         reject(
           new Error(
             "Không nạp được OnlyOffice - kiểm tra Docker container đang chạy và URL trong .env.",
           ),
         );
+      };
       document.head.appendChild(el);
     });
     scriptLoads.set(src, pending);
@@ -193,8 +198,12 @@ function ViewerBody({
           </Button>
         </div>
       ) : null}
-      {/* OnlyOffice thay thẻ này bằng iframe của nó. */}
-      <div id={holderId} className="h-full w-full" />
+      {/* OnlyOffice thay thẻ có id bằng iframe của nó - bọc thêm một lớp để
+          React chỉ đụng tới thẻ ngoài; chèn khung lỗi cạnh thẻ đã bị thay
+          sẽ ném NotFoundError và sập cả trang. */}
+      <div className="h-full w-full">
+        <div id={holderId} className="h-full w-full" />
+      </div>
     </div>
   );
 }

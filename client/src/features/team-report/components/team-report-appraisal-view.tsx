@@ -42,6 +42,11 @@ import {
   hasInactiveUnit,
 } from "@/features/team-report/components/summary-recipient-fields";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  isConflict,
+  mergeRows,
+  sameFields,
+} from "@/features/team-report/merge-rows";
 import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
 import {
   formatScore,
@@ -63,6 +68,45 @@ function monthLabel(month: string): string {
   return `Tháng ${m}/${y}`;
 }
 
+type AppraisalBase = { version: number; units: AppraisalUnit[] };
+
+/**
+ * Gộp theo đơn vị; so đúng các ô người thẩm định nhập. Đơn vị bên kia đã
+ * trình đi thì lấy bản bên kia - server cũng không nhận sửa đơn vị đã trình.
+ */
+function mergeAppraisalUnits(
+  base: AppraisalUnit[],
+  mine: AppraisalUnit[],
+  theirs: AppraisalUnit[],
+) {
+  const merged = mergeRows(
+    base,
+    mine,
+    theirs,
+    (unit) => unit.departmentId,
+    sameFields((unit: AppraisalUnit) => [
+      unit.bonuses.map((bonus) => [bonus.itemId, bonus.score, bonus.evidence]),
+      unit.penalties.map((penalty) => [
+        penalty.itemId,
+        penalty.content,
+        penalty.score,
+      ]),
+      unit.upgradeNote,
+      unit.proposedRating,
+      unit.ratingNote,
+    ]),
+  );
+  const sent = new Map(
+    theirs
+      .filter((unit) => !unitEditable(unit))
+      .map((unit) => [unit.departmentId, unit]),
+  );
+  return {
+    rows: merged.rows.map((unit) => sent.get(unit.departmentId) ?? unit),
+    conflicts: merged.conflicts,
+  };
+}
+
 /**
  * "Phụ lục theo dõi, thẩm định tháng" của đội PV01 - tài khoản duyệt của đội
  * thẩm định lại kết quả tự chấm của các đơn vị mình theo dõi, tháng một bản,
@@ -77,13 +121,31 @@ export function TeamReportAppraisalView() {
   const month = pickedMonth ?? (ready ? serverYmd().slice(0, 7) : "");
   const thisMonth = ready ? serverYmd().slice(0, 7) : "";
 
+  const [draft, setDraft] = useState<AppraisalUnit[] | null>(null);
+  /*
+    Bản đã đọc về LÚC BẮT ĐẦU SỬA. `version` của nó lưu kèm để server so -
+    không lấy `data.version` lúc bấm lưu: SWR tải lại ngầm thì số đó đã là của
+    bản người khác vừa lưu, gửi lên là đè mất bản đó. Các đơn vị của nó là gốc
+    để gộp khi lưu bị 409.
+  */
+  const [base, setBase] = useState<AppraisalBase | null>(null);
+  const dirty = draft !== null;
+
+  /* Nhiều người dùng chung tài khoản: chưa sửa gì thì tự làm mới (định kỳ và
+     khi quay lại tab) để ai mở ra cũng thấy bản mới nhất. Đang sửa thì thôi -
+     bản nháp đã tách khỏi `data`, làm mới chỉ tốn lượt gọi. */
   const { data, error, isLoading, mutate } = useSWR(
     month ? appraisalKeys.sheet(month) : null,
     () => fetchAppraisal(month),
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: !dirty, refreshInterval: dirty ? 0 : 20_000 },
   );
 
-  const [draft, setDraft] = useState<AppraisalUnit[] | null>(null);
+  const edit = (next: AppraisalUnit[]) => {
+    if (draft === null && data) {
+      setBase({ version: data.version, units: data.units });
+    }
+    setDraft(next);
+  };
   const [saving, setSaving] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [leaderName, setLeaderName] = useState("");
@@ -97,7 +159,6 @@ export function TeamReportAppraisalView() {
     setDraft(null);
   }
 
-  const dirty = draft !== null;
   const units = draft ?? data?.units ?? [];
   const editable = !!data?.canEdit;
 
@@ -111,24 +172,51 @@ export function TeamReportAppraisalView() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
-  const persist = async (names?: { leader: string; commander: string }) => {
-    if (!data) return null;
-    const saved = await saveAppraisal(month, {
-      version: data._id ? data.version : undefined,
-      leaderName: names?.leader ?? data.leaderName,
-      commanderName: names?.commander ?? data.commanderName,
-      units,
-    });
-    setDraft(null);
-    await mutate();
-    return saved;
-  };
-
+  /*
+    Lưu. Bị 409 (người khác vừa lưu) thì không bắt tải lại trang: đọc bản mới,
+    gộp theo từng đơn vị với phần mình sửa rồi lưu lại luôn. Chỉ dừng lại hỏi
+    khi hai bên cùng sửa một đơn vị - lúc đó giữ bản của mình trên màn để xem.
+  */
   const save = async () => {
+    if (!data) return;
     setSaving(true);
+    let current: AppraisalBase = base ?? data;
+    let mine = units;
     try {
-      await persist();
-      toast.success("Đã lưu bảng thẩm định.");
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          await saveAppraisal(month, {
+            version: current.version,
+            leaderName: data.leaderName,
+            commanderName: data.commanderName,
+            units: mine,
+          });
+          setDraft(null);
+          setBase(null);
+          await mutate();
+          toast.success(
+            attempt
+              ? "Đã gộp với phần người khác vừa lưu và lưu bảng thẩm định."
+              : "Đã lưu bảng thẩm định.",
+          );
+          return;
+        } catch (err) {
+          if (!isConflict(err) || attempt >= 2) throw err;
+          const fresh = await mutate();
+          if (!fresh) throw err;
+          const merged = mergeAppraisalUnits(current.units, mine, fresh.units);
+          current = fresh;
+          mine = merged.rows;
+          if (merged.conflicts) {
+            setBase({ version: fresh.version, units: fresh.units });
+            setDraft(mine);
+            toast.warning(
+              `Người khác vừa lưu bảng, đã gộp phần của họ. Có ${merged.conflicts} đơn vị cả hai cùng sửa - đang giữ bản của bạn, xem lại rồi bấm Lưu nháp.`,
+            );
+            return;
+          }
+        }
+      }
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Không lưu được."));
     } finally {
@@ -387,7 +475,7 @@ export function TeamReportAppraisalView() {
               suggestedUnits={data.suggestedUnits}
               newlyApprovedIds={data.newlyApprovedIds}
               commendations={data.commendationHints}
-              onChange={setDraft}
+              onChange={edit}
               exportInfo={{
                 periodMonth: month,
                 teamName: data.departmentName,

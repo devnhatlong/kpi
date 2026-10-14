@@ -961,6 +961,13 @@ export class SaveTeamReportAppraisalDto {
 /** Một dòng biểu dương / phê bình. */
 export class TeamReportCommendationRowDto {
   @ApiPropertyOptional({
+    description: 'Id dòng đã lưu - giữ nguyên để lần lưu sau nhận ra dòng',
+  })
+  @IsOptional()
+  @IsMongoId()
+  _id?: string | null;
+
+  @ApiPropertyOptional({
     description: 'Nhóm nội dung (mục Điểm cộng I) - chỉ dòng biểu dương',
   })
   @IsOptional()

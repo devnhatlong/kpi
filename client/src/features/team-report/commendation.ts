@@ -181,6 +181,7 @@ export function saveCommendation(
 ) {
   // Chỉ gửi trường nhập - tên đơn vị / tên nhóm là server tự chép.
   const pick = (row: CommendationRow) => ({
+    _id: row._id,
     itemId: row.itemId,
     departmentIds: row.departmentIds,
     content: row.content,

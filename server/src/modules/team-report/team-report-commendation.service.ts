@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -48,6 +47,7 @@ import {
   leadInboxFilter,
   resetStages,
 } from './team-report.stages';
+import { conflict, saveIfUnchanged } from './team-report.concurrency';
 import { serverDateYmd } from './team-report.time';
 
 type Actor = { id: Types.ObjectId; name: string; departmentId: Types.ObjectId };
@@ -195,11 +195,11 @@ export class TeamReportCommendationService implements OnModuleInit {
         'Bảng đã gửi - chờ duyệt hoặc bị trả lại mới sửa được.',
       );
     }
-    if (sheet && dto.version !== undefined && dto.version !== sheet.version) {
-      throw new ConflictException(
-        'Bảng vừa được sửa ở nơi khác - tải lại trang rồi nhập tiếp.',
-      );
-    }
+    /* Bản client đang sửa phải đúng là bản đang lưu - kể cả bảng chưa lưu lần
+       nào (version 0): hai người cùng mở bảng trống, người sau lưu không được
+       đè mất phần người trước vừa lưu. */
+    const expected = dto.version ?? 0;
+    if ((sheet?.version ?? 0) !== expected) throw conflict();
 
     const items = await this.itemModel.find({ section: 'BONUS' });
     const itemById = new Map(items.map((item) => [String(item._id), item]));
@@ -221,6 +221,22 @@ export class TeamReportCommendationService implements OnModuleInit {
       ),
     );
 
+    /* Dòng đã lưu giữ nguyên id - client gộp theo id khi hai người cùng sửa,
+       đổi id mỗi lần lưu thì không nhận ra được dòng nào là dòng nào. */
+    const storedRowIds = new Set(
+      [...(sheet?.praises ?? []), ...(sheet?.criticisms ?? [])].map((row) =>
+        String(row._id),
+      ),
+    );
+    const usedRowIds = new Set<string>();
+    const rowId = (id?: string | null) => {
+      if (id && storedRowIds.has(id) && !usedRowIds.has(id)) {
+        usedRowIds.add(id);
+        return new Types.ObjectId(id);
+      }
+      return new Types.ObjectId();
+    };
+
     const toRow = (
       row: TeamReportCommendationRowDto,
       praise: boolean,
@@ -236,7 +252,7 @@ export class TeamReportCommendationService implements OnModuleInit {
         );
       }
       return {
-        _id: new Types.ObjectId(),
+        _id: rowId(row._id),
         itemId: item?._id ?? null,
         itemName: item?.name ?? '',
         departmentIds: ids.map((id) => new Types.ObjectId(id)),
@@ -270,8 +286,8 @@ export class TeamReportCommendationService implements OnModuleInit {
       .map((row) => toRow(row, false));
     sheet.updatedById = actor.id;
     sheet.updatedByName = actor.name;
-    sheet.version += 1;
-    await sheet.save();
+    sheet.version = expected + 1;
+    await saveIfUnchanged(sheet, expected);
 
     return {
       message: 'Đã lưu.',
@@ -347,7 +363,7 @@ export class TeamReportCommendationService implements OnModuleInit {
     sheet.decidedAt = null;
     sheet.returnReason = '';
     sheet.version += 1;
-    await sheet.save();
+    await saveIfUnchanged(sheet, sheet.version - 1);
 
     return {
       message: `Đã gửi bảng lên ${recipient.name}${
@@ -468,7 +484,7 @@ export class TeamReportCommendationService implements OnModuleInit {
       sheet.decidedAt = new Date();
     }
     sheet.version += 1;
-    await sheet.save();
+    await saveIfUnchanged(sheet, sheet.version - 1);
     return {
       message:
         outcome === 'RETURNED'
