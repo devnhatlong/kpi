@@ -27,6 +27,7 @@ import {
   EditTeamReportSummaryDto,
   PreviewTeamReportSummaryDto,
   ReopenTeamReportTaskDto,
+  MoveTeamReportTaskDateDto,
   DecideTeamReportDayDto,
   PromoteTeamReportDto,
   ReviewTeamReportDayDto,
@@ -121,6 +122,17 @@ export class TeamReportController {
     return this.teamReportService.reopenTask(user.uid, id, dto);
   }
 
+  @ApiOperation({ summary: 'Đổi ngày khai của một nhiệm vụ (nhập muộn)' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Patch('tasks/:id/created-date')
+  moveTaskDate(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() dto: MoveTeamReportTaskDateDto,
+  ) {
+    return this.teamReportService.moveTaskDate(user.uid, id, dto);
+  }
+
   @ApiOperation({ summary: 'Xoá một nhiệm vụ chưa từng gửi đi' })
   @Permissions(Permission.TEAM_REPORT_ENTRY)
   @Delete('tasks/:id')
@@ -156,6 +168,13 @@ export class TeamReportController {
     Các route 'summary/...' cụ thể phải đứng TRÊN 'summary/:id', không thì Nest
     khớp 'summary/candidates' vào ':id' và trả "không tìm thấy báo cáo".
   */
+
+  @ApiOperation({ summary: 'Các kỳ đánh giá tháng để lập báo cáo tháng' })
+  @Permissions(Permission.TEAM_REPORT_ENTRY)
+  @Get('summary/month-periods')
+  summaryMonthPeriods(@CurrentUser() user: JwtPayloadUser) {
+    return this.teamReportService.summaryMonthPeriods(user.uid);
+  }
 
   @ApiOperation({ summary: 'Nhiệm vụ sẵn sàng trong kỳ, để tích chọn' })
   @Permissions(Permission.TEAM_REPORT_ENTRY)

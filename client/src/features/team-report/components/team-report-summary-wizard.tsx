@@ -195,6 +195,11 @@ export function TeamReportSummaryWizard({
   /* Hỏi lại trước khi đóng khi đã tích việc: bấm nhầm ra ngoài hộp hay nhấn
      Esc ở bước 2 là mất cả chục lựa chọn. */
   const [confirmClose, setConfirmClose] = useState(false);
+  /*
+    Kho chọn: mặc định chỉ việc CÒN SỐNG trong kỳ; tab "Tất cả nhiệm vụ" mở ra
+    cả kho để tích việc bất kỳ - ví dụ việc làm trong kỳ trước mà nhập muộn.
+  */
+  const [scopeAll, setScopeAll] = useState(false);
 
   const requestClose = (next: boolean) => {
     if (next) {
@@ -236,6 +241,7 @@ export function TeamReportSummaryWizard({
       setPickError(false);
       setRecipientError(false);
       setConfirmClose(false);
+      setScopeAll(false);
     }
   }
 
@@ -289,7 +295,7 @@ export function TeamReportSummaryWizard({
           fromDate,
           toDate,
           query.trim(),
-          "PERIOD",
+          scopeAll ? "ALL" : "PERIOD",
           level,
           deptParam,
         )
@@ -299,6 +305,7 @@ export function TeamReportSummaryWizard({
         fromDate,
         toDate,
         q: query.trim(),
+        scope: scopeAll ? "ALL" : "PERIOD",
         level,
         ...(deptParam ? { departmentIds: [deptParam] } : {}),
       }),
@@ -595,33 +602,51 @@ export function TeamReportSummaryWizard({
                 />
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="summary-from">Từ ngày</Label>
-                  <DatePickerInput
-                    id="summary-from"
-                    value={fromDate}
-                    clearable={false}
-                    onChange={(next) => {
-                      setFromDate(next);
-                      setPeriod("CUSTOM");
-                    }}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="summary-to">Đến ngày</Label>
-                  <DatePickerInput
-                    id="summary-to"
-                    value={toDate}
-                    clearable={false}
-                    min={fromDate}
-                    onChange={(next) => {
-                      setToDate(next);
-                      setPeriod("CUSTOM");
-                    }}
-                  />
-                </div>
-              </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="summary-from">Từ ngày</Label>
+                      <DatePickerInput
+                        id="summary-from"
+                        value={fromDate}
+                        clearable={false}
+                        onChange={(next) => {
+                          if (title === defaultTitle(fromDate, toDate)) {
+                            setTitle(defaultTitle(next, toDate));
+                          }
+                          setFromDate(next);
+                          setPeriod("CUSTOM");
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="summary-to">Đến ngày</Label>
+                      <DatePickerInput
+                        id="summary-to"
+                        value={toDate}
+                        clearable={false}
+                        min={fromDate}
+                        onChange={(next) => {
+                          if (title === defaultTitle(fromDate, toDate)) {
+                            setTitle(defaultTitle(fromDate, next));
+                          }
+                          setToDate(next);
+                          setPeriod("CUSTOM");
+                        }}
+                      />
+                    </div>
+                  </div>
+                  {/* Chỉ báo cáo THÁNG đi thẩm định và khép kỳ nhập bù - nói rõ
+                      để không ai chọn "Tự chọn" cho bản tháng. */}
+                  {period !== "MONTH" ? (
+                    <p className="text-xs text-muted-foreground">
+                      Báo cáo loại này chỉ để tham khảo:{" "}
+                      <strong className="font-medium text-foreground">
+                        không đưa vào bảng thẩm định
+                      </strong>{" "}
+                      và không khoá nhập bù. Báo cáo tháng hãy chọn
+                      &ldquo;Tháng&rdquo;.
+                    </p>
+                  ) : null}
 
               {!rangeValid ? (
                 <p
@@ -752,6 +777,22 @@ export function TeamReportSummaryWizard({
                   </Button>
                 </div>
 
+                {/* Kho theo kỳ hay cả kho: việc làm trong kỳ mà nhập muộn
+                    (ngày khai sau cuối kỳ) chỉ thấy ở "Tất cả nhiệm vụ". */}
+                <SegmentedTabs
+                  ariaLabel="Phạm vi nhiệm vụ"
+                  value={scopeAll ? "ALL" : "PERIOD"}
+                  onChange={(next) => setScopeAll(next === "ALL")}
+                  items={[
+                    {
+                      value: "PERIOD",
+                      label: `Trong kỳ ${formatYmd(fromDate)} - ${formatYmd(toDate)}`,
+                    },
+                    { value: "ALL", label: "Tất cả nhiệm vụ" },
+                  ]}
+                  className="flex-wrap"
+                />
+
                 <SegmentedTabs
                   ariaLabel="Lọc kho nhiệm vụ"
                   value={filter}
@@ -825,8 +866,24 @@ export function TeamReportSummaryWizard({
                         : "Không có nhiệm vụ nào sẵn sàng trong kỳ này."}
                     </p>
                   ) : null}
+                  {/* Kỳ đã qua: việc lỡ nhập sau ngày cuối kỳ mang ngày khai
+                      mới nên không có ở đây - chỉ đường sửa. */}
+                  {!isLoading && !scopeAll && toDate < serverYmd() ? (
+                    <p className="px-3 py-2 text-xs text-muted-foreground">
+                      Thiếu việc đã làm trong kỳ nhưng nhập sau ngày{" "}
+                      {formatYmd(toDate)}? Mở tab{" "}
+                      <button
+                        type="button"
+                        onClick={() => setScopeAll(true)}
+                        className="cursor-pointer font-medium text-primary underline-offset-2 hover:underline"
+                      >
+                        Tất cả nhiệm vụ
+                      </button>{" "}
+                      để tích.
+                    </p>
+                  ) : null}
 
-                  {candidates.map(({ task, alreadySent, departmentName }) => (
+                  {candidates.map(({ task, alreadySent, inPeriod, departmentName }) => (
                     <label
                       key={task._id}
                       /* Kho có thể tới 300 dòng: `content-visibility` để trình
@@ -892,6 +949,11 @@ export function TeamReportSummaryWizard({
                               className="border-amber-300 bg-amber-100 font-normal text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
                             >
                               Đã trình ở bản khác
+                            </Badge>
+                          ) : null}
+                          {scopeAll && inPeriod === false ? (
+                            <Badge variant="secondary" className="font-normal">
+                              Ngoài kỳ báo cáo
                             </Badge>
                           ) : null}
                         </span>

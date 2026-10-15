@@ -931,8 +931,7 @@ export function TeamReportClassifyView() {
               disabled={
                 !editable ||
                 busyId === selected.task._id ||
-                !selected.task.isOpen ||
-                selected.lock?.status === "PENDING"
+                !selected.task.isOpen
               }
               lock={selected.lock}
               /* Riêng nút đóng/mở lại thì vẫn bấm được - không thì việc đã đóng
@@ -1788,12 +1787,11 @@ function TaskTableRow({
   const { task, readiness } = row;
   const axisId = refId(task.axisId);
   const contentId = refId(task.workContentId);
-  /* Việc đã chốt, hay đang nằm trong báo cáo chờ duyệt, thì khoá y như bên dạng
-     nhiệm vụ - một luật, hai chỗ nhìn. */
-  const disabled =
-    !editable || busy || !task.isOpen || row.lock?.status === "PENDING";
-  /* Báo cáo đã duyệt: phân loại đã chốt, các ô còn lại vẫn cập nhật tiếp. */
-  const classificationLocked = disabled || row.lock?.status === "APPROVED";
+  /* Việc đã chốt thì khoá y như bên dạng nhiệm vụ - một luật, hai chỗ nhìn. */
+  const disabled = !editable || busy || !task.isOpen;
+  /* Đã báo cáo (chờ hay đã duyệt): phân loại giữ nguyên, các ô còn lại vẫn
+     cập nhật tiếp cho kỳ sau. */
+  const classificationLocked = disabled || !!row.lock;
   const contentColumnKey = workContentColumnOf(row.template)?.key;
   /* Riêng nút đóng/mở lại KHÔNG theo `isOpen`, không thì việc đã đóng không còn
      đường nào mở ra. */
@@ -2145,9 +2143,9 @@ function TaskDetailBody({
      có chỗ nào phân loại và cả bảng không gửi đi được. */
   const ownWorkContent = !workContentColumnOf(template);
   const missing = missingRequiredColumns(task, template);
-  /* Báo cáo đã duyệt: trục và nội dung công việc đã chốt; tiến độ, kết quả và
-     các ô khác vẫn cập nhật tiếp cho báo cáo sau. */
-  const classificationLocked = disabled || lock?.status === "APPROVED";
+  /* Đã báo cáo (chờ hay đã duyệt): trục và nội dung công việc giữ nguyên;
+     tiến độ, kết quả và các ô khác vẫn cập nhật tiếp cho kỳ sau. */
+  const classificationLocked = disabled || !!lock;
 
   const options = useMemo(
     () => contents.filter((content) => content.axisId === axisId),
@@ -2335,8 +2333,11 @@ function TaskDetailBody({
                 <strong className="font-medium">{lock.title}</strong>
               )}{" "}
               {lock.status === "APPROVED"
-                ? `đã được ${lock.holder || "cấp trên"} duyệt - trục và nội dung công việc đã chốt. Tiến độ, kết quả và các ô khác vẫn cập nhật tiếp cho báo cáo sau; báo cáo đã duyệt giữ nguyên số lúc duyệt.`
-                : `chờ ${lock.holder || "cấp trên"} duyệt${pendingSince(lock.sentAt)}, nên chưa sửa được. Mở lại khi báo cáo được duyệt, bị trả lại, hoặc rút báo cáo về (khi cấp trên chưa chấm gì).`}
+                ? `đã được ${lock.holder || "cấp trên"} duyệt`
+                : `đang chờ ${lock.holder || "cấp trên"} duyệt${pendingSince(lock.sentAt)}`}
+              {lock.closedInReport
+                ? " - đã báo cáo hoàn thành nên không mở lại được."
+                : ` - trục và nội dung công việc giữ nguyên. Tiến độ, kết quả và các ô khác vẫn cập nhật tiếp cho kỳ sau; báo cáo ${lock.status === "APPROVED" ? "đã duyệt" : "đang chờ duyệt"} giữ nguyên số lúc trình.`}
             </span>
           </div>
         ) : done ? (

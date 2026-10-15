@@ -53,6 +53,13 @@ export class TeamReportUnitSummaryController {
 
   /* Route cụ thể đứng TRÊN ':id' - Nest khớp theo thứ tự khai báo. */
 
+  @ApiOperation({ summary: 'Các kỳ đánh giá tháng để lập báo cáo tháng' })
+  @Permissions(Permission.TEAM_REPORT_REVIEW)
+  @Get('month-periods')
+  monthPeriods(@CurrentUser() user: JwtPayloadUser) {
+    return this.teamReportService.summaryMonthPeriods(user.uid);
+  }
+
   @ApiOperation({ summary: 'Nhiệm vụ của các đội, để phòng tích chọn' })
   @Permissions(Permission.TEAM_REPORT_REVIEW)
   @Get('candidates')

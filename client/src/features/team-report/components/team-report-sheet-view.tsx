@@ -14,6 +14,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import {
   AlertTriangle,
+  CalendarClock,
   Loader2,
   Lock,
   MoreHorizontal,
@@ -63,6 +64,7 @@ import {
   createTeamReportTask,
   deleteTeamReportTask,
   fetchTeamReportSheet,
+  moveTeamReportTaskDate,
   reopenTeamReportTask,
   teamReportKeys,
   updateTeamReportTask,
@@ -345,9 +347,13 @@ export function TeamReportSheetView() {
   const tasks = useMemo(() => data?.tasks ?? [], [data]);
   const locked = data?.locked ?? false;
   const day = data?.day ?? null;
-  /* Chỉ sửa được bảng của HÔM NAY: bảng hôm qua là bản đã chốt, sửa lùi thì
-     báo cáo đã gửi và bảng đang xem nói hai chuyện khác nhau. */
+  /* Sửa dòng chỉ ở bảng HÔM NAY: nhiệm vụ là bản ghi sống, sửa ở ngày cũ là
+     sửa số hiện tại chứ không phải số của hôm đó. */
   const editable = ready && !locked && reportDate === today;
+  /* THÊM thì được cả ngày cũ trong tháng (nhập bù) - server nói ngày nào
+     không thêm được và vì sao. */
+  const addBlockedReason = data?.addBlockedReason ?? null;
+  const canAdd = ready && !!data && !locked && !addBlockedReason;
 
   const similar = useMemo(
     () =>
@@ -413,6 +419,8 @@ export function TeamReportSheetView() {
         name: row.draft.name.trim(),
         deadline: row.draft.deadline || undefined,
         product: row.draft.product.trim() || undefined,
+        // Đang đứng ở ngày cũ = nhập bù cho đúng ngày đó.
+        reportDate: reportDate !== today ? reportDate : undefined,
       });
       ownIdsRef.current.add(created._id);
       await mutate();
@@ -528,6 +536,31 @@ export function TeamReportSheetView() {
       );
     } catch (error) {
       await handleError(error, "Không dừng được nhiệm vụ.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  /*
+    Đổi ngày khai - cho việc lỡ nhập muộn: sáng 15 mới nhập việc làm trong kỳ
+    trước thì nó mang ngày 15 và không chọn được vào báo cáo kỳ trước.
+  */
+  const [moving, setMoving] = useState<TeamReportTask | null>(null);
+  const [moveDate, setMoveDate] = useState("");
+  const confirmMove = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!moving || !moveDate) return;
+    setBusyId(moving._id);
+    try {
+      await moveTeamReportTaskDate(moving._id, {
+        version: moving.version,
+        createdDate: moveDate,
+      });
+      await mutate();
+      toast.success(`Đã chuyển sang ngày ${formatYmd(moveDate)}.`);
+      setMoving(null);
+    } catch (error) {
+      await handleError(error, "Không đổi được ngày khai.");
     } finally {
       setBusyId(null);
     }
@@ -708,13 +741,17 @@ export function TeamReportSheetView() {
             </div>
           ) : null}
 
-          {ready && !locked && reportDate !== today ? (
+          {ready && data && !locked && (reportDate !== today || addBlockedReason) ? (
             <div
               role="status"
               className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground"
             >
-              Đang xem lại ngày {formatYmd(reportDate)}. Chỉ bảng của hôm nay
-              mới nhập và sửa được.
+              {reportDate !== today ? (
+                <>Đang xem lại ngày {formatYmd(reportDate)}. </>
+              ) : null}
+              {addBlockedReason
+                ? addBlockedReason
+                : "Có thể nhập bù nhiệm vụ cho ngày này. Sửa và cập nhật tiến độ làm ở bảng hôm nay."}
             </div>
           ) : null}
 
@@ -726,7 +763,7 @@ export function TeamReportSheetView() {
             cho việc kế tiếp. Nằm trên đầu chứ không ở cuối bảng - bảng dài
             thì dòng cuối phải cuộn mới thấy.
           */}
-          {editable ? (
+          {canAdd ? (
             <form
               onSubmit={submitNew}
               onKeyDown={(event) => {
@@ -803,7 +840,9 @@ export function TeamReportSheetView() {
                   className="active:scale-[0.98] motion-reduce:active:scale-100"
                 >
                   <Plus className="size-4" aria-hidden="true" />
-                  Thêm
+                  {reportDate !== today
+                    ? `Thêm cho ${formatYmd(reportDate).slice(0, 5)}`
+                    : "Thêm"}
                 </Button>
               </div>
 
@@ -975,15 +1014,11 @@ export function TeamReportSheetView() {
                 {tasks.map((task) => {
                   const busy = busyId === task._id;
                   const isEditing = editingId === task._id;
-                  /* Đang nằm trong báo cáo chờ duyệt thì khoá - cấp trên đang
-                     chấm trên chính nhiệm vụ này. Đã duyệt thì tên / hạn / sản
-                     phẩm vẫn sửa được, chỉ phân loại chốt. */
+                  /* Đã báo cáo (chờ hay đã duyệt) vẫn sửa được: báo cáo giữ
+                     bản chụp, đổi ở đây đi vào kỳ sau. Nhãn chỉ để đội biết
+                     việc này đã lên cấp trên. */
                   const lock = data?.pendingLocks?.[task._id] ?? null;
-                  const canEdit =
-                    editable &&
-                    task.isOpen &&
-                    !busy &&
-                    lock?.status !== "PENDING";
+                  const canEdit = editable && task.isOpen && !busy;
 
                   if (isEditing) {
                     return (
@@ -1225,6 +1260,22 @@ export function TeamReportSheetView() {
                                 Sửa
                               </DropdownMenuItem>
                             ) : null}
+                            {/* Việc đã báo cáo thì bản chụp đã nói nó thuộc kỳ
+                                nào - không cho đổi ngày khai nữa. */}
+                            {editable && !lock ? (
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  setMoving(task);
+                                  setMoveDate(task.createdDate);
+                                }}
+                              >
+                                <CalendarClock
+                                  className="size-4"
+                                  aria-hidden="true"
+                                />
+                                Đổi ngày khai…
+                              </DropdownMenuItem>
+                            ) : null}
                             {/* Đóng có hiệu lực ngay, nên bấm nhầm phải lùi
                                 được ngay tại đây - không bắt khai lại một dòng
                                 mới. */}
@@ -1236,7 +1287,15 @@ export function TeamReportSheetView() {
                                 Dừng giữa chừng…
                               </DropdownMenuItem>
                             ) : (
+                              /* Đã báo cáo hoàn thành thì khoá hẳn - server
+                                 cũng chặn, ở đây chỉ để khỏi bấm vào nút chết. */
                               <DropdownMenuItem
+                                disabled={!!lock?.closedInReport}
+                                title={
+                                  lock?.closedInReport
+                                    ? `Đã báo cáo hoàn thành trong "${lock.title}" - không mở lại được`
+                                    : undefined
+                                }
                                 onSelect={() => void reopen(task)}
                               >
                                 <Undo2 className="size-4" aria-hidden="true" />
@@ -1338,6 +1397,65 @@ export function TeamReportSheetView() {
                   />
                 ) : null}
                 Dừng nhiệm vụ
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!moving}
+        onOpenChange={(open) => {
+          if (!open) setMoving(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={(event) => void confirmMove(event)} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>Đổi ngày khai</DialogTitle>
+              <DialogDescription>
+                Chuyển &ldquo;{moving?.name}&rdquo; về đúng ngày đã làm - ví dụ
+                việc của kỳ trước mà hôm nay mới nhập. Báo cáo tổng hợp chọn
+                nhiệm vụ theo ngày khai.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5">
+              <Label htmlFor="move-date">Ngày khai</Label>
+              <DatePickerInput
+                id="move-date"
+                value={moveDate}
+                clearable={false}
+                max={today}
+                onChange={setMoveDate}
+              />
+              <p className="text-xs text-muted-foreground">
+                Được lùi về kỳ đánh giá đang chạy và kỳ ngay trước, trừ những
+                ngày đã nằm trong báo cáo tháng đã trình.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setMoving(null)}
+              >
+                Huỷ
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  busyId === moving?._id ||
+                  !moveDate ||
+                  moveDate === moving?.createdDate
+                }
+              >
+                {busyId === moving?._id ? (
+                  <Loader2
+                    className="size-4 motion-safe:animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                Chuyển ngày
               </Button>
             </DialogFooter>
           </form>

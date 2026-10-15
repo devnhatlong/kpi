@@ -88,6 +88,7 @@ import {
   EditTeamReportSummaryDto,
   PreviewTeamReportSummaryDto,
   ReopenTeamReportTaskDto,
+  MoveTeamReportTaskDateDto,
   DecideTeamReportDayDto,
   PromoteTeamReportDto,
   ReviewTeamReportDayDto,
@@ -148,6 +149,40 @@ function shiftYmd(ymd: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Ngày bắt đầu KỲ ĐÁNH GIÁ THÁNG chứa một ngày: kỳ chạy từ 15 tháng trước tới
+ * 14 tháng này (khớp `currentMonthRange` bên client). Ngày 15 trở đi thuộc kỳ
+ * bắt đầu ngày 15 của chính tháng đó.
+ */
+function periodStartOf(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const start = d >= 15 ? `${y}-${String(m).padStart(2, '0')}-15` : null;
+  return start ?? shiftMonthYmd(`${y}-${String(m).padStart(2, '0')}-15`, -1);
+}
+
+/** Dịch một ngày YYYY-MM-DD đi N tháng, giữ nguyên ngày (chỉ dùng cho ngày 15). */
+function shiftMonthYmd(ymd: string, months: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const index = y * 12 + (m - 1) + months;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/**
+ * Việc đã xong TÍNH TỚI NGÀY CUỐI KỲ hay chưa - dùng cho cờ `closed` của bản
+ * chụp. Mỗi kỳ chấm đúng tình trạng tại kỳ đó: xong ngày 16/10 mà đưa vào báo
+ * cáo kỳ 15/09 - 14/10 (trình muộn) thì trong kỳ đó nó vẫn là "đang làm".
+ *
+ * Việc khai SAU cuối kỳ (người lập tự tích ở tab "Tất cả nhiệm vụ") thì không
+ * có "tình trạng tại cuối kỳ" nào - lấy đúng tình trạng hiện tại.
+ */
+function closedBy(
+  task: { isOpen: boolean; closedDate?: string | null; createdDate: string },
+  toDate: string,
+): boolean {
+  if (task.isOpen) return false;
+  return task.createdDate > toDate || (task.closedDate ?? '') <= toDate;
+}
+
 /** Người đang thao tác - luôn là tài khoản dùng chung của một đơn vị. */
 type Actor = {
   id: Types.ObjectId;
@@ -169,6 +204,11 @@ type TeamReportTaskLock = {
   sentAt: string | null;
   /** Bản do chính đơn vị người xem lập - mở được; bản của phòng thì không. */
   own: boolean;
+  /**
+   * Việc đã HOÀN THÀNH lúc trình (bản chụp ghi `closed`) ở ít nhất một bản đã
+   * trình. Khi đó khoá hẳn - không mở lại được; việc còn dở thì vẫn làm tiếp.
+   */
+  closedInReport: boolean;
 };
 
 /** Tên trường nhật ký khi đơn vị phối hợp gửi ý kiến - để lọc khỏi bản nhận để biết. */
@@ -266,6 +306,12 @@ export class TeamReportService {
         reportDate,
         /** Đã gửi thì bảng của ngày đó khoá lại, không sửa được nữa. */
         locked: !!day && day.status !== 'RETURNED',
+        /** Vì sao không thêm việc vào ngày này được - null là thêm được. */
+        addBlockedReason: await this.addBlockedReason(
+          actor.departmentId,
+          reportDate,
+          today,
+        ),
         day,
         tasks,
         /** Nhiệm vụ nằm trong báo cáo đã trình (chờ / đã duyệt) - khoá, tra theo id. */
@@ -283,7 +329,15 @@ export class TeamReportService {
   async createTask(userId: string, dto: CreateTeamReportTaskDto) {
     const actor = await this.requireActor(userId);
     const today = serverDateYmd();
-    await this.assertDayEditable(actor.departmentId, today);
+    const reportDate = dto.reportDate?.trim()
+      ? this.requireDate(dto.reportDate)
+      : today;
+    const blocked = await this.addBlockedReason(
+      actor.departmentId,
+      reportDate,
+      today,
+    );
+    if (blocked) throw new BadRequestException(blocked);
 
     const name = dto.name.trim();
     if (!name) throw new BadRequestException('Tên nhiệm vụ là bắt buộc.');
@@ -294,12 +348,72 @@ export class TeamReportService {
       deadline: this.optionalDate(dto.deadline),
       product: dto.product?.trim() ?? '',
       evidence: this.mapEvidence(dto.evidence),
-      createdDate: today,
+      createdDate: reportDate,
       isOpen: true,
       version: 1,
     });
 
-    return { message: 'Đã thêm nhiệm vụ.', data: task };
+    return {
+      message:
+        reportDate === today
+          ? 'Đã thêm nhiệm vụ.'
+          : `Đã thêm nhiệm vụ cho ngày ${reportDate.split('-').reverse().join('/')}.`,
+      data: task,
+    };
+  }
+
+  /**
+   * Vì sao KHÔNG thêm được việc cho một ngày - null là thêm được.
+   *
+   * Nhập bù theo KỲ ĐÁNH GIÁ THÁNG (15 tháng trước - 14 tháng này), không theo
+   * tháng dương lịch: được lùi về kỳ đang chạy VÀ kỳ ngay trước nó. Sáng 15/10
+   * là đã sang kỳ mới, mà báo cáo của kỳ 15/09 - 14/10 thường lập sau ngày 14 -
+   * chặn kỳ trước là đội không bổ sung kịp những việc quên khai.
+   *
+   * Kỳ nào đã có báo cáo trình (chờ / đã duyệt) phủ ngày đó thì khép: cấp trên
+   * đang cầm, muốn bổ sung phải được trả lại hoặc rút về.
+   */
+  private async addBlockedReason(
+    departmentId: Types.ObjectId,
+    reportDate: string,
+    today: string,
+  ): Promise<string | null> {
+    if (reportDate > today) {
+      return 'Không thêm được nhiệm vụ cho ngày chưa tới.';
+    }
+    const floor = shiftMonthYmd(periodStartOf(today), -1);
+    if (reportDate < floor) {
+      return (
+        `Chỉ nhập bù được từ ${floor.split('-').reverse().join('/')} ` +
+        '(kỳ đánh giá đang chạy và kỳ ngay trước).'
+      );
+    }
+    const day = await this.dayModel
+      .findOne({ departmentId, reportDate })
+      .select('status');
+    if (day && day.status !== 'RETURNED') {
+      return 'Báo cáo ngày này đã gửi lên trên, không thêm được nữa.';
+    }
+    // Chỉ báo cáo THÁNG khép kỳ - bản tuần / quý / tự chọn chỉ để tham khảo,
+    // khoá theo chúng là đội không bổ sung kịp cho báo cáo tháng.
+    const sent = await this.summaryModel
+      .findOne({
+        departmentId,
+        period: 'MONTH',
+        status: { $in: ['PENDING', 'APPROVED'] },
+        fromDate: { $lte: reportDate },
+        toDate: { $gte: reportDate },
+      })
+      .select('title status');
+    if (sent) {
+      return (
+        `Ngày này đã nằm trong "${sent.title}" ` +
+        (sent.status === 'APPROVED'
+          ? 'đã được duyệt - không bổ sung được.'
+          : 'đang chờ duyệt - bổ sung khi được trả lại hoặc rút báo cáo về.')
+      );
+    }
+    return null;
   }
 
   async updateTask(userId: string, id: string, dto: UpdateTeamReportTaskDto) {
@@ -307,8 +421,8 @@ export class TeamReportService {
     const task = await this.requireOwnTask(actor, id);
     await this.assertDayEditable(actor.departmentId, serverDateYmd());
     this.assertClosedNotEdited(task);
-    // Đã duyệt thì tên / hạn / sản phẩm vẫn cập nhật được - chỉ phân loại chốt.
-    this.assertNotPendingReview(await this.taskLockOf(task));
+    /* Đã trình (chờ hay đã duyệt) vẫn sửa được tên / hạn / sản phẩm: báo cáo
+       giữ bản chụp, đổi ở đây chỉ đi vào kỳ sau. */
     this.assertVersion(task, dto.version);
 
     const name = dto.name.trim();
@@ -417,6 +531,17 @@ export class TeamReportService {
     if (task.isOpen) {
       throw new BadRequestException('Nhiệm vụ này đang mở.');
     }
+    /* Đã hoàn thành lúc trình thì khoá hẳn: báo cáo đã nói "xong", mở lại làm
+       tiếp là cùng một việc vừa xong vừa dở. Muốn sửa thì phải được trả lại. */
+    const lock = await this.taskLockOf(task);
+    if (lock?.closedInReport) {
+      throw new BadRequestException(
+        `Nhiệm vụ đã báo cáo hoàn thành trong "${lock.title}" nên không mở lại được` +
+          (lock.status === 'PENDING'
+            ? ' - chờ cấp trên trả lại hoặc rút báo cáo về.'
+            : '.'),
+      );
+    }
 
     task.isOpen = true;
     task.closedDate = '';
@@ -426,6 +551,63 @@ export class TeamReportService {
     await task.save();
 
     return { message: 'Đã mở lại nhiệm vụ.', data: task };
+  }
+
+  /**
+   * Đổi ngày khai của một nhiệm vụ - cho việc LỠ NHẬP MUỘN.
+   *
+   * Việc làm trong kỳ trước mà sáng 15 mới nhập thì mang ngày khai 15, rơi ra
+   * ngoài kỳ đó và không chọn vào báo cáo kỳ trước được. Chuyển ngày theo đúng
+   * luật nhập bù (`addBlockedReason`): trong kỳ đang chạy hoặc kỳ ngay trước,
+   * không vào kỳ đã có báo cáo tháng trình đi.
+   *
+   * Việc đã nằm trong báo cáo đã trình thì không đổi được - bản chụp đã nói nó
+   * thuộc kỳ nào. Không đổi sang sau ngày đóng: việc không thể xong trước khi
+   * được khai.
+   */
+  async moveTaskDate(
+    userId: string,
+    id: string,
+    dto: MoveTeamReportTaskDateDto,
+  ) {
+    const actor = await this.requireActor(userId);
+    const task = await this.requireOwnTask(actor, id);
+    this.assertVersion(task, dto.version);
+    const createdDate = this.requireDate(dto.createdDate);
+    if (createdDate === task.createdDate) {
+      throw new BadRequestException('Ngày khai không đổi.');
+    }
+
+    const lock = await this.taskLockOf(task);
+    if (lock) {
+      throw new BadRequestException(
+        `Nhiệm vụ đã nằm trong "${lock.title}" nên không đổi ngày khai được.`,
+      );
+    }
+    if (task.closedDate && createdDate > task.closedDate) {
+      throw new BadRequestException(
+        'Ngày khai không được sau ngày nhiệm vụ đã đóng.',
+      );
+    }
+    const today = serverDateYmd();
+    const blocked = await this.addBlockedReason(
+      actor.departmentId,
+      createdDate,
+      today,
+    );
+    if (blocked) throw new BadRequestException(blocked);
+
+    const from = task.createdDate;
+    task.createdDate = createdDate;
+    task.version += 1;
+    const label = (ymd: string) => ymd.split('-').reverse().join('/');
+    this.appendEdit(task, actor, 'Ngày khai', label(from), label(createdDate), '');
+    await task.save();
+
+    return {
+      message: `Đã chuyển nhiệm vụ sang ngày ${label(createdDate)}.`,
+      data: task,
+    };
   }
 
   // ================================================= giai đoạn 2: phân loại
@@ -549,7 +731,6 @@ export class TeamReportService {
     await this.assertDayEditable(actor.departmentId, serverDateYmd());
     this.assertClosedNotEdited(task);
     const lock = await this.taskLockOf(task);
-    this.assertNotPendingReview(lock);
     this.assertVersion(task, dto.version);
     const axisBefore = String(task.axisId ?? '');
     const contentBefore = String(task.workContentId ?? '');
@@ -2098,6 +2279,82 @@ export class TeamReportService {
     return { message: 'OK', data: { axisScores } };
   }
 
+  /**
+   * Các kỳ đánh giá tháng để chọn khi lập báo cáo tháng: kỳ đang chạy và 5 kỳ
+   * trước, mới nhất trước, kèm báo cáo tháng gần nhất của đơn vị cho từng kỳ.
+   *
+   * Server dựng danh sách chứ không để client tự tính: luật kỳ 15 → 14 phải
+   * có đúng một chỗ, và client cần biết kỳ nào đã trình để cảnh báo.
+   */
+  async summaryMonthPeriods(userId: string) {
+    const actor = await this.requireActor(userId);
+    const today = serverDateYmd();
+    const current = periodStartOf(today);
+    const periods = Array.from({ length: 6 }, (_, index) => {
+      const fromDate = shiftMonthYmd(current, -index);
+      const toDate = shiftYmd(shiftMonthYmd(fromDate, 1), -1);
+      return { fromDate, toDate };
+    });
+
+    const summaries = await this.summaryModel
+      .find({
+        departmentId: actor.departmentId,
+        period: 'MONTH',
+        fromDate: { $in: periods.map((item) => item.fromDate) },
+      })
+      .select('title status fromDate toDate sentAt createdAt')
+      .sort({ createdAt: -1 });
+
+    /* Số việc còn sống trong từng kỳ (luật của kho chọn nhiệm vụ) - kỳ rỗng
+       thì không có gì để trình, không đáng cảnh báo "chưa trình". */
+    const scope = await this.scopeDepartmentIds(actor.departmentId);
+    const taskCounts = await Promise.all(
+      periods.map((item) =>
+        this.taskModel.countDocuments({
+          departmentId: { $in: scope },
+          createdDate: { $lte: item.toDate },
+          $or: [{ isOpen: true }, { closedDate: { $gte: item.fromDate } }],
+        }),
+      ),
+    );
+
+    return {
+      message: 'OK',
+      data: periods.map((item, index) => {
+        const [y, m] = item.toDate.split('-');
+        const mine = summaries.filter(
+          (summary) =>
+            summary.fromDate === item.fromDate &&
+            summary.toDate === item.toDate,
+        );
+        /* Bản "đứng" cho kỳ: ưu tiên bản đã đi (chờ / đã duyệt), không có mới
+           tới bản bị trả, cuối cùng là nháp. */
+        const rank = { APPROVED: 0, PENDING: 1, RETURNED: 2, DRAFT: 3 };
+        const best = [...mine].sort(
+          (a, b) =>
+            (rank[a.status as keyof typeof rank] ?? 9) -
+            (rank[b.status as keyof typeof rank] ?? 9),
+        )[0];
+        return {
+          ...item,
+          label: `Kỳ tháng ${m}/${y}`,
+          current: item.fromDate === current,
+          /** Đã kết thúc - tới hạn lập báo cáo. */
+          ended: item.toDate < today,
+          taskCount: taskCounts[index],
+          summaryCount: mine.length,
+          latest: best
+            ? {
+                id: String(best._id),
+                title: best.title,
+                status: best.status,
+              }
+            : null,
+        };
+      }),
+    };
+  }
+
   /** Lập một bản tổng hợp ở trạng thái nháp - chưa đi đâu cả. */
   async createSummary(userId: string, dto: CreateTeamReportSummaryDto) {
     const actor = await this.requireActor(userId);
@@ -2120,6 +2377,17 @@ export class TeamReportService {
       );
     }
     const { fromDate, toDate } = this.requirePeriod(dto.fromDate, dto.toDate);
+    /* Báo cáo THÁNG phải đúng một kỳ đánh giá 15 → 14: bảng thẩm định và luật
+       khép kỳ nhập bù đều dựa vào đó, lệch một ngày là lọt hoặc khoá nhầm. */
+    if (
+      dto.period === 'MONTH' &&
+      (fromDate !== periodStartOf(fromDate) ||
+        toDate !== shiftYmd(shiftMonthYmd(fromDate, 1), -1))
+    ) {
+      throw new BadRequestException(
+        'Báo cáo tháng phải đúng một kỳ đánh giá: từ ngày 15 tháng trước đến hết ngày 14 tháng này.',
+      );
+    }
     const title = dto.title.trim();
     if (!title) throw new BadRequestException('Tên báo cáo là bắt buộc.');
 
@@ -2168,7 +2436,9 @@ export class TeamReportService {
       period: dto.period as TeamReportPeriod,
       fromDate,
       toDate,
-      rows: tasks.map((task) => this.snapshotOf(task, !task.isOpen, names)),
+      rows: tasks.map((task) =>
+        this.snapshotOf(task, closedBy(task, toDate), names),
+      ),
       status: 'DRAFT' as const,
       note: dto.note?.trim() ?? '',
     });
@@ -2216,7 +2486,7 @@ export class TeamReportService {
       tasks.map((task) => task.departmentId),
     );
     summary.rows = tasks.map((task) =>
-      this.snapshotOf(task, !task.isOpen, names),
+      this.snapshotOf(task, closedBy(task, summary.toDate), names),
     );
     summary.status = 'PENDING';
     summary.recipientId = recipient.id;
@@ -2858,7 +3128,7 @@ export class TeamReportService {
       tasks.map((task) => task.departmentId),
     );
     summary.rows = tasks.map((task) =>
-      this.snapshotOf(task, !task.isOpen, names),
+      this.snapshotOf(task, closedBy(task, summary.toDate), names),
     );
     await summary.save();
 
@@ -2950,7 +3220,7 @@ export class TeamReportService {
       tasks.map((task) => task.departmentId),
     );
     summary.rows = tasks.map((task) =>
-      this.snapshotOf(task, !task.isOpen, names),
+      this.snapshotOf(task, closedBy(task, summary.toDate), names),
     );
 
     if (adding.length) {
@@ -3047,65 +3317,90 @@ export class TeamReportService {
           `Không tìm thấy nhiệm vụ "${row.name}" để ghi giá trị đã chỉnh.`,
         );
       }
-      const template = await this.templateOfTask(task);
+      /*
+        Chấm trên BẢN CHỤP, không trên nhiệm vụ sống (chốt 2026-10-15).
+
+        Đội được cập nhật tiến độ trong lúc bản chờ duyệt - mỗi kỳ chấm đúng
+        tình trạng tại kỳ đó. Ghi vào nhiệm vụ sống rồi chép ngược lại bản chụp
+        như trước là kéo luôn tiến độ kỳ sau của đội vào bản đang duyệt.
+
+        Dựng một nhiệm vụ NHÁP từ bản chụp để dùng lại đúng đường ghi giá trị
+        (kiểm cột, tra tên danh mục, ô tự tính) - không có công thức thứ hai.
+        Cấp trên chấm tự do, không chặn theo dải nhóm điểm.
+      */
+      const scratch = new this.taskModel({
+        _id: task._id,
+        departmentId: task.departmentId,
+        name: row.name,
+        deadline: row.deadline,
+        product: row.product,
+        axisId: row.axisId,
+        workContentId: row.workContentId,
+        formTemplateId: row.formTemplateId,
+        formTemplateVersion: row.formTemplateVersion,
+        fieldValues: { ...(row.fieldValues ?? {}) },
+        catalogValues: { ...(row.catalogValues ?? {}) },
+        createdDate: task.createdDate,
+      });
+      const template = await this.templateOfTask(scratch);
       if (!template) {
         throw new BadRequestException(
           `Nhiệm vụ "${row.name}" chưa gắn mẫu bảng nên không chỉnh được.`,
         );
       }
-      /*
-        Ghi THẲNG vào nhiệm vụ gốc, không để riêng ở `reviewValues`.
-
-        Để riêng thì mỗi lần đọc phải ghép hai lớp, mà chỗ nào quên ghép là ra
-        số cũ: chính vì vậy mà kiểm dải điểm từng đọc nhầm nhóm điểm cũ trong
-        khi cấp trên đã đổi sang nhóm khác. Một chỗ giữ giá trị, ai sửa cũng ghi
-        vào đó - còn "ai đổi gì" thì tra ở NHẬT KÝ, không phải tra bằng cách so
-        hai lớp giá trị.
-
-        Cấp trên chấm tự do, không chặn theo dải nhóm điểm: họ là người quyết
-        cuối cùng.
-      */
-      const before = this.snapshotValues(task, template);
+      const before = this.snapshotValues(scratch, template);
+      const rowBefore = {
+        fieldValues: { ...(row.fieldValues ?? {}) },
+        catalogValues: { ...(row.catalogValues ?? {}) },
+      };
       const merged = await this.applyColumnValues(
-        task,
+        scratch,
         template,
         { fieldValues: patch.fieldValues, catalogValues: patch.catalogValues },
         { syncEntryFields: true, skipRangeCheck: true },
       );
-      task.fieldValues = await this.computeAutoColumns(
+      scratch.fieldValues = await this.computeAutoColumns(
         template,
         merged.fieldValues,
         merged.catalogValues,
       );
-      task.catalogValues = merged.catalogValues;
-      task.markModified('fieldValues');
-      task.markModified('catalogValues');
+      scratch.catalogValues = merged.catalogValues;
 
-      changed += this.logValueChanges(
-        task,
+      const rowChanged = this.logValueChanges(
+        scratch,
         template,
         before,
         actor,
         reason,
         summary,
       );
+      if (!rowChanged) continue;
+      changed += rowChanged;
 
-      task.version += 1;
-      await task.save();
-
-      // Bản chụp phải khớp nhiệm vụ sau khi sửa, kể cả ô tự tính vừa đổi theo.
-      const fresh = await this.taskModel
-        .findById(task._id)
-        .populate('axisId', 'code name')
-        .populate('workContentId', 'code name');
-      if (fresh) {
-        const snapshot = this.snapshotOf(fresh, !fresh.isOpen);
-        row.name = snapshot.name;
-        row.deadline = snapshot.deadline;
-        row.product = snapshot.product;
-        row.fieldValues = snapshot.fieldValues;
-        row.catalogValues = snapshot.catalogValues;
+      row.name = scratch.name;
+      row.deadline = scratch.deadline;
+      row.product = scratch.product;
+      row.fieldValues = scratch.fieldValues;
+      row.catalogValues = scratch.catalogValues;
+      if (String(scratch.workContentId ?? '') !== String(row.workContentId ?? '')) {
+        row.workContentId = scratch.workContentId;
+        row.workContentName =
+          (
+            await this.workContentModel
+              .findById(scratch.workContentId)
+              .select('name')
+          )?.name ?? '';
       }
+
+      await this.carryReviewToTask(
+        task,
+        template,
+        rowBefore,
+        scratch,
+        actor,
+        summary.title,
+        reason,
+      );
     }
 
     if (!changed) {
@@ -3138,6 +3433,76 @@ export class TeamReportService {
     await summary.save();
 
     return { message: `Đã chỉnh ${changed} giá trị.`, data: summary };
+  }
+
+  /**
+   * Chép số cấp trên vừa chấm lại sang nhiệm vụ sống - CHỈ ở những ô đội chưa
+   * động tới kể từ lúc trình.
+   *
+   * Cấp trên sửa nhóm điểm, mức chất lượng... thì kỳ sau đội nên đi tiếp từ số
+   * đã sửa, không phải số cũ bị gạch. Nhưng ô nào đội đã cập nhật sau khi trình
+   * (tiến độ mới) thì giữ của đội - đó là tình trạng kỳ sau, đè lên là xoá công
+   * đội vừa làm. Mẫu của nhiệm vụ đã đổi (khác bản chụp) thì không chép gì.
+   */
+  private async carryReviewToTask(
+    task: TeamReportTaskDocument,
+    template: ResolvedTemplate,
+    rowBefore: {
+      fieldValues: Record<string, string | number>;
+      catalogValues: Record<string, { id: string; name: string }>;
+    },
+    reviewed: TeamReportTaskDocument,
+    actor: Actor,
+    summaryTitle: string,
+    reason: string,
+  ) {
+    if (
+      String(task.formTemplateId ?? '') !== template._id ||
+      (task.formTemplateVersion ?? 1) !== template.version
+    ) {
+      return;
+    }
+    const before = this.snapshotValues(task, template);
+    const fieldValues = { ...(task.fieldValues ?? {}) };
+    const catalogValues = { ...(task.catalogValues ?? {}) };
+    for (const column of template.columns) {
+      const key = column.key;
+      if (catalogOfSemantic(column.semanticKey)) {
+        const untouched =
+          (task.catalogValues?.[key]?.id ?? '') ===
+          (rowBefore.catalogValues[key]?.id ?? '');
+        if (!untouched) continue;
+        const next = reviewed.catalogValues?.[key];
+        if (next) catalogValues[key] = next;
+        else delete catalogValues[key];
+      } else {
+        const untouched =
+          String(task.fieldValues?.[key] ?? '') ===
+          String(rowBefore.fieldValues[key] ?? '');
+        if (!untouched) continue;
+        const next = reviewed.fieldValues?.[key];
+        if (next === undefined || next === '') delete fieldValues[key];
+        else fieldValues[key] = next;
+      }
+    }
+    task.fieldValues = await this.computeAutoColumns(
+      template,
+      fieldValues,
+      catalogValues,
+    );
+    task.catalogValues = catalogValues;
+    task.markModified('fieldValues');
+    task.markModified('catalogValues');
+    const carried = this.logValueChanges(
+      task,
+      template,
+      before,
+      actor,
+      reason || `Cấp trên chấm lại trong "${summaryTitle}"`,
+    );
+    if (!carried) return;
+    task.version += 1;
+    await task.save();
   }
 
   async deleteSummary(userId: string, id: string) {
@@ -3777,13 +4142,13 @@ export class TeamReportService {
    * theo id nhiệm vụ. Chỉ chặn CẤP NHẬP (đơn vị chủ nhiệm vụ); cấp trên chấm lại
    * và gom vào báo cáo của mình theo đường riêng, không qua đây.
    *
-   * - CHỜ DUYỆT: khoá cả nhiệm vụ. Cấp trên đang đọc bản chụp và chấm lại ghi
-   *   thẳng vào nhiệm vụ gốc - đội sửa song song là ghi đè nhau, đổi trục là xoá
-   *   luôn điểm cấp trên vừa chấm. Gỡ bằng "Rút về" hoặc cấp trên trả lại.
-   * - ĐÃ DUYỆT: chỉ khoá trục và nội dung công việc. Việc còn chạy thì tiến độ,
-   *   kết quả vẫn phải cập nhật được cho báo cáo sau - bản đã duyệt giữ bản chụp
-   *   nên không đổi số. Còn phân loại đã được chốt: đổi trục là cùng một việc bị
-   *   tính vào trục A ở bản tuần, trục B ở bản tháng.
+   * Chờ duyệt hay đã duyệt đều chỉ khoá TRỤC và NỘI DUNG CÔNG VIỆC (chốt
+   * 2026-10-15). Báo cáo giữ bản chụp và cấp trên chấm lại trên bản chụp, nên
+   * việc còn dở vẫn cập nhật tiến độ hằng ngày cho kỳ sau mà không đổi số của
+   * bản đã trình - mỗi kỳ chấm đúng tình trạng tại kỳ đó. Phân loại thì chốt:
+   * đổi trục là cùng một việc bị tính vào trục A ở bản tuần, trục B ở bản tháng.
+   *
+   * Việc đã hoàn thành lúc trình (`closedInReport`) thì khoá hẳn - không mở lại.
    *
    * Tìm theo MỌI báo cáo chứa nhiệm vụ, không riêng của đội: bản của phòng cũng
    * gom việc của các đội.
@@ -3801,10 +4166,16 @@ export class TeamReportService {
         'rows.taskId': { $in: taskIds },
       })
       .select(
-        'departmentId title status stage recipientName finalRecipientName decidedByName sentAt rows.taskId',
+        'departmentId title status stage recipientName finalRecipientName decidedByName sentAt rows.taskId rows.closed',
       )
-      // Bản chờ duyệt đứng trước: khoá chặt hơn, nói nó mới đúng.
+      // Bản chờ duyệt đứng trước: đang ở cấp trên, nói nó mới đúng.
       .sort({ status: -1, sentAt: 1 });
+    const closedIn = new Set<string>();
+    for (const summary of summaries) {
+      for (const row of summary.rows) {
+        if (row.closed) closedIn.add(String(row.taskId));
+      }
+    }
     for (const summary of summaries) {
       const approved = summary.status === 'APPROVED';
       const holder = approved
@@ -3824,6 +4195,7 @@ export class TeamReportService {
           own:
             !!viewerDepartmentId &&
             String(summary.departmentId) === String(viewerDepartmentId),
+          closedInReport: closedIn.has(id),
         });
       }
     }
@@ -3836,24 +4208,18 @@ export class TeamReportService {
     );
   }
 
-  /** Khoá cả nhiệm vụ khi nó nằm trong một bản đang chờ duyệt. */
-  private assertNotPendingReview(lock: TeamReportTaskLock | null) {
-    if (lock?.status !== 'PENDING') return;
-    throw new BadRequestException(
-      `Nhiệm vụ đang nằm trong "${lock.title}" chờ ${lock.holder || 'cấp trên'} duyệt - ` +
-        'không sửa được cho tới khi được duyệt, bị trả lại hoặc rút báo cáo về.',
-    );
-  }
-
-  /** Đã duyệt: phân loại đã chốt - trục và nội dung công việc không đổi được nữa. */
+  /** Đã trình (chờ hoặc đã duyệt): trục và nội dung công việc không đổi được nữa. */
   private assertClassificationKept(
     lock: TeamReportTaskLock | null,
     classificationChanged: boolean,
   ) {
-    if (lock?.status !== 'APPROVED' || !classificationChanged) return;
+    if (!lock || !classificationChanged) return;
     throw new BadRequestException(
-      `Nhiệm vụ đã được ${lock.holder || 'cấp trên'} duyệt trong "${lock.title}" - ` +
-        'trục và nội dung công việc đã chốt, không đổi được. Các ô khác vẫn cập nhật bình thường.',
+      lock.status === 'APPROVED'
+        ? `Nhiệm vụ đã được ${lock.holder || 'cấp trên'} duyệt trong "${lock.title}" - ` +
+            'trục và nội dung công việc đã chốt, không đổi được. Các ô khác vẫn cập nhật bình thường.'
+        : `Nhiệm vụ đang nằm trong "${lock.title}" chờ ${lock.holder || 'cấp trên'} duyệt - ` +
+            'trục và nội dung công việc giữ nguyên tới khi có kết quả. Tiến độ và các ô khác vẫn cập nhật bình thường.',
     );
   }
 

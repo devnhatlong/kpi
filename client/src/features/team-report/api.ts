@@ -136,9 +136,30 @@ export type TeamReportTaskInput = {
   product?: string;
 };
 
-export function createTeamReportTask(input: TeamReportTaskInput) {
+export function createTeamReportTask(
+  input: TeamReportTaskInput & {
+    /** Nhập bù cho một ngày trước trong tháng; bỏ trống = hôm nay. */
+    reportDate?: string;
+  },
+) {
   return unwrapData(
     api.post<ApiResponse<TeamReportTask>>("/team-report/tasks", input),
+  );
+}
+
+/**
+ * Chuyển ngày khai của một nhiệm vụ - việc lỡ nhập muộn (sáng 15 mới nhập việc
+ * của kỳ trước). Server áp đúng luật nhập bù.
+ */
+export function moveTeamReportTaskDate(
+  id: string,
+  input: { version: number; createdDate: string },
+) {
+  return unwrapData(
+    api.patch<ApiResponse<TeamReportTask>>(
+      `/team-report/tasks/${id}/created-date`,
+      input,
+    ),
   );
 }
 
@@ -362,6 +383,35 @@ export type TeamReportSummaryLevel = "TEAM" | "UNIT";
 
 const summaryBase = (level: TeamReportSummaryLevel = "TEAM") =>
   level === "UNIT" ? "/team-report/unit-summary" : "/team-report/summary";
+
+/** Một kỳ đánh giá tháng (15 tháng trước → 14 tháng này) để lập báo cáo tháng. */
+export type TeamReportMonthPeriod = {
+  fromDate: string;
+  toDate: string;
+  label: string;
+  /** Kỳ đang chạy - chưa kết thúc. */
+  current: boolean;
+  ended: boolean;
+  /** Số nhiệm vụ còn sống trong kỳ - 0 thì kỳ rỗng, không cần cảnh báo. */
+  taskCount: number;
+  /** Số báo cáo tháng đơn vị đã lập cho kỳ này (mọi trạng thái). */
+  summaryCount: number;
+  /** Bản "đứng" cho kỳ: đã duyệt > chờ duyệt > bị trả > nháp. */
+  latest: {
+    id: string;
+    title: string;
+    status: "DRAFT" | "PENDING" | "APPROVED" | "RETURNED";
+  } | null;
+};
+
+/** Kỳ đang chạy + 5 kỳ trước, mới nhất trước - luật kỳ do server giữ. */
+export function fetchTeamReportMonthPeriods(level?: TeamReportSummaryLevel) {
+  return unwrapData(
+    api.get<ApiResponse<TeamReportMonthPeriod[]>>(
+      `${summaryBase(level)}/month-periods`,
+    ),
+  );
+}
 
 export function fetchTeamReportSummaryCandidates(params: {
   fromDate: string;

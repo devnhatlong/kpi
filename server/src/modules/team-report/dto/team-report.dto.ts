@@ -65,6 +65,14 @@ export class CreateTeamReportTaskDto {
   @ValidateNested({ each: true })
   @Type(() => TeamReportEvidenceDto)
   evidence?: TeamReportEvidenceDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Ngày khai (YYYY-MM-DD) - nhập bù cho một ngày trước trong tháng hiện tại. Bỏ trống = hôm nay.',
+  })
+  @IsOptional()
+  @IsString()
+  reportDate?: string;
 }
 
 /**
@@ -168,6 +176,19 @@ export class ReopenTeamReportTaskDto {
   @IsInt()
   @Min(1)
   version!: number;
+}
+
+/** Chuyển ngày khai của một nhiệm vụ - sửa việc lỡ nhập muộn sang đúng ngày. */
+export class MoveTeamReportTaskDateDto {
+  @ApiProperty({ description: 'Số bản đang cầm' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  version!: number;
+
+  @ApiProperty({ description: 'Ngày khai mới (YYYY-MM-DD)' })
+  @IsString()
+  createdDate!: string;
 }
 
 export class TeamReportSheetQueryDto {
