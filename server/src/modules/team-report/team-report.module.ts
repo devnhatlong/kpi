@@ -14,6 +14,10 @@ import {
   WorkContentSchema,
 } from '../mission-form-config/schemas/work-content.schema';
 import {
+  WorkContentSet,
+  WorkContentSetSchema,
+} from '../mission-form-config/schemas/work-content-set.schema';
+import {
   ScoreGroup,
   ScoreGroupSchema,
 } from '../mission-form-config/schemas/score-group.schema';
@@ -116,6 +120,7 @@ import { TeamReportCommendationService } from './team-report-commendation.servic
       { name: Role.name, schema: RoleSchema },
       { name: Department.name, schema: DepartmentSchema },
       { name: WorkContent.name, schema: WorkContentSchema },
+      { name: WorkContentSet.name, schema: WorkContentSetSchema },
       { name: ScoreGroup.name, schema: ScoreGroupSchema },
       { name: Axis.name, schema: AxisSchema },
       { name: WorkTask.name, schema: WorkTaskSchema },

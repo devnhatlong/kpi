@@ -20,7 +20,8 @@ export function scopeFromTemplate(template: ReportTemplate): ScopeDraft {
     scopeType: template.scopeType ?? "all",
     levelIds: (template.levelIds ?? []).map(entityId),
     departmentIds: (template.departmentIds ?? []).map(entityId),
-    includeDescendants: template.includeDescendants ?? true,
+    // Mẫu báo cáo luôn áp cho cả đơn vị trực thuộc - không còn công tắc.
+    includeDescendants: true,
   };
 }
 
@@ -63,10 +64,7 @@ export function scopeSummary(template: ReportTemplate): string {
   // Ba cái đầu là đủ để nhận ra, dài hơn thì bảng vỡ dòng.
   const head = items.slice(0, 3).join(", ");
   const rest = items.length > 3 ? ` +${items.length - 3}` : "";
-  const inherit =
-    type === "by_department" && template.includeDescendants
-      ? " (cả cấp dưới)"
-      : "";
+  const inherit = type === "by_department" ? " (cả cấp dưới)" : "";
   return `${head}${rest}${inherit}`;
 }
 

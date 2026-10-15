@@ -21,6 +21,10 @@ import {
   WorkContentDocument,
 } from '@/modules/mission-form-config/schemas/work-content.schema';
 import {
+  WorkContentSet,
+  WorkContentSetDocument,
+} from '@/modules/mission-form-config/schemas/work-content-set.schema';
+import {
   ScoreGroup,
   ScoreGroupDocument,
 } from '@/modules/mission-form-config/schemas/score-group.schema';
@@ -183,6 +187,17 @@ function closedBy(
   return task.createdDate > toDate || (task.closedDate ?? '') <= toDate;
 }
 
+/**
+ * Mã khối (đơn vị ngay dưới tỉnh) → mã bộ nội dung (phụ lục) của khối đó. Xem
+ * `blockSetIdOf`.
+ */
+const BLOCK_CONTENT_SET: Record<string, string> = {
+  AN: 'BND-PL2',
+  CS: 'BND-PL3',
+  XDLL: 'BND-PL4',
+  DP: 'BND-PL5',
+};
+
 /** Người đang thao tác - luôn là tài khoản dùng chung của một đơn vị. */
 type Actor = {
   id: Types.ObjectId;
@@ -233,6 +248,8 @@ export class TeamReportService {
     private readonly roleModel: Model<RoleDocument>,
     @InjectModel(WorkContent.name)
     private readonly workContentModel: Model<WorkContentDocument>,
+    @InjectModel(WorkContentSet.name)
+    private readonly workContentSetModel: Model<WorkContentSetDocument>,
     @InjectModel(ScoreGroup.name)
     private readonly scoreGroupModel: Model<ScoreGroupDocument>,
     @InjectModel(Axis.name)
@@ -1989,9 +2006,46 @@ export class TeamReportService {
     // Mẫu trả về đã populate bộ - lấy `_id`; chưa populate thì chính là id.
     const setRef = resolved.data.template?.workContentSetId as unknown as
       { _id: Types.ObjectId } | Types.ObjectId | null | undefined;
-    const setId = setRef instanceof Types.ObjectId ? setRef : setRef?._id;
+    const setId =
+      (setRef instanceof Types.ObjectId ? setRef : setRef?._id) ??
+      (await this.blockSetIdOf(departmentId));
     if (setId) filter.setIds = setId;
     return filter;
+  }
+
+  /**
+   * Bộ nội dung suy từ KHỐI chứa đơn vị - dùng khi mẫu báo cáo không chỉ định
+   * bộ nào (chốt 2026-10-15).
+   *
+   * Cây đơn vị chỉ có 4 khối dưới tỉnh, mỗi khối đúng một phụ lục: An ninh →
+   * PL2, Cảnh sát → PL3, Xây dựng lực lượng → PL4, Xã / Phường / Đặc khu / Đồn
+   * → PL5. Suy theo MÃ khối và mã bộ để quản trị khỏi phải khai thêm một chỗ
+   * nào - đổi tên khối hay tên bộ không làm gãy. Mẫu báo cáo chọn bộ cụ thể
+   * thì mẫu thắng (ngoại lệ cho đơn vị đặc thù).
+   */
+  private async blockSetIdOf(
+    departmentId: Types.ObjectId | string | null,
+  ): Promise<Types.ObjectId | null> {
+    if (!departmentId || !Types.ObjectId.isValid(String(departmentId))) {
+      return null;
+    }
+    const department = await this.departmentModel
+      .findById(departmentId)
+      .select('code ancestors');
+    if (!department) return null;
+    const chain = [...(department.ancestors ?? []), department._id];
+    const block = await this.departmentModel
+      .findOne({
+        _id: { $in: chain },
+        code: { $in: Object.keys(BLOCK_CONTENT_SET) },
+      })
+      .select('code');
+    const setCode = block?.code ? BLOCK_CONTENT_SET[block.code] : undefined;
+    if (!setCode) return null;
+    const set = await this.workContentSetModel
+      .findOne({ code: setCode, isActive: true })
+      .select('_id');
+    return set?._id ?? null;
   }
 
   // ======================================== báo cáo tổng hợp theo kỳ của đội

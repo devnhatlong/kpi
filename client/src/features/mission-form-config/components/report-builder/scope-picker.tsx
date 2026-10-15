@@ -414,25 +414,35 @@ export function ScopePicker({
             )}
           </div>
 
-          <div className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5">
-            <div className="min-w-0 space-y-0.5">
-              <Label htmlFor="scope-descendants" className="text-sm">
-                {labels?.descendants ?? "Cấp dưới dùng theo đơn vị cha"}
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                {labels?.descendantsHint ??
-                  "Tick một Phòng là mọi Đội trong Phòng đó dùng chung mẫu này. Tắt khi muốn mẫu chỉ áp đúng đơn vị đã chọn."}
-              </p>
+          {/* Mẫu báo cáo: chọn một đơn vị là mọi đơn vị trực thuộc dùng theo,
+              không có công tắc. Công tắc chỉ còn khi mượn cây cho luật khác
+              (luồng trình) - ở đó chọn Phòng mà không kéo theo các Đội là có
+              nghĩa. */}
+          {treeOnly ? (
+            <div className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2.5">
+              <div className="min-w-0 space-y-0.5">
+                <Label htmlFor="scope-descendants" className="text-sm">
+                  {labels?.descendants ?? "Cấp dưới dùng theo đơn vị cha"}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {labels?.descendantsHint ??
+                    "Tick một Phòng là mọi Đội trong Phòng đó dùng chung. Tắt khi chỉ áp đúng đơn vị đã chọn."}
+                </p>
+              </div>
+              <Switch
+                id="scope-descendants"
+                className="mt-0.5 shrink-0"
+                checked={value.includeDescendants}
+                onCheckedChange={(includeDescendants) =>
+                  onChange({ ...value, includeDescendants })
+                }
+              />
             </div>
-            <Switch
-              id="scope-descendants"
-              className="mt-0.5 shrink-0"
-              checked={value.includeDescendants}
-              onCheckedChange={(includeDescendants) =>
-                onChange({ ...value, includeDescendants })
-              }
-            />
-          </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Chọn một đơn vị là mọi đơn vị trực thuộc dùng chung mẫu này.
+            </p>
+          )}
         </div>
       ) : null}
 

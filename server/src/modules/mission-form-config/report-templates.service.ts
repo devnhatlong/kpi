@@ -86,7 +86,8 @@ export class ReportTemplatesService {
       axisIds: await this.resolveAxisIds(dto.axisIds ?? []),
       workContentSetId: await this.resolveSetId(dto.workContentSetId ?? null),
       ...scope,
-      includeDescendants: dto.includeDescendants ?? true,
+      // Luôn áp cho cả đơn vị trực thuộc (chốt 2026-10-15) - không còn công tắc.
+      includeDescendants: true,
       // Mẫu mới luôn ở trạng thái đang cấu hình - áp dụng là một hành động
       // riêng, có kiểm tra riêng (xem `apply`).
       status: 'draft',
@@ -201,8 +202,8 @@ export class ReportTemplatesService {
           const key = String((dept as { _id?: unknown })._id ?? dept);
           const score = chainScore.get(key);
           if (score === undefined) continue;
-          // Nút cha chỉ tính khi mẫu cho phép cấp dưới dùng theo.
-          if (key !== selfKey && !template.includeDescendants) continue;
+          /* Gán cho một nút là mọi đơn vị trực thuộc dùng theo - KHÔNG đọc
+             `includeDescendants` nữa (mẫu cũ có thể còn lưu false). */
           if (score > bestScore) {
             bestScore = score;
             picked = template;
@@ -270,9 +271,7 @@ export class ReportTemplatesService {
     if (dto.axisIds !== undefined) {
       item.axisIds = await this.resolveAxisIds(dto.axisIds);
     }
-    if (dto.includeDescendants !== undefined) {
-      item.includeDescendants = dto.includeDescendants;
-    }
+    item.includeDescendants = true;
     const setTouched =
       dto.workContentSetId !== undefined &&
       String(dto.workContentSetId ?? '') !==
