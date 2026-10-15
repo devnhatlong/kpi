@@ -109,6 +109,8 @@ export const teamReportKeys = {
     ["team-report", "adjustment-incoming", id] as const,
   criteria: (periodMonth: string) =>
     ["team-report", "criteria", periodMonth] as const,
+  criteriaReferences: (periodMonth: string) =>
+    ["team-report", "criteria-references", periodMonth] as const,
 };
 
 // ------------------------------------------------------ giai đoạn 1: nhập thô
@@ -764,6 +766,30 @@ export function saveTeamReportCriteria(
     api.patch<ApiResponse<TeamReportCriteriaData>>(
       `/team-report/criteria/${periodMonth}`,
       input,
+    ),
+  );
+}
+
+/** Bảng A một đơn vị trực thuộc đã gửi lên - bản chụp trong báo cáo tổng hợp. */
+export type TeamReportCriteriaReference = {
+  departmentId: string;
+  departmentName: string;
+  summaryId: string;
+  summaryTitle: string;
+  status: "PENDING" | "APPROVED";
+  sentAt: string | null;
+  criteria: TeamReportSummaryCriteria;
+};
+
+/**
+ * Bảng A các đơn vị trực thuộc đã trình lên đơn vị mình trong tháng - phòng /
+ * xã tham khảo khi tự chấm. Đội không có ai trình lên nên nhận mảng rỗng.
+ */
+export function fetchTeamReportCriteriaReferences(periodMonth: string) {
+  return unwrapData(
+    api.get<ApiResponse<TeamReportCriteriaReference[]>>(
+      "/team-report/criteria/references",
+      { params: { periodMonth } },
     ),
   );
 }

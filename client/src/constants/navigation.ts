@@ -68,6 +68,13 @@ export type NavItem = {
    * Nhóm menu bỏ trống thì hiện khi còn ít nhất một mục con hiện được.
    */
   permissions?: string[];
+  /**
+   * Nếu có: phải giữ thêm một trong các vai trò này mới hiện - TRỪ KHI user có
+   * một quyền trong `rolesExemptPermissions`. Dùng cho mục mở cho hai nhóm:
+   * đội (có quyền nhập là đủ) và phòng / xã (quyền duyệt + vai trưởng đơn vị).
+   */
+  roles?: string[];
+  rolesExemptPermissions?: string[];
 };
 
 /**
@@ -89,7 +96,13 @@ export const NAV_ITEMS: NavItem[] = [
     title: "Tiêu chí chung (A)",
     href: "/team-report/criteria",
     icon: ClipboardCheck,
-    permissions: [PERM.TEAM_REPORT_ENTRY],
+    /* Đội / tổ chấm bảng của mình; phòng / xã cũng chấm bảng riêng để trình
+       tiếp lên trên (tham khảo bảng A các đội gửi lên). Tỉnh và tài khoản chỉ
+       duyệt có quyền duyệt nhưng không trình bảng A đi đâu - luật khớp
+       `assertCanScore` bên server. */
+    permissions: [PERM.TEAM_REPORT_ENTRY, PERM.TEAM_REPORT_REVIEW],
+    roles: ["UNIT_ADMIN", "VICE_UNIT_ADMIN"],
+    rolesExemptPermissions: [PERM.TEAM_REPORT_ENTRY],
   },
   /*
     Bản nghiệp vụ MỚI - báo cáo ngày cấp đội, chạy song song với các mục cũ.

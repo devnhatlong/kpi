@@ -153,8 +153,19 @@ export function TeamReportCriteriaPreview({
                       key={column.key}
                       className={cn(
                         "align-middle",
-                        column.semanticKey === "criterion" && "min-w-[20rem]",
-                        column.semanticKey !== "criterion" && "text-center",
+                        // Cùng tỉ lệ với màn chấm bảng A: chặn cột tiêu chí để
+                        // Ghi chú có chỗ, cột số chỉ vừa một hai chữ số.
+                        column.semanticKey === "criterion" &&
+                          "w-[40%] min-w-[20rem]",
+                        column.dataType === "text" &&
+                          column.semanticKey !== "criterion" &&
+                          "w-[25%] min-w-[14rem]",
+                        column.dataType === "number" &&
+                          column.semanticKey !== "criterion_max_score" &&
+                          "w-24",
+                        column.semanticKey !== "criterion" &&
+                          column.dataType !== "text" &&
+                          "text-center",
                       )}
                     >
                       {column.title}
@@ -188,8 +199,9 @@ export function TeamReportCriteriaPreview({
                         <TableCell
                           key={column.key}
                           className={cn(
-                            "align-top text-sm",
-                            column.semanticKey === "criterion"
+                            "align-middle text-sm",
+                            column.semanticKey === "criterion" ||
+                              column.dataType === "text"
                               ? "whitespace-normal"
                               : "text-center tabular-nums",
                             column.key === score.scoreColumnKey &&

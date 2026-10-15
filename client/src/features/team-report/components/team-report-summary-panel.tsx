@@ -1742,7 +1742,7 @@ export function TeamReportSummaryPanel({
       </CardContent>
 
       <Dialog open={sendOpen} onOpenChange={setSendOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl lg:max-w-5xl">
           <form onSubmit={(event) => void send(event)} className="space-y-4">
             <DialogHeader>
               <DialogTitle>
@@ -1762,6 +1762,11 @@ export function TeamReportSummaryPanel({
               </p>
             )}
 
+            {/* Hai cột ở màn rộng: nơi nhận + ghi chú bên trái, phần tự đánh
+                giá bên phải - xếp chồng một cột thì hộp cao quá màn, phải cuộn
+                mới tới nút Trình. */}
+            <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+            <div className="min-w-0 space-y-4">
             <SummaryRecipientFields
               idPrefix="summary"
               recipients={recipients}
@@ -1778,21 +1783,6 @@ export function TeamReportSummaryPanel({
                   : undefined
               }
             />
-            {conclusion ? (
-              <SummaryConclusionFields
-                idPrefix="summary-conclusion"
-                value={conclusion}
-                onChange={(next) => {
-                  setConclusion(next);
-                  if (Object.keys(conclusionErrors).length) {
-                    setConclusionErrors(validateConclusion(next).errors);
-                  }
-                }}
-                errors={conclusionErrors}
-                score={axisScores.length || criteria ? totalScore : null}
-                maxScore={totalMax || null}
-              />
-            ) : null}
 
             <div className="space-y-1.5">
               <Label htmlFor="summary-note">
@@ -1809,6 +1799,26 @@ export function TeamReportSummaryPanel({
                 rows={3}
                 placeholder="Ví dụ: Đã bổ sung biên bản theo yêu cầu…"
               />
+            </div>
+            </div>
+
+            <div className="min-w-0">
+            {conclusion ? (
+              <SummaryConclusionFields
+                idPrefix="summary-conclusion"
+                value={conclusion}
+                onChange={(next) => {
+                  setConclusion(next);
+                  if (Object.keys(conclusionErrors).length) {
+                    setConclusionErrors(validateConclusion(next).errors);
+                  }
+                }}
+                errors={conclusionErrors}
+                score={axisScores.length || criteria ? totalScore : null}
+                maxScore={totalMax || null}
+              />
+            ) : null}
+            </div>
             </div>
 
             <DialogFooter>

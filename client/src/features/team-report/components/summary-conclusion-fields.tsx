@@ -249,7 +249,9 @@ export function SummaryConclusionFields({
         )}
         {field(
           "compilerName",
-          "Cán bộ tổng hợp - họ và tên",
+          /* Nhãn ngắn, một dòng: hai ô đứng cạnh nhau mà một nhãn xuống dòng
+             là hai ô nhập lệch hàng. */
+          "Cán bộ tổng hợp",
           textInput("compilerName", {
             autoComplete: "name",
             placeholder: "Ví dụ: Nguyễn Văn A",
@@ -257,7 +259,7 @@ export function SummaryConclusionFields({
         )}
         {field(
           "compilerPhone",
-          "Cán bộ tổng hợp - số điện thoại",
+          "Số điện thoại",
           textInput("compilerPhone", {
             type: "tel",
             inputMode: "tel",

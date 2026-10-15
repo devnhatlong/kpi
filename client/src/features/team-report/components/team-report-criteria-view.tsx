@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import useSWR from "swr";
 import {
   Check,
@@ -11,6 +11,7 @@ import {
   Loader2,
   RefreshCw,
   TriangleAlert,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -27,8 +28,10 @@ import {
 } from "@/components/ui/table";
 import {
   fetchTeamReportCriteria,
+  fetchTeamReportCriteriaReferences,
   saveTeamReportCriteria,
   teamReportKeys,
+  type TeamReportCriteriaReference,
 } from "@/features/team-report/api";
 import { DynamicColumnCell } from "@/features/team-report/components/dynamic-column-cell";
 import { scoreTone } from "@/features/team-report/status-styles";
@@ -69,6 +72,54 @@ const FIXED_SEMANTICS = new Set([
   "criterion_max_score",
 ]);
 
+/** Những gì một đơn vị trực thuộc đã chấm cho MỘT tiêu chí. */
+type ReferenceLine = {
+  departmentName: string;
+  score: string;
+  maxScore: number;
+  /** Tiêu đề các ô tích đã tích - "Đảm bảo" / "Không đảm bảo". */
+  flags: string[];
+  /** Các cột chữ có nội dung - "Ghi chú: ...". */
+  texts: Array<{ title: string; value: string }>;
+};
+
+function referenceLinesOf(
+  references: TeamReportCriteriaReference[],
+  row: TeamReportCriterionRow,
+): ReferenceLine[] {
+  const lines: ReferenceLine[] = [];
+  for (const reference of references) {
+    const { criteria } = reference;
+    /* Khớp theo id tiêu chí; danh mục bị dựng lại (id đổi) thì khớp theo tên. */
+    const theirs =
+      criteria.rows.find(
+        (item) => String(item.criterionId) === String(row.criterionId),
+      ) ?? criteria.rows.find((item) => item.criterionName === row.criterionName);
+    if (!theirs) continue;
+    const columns = (criteria.template?.columns ?? []).filter(
+      (column) =>
+        column.visible &&
+        !column.autoValue &&
+        !FIXED_SEMANTICS.has(column.semanticKey),
+    );
+    const valueOf = (key: string) => String(theirs.fieldValues?.[key] ?? "").trim();
+    lines.push({
+      departmentName: reference.departmentName,
+      score: criteria.scoreColumnKey ? valueOf(criteria.scoreColumnKey) : "",
+      maxScore: theirs.maxScore,
+      flags: columns
+        .filter(
+          (column) => column.dataType === "boolean" && valueOf(column.key) === "1",
+        )
+        .map((column) => column.title),
+      texts: columns
+        .filter((column) => column.dataType === "text" && valueOf(column.key))
+        .map((column) => ({ title: column.title, value: valueOf(column.key) })),
+    });
+  }
+  return lines;
+}
+
 /**
  * Bảng A "Danh mục điểm tiêu chí chung" - đội tự chấm, THÁNG MỘT BẢN.
  *
@@ -79,6 +130,10 @@ const FIXED_SEMANTICS = new Set([
  *
  * Tự lưu từng ô như tab Phân loại: cả đội chấm chung một bảng qua một tài
  * khoản, gom thành một nút Lưu là đè mất phần người khác vừa gõ.
+ *
+ * Phòng / xã cũng chấm bảng A của chính mình ở đây. Bảng A các đội / tổ gửi
+ * lên CHỈ để tham khảo: dưới mỗi tiêu chí bày đơn vị nào chấm bao nhiêu, vì
+ * sao - không cộng, không tự điền gì vào bảng của phòng.
  */
 export function TeamReportCriteriaView() {
   const { ready } = useServerTime();
@@ -97,6 +152,23 @@ export function TeamReportCriteriaView() {
     () => fetchTeamReportCriteria(month),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
+
+  /* Đội không có ai trình lên nên nhận mảng rỗng - khối tham khảo tự ẩn. */
+  const { data: references = [] } = useSWR(
+    month ? teamReportKeys.criteriaReferences(month) : null,
+    () => fetchTeamReportCriteriaReferences(month),
+    { revalidateOnFocus: false },
+  );
+  /* Tiêu chí đang mở phần tham khảo - mặc định thu gọn hết: phòng nhận hàng
+     chục đội, bung sẵn là mỗi tiêu chí kéo theo một danh sách dài. */
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpanded = (criterionId: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(criterionId)) next.delete(criterionId);
+      else next.add(criterionId);
+      return next;
+    });
 
   const sheet = data?.sheet;
   const template = data?.template ?? null;
@@ -315,6 +387,72 @@ export function TeamReportCriteriaView() {
             </p>
           ) : null}
 
+          {/* ---------------------------------- bảng A đơn vị trực thuộc */}
+          {references.length ? (
+            <div className="space-y-2 rounded-md border bg-muted/20 px-3 py-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <Users className="size-4 text-muted-foreground" />
+                  Đơn vị trực thuộc đã gửi bảng A tháng này
+                  <span className="text-xs font-normal text-muted-foreground">
+                    · chỉ để tham khảo, không cộng vào bảng của đơn vị
+                  </span>
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setExpanded(
+                      expanded.size
+                        ? new Set()
+                        : new Set(
+                            (sheet?.rows ?? []).map((row) =>
+                              String(row.criterionId),
+                            ),
+                          ),
+                    )
+                  }
+                >
+                  {expanded.size ? "Thu gọn tất cả" : "Mở tất cả"}
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {references.map((reference) => {
+                  const { criteria } = reference;
+                  const refTone = scoreTone(
+                    criteria.total !== null && criteria.max > 0
+                      ? criteria.total / criteria.max
+                      : null,
+                  );
+                  return (
+                    <span
+                      key={reference.departmentId}
+                      title={reference.summaryTitle}
+                      className="flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs"
+                    >
+                      <span className="font-medium">
+                        {reference.departmentName}
+                      </span>
+                      <span className={cn("tabular-nums", refTone.text)}>
+                        {criteria.total === null
+                          ? "-"
+                          : formatScore(criteria.total)}
+                        /{formatScore(criteria.max)}
+                      </span>
+                      <span className="text-muted-foreground">
+                        ·{" "}
+                        {reference.status === "APPROVED"
+                          ? "đã duyệt"
+                          : "chờ duyệt"}
+                      </span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
           {/* ------------------------------------------------------ bảng */}
           {isLoading && !data ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
@@ -373,8 +511,20 @@ export function TeamReportCriteriaView() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sheet.rows.map((row, index) => (
-                    <TableRow key={row.criterionId}>
+                  {sheet.rows.map((row, index) => {
+                    const lines = referenceLinesOf(references, row);
+                    const open = expanded.has(String(row.criterionId));
+                    /* Đếm từng ô tích để dòng thu gọn vẫn đọc ra được ngay
+                       "3 đảm bảo, 1 không" mà chưa cần mở. */
+                    const flagCounts = new Map<string, number>();
+                    for (const line of lines) {
+                      for (const flag of line.flags) {
+                        flagCounts.set(flag, (flagCounts.get(flag) ?? 0) + 1);
+                      }
+                    }
+                    return (
+                  <Fragment key={row.criterionId}>
+                    <TableRow className={cn(lines.length && "border-b-0")}>
                       {columns.map((column) => {
                         const errorKey = `${row.criterionId}:${column.key}`;
 
@@ -382,7 +532,7 @@ export function TeamReportCriteriaView() {
                           return (
                             <TableCell
                               key={column.key}
-                              className="text-center align-top tabular-nums"
+                              className="text-center align-middle tabular-nums"
                             >
                               {index + 1}
                             </TableCell>
@@ -392,7 +542,7 @@ export function TeamReportCriteriaView() {
                           return (
                             <TableCell
                               key={column.key}
-                              className="whitespace-normal align-top text-sm"
+                              className="whitespace-normal align-middle text-sm"
                             >
                               {row.criterionName}
                             </TableCell>
@@ -402,7 +552,7 @@ export function TeamReportCriteriaView() {
                           return (
                             <TableCell
                               key={column.key}
-                              className="whitespace-normal align-top text-xs text-muted-foreground"
+                              className="whitespace-normal align-middle text-xs text-muted-foreground"
                             >
                               {row.criterionNote}
                             </TableCell>
@@ -412,7 +562,7 @@ export function TeamReportCriteriaView() {
                           return (
                             <TableCell
                               key={column.key}
-                              className="text-center align-top tabular-nums"
+                              className="text-center align-middle tabular-nums"
                             >
                               {formatScore(row.maxScore)}
                             </TableCell>
@@ -426,14 +576,14 @@ export function TeamReportCriteriaView() {
                           <TableCell
                             key={column.key}
                             className={cn(
-                              "align-top",
+                              "align-middle",
                               column.dataType === "boolean" && "text-center",
                             )}
                           >
                             <div
                               className={cn(
                                 column.dataType === "boolean" &&
-                                  "flex justify-center pt-2",
+                                  "flex justify-center",
                               )}
                             >
                               <DynamicColumnCell
@@ -460,7 +610,81 @@ export function TeamReportCriteriaView() {
                         );
                       })}
                     </TableRow>
-                  ))}
+                    {lines.length ? (
+                      /* Đơn vị trực thuộc chấm tiêu chí này ra sao - ngay dưới
+                         dòng đang chấm để khỏi phải đối chiếu hai bảng. */
+                      <TableRow className="bg-muted/20 hover:bg-muted/20">
+                        <TableCell
+                          colSpan={columns.length}
+                          className="whitespace-normal pt-0"
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleExpanded(String(row.criterionId))
+                            }
+                            aria-expanded={open}
+                            className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-0.5 rounded px-1 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            <ChevronRight
+                              className={cn(
+                                "size-3.5 shrink-0 transition-transform",
+                                open && "rotate-90",
+                              )}
+                            />
+                            <span>
+                              {lines.length} đơn vị trực thuộc đã chấm
+                            </span>
+                            {[...flagCounts.entries()].map(([flag, count]) => (
+                              <span key={flag} className="tabular-nums">
+                                · {flag} {count}
+                              </span>
+                            ))}
+                          </button>
+                          {open ? (
+                          <ul className="mt-1 space-y-1 border-l-2 border-primary/30 pl-3 text-xs">
+                            {lines.map((line) => (
+                              <li
+                                key={line.departmentName}
+                                className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5"
+                              >
+                                <span className="font-medium">
+                                  {line.departmentName}
+                                </span>
+                                <span className="tabular-nums">
+                                  {line.score || "-"}/
+                                  {formatScore(line.maxScore)} điểm
+                                </span>
+                                {line.flags.map((flag) => (
+                                  <Badge
+                                    key={flag}
+                                    variant="secondary"
+                                    className="px-1.5 py-0 text-[11px] font-normal"
+                                  >
+                                    {flag}
+                                  </Badge>
+                                ))}
+                                {line.texts.map((text) => (
+                                  <span
+                                    key={text.title}
+                                    className="text-muted-foreground"
+                                  >
+                                    {text.title}:{" "}
+                                    <span className="text-foreground">
+                                      {text.value}
+                                    </span>
+                                  </span>
+                                ))}
+                              </li>
+                            ))}
+                          </ul>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </Fragment>
+                    );
+                  })}
 
                   {/* Dòng tổng như mẫu giấy - chỗ đọc ra "24/30". */}
                   <TableRow className="border-t-2 bg-muted/40 font-medium hover:bg-inherit">

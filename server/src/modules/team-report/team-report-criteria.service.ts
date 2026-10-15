@@ -1,12 +1,20 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
+import { Permission } from '@/common/enums/permission.enum';
+import { RoleCode } from '@/common/enums/role-code.enum';
+import {
+  Department,
+  DepartmentDocument,
+} from '@/modules/departments/schemas/department.schema';
+import { Role, RoleDocument } from '@/modules/roles/schemas/role.schema';
 import { User, UserDocument } from '@/modules/users/schemas/user.schema';
 import {
   Criterion,
@@ -27,8 +35,23 @@ import {
   SaveTeamReportCriteriaDto,
   TeamReportCriteriaQueryDto,
 } from './dto/team-report.dto';
-import type { TeamReportSummaryCriteria } from './schemas/team-report-summary.schema';
+import {
+  TeamReportSummary,
+  TeamReportSummaryDocument,
+  type TeamReportSummaryCriteria,
+} from './schemas/team-report-summary.schema';
+import { departmentLabels } from './team-report.department-label';
 import { serverDateYmd } from './team-report.time';
+
+/**
+ * Vai được chấm bảng A khi chỉ có quyền DUYỆT: trưởng / phó đơn vị cấp phòng,
+ * xã - đúng những vai lập "báo cáo của đơn vị" để trình tiếp lên trên. Tài
+ * khoản chỉ duyệt và cấp tỉnh có quyền duyệt nhưng không trình bảng A đi đâu.
+ */
+const UNIT_SCORER_ROLES: string[] = [
+  RoleCode.UNIT_ADMIN,
+  RoleCode.VICE_UNIT_ADMIN,
+];
 
 /** Bộ cột của mẫu bảng A, đã rút gọn còn đúng thứ bảng cần. */
 type CriteriaTemplate = {
@@ -64,8 +87,69 @@ export class TeamReportCriteriaService {
     private readonly formTemplateModel: Model<FormTemplateDocument>,
     @InjectModel(User.name)
     private readonly userModel: Model<UserDocument>,
+    @InjectModel(Role.name)
+    private readonly roleModel: Model<RoleDocument>,
+    @InjectModel(TeamReportSummary.name)
+    private readonly summaryModel: Model<TeamReportSummaryDocument>,
+    @InjectModel(Department.name)
+    private readonly departmentModel: Model<DepartmentDocument>,
     private readonly formTemplatesService: FormTemplatesService,
   ) {}
+
+  /**
+   * Bảng A các đơn vị trực thuộc đã GỬI LÊN đơn vị mình trong tháng.
+   *
+   * Chỉ để phòng / xã tham khảo khi tự chấm bảng của mình - không cộng, không
+   * trung bình gì cả. Đọc bản CHỤP trong báo cáo tổng hợp đang chờ duyệt hoặc
+   * đã duyệt, đúng thứ đội đã trình, không đọc bảng sống của đội (đội còn sửa
+   * được, mà phòng cần biết đội đã cam kết số nào).
+   *
+   * Một đơn vị trình nhiều bản cùng tháng (tuần + tháng) thì lấy bản trình sau
+   * cùng. Bản trả lại / nháp không tính - số đó chưa phải số đội chốt.
+   */
+  async references(userId: string, query: TeamReportCriteriaQueryDto) {
+    const actor = await this.requireActor(userId);
+    const periodMonth = this.requireMonth(query.periodMonth);
+
+    const summaries = await this.summaryModel
+      .find({
+        status: { $in: ['PENDING', 'APPROVED'] },
+        'criteria.periodMonth': periodMonth,
+        departmentId: { $ne: actor.departmentId },
+        $or: [
+          { recipientId: actor.id },
+          { recipientDepartmentId: actor.departmentId },
+          { finalRecipientId: actor.id },
+          { finalRecipientDepartmentId: actor.departmentId },
+        ],
+      })
+      .select('departmentId title status sentAt criteria')
+      .sort({ sentAt: -1 });
+
+    const latest = new Map<string, TeamReportSummaryDocument>();
+    for (const summary of summaries) {
+      const key = String(summary.departmentId);
+      if (!latest.has(key)) latest.set(key, summary);
+    }
+    const names = await departmentLabels(this.departmentModel, [
+      ...latest.values(),
+    ].map((summary) => summary.departmentId));
+
+    return {
+      message: 'OK',
+      data: [...latest.values()]
+        .map((summary) => ({
+          departmentId: String(summary.departmentId),
+          departmentName: names.get(String(summary.departmentId)) ?? '',
+          summaryId: String(summary._id),
+          summaryTitle: summary.title,
+          status: summary.status,
+          sentAt: summary.sentAt,
+          criteria: summary.criteria,
+        }))
+        .sort((a, b) => a.departmentName.localeCompare(b.departmentName, 'vi')),
+    };
+  }
 
   /**
    * Bảng A của một tháng.
@@ -457,6 +541,26 @@ export class TeamReportCriteriaService {
     return { scoreColumnKey: scoreColumn.key, total, max, scoredRows };
   }
 
+  /**
+   * Ai chấm được bảng A: đội / tổ (quyền nhập), hoặc trưởng / phó phòng, xã
+   * (quyền duyệt + vai trưởng đơn vị) - đơn vị nào cũng chấm bảng của chính
+   * mình để trình tiếp lên trên.
+   */
+  private async assertCanScore(roleCodes: string[]) {
+    const roles = await this.roleModel
+      .find({ code: { $in: roleCodes }, isActive: true })
+      .select('permissions');
+    const permissions = new Set(roles.flatMap((role) => role.permissions));
+    const allowed =
+      roleCodes.includes(RoleCode.SUPER_ADMIN) ||
+      permissions.has(Permission.TEAM_REPORT_ENTRY) ||
+      (permissions.has(Permission.TEAM_REPORT_REVIEW) &&
+        roleCodes.some((code) => UNIT_SCORER_ROLES.includes(code)));
+    if (!allowed) {
+      throw new ForbiddenException('Bạn không có quyền thực hiện thao tác này.');
+    }
+  }
+
   /** YYYY-MM hợp lệ; trống thì lấy tháng hiện tại theo giờ server. */
   private requireMonth(value?: string): string {
     const raw = (value ?? '').trim();
@@ -473,13 +577,16 @@ export class TeamReportCriteriaService {
     }
     const user = await this.userModel
       .findById(userId)
-      .select('fullName username departmentId');
+      .select('fullName username departmentId roleAssignments');
     if (!user) throw new NotFoundException('Không tìm thấy người dùng.');
     if (!user.departmentId) {
       throw new BadRequestException(
         'Tài khoản chưa gắn đơn vị nên chưa chấm được bảng tiêu chí chung.',
       );
     }
+    await this.assertCanScore(
+      (user.roleAssignments ?? []).map((assignment) => assignment.roleCode),
+    );
     return {
       id: user._id,
       name: user.fullName?.trim() || user.username,

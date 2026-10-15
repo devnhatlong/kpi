@@ -235,6 +235,16 @@ export function AppSidebar() {
       ) {
         continue;
       }
+      if (
+        item.roles?.length &&
+        !userHasAnyRole(user, item.roles) &&
+        !(
+          item.rolesExemptPermissions?.length &&
+          userHasAnyPermission(user, item.rolesExemptPermissions)
+        )
+      ) {
+        continue;
+      }
 
       if (!item.children?.length) {
         items.push(item);
