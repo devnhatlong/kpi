@@ -27,6 +27,7 @@ import {
   SaveTeamReportCriteriaDto,
   TeamReportCriteriaQueryDto,
 } from './dto/team-report.dto';
+import type { TeamReportSummaryCriteria } from './schemas/team-report-summary.schema';
 import { serverDateYmd } from './team-report.time';
 
 /** Bộ cột của mẫu bảng A, đã rút gọn còn đúng thứ bảng cần. */
@@ -170,6 +171,15 @@ export class TeamReportCriteriaService {
         .map((column) => column.key),
     );
 
+    /*
+      Mọi ô tích của một dòng là MỘT nhóm loại trừ - "Đảm bảo" và "Không đảm
+      bảo" là hai nửa của cùng một kết luận, khớp `setFlag` của bảng cá nhân.
+      Gom theo kiểu cột vì mẫu không có semanticKey đánh dấu cặp này.
+    */
+    const flagColumns = columns.filter(
+      (column) => column.dataType === 'boolean',
+    );
+
     const byCriterion = new Map(
       sheet.rows.map((row) => [String(row.criterionId), row]),
     );
@@ -181,6 +191,27 @@ export class TeamReportCriteriaService {
         throw new BadRequestException('Có tiêu chí không nằm trong bảng này.');
       }
       const next = { ...(row.fieldValues ?? {}) };
+
+      const logEdit = (
+        column: (typeof columns)[number],
+        from: string,
+        to: string,
+      ) => {
+        changed += 1;
+        sheet.edits = [
+          ...(sheet.edits ?? []),
+          {
+            byId: actor.id,
+            byName: actor.name,
+            byDepartmentId: actor.departmentId,
+            field: `${row.criterionName} · ${column.title}`,
+            from,
+            to,
+            reason: '',
+            at: new Date(),
+          },
+        ];
+      };
 
       for (const [key, raw] of Object.entries(patch.fieldValues ?? {})) {
         const column = byKey.get(key);
@@ -213,26 +244,18 @@ export class TeamReportCriteriaService {
         } else if (column.dataType === 'boolean') {
           // Ô tích: "1" hoặc vắng mặt - cùng quy ước với bảng nhiệm vụ.
           next[key] = '1';
+          for (const other of flagColumns) {
+            if (other.key === key || !next[other.key]) continue;
+            logEdit(other, String(next[other.key]), '');
+            delete next[other.key];
+          }
         } else {
           next[key] = value;
         }
 
         const after = String(next[key] ?? '');
         if (before === after) continue;
-        changed += 1;
-        sheet.edits = [
-          ...(sheet.edits ?? []),
-          {
-            byId: actor.id,
-            byName: actor.name,
-            byDepartmentId: actor.departmentId,
-            field: `${row.criterionName} · ${column.title}`,
-            from: before,
-            to: after,
-            reason: '',
-            at: new Date(),
-          },
-        ];
+        logEdit(column, before, after);
       }
 
       row.fieldValues = next;
@@ -253,6 +276,55 @@ export class TeamReportCriteriaService {
     return {
       message: `Đã lưu ${changed} ô.`,
       data: this.toClient(sheet, template),
+    };
+  }
+
+  /**
+   * Bảng A của một KỲ báo cáo tổng hợp - tháng MỚI NHẤT ĐÃ CHẤM trong kỳ.
+   *
+   * Kỳ quý, năm trải nhiều tháng mà tháng nào cũng có bảng; mỗi bảng đã là đánh
+   * giá trọn 30 điểm của tháng đó nên lấy một bảng chứ không cộng. Kỳ chưa tháng
+   * nào chấm thì dựng bảng trống từ danh mục - 0 điểm nhưng trần vẫn đủ, tổng
+   * báo cáo không tự dưng tụt mẫu số.
+   */
+  async periodSnapshot(
+    departmentId: Types.ObjectId,
+    fromDate: string,
+    toDate: string,
+  ): Promise<TeamReportSummaryCriteria> {
+    const fromMonth = fromDate.slice(0, 7);
+    const toMonth = toDate.slice(0, 7);
+    const stored = await this.sheetModel
+      .findOne({
+        departmentId,
+        periodMonth: { $gte: fromMonth, $lte: toMonth },
+      })
+      .sort({ periodMonth: -1 });
+
+    const template = stored
+      ? await this.templateOfSheet(stored)
+      : await this.currentTemplate();
+    const rows = (stored ? stored.rows : await this.freshRows()).map(
+      (row) => ({
+        criterionId: row.criterionId,
+        criterionName: row.criterionName,
+        criterionNote: row.criterionNote ?? '',
+        maxScore: row.maxScore ?? 0,
+        fieldValues: { ...(row.fieldValues ?? {}) },
+      }),
+    );
+
+    return {
+      periodMonth: stored?.periodMonth ?? toMonth,
+      saved: Boolean(stored),
+      template: template
+        ? {
+            ...template,
+            columns: template.columns as unknown[],
+          }
+        : null,
+      rows,
+      ...this.scoreOf(rows, template),
     };
   }
 

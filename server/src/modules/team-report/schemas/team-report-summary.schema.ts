@@ -96,8 +96,8 @@ export type TeamReportRating = (typeof TEAM_REPORT_RATINGS)[number];
  * "Đề nghị xếp loại tháng", cán bộ tổng hợp (họ tên, số điện thoại) và lãnh đạo
  * đơn vị ký.
  *
- * Tổng điểm là điểm BẢNG B (cộng điểm quy đổi các trục) do server tính và
- * chốt lúc trình - đơn vị không gõ được. Lưu kèm điểm tối đa để in "x / 70".
+ * Tổng điểm = điểm BẢNG A + điểm quy đổi các trục bảng B, do server tính và
+ * chốt lúc trình - đơn vị không gõ được. Lưu kèm điểm tối đa để in "x / 100".
  */
 @Schema({ _id: false })
 export class TeamReportConclusion {
@@ -122,6 +122,40 @@ export class TeamReportConclusion {
 
 export const TeamReportConclusionSchema =
   SchemaFactory.createForClass(TeamReportConclusion);
+
+/**
+ * Bảng A (tiêu chí chung) CHỤP kèm bản tổng hợp lúc trình.
+ *
+ * Bảng A sống theo tháng ở `team_report_criteria_sheets` và đội sửa được bất
+ * cứ lúc nào - giữ tham chiếu thì cấp trên mở bản đã duyệt sẽ thấy số của hôm
+ * nay. Lấy tháng MỚI NHẤT ĐÃ CHẤM trong kỳ; kỳ chưa tháng nào chấm thì chụp
+ * bảng trống dựng từ danh mục (`saved: false`, 0 điểm) để trần vẫn đủ.
+ *
+ * Lưu kiểu Object vì bộ cột do mẫu quyết định - không có trường cứng nào.
+ */
+export type TeamReportSummaryCriteria = {
+  periodMonth: string;
+  saved: boolean;
+  template: {
+    _id: string;
+    code: string;
+    name: string;
+    version: number;
+    columns: unknown[];
+    headerGroups: unknown[];
+  } | null;
+  rows: {
+    criterionId: Types.ObjectId;
+    criterionName: string;
+    criterionNote: string;
+    maxScore: number;
+    fieldValues: Record<string, string | number>;
+  }[];
+  scoreColumnKey: string | null;
+  total: number | null;
+  max: number;
+  scoredRows: number;
+};
 
 /**
  * Kỳ của báo cáo - chỉ là NHÃN, phạm vi thật nằm ở `fromDate`/`toDate`.
@@ -262,6 +296,10 @@ export class TeamReportSummary {
   /** Phần cuối phụ lục - bắt buộc lúc trình; bản nháp chưa có. */
   @Prop({ type: TeamReportConclusionSchema, default: null })
   conclusion!: TeamReportConclusion | null;
+
+  /** Bảng A chụp lúc trình - xem TeamReportSummaryCriteria. Nháp chưa có. */
+  @Prop({ type: Object, default: null })
+  criteria!: TeamReportSummaryCriteria | null;
 
   @Prop({ type: Types.ObjectId, ref: User.name, default: null })
   decidedById!: Types.ObjectId | null;

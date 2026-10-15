@@ -82,6 +82,15 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/dashboard",
     icon: Gauge,
   },
+  {
+    /* Khối A của báo cáo - bảng chấm phẳng, THÁNG một bản. Mục riêng chứ không
+       nằm trong "Báo cáo ngày": không dính gì tới nhiệm vụ theo ngày, nó đi lên
+       cấp trên cùng báo cáo tổng hợp. */
+    title: "Tiêu chí chung (A)",
+    href: "/team-report/criteria",
+    icon: ClipboardCheck,
+    permissions: [PERM.TEAM_REPORT_ENTRY],
+  },
   /*
     Bản nghiệp vụ MỚI - báo cáo ngày cấp đội, chạy song song với các mục cũ.
 
@@ -102,14 +111,6 @@ export const NAV_ITEMS: NavItem[] = [
         title: "Phân loại nhiệm vụ",
         href: "/team-report/classify",
         icon: Table2,
-        permissions: [PERM.TEAM_REPORT_ENTRY],
-      },
-      {
-        /* Khối A của báo cáo - bảng chấm phẳng, tháng một bản, tách khỏi luồng
-           nhiệm vụ theo ngày ở hai mục trên. */
-        title: "Tiêu chí chung (A)",
-        href: "/team-report/criteria",
-        icon: ClipboardCheck,
         permissions: [PERM.TEAM_REPORT_ENTRY],
       },
       /*

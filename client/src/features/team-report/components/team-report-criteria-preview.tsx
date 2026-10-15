@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import useSWR from "swr";
 import { ChevronRight, ClipboardCheck, ExternalLink } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +18,7 @@ import { scoreTone } from "@/features/team-report/status-styles";
 import {
   formatScore,
   type TeamReportCriteriaData,
+  type TeamReportSummaryCriteria,
 } from "@/features/team-report/types";
 import { cn } from "@/lib/utils";
 
@@ -35,7 +35,7 @@ function monthLabel(month: string): string {
  * trong kỳ đã chấm thì bày tháng cuối kỳ (bảng trống) để người dùng biết là
  * chưa chấm chứ không phải hệ thống không có gì.
  */
-async function loadCriteriaOfPeriod(
+export async function loadCriteriaOfPeriod(
   fromDate: string,
   toDate: string,
 ): Promise<TeamReportCriteriaData> {
@@ -53,30 +53,30 @@ async function loadCriteriaOfPeriod(
 }
 
 /**
- * Khối A bày kèm trong bản tổng hợp của ĐỘI - chỉ để đọc, THU GỌN sẵn.
+ * Khối A trong bản tổng hợp - chỉ để đọc, THU GỌN sẵn.
  *
- * Không nằm trong bản chụp và không đi lên cấp trên: bảng A là đánh giá chung
- * của tháng, có đường đi riêng. Ở đây chỉ để người lập nhìn được cả A lẫn B
- * trên cùng một màn trước khi trình.
+ * Bảng A cộng vào tổng điểm và đi lên cấp trên cùng bản: lúc trình server chụp
+ * lại bảng, nên mọi vai đều đọc từ `criteria` của chi tiết bản chứ không tự gọi
+ * bảng A - gọi thẳng thì cấp trên mở ra sẽ thấy bảng A của CHÍNH đơn vị họ.
+ *
+ * `live` = bản còn nháp / bị trả lại: bảng đang là bảng sống, sửa ở màn chấm
+ * rồi quay lại là thấy số mới.
  */
 export function TeamReportCriteriaPreview({
-  fromDate,
-  toDate,
+  criteria,
+  live,
+  canScore,
 }: {
-  fromDate: string;
-  toDate: string;
+  criteria: TeamReportSummaryCriteria;
+  live: boolean;
+  /** Hiện lối tắt sang màn chấm - chỉ đơn vị lập, khi bản còn sửa được. */
+  canScore: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
-  const { data } = useSWR(
-    ["team-report", "criteria-of-period", fromDate, toDate] as const,
-    () => loadCriteriaOfPeriod(fromDate, toDate),
-    { revalidateOnFocus: false },
-  );
-
-  if (!data) return null;
-
-  const { sheet, template, score } = data;
+  const { template, rows } = criteria;
+  const sheet = { periodMonth: criteria.periodMonth, saved: criteria.saved };
+  const score = criteria;
   const columns = (template?.columns ?? []).filter(
     (column) => column.visible && column.semanticKey !== "criterion_note",
   );
@@ -121,17 +121,21 @@ export function TeamReportCriteriaPreview({
             </Badge>
           )}
           <span className="ml-auto hidden text-xs text-muted-foreground sm:block">
-            Chỉ để đối chiếu · không gửi kèm báo cáo này
+            {live
+              ? "Cộng vào tổng điểm · gửi kèm khi trình"
+              : "Đã gửi kèm báo cáo · bản chụp lúc trình"}
           </span>
         </button>
-        <Link
-          href="/team-report/criteria"
-          className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="Mở màn chấm bảng A"
-        >
-          <ExternalLink className="size-3.5" />
-          <span className="hidden sm:inline">Chấm</span>
-        </Link>
+        {canScore ? (
+          <Link
+            href="/team-report/criteria"
+            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Mở màn chấm bảng A"
+          >
+            <ExternalLink className="size-3.5" />
+            <span className="hidden sm:inline">Chấm</span>
+          </Link>
+        ) : null}
       </div>
 
       {open ? (
@@ -159,7 +163,7 @@ export function TeamReportCriteriaPreview({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sheet.rows.map((row, index) => (
+                {rows.map((row, index) => (
                   <TableRow key={row.criterionId}>
                     {columns.map((column) => {
                       let text = "";

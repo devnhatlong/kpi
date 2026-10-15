@@ -113,6 +113,7 @@ import {
   type TeamReportAxisScore,
   type TeamReportDayRow,
   type TeamReportFormula,
+  type TeamReportSummaryCriteria,
 } from "@/features/team-report/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { formatYmd, formatServerHm, serverYmd } from "@/lib/server-time";
@@ -138,10 +139,13 @@ function EmptyValue({ children }: { children: ReactNode }) {
  */
 function AxisScoreBoard({
   axisScores,
+  criteria,
   totalScore,
   totalMax,
 }: {
   axisScores: TeamReportAxisScore[];
+  /** Bảng A - dòng đầu tiên, trước các trục, đúng thứ tự A rồi B của phụ lục. */
+  criteria: TeamReportSummaryCriteria | null;
   totalScore: number;
   totalMax: number;
 }) {
@@ -152,7 +156,16 @@ function AxisScoreBoard({
     trong khi thật ra chưa ai chấm ô nào. Hai chuyện khác hẳn nhau, mà đây lại
     là con số đập vào mắt đầu tiên.
   */
-  const scored = axisScores.some((axis) => axis.convertedScore !== null);
+  const criteriaScored = Boolean(
+    criteria?.saved && criteria.total !== null && criteria.scoredRows > 0,
+  );
+  const scored =
+    criteriaScored || axisScores.some((axis) => axis.convertedScore !== null);
+  const criteriaRatio =
+    criteriaScored && criteria && criteria.max > 0
+      ? (criteria.total ?? 0) / criteria.max
+      : null;
+  const criteriaTone = scoreTone(criteriaRatio);
   const totalRatio = scored && totalMax > 0 ? totalScore / totalMax : null;
   const totalTone = scoreTone(totalRatio);
 
@@ -195,6 +208,48 @@ function AxisScoreBoard({
       </div>
 
       <div className="divide-y">
+        {criteria ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Khối A · Tiêu chí chung</p>
+              <p className="text-xs text-muted-foreground">
+                Tháng {criteria.periodMonth.slice(5)}/
+                {criteria.periodMonth.slice(0, 4)},{" "}
+                {criteriaScored
+                  ? `${criteria.scoredRows}/${criteria.rows.length} tiêu chí đã chấm`
+                  : "chưa chấm"}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div
+                aria-hidden="true"
+                className="hidden h-2 w-28 overflow-hidden rounded-full bg-muted sm:block"
+              >
+                <div
+                  className={cn("h-full rounded-full", criteriaTone.bar)}
+                  style={{
+                    width: `${Math.min(100, Math.max(0, (criteriaRatio ?? 0) * 100))}%`,
+                  }}
+                />
+              </div>
+              {criteriaScored ? (
+                <span className="tabular-nums text-sm">
+                  <strong className={criteriaTone.text}>
+                    {formatScore(criteria.total ?? 0)}
+                  </strong>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    / {formatScore(criteria.max)}
+                  </span>
+                </span>
+              ) : (
+                <EmptyValue>
+                  Chưa chấm (tối đa {formatScore(criteria.max)})
+                </EmptyValue>
+              )}
+            </div>
+          </div>
+        ) : null}
         {axisScores.map((axis) => {
           const tone = scoreTone(axis.axisScore);
           return (
@@ -366,6 +421,7 @@ export function TeamReportSummaryPanel({
     ở ô chỉ đọc là cố tình bày một cái tên khác với cái đã trình.
   */
   const { summary, templates, catalogs, axisScores } = detail;
+  const criteria = detail.criteria ?? null;
   /* Tên đơn vị lập bản. Server trả riêng ở `department` vì `departmentId` cố ý
      không populate; `refName` chỉ ăn khi bản tới từ danh sách đã populate. */
   const unitName = detail.department?.name || refName(summary.departmentId);
@@ -611,12 +667,20 @@ export function TeamReportSummaryPanel({
     });
   }, [summary.rows, templates, axisScores]);
 
-  /** Tổng điểm cả bản - cộng điểm quy đổi của các trục. */
-  const totalScore = axisScores.reduce(
-    (sum, item) => sum + (item.convertedScore ?? 0),
-    0,
-  );
-  const totalMax = axisScores.reduce((sum, item) => sum + item.maxScore, 0);
+  /**
+   * Tổng điểm cả bản = bảng A + điểm quy đổi các trục bảng B - đúng công thức
+   * server chốt lúc trình. Bản cũ không có bảng A thì chỉ còn bảng B.
+   */
+  const totalScore =
+    (criteria?.total ?? 0) +
+    axisScores.reduce((sum, item) => sum + (item.convertedScore ?? 0), 0);
+  const totalMax =
+    (criteria?.max ?? 0) +
+    axisScores.reduce((sum, item) => sum + item.maxScore, 0);
+  /** Có ô nào đã chấm (A hoặc B) - chưa thì tổng là "chưa chấm", không phải 0. */
+  const anyScored =
+    Boolean(criteria?.saved && criteria.scoredRows > 0) ||
+    axisScores.some((axis) => axis.convertedScore !== null);
 
   /*
     Xuất Excel dựng từ CHÍNH dữ liệu đang mở, không gọi lại server: bản chụp và
@@ -642,13 +706,14 @@ export function TeamReportSummaryPanel({
           .filter(Boolean)
           .join("   ·   "),
         note: summary.note,
-        // Tổng theo điểm bảng B hiện tại - cấp trên sửa điểm thì tổng đổi theo.
+        // Tổng theo điểm A + B hiện tại - cấp trên sửa điểm thì tổng đổi theo.
         conclusion: summary.conclusion
           ? { ...summary.conclusion, totalScore, maxScore: totalMax }
           : null,
         rows: summary.rows,
         templates,
         axisScores,
+        criteria,
       });
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không xuất được file Excel."));
@@ -1185,9 +1250,10 @@ export function TeamReportSummaryPanel({
 
         {/* Bảng điểm đứng TRƯỚC chi tiết: người duyệt cần con số chốt trước, chi
             tiết chỉ để tra lại vì sao ra con số đó. */}
-        {axisScores.length ? (
+        {axisScores.length || criteria ? (
           <AxisScoreBoard
             axisScores={axisScores}
+            criteria={criteria}
             totalScore={totalScore}
             totalMax={totalMax}
           />
@@ -1196,7 +1262,7 @@ export function TeamReportSummaryPanel({
         {/* Phần cuối phụ lục đơn vị khai lúc trình - người duyệt đọc ngay dưới
             bảng điểm để đối chiếu con số đơn vị cam kết với số máy tính. */}
         {summary.conclusion ? (
-          /* Tổng theo điểm bảng B HIỆN TẠI: cấp trên sửa điểm lúc duyệt thì
+          /* Tổng theo điểm A + B HIỆN TẠI: cấp trên sửa điểm lúc duyệt thì
              tổng đổi theo; số lưu lúc trình chỉ là dấu vết. */
           <SummaryConclusionView
             conclusion={{
@@ -1208,15 +1274,19 @@ export function TeamReportSummaryPanel({
         ) : null}
 
         {/*
-          Khối A bày kèm cho ĐỘI, thu gọn sẵn - chỉ để đối chiếu A với B trên
-          cùng một màn trước khi trình. Không nằm trong bản chụp, không đi lên
-          cấp trên: bảng A có đường riêng. Vai duyệt và cấp phòng không thấy -
-          họ không có quyền đọc bảng A của đội qua đường này, mà cũng không cần.
+          Khối A cộng vào tổng điểm và đi lên cùng bản: nháp thì là bảng sống,
+          đã trình thì là bản chụp server lưu lúc trình - mọi vai đọc chung.
         */}
-        {owner && level === "TEAM" ? (
+        {criteria ? (
           <TeamReportCriteriaPreview
-            fromDate={summary.fromDate}
-            toDate={summary.toDate}
+            criteria={criteria}
+            live={
+              summary.status === "DRAFT" || summary.status === "RETURNED"
+            }
+            canScore={
+              owner &&
+              (summary.status === "DRAFT" || summary.status === "RETURNED")
+            }
           />
         ) : null}
 
@@ -1719,7 +1789,7 @@ export function TeamReportSummaryPanel({
                   }
                 }}
                 errors={conclusionErrors}
-                score={axisScores.length ? totalScore : null}
+                score={axisScores.length || criteria ? totalScore : null}
                 maxScore={totalMax || null}
               />
             ) : null}
@@ -2088,7 +2158,7 @@ export function TeamReportSummaryPanel({
               <p className="flex items-baseline justify-between gap-2">
                 <span className="text-muted-foreground">Tổng điểm</span>
                 <strong className="tabular-nums">
-                  {axisScores.some((axis) => axis.convertedScore !== null)
+                  {anyScored
                     ? `${formatScore(totalScore)} / ${formatScore(totalMax)}`
                     : "Chưa chấm"}
                 </strong>

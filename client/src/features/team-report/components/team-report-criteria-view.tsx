@@ -343,7 +343,19 @@ export function TeamReportCriteriaView() {
                         style={{ minWidth: column.width }}
                         className={cn(
                           "align-middle",
-                          column.semanticKey === "criterion" && "min-w-[22rem]",
+                          // Chặn ở 45% bề ngang: để tự do thì cột chữ nuốt hết
+                          // phần dư, ô Ghi chú bị ép còn một mẩu.
+                          column.semanticKey === "criterion" &&
+                            "w-[40%] min-w-[22rem]",
+                          // Cột chữ để chấm (Ghi chú) - đủ rộng để đọc được
+                          // một câu, không phải chỉ vài chữ.
+                          column.dataType === "text" &&
+                            !FIXED_SEMANTICS.has(column.semanticKey) &&
+                            "w-[25%] min-w-[16rem]",
+                          // Điểm chỉ một hai chữ số - ô hẹp là đủ.
+                          column.dataType === "number" &&
+                            !FIXED_SEMANTICS.has(column.semanticKey) &&
+                            "w-24",
                           (column.dataType === "number" ||
                             column.dataType === "boolean" ||
                             column.semanticKey === "stt") &&
@@ -352,7 +364,7 @@ export function TeamReportCriteriaView() {
                       >
                         {column.title}
                         {column.key === score?.scoreColumnKey ? (
-                          <span className="ml-1 text-xs font-normal text-muted-foreground">
+                          <span className="block text-xs font-normal text-muted-foreground">
                             (≤ điểm tối đa)
                           </span>
                         ) : null}

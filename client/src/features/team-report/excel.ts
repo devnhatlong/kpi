@@ -15,6 +15,7 @@ import {
   type TeamReportConclusion,
   type TeamReportDayRow,
   type TeamReportFormula,
+  type TeamReportSummaryCriteria,
   type TeamReportTemplate,
 } from "@/features/team-report/types";
 
@@ -282,7 +283,16 @@ export type TeamReportExportInput = {
   /** Tra bằng "<id mẫu>:<phiên bản>" - mỗi dòng đóng dấu phiên bản riêng. */
   templates: Record<string, TeamReportTemplate>;
   axisScores: TeamReportAxisScore[];
+  /** Bảng A của bản tổng hợp - in TRƯỚC các trục và cộng vào tổng điểm. */
+  criteria?: TeamReportSummaryCriteria | null;
 };
+
+/** Cột in của bảng A: bỏ ghi chú quản trị khai sẵn - đó là chữ hướng dẫn, không phải số chấm. */
+function criteriaColumnsOf(criteria: TeamReportSummaryCriteria | null) {
+  return (criteria?.template?.columns ?? []).filter(
+    (column) => column.visible && column.semanticKey !== "criterion_note",
+  );
+}
 
 /**
  * Xuất một bản báo cáo ra Excel: MỘT SHEET, mỗi trục một bảng nối tiếp nhau.
@@ -299,6 +309,8 @@ export type TeamReportExportInput = {
  */
 export async function exportTeamReportToExcel(input: TeamReportExportInput) {
   const { rows, templates, axisScores } = input;
+  const criteria = input.criteria ?? null;
+  const criteriaColumns = criteriaColumnsOf(criteria);
 
   const workbook = new ExcelJS.Workbook();
   workbook.created = new Date();
@@ -343,7 +355,7 @@ export async function exportTeamReportToExcel(input: TeamReportExportInput) {
   const widest = groups.reduce(
     (max, group) =>
       Math.max(max, visibleOf(group.template).length + unitOffset),
-    4,
+    Math.max(4, criteriaColumns.length),
   );
 
   const widenColumn = (col: number, width: number) => {
@@ -372,6 +384,101 @@ export async function exportTeamReportToExcel(input: TeamReportExportInput) {
     cursor += 1;
   }
   cursor += 1;
+
+  // ---------------------------------------------------------------- bảng A
+  /* In trước các trục, đúng thứ tự A rồi B của phụ lục. Một hàng tiêu đề theo
+     bộ cột của mẫu bảng A, sáu dòng tiêu chí, rồi dòng "Tổng". */
+  if (criteria) {
+    const lastCol = Math.max(1, criteriaColumns.length);
+    sheet.mergeCells(cursor, 1, cursor, lastCol);
+    const bandCell = sheet.getCell(cursor, 1);
+    bandCell.value = `A · DANH MỤC ĐIỂM TIÊU CHÍ CHUNG   ·   Tháng ${criteria.periodMonth.slice(5)}/${criteria.periodMonth.slice(0, 4)}${criteria.saved ? "" : "   ·   chưa chấm"}`;
+    bandCell.font = { bold: true, size: 12 };
+    bandCell.alignment = { vertical: "middle" };
+    bandCell.fill = BAND_FILL;
+    setOutlineBorder(bandCell);
+    cursor += 1;
+
+    if (!criteriaColumns.length) {
+      sheet.getCell(cursor, 1).value =
+        "Chưa gán mẫu bảng cho khối A nên không có bộ cột để in.";
+      cursor += 1;
+    } else {
+      criteriaColumns.forEach((column, index) => {
+        const cell = sheet.getCell(cursor, index + 1);
+        cell.value = column.title;
+        cell.font = { bold: true };
+        cell.alignment = {
+          horizontal: "center",
+          vertical: "middle",
+          wrapText: true,
+        };
+        setOutlineBorder(cell);
+        widenColumn(
+          index + 1,
+          column.semanticKey === "criterion"
+            ? 60
+            : Math.max(10, Math.round(column.width / 7)),
+        );
+      });
+      cursor += 1;
+
+      criteria.rows.forEach((row, rowIndex) => {
+        criteriaColumns.forEach((column, index) => {
+          const cell = sheet.getCell(cursor, index + 1);
+          const raw = row.fieldValues?.[column.key];
+          cell.value =
+            column.semanticKey === "stt"
+              ? rowIndex + 1
+              : column.semanticKey === "criterion"
+                ? row.criterionName
+                : column.semanticKey === "criterion_max_score"
+                  ? row.maxScore
+                  : column.dataType === "boolean"
+                    ? String(raw ?? "") === "1"
+                      ? "x"
+                      : ""
+                    : column.dataType === "number" &&
+                        raw !== undefined &&
+                        raw !== "" &&
+                        Number.isFinite(Number(String(raw).replace(",", ".")))
+                      ? Number(String(raw).replace(",", "."))
+                      : String(raw ?? "");
+          cell.alignment = {
+            vertical: "top",
+            wrapText: true,
+            horizontal:
+              column.semanticKey === "criterion" || column.dataType === "text"
+                ? undefined
+                : "center",
+          };
+          setOutlineBorder(cell);
+        });
+        cursor += 1;
+      });
+
+      criteriaColumns.forEach((column, index) => {
+        const cell = sheet.getCell(cursor, index + 1);
+        cell.value =
+          index === 0
+            ? "Tổng"
+            : column.semanticKey === "criterion_max_score"
+              ? criteria.max
+              : column.key === criteria.scoreColumnKey
+                ? (criteria.total ?? "")
+                : "";
+        cell.font = { bold: true };
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: index === 0 ? undefined : "center",
+        };
+        cell.fill = FOOTER_FILL;
+        setOutlineBorder(cell);
+      });
+      cursor += 1;
+    }
+    cursor += 1;
+  }
 
   // ------------------------------------------------------------- từng trục
   for (const group of groups) {
@@ -543,7 +650,7 @@ export async function exportTeamReportToExcel(input: TeamReportExportInput) {
   }
 
   // -------------------------------------------------------- bảng điểm tổng
-  if (axisScores.length) {
+  if (axisScores.length || criteria) {
     sheet.mergeCells(cursor, 1, cursor, Math.max(4, Math.min(widest, 6)));
     const bandCell = sheet.getCell(cursor, 1);
     bandCell.value = "BẢNG ĐIỂM";
@@ -562,6 +669,32 @@ export async function exportTeamReportToExcel(input: TeamReportExportInput) {
       widenColumn(index + 1, index === 0 ? 28 : 14);
     });
     cursor += 1;
+
+    const criteriaScored = Boolean(
+      criteria?.saved && criteria.total !== null && criteria.scoredRows > 0,
+    );
+    if (criteria) {
+      const cells: Array<string | number> = [
+        "Khối A · Tiêu chí chung",
+        `${criteria.scoredRows}/${criteria.rows.length} tiêu chí`,
+        criteriaScored && criteria.max > 0
+          ? (criteria.total ?? 0) / criteria.max
+          : "chưa chấm",
+        criteriaScored ? (criteria.total ?? 0) : "",
+        criteria.max,
+      ];
+      cells.forEach((value, index) => {
+        const cell = sheet.getCell(cursor, index + 1);
+        cell.value = value;
+        if (index === 2 && typeof value === "number") cell.numFmt = "0.00%";
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: index === 0 ? undefined : "center",
+        };
+        setOutlineBorder(cell);
+      });
+      cursor += 1;
+    }
 
     for (const axis of axisScores) {
       const cells: Array<string | number> = [
@@ -584,12 +717,16 @@ export async function exportTeamReportToExcel(input: TeamReportExportInput) {
       cursor += 1;
     }
 
-    const scored = axisScores.some((axis) => axis.convertedScore !== null);
-    const total = axisScores.reduce(
-      (sum, axis) => sum + (axis.convertedScore ?? 0),
-      0,
-    );
-    const max = axisScores.reduce((sum, axis) => sum + axis.maxScore, 0);
+    // Tổng = bảng A + các trục bảng B, đúng công thức server chốt lúc trình.
+    const scored =
+      criteriaScored ||
+      axisScores.some((axis) => axis.convertedScore !== null);
+    const total =
+      (criteria?.total ?? 0) +
+      axisScores.reduce((sum, axis) => sum + (axis.convertedScore ?? 0), 0);
+    const max =
+      (criteria?.max ?? 0) +
+      axisScores.reduce((sum, axis) => sum + axis.maxScore, 0);
     const totals: Array<string | number> = [
       "TỔNG ĐIỂM",
       axisScores.reduce((sum, axis) => sum + axis.taskCount, 0),

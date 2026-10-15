@@ -532,7 +532,7 @@ export type TeamReportRating = (typeof TEAM_REPORT_RATINGS)[number];
  * và lãnh đạo đơn vị. Đơn vị tự gõ - máy chỉ gợi ý tổng điểm.
  */
 export type TeamReportConclusion = {
-  /** Điểm bảng B - server cộng lúc trình, không ai gõ. */
+  /** Điểm bảng A + bảng B - server cộng lúc trình, không ai gõ. */
   totalScore: number;
   maxScore: number;
   proposedRating: TeamReportRating;
@@ -716,6 +716,18 @@ export type TeamReportCriteriaData = {
   score: TeamReportCriteriaScore;
   /** Các tháng đội đã chấm - để ô chọn tháng đánh dấu. */
   months?: string[];
+};
+
+/**
+ * Bảng A đi kèm một bản tổng hợp. Bản đã trình: đúng bản chụp lúc trình. Bản
+ * nháp / bị trả lại: bảng sống của tháng mới nhất đã chấm trong kỳ.
+ */
+export type TeamReportSummaryCriteria = TeamReportCriteriaScore & {
+  periodMonth: string;
+  /** false = kỳ chưa tháng nào chấm - bảng trống dựng từ danh mục. */
+  saved: boolean;
+  template: TeamReportTemplate | null;
+  rows: TeamReportCriterionRow[];
 };
 
 // ------------------------- phụ lục điểm cộng / điểm trừ / điều chỉnh xếp loại

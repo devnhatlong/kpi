@@ -76,7 +76,9 @@ import {
   TeamReportSummary,
   TeamReportSummaryDocument,
   type TeamReportPeriod,
+  type TeamReportSummaryCriteria,
 } from './schemas/team-report-summary.schema';
+import { TeamReportCriteriaService } from './team-report-criteria.service';
 import {
   ChangeTeamReportSummaryTasksDto,
   ClassifyTeamReportTaskDto,
@@ -206,6 +208,7 @@ export class TeamReportService {
     private readonly formTemplatesService: FormTemplatesService,
     private readonly reportTemplatesService: ReportTemplatesService,
     private readonly routing: TeamReportAdjustmentRoutingService,
+    private readonly criteriaService: TeamReportCriteriaService,
   ) {}
 
   // ==================================================== giai đoạn 1: nhập thô
@@ -2231,7 +2234,14 @@ export class TeamReportService {
     summary.sentAt = new Date();
     summary.returnReason = '';
     if (dto.note?.trim()) summary.note = dto.note.trim();
-    // Tổng điểm KPI tập thể = điểm bảng B của chính bản chụp vừa trình.
+    // Bảng A chụp cùng lúc với nhiệm vụ - cấp trên duyệt đúng bảng đội vừa thấy.
+    summary.criteria = await this.criteriaService.periodSnapshot(
+      actor.departmentId,
+      summary.fromDate,
+      summary.toDate,
+    );
+    summary.markModified('criteria');
+    // Tổng điểm KPI tập thể = điểm bảng A + điểm bảng B của bản chụp vừa trình.
     const templates = await this.templatesOfRows(summary.rows);
     const axisScores = await this.axisScoresOf(
       summary.rows,
@@ -2239,11 +2249,16 @@ export class TeamReportService {
       await this.catalogsForTemplates(Object.values(templates)),
     );
     const sumOf = (pick: (axis: (typeof axisScores)[number]) => number) =>
-      Math.round(axisScores.reduce((sum, axis) => sum + pick(axis), 0) * 100) /
-      100;
+      axisScores.reduce((sum, axis) => sum + pick(axis), 0);
+    const round = (value: number) => Math.round(value * 100) / 100;
     summary.conclusion = {
-      totalScore: sumOf((axis) => axis.convertedScore ?? 0),
-      maxScore: sumOf((axis) => axis.maxScore),
+      totalScore: round(
+        sumOf((axis) => axis.convertedScore ?? 0) +
+          (summary.criteria.total ?? 0),
+      ),
+      maxScore: round(
+        sumOf((axis) => axis.maxScore) + summary.criteria.max,
+      ),
       proposedRating: dto.conclusion.proposedRating,
       compilerName: dto.conclusion.compilerName.trim(),
       compilerPhone: dto.conclusion.compilerPhone.trim(),
@@ -2550,8 +2565,30 @@ export class TeamReportService {
         templates,
         catalogs,
         axisScores,
+        criteria: await this.criteriaOfSummary(summary),
       },
     };
+  }
+
+  /**
+   * Bảng A bày kèm bản tổng hợp.
+   *
+   * Bản đã trình đọc ĐÚNG bản chụp - cấp trên phải thấy số đã trình chứ không
+   * phải số đội sửa sau đó. Bản nháp / bị trả lại thì đội còn chấm tiếp được,
+   * đọc bảng sống để người lập thấy con số sẽ đi lên khi trình.
+   */
+  private async criteriaOfSummary(
+    summary: TeamReportSummaryDocument,
+  ): Promise<TeamReportSummaryCriteria | null> {
+    const live = summary.status === 'DRAFT' || summary.status === 'RETURNED';
+    // Bản trình trước khi bảng A vào tổng điểm: không có bản chụp và tổng điểm
+    // đã chốt chỉ gồm bảng B - trả null để màn hình giữ đúng con số cũ.
+    if (!live) return summary.criteria ?? null;
+    return this.criteriaService.periodSnapshot(
+      summary.departmentId,
+      summary.fromDate,
+      summary.toDate,
+    );
   }
 
   /**
@@ -3084,12 +3121,15 @@ export class TeamReportService {
         templates,
         await this.catalogsForTemplates(Object.values(templates)),
       );
+      // Bảng A không chấm lại ở đây - cộng nguyên số đã chụp lúc trình.
       summary.conclusion.totalScore =
         Math.round(
-          axisScores.reduce(
+          (axisScores.reduce(
             (sum, axis) => sum + (axis.convertedScore ?? 0),
             0,
-          ) * 100,
+          ) +
+            (summary.criteria?.total ?? 0)) *
+            100,
         ) / 100;
       summary.markModified('conclusion');
     }

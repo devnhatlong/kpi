@@ -53,6 +53,7 @@ import {
   type ConclusionDraft,
   type ConclusionErrors,
 } from "@/features/team-report/components/summary-conclusion-fields";
+import { loadCriteriaOfPeriod } from "@/features/team-report/components/team-report-criteria-preview";
 import { useAuth } from "@/features/auth/auth-provider";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
@@ -334,11 +335,22 @@ export function TeamReportSummaryWizard({
     { revalidateOnFocus: false, keepPreviousData: true },
   );
 
-  const previewScore = preview.reduce(
-    (sum, axis) => sum + (axis.convertedScore ?? 0),
-    0,
+  /* Bảng A của kỳ - cộng vào điểm tạm tính y như server cộng lúc trình. */
+  const { data: criteriaData } = useSWR(
+    open && fromDate && toDate
+      ? (["team-report", "criteria-of-period", fromDate, toDate] as const)
+      : null,
+    () => loadCriteriaOfPeriod(fromDate, toDate),
+    { revalidateOnFocus: false },
   );
-  const previewMax = preview.reduce((sum, axis) => sum + axis.maxScore, 0);
+  const criteriaTotal = criteriaData?.score.total ?? 0;
+  const criteriaMax = criteriaData?.score.max ?? 0;
+
+  const previewScore =
+    criteriaTotal +
+    preview.reduce((sum, axis) => sum + (axis.convertedScore ?? 0), 0);
+  const previewMax =
+    criteriaMax + preview.reduce((sum, axis) => sum + axis.maxScore, 0);
   const previewRatio = previewMax > 0 ? previewScore / previewMax : null;
 
   const all = useMemo(() => data?.tasks ?? [], [data]);
@@ -930,6 +942,16 @@ export function TeamReportSummaryWizard({
                       Tích nhiệm vụ để xem điểm
                     </p>
                   )}
+                  {criteriaData ? (
+                    <p className="mt-0.5 text-xs opacity-70 tabular-nums">
+                      Gồm khối A tháng{" "}
+                      {criteriaData.sheet.periodMonth.slice(5)}/
+                      {criteriaData.sheet.periodMonth.slice(0, 4)}:{" "}
+                      {criteriaData.sheet.saved
+                        ? `${formatScore(criteriaTotal)} / ${formatScore(criteriaMax)}`
+                        : `chưa chấm (tối đa ${formatScore(criteriaMax)})`}
+                    </p>
+                  ) : null}
                 </div>
 
                 {/*

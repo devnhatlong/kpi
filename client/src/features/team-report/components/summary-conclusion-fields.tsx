@@ -159,7 +159,7 @@ export function SummaryConclusionFields({
   value: ConclusionDraft;
   onChange: (next: ConclusionDraft) => void;
   errors: ConclusionErrors;
-  /** Điểm bảng B - null khi chưa trục nào chấm được. */
+  /** Điểm bảng A + bảng B - null khi chưa có gì để cộng. */
   score: number | null;
   maxScore: number | null;
 }) {
@@ -216,7 +216,7 @@ export function SummaryConclusionFields({
             {score === null ? "-" : conclusionScoreText(score, maxScore)}
           </output>
           <p className="text-xs text-muted-foreground">
-            Tự cộng từ bảng B (điểm các trục).
+            Tự cộng từ bảng A (tiêu chí chung) và bảng B (điểm các trục).
           </p>
         </div>
         {field(

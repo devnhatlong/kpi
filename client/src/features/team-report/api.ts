@@ -4,6 +4,7 @@ import type {
   TeamReportAdjustmentData,
   TeamReportAdjustmentInboxRow,
   TeamReportAxisScore,
+  TeamReportSummaryCriteria,
   TeamReportCatalogs,
   TeamReportClassifyBoard,
   TeamReportConclusion,
@@ -532,6 +533,11 @@ export type TeamReportSummaryDetail = {
   catalogs: TeamReportCatalogs;
   /** Điểm từng trục, do server tính theo công thức khai trong mẫu. */
   axisScores: TeamReportAxisScore[];
+  /**
+   * Bảng A cộng vào tổng điểm. null = bản trình trước khi bảng A vào tổng
+   * điểm - tổng đã chốt chỉ gồm bảng B.
+   */
+  criteria?: TeamReportSummaryCriteria | null;
   /** Vai của người xem - đồng nhận thì chỉ xem và nhận xét. */
   viewerRole?: TeamReportSummaryViewerRole | null;
   /** Đúng người đang cầm bản (duyệt 2 cấp) - mới được duyệt / trả / sửa. */
