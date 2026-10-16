@@ -29,7 +29,10 @@ import {
 } from "@/features/team-report/appraisal";
 import { AppraisalWorkspace } from "@/features/team-report/components/appraisal-workspace";
 import { ApprovalChain } from "@/features/team-report/components/participants-block";
-import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
+import {
+  DAY_STATUS_CLASS,
+  RETURN_BUTTON_CLASS,
+} from "@/features/team-report/status-styles";
 import {
   formatScore,
   stagedStatusLabel,
@@ -256,6 +259,7 @@ function AppraisalIncomingDetail({
                   <Button
                     type="button"
                     variant="outline"
+                    className={RETURN_BUTTON_CLASS}
                     onClick={() => setDialog("RETURN")}
                   >
                     <Undo2 className="size-4" aria-hidden="true" />

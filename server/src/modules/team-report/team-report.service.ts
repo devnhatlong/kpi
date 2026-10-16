@@ -112,6 +112,7 @@ import { isYmd, serverDateYmd } from './team-report.time';
 import {
   applyApprove,
   isApprover,
+  isClosingApprover,
   isHandler,
   leadInboxFilter,
   resetStages,
@@ -2126,10 +2127,16 @@ export class TeamReportService {
             $or: [{ isOpen: true }, { closedDate: { $gte: fromDate } }],
           }),
     };
+    /* Cấp trên chỉ thấy việc của đơn vị dưới đã được duyệt - xem
+       `selectableTaskFilter`. Nằm trong $and vì điều kiện kỳ đã dùng $or. */
+    const and: Record<string, unknown>[] = [
+      await this.selectableTaskFilter(actor),
+    ];
     if (query.q?.trim()) {
       const like = { $regex: this.likeRegex(query.q) };
-      filter.$and = [{ $or: [{ name: like }, { product: like }] }];
+      and.push({ $or: [{ name: like }, { product: like }] });
     }
+    filter.$and = and;
 
     const tasks = await this.taskModel
       .find(filter)
@@ -2560,6 +2567,7 @@ export class TeamReportService {
         'Một số nhiệm vụ không thuộc phạm vi đơn vị bạn hoặc không còn tồn tại.',
       );
     }
+    await this.assertSelectableTasks(actor, ids);
 
     const templates = await this.templatesByAxis([
       ...new Set(tasks.map((task) => this.axisIdOf(task)).filter(Boolean)),
@@ -2630,6 +2638,12 @@ export class TeamReportService {
     if (!tasks.length) {
       throw new BadRequestException('Báo cáo không còn nhiệm vụ nào để trình.');
     }
+    /* Bản nháp lập từ trước có thể đang chứa việc mà đơn vị dưới vừa bị trả
+       lại - chặn ở lúc trình, không để nó đi lên như việc đã được duyệt. */
+    await this.assertSelectableTasks(
+      actor,
+      tasks.map((task) => task._id),
+    );
 
     const names = await this.departmentNames(
       tasks.map((task) => task.departmentId),
@@ -2979,6 +2993,8 @@ export class TeamReportService {
         viewerRole,
         /** Đúng người đang cầm bản (duyệt 2 cấp) - mới hiện nút duyệt / sửa. */
         canDecide: isHandler(summary, actor.id),
+        /** Người đã chốt bản - trả lại được cả khi đã duyệt. */
+        canReturnApproved: isClosingApprover(summary, actor.id),
         /** Đơn vị lập rút về được - cấp trên chưa đụng gì. */
         canRecall: viewerRole === 'OWNER' && this.canRecall(summary),
         templates,
@@ -3122,12 +3138,47 @@ export class TeamReportService {
     if (summary.status === 'DRAFT') {
       throw new BadRequestException('Báo cáo này chưa được trình lên.');
     }
+    /*
+      Đã duyệt rồi vẫn TRẢ LẠI được - duyệt xong mới phát hiện sai số / thiếu
+      việc là chuyện có thật, mà trước đây đường duy nhất là đơn vị lập bản mới
+      trong khi bản sai vẫn nằm đó "đã duyệt". Chỉ người CHỐT bản (duyệt cuối nếu
+      là bản 2 cấp) mới trả được, và chỉ trả chứ không duyệt lại.
+
+      Trả về là mọi khoá theo bản này tự nhả (trục / nội dung của các việc, bảng
+      A của kỳ, gợi ý điểm bảng thẩm định - đều chỉ xét bản chờ / đã duyệt).
+      Đơn vị trình lại thì đi lại từ cấp 1 như mọi lần trả.
+    */
     if (summary.status === 'APPROVED') {
-      throw new BadRequestException('Báo cáo đã được duyệt.');
-    }
-    // Duyệt 2 cấp: chỉ người ĐANG CẦM bản mới quyết - cấp 1 đã chuyển lên thì
-    // hết quyền, duyệt cuối chưa tới lượt thì chưa có quyền.
-    if (!isHandler(summary, actor.id)) {
+      if (dto.decision !== 'RETURN') {
+        throw new BadRequestException('Báo cáo đã được duyệt.');
+      }
+      if (!isClosingApprover(summary, actor.id)) {
+        throw new ForbiddenException(
+          'Chỉ người đã duyệt chốt bản này mới trả lại được.',
+        );
+      }
+      /* Việc đã được cấp trên gom vào bản của họ và trình đi thì không trả về
+         được nữa: bản đó đang đi lên với những việc sắp không còn được tính. Bản
+         của cấp trên còn nháp / bị trả thì không chặn - lúc trình sẽ bị chặn
+         và người lập bỏ việc đó ra (`assertSelectableTasks`). */
+      const upper = await this.summaryModel
+        .findOne({
+          _id: { $ne: summary._id },
+          departmentId: { $ne: summary.departmentId },
+          status: { $in: ['PENDING', 'APPROVED'] },
+          'rows.taskId': { $in: summary.rows.map((row) => row.taskId) },
+        })
+        .select('title status');
+      if (upper) {
+        throw new BadRequestException(
+          `Nhiệm vụ của bản này đã nằm trong "${upper.title}" ` +
+            (upper.status === 'APPROVED' ? 'đã được duyệt' : 'đang chờ duyệt') +
+            ' - trả lại bản đó (hoặc rút về) trước rồi mới trả lại bản này.',
+        );
+      }
+    } else if (!isHandler(summary, actor.id)) {
+      // Duyệt 2 cấp: chỉ người ĐANG CẦM bản mới quyết - cấp 1 đã chuyển lên
+      // thì hết quyền, duyệt cuối chưa tới lượt thì chưa có quyền.
       throw new ForbiddenException(
         summary.status === 'PENDING' && isApprover(summary, actor.id)
           ? 'Báo cáo đang chờ cấp duyệt khác - bạn không quyết ở bước này.'
@@ -3135,6 +3186,7 @@ export class TeamReportService {
       );
     }
 
+    const wasApproved = summary.status === 'APPROVED';
     let outcome: 'RETURNED' | 'FORWARDED' | 'APPROVED' = 'RETURNED';
     if (dto.decision === 'RETURN') {
       const reason = dto.reason?.trim() ?? '';
@@ -3156,11 +3208,15 @@ export class TeamReportService {
       summary,
       actor,
       'Trạng thái',
-      summary.firstApproval && outcome !== 'FORWARDED'
-        ? 'chờ duyệt cuối'
-        : 'đã trình',
+      wasApproved
+        ? 'đã duyệt'
+        : summary.firstApproval && outcome !== 'FORWARDED'
+          ? 'chờ duyệt cuối'
+          : 'đã trình',
       outcome === 'RETURNED'
-        ? 'trả lại'
+        ? wasApproved
+          ? 'trả lại sau khi đã duyệt'
+          : 'trả lại'
         : outcome === 'FORWARDED'
           ? `duyệt cấp 1, chuyển ${summary.finalRecipientName} duyệt cuối`
           : 'đã duyệt',
@@ -3328,6 +3384,7 @@ export class TeamReportService {
           'Một số nhiệm vụ không thuộc phạm vi đơn vị bạn hoặc không còn tồn tại.',
         );
       }
+      await this.assertSelectableTasks(actor, ids);
 
       const templates = await this.templatesByAxis([
         ...new Set(tasks.map((task) => this.axisIdOf(task)).filter(Boolean)),
@@ -3657,8 +3714,16 @@ export class TeamReportService {
   async deleteSummary(userId: string, id: string) {
     const actor = await this.requireActor(userId);
     const summary = await this.requireOwnSummary(actor, id);
-    if (summary.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ xoá được bản còn ở dạng nháp.');
+    /*
+      Xoá được bản NHÁP và bản BỊ TRẢ LẠI - cả hai đều đang nằm ở tay đơn vị
+      lập, không ai khác đang cầm. Bản bị trả lại hay là lập sai kỳ / sai tập
+      việc, lập bản mới gọn hơn sửa. Không bản nào khác trỏ tới nó: khoá nhiệm
+      vụ, bảng A, gợi ý thẩm định đều chỉ xét bản chờ / đã duyệt.
+    */
+    if (summary.status !== 'DRAFT' && summary.status !== 'RETURNED') {
+      throw new BadRequestException(
+        'Chỉ xoá được bản nháp hoặc bản bị trả lại. Bản đang chờ duyệt thì rút về trước.',
+      );
     }
     await summary.deleteOne();
     return { message: 'Đã xoá báo cáo.', data: { id } };
@@ -3734,6 +3799,72 @@ export class TeamReportService {
    * Xét theo CÂY ĐƠN VỊ chứ không theo quyền: quyền chỉ nói người này được bấm
    * nút gì, còn lấy được việc của ai là chuyện của cây tổ chức.
    */
+  /**
+   * Nhiệm vụ nào cấp trên được đưa vào bản tổng hợp của mình - điều kiện Mongo.
+   *
+   * - Việc của CHÍNH đơn vị mình (phòng / xã tự nhập): luôn được.
+   * - Việc của đơn vị dưới: chỉ khi nằm trong một bản tổng hợp của đơn vị đó
+   *   ĐANG Ở trạng thái đã duyệt. Việc chỉ thành "của phòng" khi phòng đã duyệt
+   *   nó; bản bị trả lại (kể cả trả sau khi đã duyệt) là việc quay về đội, phòng
+   *   không được tính nữa cho tới khi đội trình lại và được duyệt.
+   *
+   * Đội không có đơn vị con nên điều kiện thu về đúng việc của đội.
+   */
+  private async selectableTaskFilter(
+    actor: Actor,
+  ): Promise<Record<string, unknown>> {
+    const children = (await this.childDepartments(actor.departmentId)).map(
+      (child) => child._id,
+    );
+    if (!children.length) return { departmentId: actor.departmentId };
+    const approved = await this.summaryModel
+      .find({ departmentId: { $in: children }, status: 'APPROVED' })
+      .select('rows.taskId');
+    const approvedIds = [
+      ...new Set(
+        approved.flatMap((summary) =>
+          (summary.rows ?? []).map((row) => String(row.taskId)),
+        ),
+      ),
+    ].map((id) => new Types.ObjectId(id));
+    return {
+      $or: [
+        { departmentId: actor.departmentId },
+        { departmentId: { $in: children }, _id: { $in: approvedIds } },
+      ],
+    };
+  }
+
+  /**
+   * Chặn việc của đơn vị dưới chưa được duyệt (hoặc vừa bị trả lại) lọt vào
+   * bản của cấp trên - ở mọi đường ghi, không chỉ ẩn khỏi kho chọn.
+   */
+  private async assertSelectableTasks(actor: Actor, taskIds: Types.ObjectId[]) {
+    if (!taskIds.length) return;
+    const allowed = await this.taskModel
+      .find({
+        _id: { $in: taskIds },
+        ...(await this.selectableTaskFilter(actor)),
+      })
+      .select('_id');
+    const ok = new Set(allowed.map((task) => String(task._id)));
+    const blocked = taskIds.filter((id) => !ok.has(String(id)));
+    if (!blocked.length) return;
+    const names = await this.taskModel
+      .find({ _id: { $in: blocked } })
+      .select('name')
+      .limit(3);
+    throw new BadRequestException(
+      `Có ${blocked.length} nhiệm vụ của đơn vị cấp dưới chưa được duyệt hoặc ` +
+        `đã bị trả lại nên chưa đưa vào báo cáo được: ${names
+          .map((task) => task.name)
+          .join(
+            ', ',
+          )}${blocked.length > 3 ? '…' : ''}. Bỏ các nhiệm vụ này ra, ` +
+        'hoặc chờ đơn vị trình lại và được duyệt.',
+    );
+  }
+
   private async scopeDepartmentIds(
     departmentId: Types.ObjectId,
   ): Promise<Types.ObjectId[]> {

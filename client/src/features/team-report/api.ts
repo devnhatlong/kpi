@@ -602,6 +602,8 @@ export type TeamReportSummaryDetail = {
   viewerRole?: TeamReportSummaryViewerRole | null;
   /** Đúng người đang cầm bản (duyệt 2 cấp) - mới được duyệt / trả / sửa. */
   canDecide?: boolean;
+  /** Người đã chốt bản - trả lại được cả khi bản đã duyệt. */
+  canReturnApproved?: boolean;
   /** Đơn vị lập rút về được - bản chờ duyệt mà cấp trên chưa đụng gì. */
   canRecall?: boolean;
 };

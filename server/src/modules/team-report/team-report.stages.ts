@@ -34,6 +34,14 @@ export function isHandler(doc: StagedDoc, userId: IdLike): boolean {
 }
 
 /**
+ * Tài khoản này đã CHỐT bản (duyệt cuối nếu 2 cấp, chủ trì nếu 1 cấp) - người
+ * duy nhất được trả lại bản đã duyệt.
+ */
+export function isClosingApprover(doc: StagedDoc, userId: IdLike): boolean {
+  return doc.status === 'APPROVED' && same(handlerIdOf(doc), userId);
+}
+
+/**
  * Được ĐỌC bản ở vai người duyệt không: chủ trì cấp 1 luôn đọc được (kể cả
  * sau khi đã chuyển lên); duyệt cuối chỉ đọc được từ lúc bản tới tay mình - bản
  * còn ở cấp 1 hay bị cấp 1 trả lại thì chưa phải việc của họ.

@@ -87,6 +87,25 @@ export function scoreTone(ratio: number | null): {
   };
 }
 
+/**
+ * Nút "Trả lại" (cấp trên đẩy bản về) - viền ĐỎ: rút lại công sức của đơn vị
+ * lập, phải nhìn khác hẳn nút Duyệt đứng ngay cạnh. Vẫn là nút viền chứ không
+ * tô đặc: bấm vào chỉ mở hộp thoại ghi lý do, chưa làm gì ngay.
+ */
+export const RETURN_BUTTON_CLASS =
+  "border-rose-300 bg-background text-rose-700 hover:bg-rose-50 hover:text-rose-800 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-300";
+
+/**
+ * Nút "Rút về" (đơn vị lập tự kéo bản đã trình về) - viền CAM: lùi một bước
+ * của chính mình, nhẹ hơn trả lại nhưng vẫn phải khác nút trình / sửa thường.
+ */
+export const RECALL_BUTTON_CLASS =
+  "border-orange-300 bg-background text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-900 dark:text-orange-400 dark:hover:bg-orange-950/40 dark:hover:text-orange-300";
+
+/** Nút xác nhận rút về trong hộp thoại - cam tô đặc, cùng họ với nút ngoài. */
+export const RECALL_CONFIRM_CLASS =
+  "bg-orange-600 text-white hover:bg-orange-700 dark:bg-orange-600 dark:hover:bg-orange-500";
+
 /** Trạng thái của một bản đã trình lên cấp trên. */
 export const DAY_STATUS_CLASS: Record<TeamReportDayStatus, string> = {
   DRAFT: "",

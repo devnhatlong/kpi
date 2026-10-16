@@ -48,7 +48,10 @@ import {
   ADJUSTMENT_SECTIONS_UI,
   AdjustmentSectionTable,
 } from "@/features/team-report/components/team-report-adjustment-table";
-import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
+import {
+  DAY_STATUS_CLASS,
+  RETURN_BUTTON_CLASS,
+} from "@/features/team-report/status-styles";
 import { exportAdjustmentToExcel } from "@/features/team-report/adjustment-excel";
 import {
   stagedStatusLabel,
@@ -563,7 +566,7 @@ function ReviewPanel({
                 <Button
                   type="button"
                   variant="outline"
-                  className="bg-background"
+                  className={RETURN_BUTTON_CLASS}
                   disabled={deciding || busyKey !== null}
                   onClick={() => setReturnOpen(true)}
                 >

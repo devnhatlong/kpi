@@ -991,6 +991,16 @@ export function TeamReportSummaryWizard({
                         : "Không có nhiệm vụ nào sẵn sàng trong kỳ này."}
                     </p>
                   ) : null}
+                  {/* Cấp trên chỉ thấy việc của đơn vị dưới đã được duyệt -
+                      nói ra, kẻo người lập tưởng mất việc của một đội đang chờ
+                      duyệt hay vừa bị trả lại. */}
+                  {level === "UNIT" ? (
+                    <p className="px-3 py-2 text-xs text-muted-foreground">
+                      Chỉ hiện việc của đơn vị mình và việc của các đơn vị cấp
+                      dưới nằm trong báo cáo <strong>đã được duyệt</strong>. Bản
+                      đang chờ duyệt hoặc bị trả lại chưa tính vào đây.
+                    </p>
+                  ) : null}
                   {/* Kỳ đã qua: việc lỡ nhập sau ngày cuối kỳ mang ngày khai
                       mới nên không có ở đây - chỉ đường sửa. */}
                   {!isLoading && !scopeAll && toDate < serverYmd() ? (

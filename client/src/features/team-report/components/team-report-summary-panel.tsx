@@ -99,6 +99,9 @@ import { TeamReportCriteriaPreview } from "@/features/team-report/components/tea
 import { exportTeamReportToExcel } from "@/features/team-report/excel";
 import {
   DAY_STATUS_CLASS,
+  RECALL_BUTTON_CLASS,
+  RECALL_CONFIRM_CLASS,
+  RETURN_BUTTON_CLASS,
   scoreTone,
 } from "@/features/team-report/status-styles";
 import {
@@ -481,12 +484,16 @@ export function TeamReportSummaryPanel({
      duyệt, mà nó tuyệt đối không được sửa, trình hay xoá bản của đội. */
   const owner = role === "OWNER";
   const draft = summary.status === "DRAFT";
-  /* Duyệt / trả lại chỉ khi bản đang chờ: đã duyệt thì rút lại quyết định cấp
-     dưới đã thấy, đã trả lại thì bóng đang ở bên đội. */
+  /* Duyệt + trả lại khi bản đang chờ; đã trả lại thì bóng đang ở bên đội. Bản
+     đã duyệt chỉ còn đường trả lại - xem `returnableApproved`. */
   /* Duyệt 2 cấp: chỉ người ĐANG CẦM bản mới quyết - cấp 1 đã chuyển lên thì
      chỉ còn đọc. Server trả `canDecide`; bản cũ không có thì coi như được. */
   const decidable =
     reviewer && summary.status === "PENDING" && (detail.canDecide ?? true);
+  /* Duyệt xong mới thấy sai vẫn trả lại được - chỉ người đã chốt bản (server
+     quyết `canReturnApproved`), và chỉ trả, không duyệt lại. */
+  const returnableApproved =
+    reviewer && summary.status === "APPROVED" && !!detail.canReturnApproved;
   /** Đơn vị phối hợp chưa cho ý kiến - nhắc chủ trì trước khi duyệt. */
   const { total: coordinatorCount, silent: silentCoordinators } =
     silentCoordinatorsOf(summary.participants ?? []);
@@ -912,7 +919,10 @@ export function TeamReportSummaryPanel({
   };
 
   const returned = summary.status === "RETURNED";
-  const canDelete = draft && owner;
+  /* Nháp và bản bị trả lại đều đang ở tay đơn vị lập - xoá được cả hai (server
+     chặn y hệt). Bản bị trả hay là lập sai kỳ / sai tập việc, lập mới gọn hơn. */
+  const canDelete = (draft || returned) && owner;
+  const deleteLabel = draft ? "bản nháp" : "báo cáo bị trả lại";
 
   const openSend = () => {
     /* Bản bị trả lại đã có người nhận từ lượt trước - điền sẵn để khỏi phải
@@ -1039,7 +1049,7 @@ export function TeamReportSummaryPanel({
                 <Button
                   type="button"
                   variant="outline"
-                  className="bg-background"
+                  className={RETURN_BUTTON_CLASS}
                   disabled={busy}
                   onClick={() => {
                     setReturnReason("");
@@ -1061,6 +1071,22 @@ export function TeamReportSummaryPanel({
                 </Button>
               </>
             ) : null}
+            {returnableApproved ? (
+              <Button
+                type="button"
+                variant="outline"
+                className={RETURN_BUTTON_CLASS}
+                disabled={busy}
+                onClick={() => {
+                  setReturnReason("");
+                  setReturnReasonError(false);
+                  setReturnOpen(true);
+                }}
+              >
+                <Undo2 className="size-4" aria-hidden="true" />
+                Trả lại
+              </Button>
+            ) : null}
 
             {/*
               Trình được cả bản NHÁP lẫn bản BỊ TRẢ LẠI.
@@ -1076,7 +1102,7 @@ export function TeamReportSummaryPanel({
               <Button
                 type="button"
                 variant="outline"
-                className="bg-background"
+                className={RECALL_BUTTON_CLASS}
                 disabled={busy}
                 onClick={() => setRecallOpen(true)}
               >
@@ -1125,8 +1151,6 @@ export function TeamReportSummaryPanel({
                   <FileDown className="size-4" aria-hidden="true" />
                   Xuất Excel
                 </DropdownMenuItem>
-                {/* Xoá thì chỉ bản nháp: bản bị trả lại đã từng đi lên, cấp
-                    trên có nhắc tới nó trong lý do trả lại. */}
                 {canDelete ? (
                   <>
                     <DropdownMenuSeparator />
@@ -1136,7 +1160,7 @@ export function TeamReportSummaryPanel({
                       className="text-destructive focus:text-destructive"
                     >
                       <Trash2 className="size-4" aria-hidden="true" />
-                      Xoá bản nháp…
+                      Xoá {deleteLabel}
                     </DropdownMenuItem>
                   </>
                 ) : null}
@@ -2081,6 +2105,25 @@ export function TeamReportSummaryPanel({
               </DialogDescription>
             </DialogHeader>
 
+            {/* Trả bản đã duyệt là rút lại một quyết định cấp dưới đã thấy -
+                nói rõ hệ quả trước khi bấm. */}
+            {summary.status === "APPROVED" ? (
+              <p
+                role="note"
+                className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+              >
+                <TriangleAlert
+                  className="mt-0.5 size-4 shrink-0"
+                  aria-hidden="true"
+                />
+                <span>
+                  Bản này <strong className="font-medium">đã được duyệt</strong>
+                  . Trả lại sẽ huỷ kết quả duyệt: đơn vị được sửa và phải trình
+                  lại từ đầu, điểm của bản không còn được tính là đã duyệt.
+                </span>
+              </p>
+            ) : null}
+
             <div className="space-y-1.5">
               <Label htmlFor="return-reason">
                 Lý do trả lại <span className="text-destructive">*</span>
@@ -2140,8 +2183,8 @@ export function TeamReportSummaryPanel({
         </DialogContent>
       </Dialog>
 
-      {/* Duyệt là chốt hẳn: đội hết quyền sửa, cấp trên cũng không mở khoá
-          được nữa. Nhắc lại con số sắp ký trước khi bấm. */}
+      {/* Duyệt là chốt: đội hết quyền sửa, muốn chữa thì người chốt phải trả
+          lại. Nhắc lại con số sắp ký trước khi bấm. */}
       <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -2244,6 +2287,7 @@ export function TeamReportSummaryPanel({
             </Button>
             <Button
               type="button"
+              className={RECALL_CONFIRM_CLASS}
               disabled={busy}
               onClick={() => void recall()}
             >
@@ -2264,10 +2308,12 @@ export function TeamReportSummaryPanel({
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Xoá bản nháp?</DialogTitle>
+            <DialogTitle>Xoá {deleteLabel}?</DialogTitle>
             <DialogDescription className="break-words">
-              &ldquo;{summary.title}&rdquo; sẽ bị xoá hẳn. Nhiệm vụ bên trong
-              không bị ảnh hưởng, chúng vẫn nằm ở bảng ngày như cũ.
+              &ldquo;{summary.title}&rdquo; sẽ bị xoá hẳn
+              {returned ? ", kể cả lý do trả lại và nhật ký thay đổi" : ""}.
+              Nhiệm vụ bên trong không bị ảnh hưởng, chúng vẫn nằm ở bảng ngày
+              như cũ.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -2292,7 +2338,7 @@ export function TeamReportSummaryPanel({
               ) : (
                 <Trash2 className="size-4" aria-hidden="true" />
               )}
-              Xoá bản nháp
+              Xoá {deleteLabel}
             </Button>
           </DialogFooter>
         </DialogContent>

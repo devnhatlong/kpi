@@ -683,7 +683,9 @@
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/bf8518aa-af13-4bed-8f30-c796e56bcff5/scratchpad/axis2.js\" \"d:/Project/WebApp/KPI/server/node_modules/mongodb\")",
       "Bash(sed -i 's/title: { $regex/name: { $regex/; s/title: t.title/name: t.name/' C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/bf8518aa-af13-4bed-8f30-c796e56bcff5/scratchpad/axis2.js)",
       "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/bf8518aa-af13-4bed-8f30-c796e56bcff5/scratchpad/axis2.js\" \"D:/Project/WebApp/KPI/server/node_modules/mongodb\")",
-      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/bf8518aa-af13-4bed-8f30-c796e56bcff5/scratchpad/axis1.js\" \"D:/Project/WebApp/KPI/server/node_modules/mongodb\")"
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/bf8518aa-af13-4bed-8f30-c796e56bcff5/scratchpad/axis1.js\" \"D:/Project/WebApp/KPI/server/node_modules/mongodb\")",
+      "Bash(sed -n '/from \"lucide-react\"/=' src/features/team-report/components/team-report-summary-panel.tsx)",
+      "Bash(grep -n \"^import {$\" src/features/team-report/components/team-report-summary-panel.tsx)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

@@ -38,7 +38,10 @@ import { exportCommendationToExcel } from "@/features/team-report/commendation-e
 import { CommendationTables } from "@/features/team-report/components/commendation-tables";
 import { ApprovalChain } from "@/features/team-report/components/participants-block";
 import { commendationExportRows } from "@/features/team-report/components/team-report-commendation-view";
-import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
+import {
+  DAY_STATUS_CLASS,
+  RETURN_BUTTON_CLASS,
+} from "@/features/team-report/status-styles";
 import {
   stagedStatusLabel,
   type TeamReportDayStatus,
@@ -327,7 +330,7 @@ function CommendationIncomingDetail({
                     <Button
                       type="button"
                       variant="outline"
-                      className="bg-background"
+                      className={RETURN_BUTTON_CLASS}
                       onClick={() => setDialog("RETURN")}
                     >
                       <Undo2 className="size-4" aria-hidden="true" />
