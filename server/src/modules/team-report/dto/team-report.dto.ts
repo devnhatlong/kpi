@@ -43,9 +43,11 @@ export class TeamReportEvidenceDto {
 
 /** Giai đoạn 1: những trường bất kỳ ai trong đội cũng gõ được. */
 export class CreateTeamReportTaskDto {
+  /* Tên hay là cả trích yếu văn bản ("Kế hoạch số ... của Tỉnh ủy về ...") nên
+     500 ký tự đã có việc chạm trần. */
   @ApiProperty()
   @IsString()
-  @MaxLength(500)
+  @MaxLength(1000)
   name!: string;
 
   @ApiPropertyOptional({ description: 'Hạn hoàn thành YYYY-MM-DD' })
@@ -53,10 +55,14 @@ export class CreateTeamReportTaskDto {
   @IsString()
   deadline?: string;
 
-  @ApiPropertyOptional({ description: 'Sản phẩm, ô chữ tự do' })
+  /* Sản phẩm của việc thường xuyên là cả bản kết quả gạch đầu dòng nhiều dòng
+     (kiểm tra bao nhiêu cơ sở, xác minh bao nhiêu trường hợp...) - một bản như
+     vậy đã ~700 ký tự, bản tổng hợp cả tháng dài gấp nhiều lần. Vẫn giữ trần để
+     một lần dán nhầm cả văn bản không đi vào. */
+  @ApiPropertyOptional({ description: 'Sản phẩm, ô chữ tự do, được xuống dòng' })
   @IsOptional()
   @IsString()
-  @MaxLength(500)
+  @MaxLength(10000)
   product?: string;
 
   @ApiPropertyOptional({ type: [TeamReportEvidenceDto] })

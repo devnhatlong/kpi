@@ -1478,7 +1478,7 @@ export function TeamReportSummaryPanel({
                           </TableCell>
                           {/* Sản phẩm và hạn là cột riêng - đứng dưới tên
                               nhiệm vụ thì hàng cao, khó dò ngang. */}
-                          <TableCell className="max-w-[260px] whitespace-normal break-words align-middle text-sm">
+                          <TableCell className="max-w-[260px] whitespace-pre-line break-words align-middle text-sm">
                             {row.product || <EmptyValue>Chưa ghi</EmptyValue>}
                           </TableCell>
                           <TableCell className="align-middle text-sm tabular-nums whitespace-nowrap">

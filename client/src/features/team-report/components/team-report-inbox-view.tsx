@@ -675,7 +675,7 @@ function TeamReportDayDetailDialog({
                                 cột: bảng này đã gánh cả bộ cột của mẫu, thêm
                                 cột nữa là đẩy phần chấm ra khỏi màn hình. */}
                             {row.product ? (
-                              <div className="text-xs text-muted-foreground">
+                              <div className="whitespace-pre-line text-xs text-muted-foreground">
                                 Sản phẩm: {row.product}
                               </div>
                             ) : null}

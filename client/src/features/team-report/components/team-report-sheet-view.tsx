@@ -126,6 +126,20 @@ const emptyDraft = (): Draft => ({
   version: 0,
 });
 
+/**
+ * Ô sản phẩm nhiều dòng mà Enter vẫn là "thêm / lưu" như mọi ô khác của bảng:
+ * gõ việc liên tục cả buổi, đổi thói quen Enter ở riêng một ô là gửi nhầm cả
+ * buổi. Xuống dòng bằng Shift + Enter. Bỏ qua lúc bộ gõ tiếng Việt đang ghép
+ * dấu, không thì Enter chốt chữ cũng bị nuốt thành gửi.
+ */
+function submitOnEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
+  if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+    return;
+  }
+  event.preventDefault();
+  event.currentTarget.form?.requestSubmit();
+}
+
 function draftOf(task: TeamReportTask): Draft {
   return {
     name: task.name,
@@ -778,7 +792,9 @@ export function TeamReportSheetView() {
               {/* Nhãn HIỆN RÕ trên từng ô, không dựa vào placeholder: tài khoản
                   chung nghĩa là ngày nào cũng có người mới ngồi vào gõ, gõ một
                   chữ là placeholder biến mất và họ không còn biết ô nào là ô gì. */}
-              <div className="grid items-end gap-x-2 gap-y-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_auto_auto]">
+              {/* Canh trên chứ không canh đáy: ô sản phẩm giãn theo số dòng, canh
+                  đáy thì ô tên với nút Thêm trôi xuống theo dòng cuối của nó. */}
+              <div className="grid items-start gap-x-2 gap-y-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1.3fr)_auto_auto]">
                 <div className="space-y-1.5">
                   <Label htmlFor="new-task-name" className="text-xs">
                     Tên nhiệm vụ <span className="text-destructive">*</span>
@@ -809,16 +825,18 @@ export function TeamReportSheetView() {
                   <Label htmlFor="new-task-product" className="text-xs">
                     Sản phẩm
                   </Label>
-                  <Input
+                  <Textarea
                     id="new-task-product"
                     name="product"
+                    rows={1}
                     autoComplete="off"
                     placeholder="Ví dụ: Biên bản kiểm tra…"
                     value={newDraft.product}
                     onChange={(e) =>
                       setNewDraft({ ...newDraft, product: e.target.value })
                     }
-                    className="bg-card"
+                    onKeyDown={submitOnEnter}
+                    className="field-sizing-content max-h-60 min-h-9 resize-none bg-card py-1.5"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -837,7 +855,7 @@ export function TeamReportSheetView() {
                 </div>
                 <Button
                   type="submit"
-                  className="active:scale-[0.98] motion-reduce:active:scale-100"
+                  className="active:scale-[0.98] motion-reduce:active:scale-100 sm:mt-[1.375rem]"
                 >
                   <Plus className="size-4" aria-hidden="true" />
                   {reportDate !== today
@@ -874,6 +892,10 @@ export function TeamReportSheetView() {
                     Enter
                   </kbd>{" "}
                   để thêm ·{" "}
+                  <kbd className="rounded border bg-background px-1 font-sans">
+                    Shift + Enter
+                  </kbd>{" "}
+                  để xuống dòng ở ô sản phẩm ·{" "}
                   <kbd className="rounded border bg-background px-1 font-sans">
                     Esc
                   </kbd>{" "}
@@ -967,7 +989,7 @@ export function TeamReportSheetView() {
                         </div>
                       ) : null}
                     </TableCell>
-                    <TableCell className="max-w-[280px] whitespace-normal break-words text-sm">
+                    <TableCell className="max-w-[280px] whitespace-pre-line break-words text-sm">
                       {row.draft.product || <EmptyValue>Chưa ghi</EmptyValue>}
                     </TableCell>
                     <TableCell className="tabular-nums">
@@ -1062,16 +1084,19 @@ export function TeamReportSheetView() {
                           ) : null}
                         </TableCell>
                         <TableCell>
-                          <Input
+                          <Textarea
                             form="edit-task-form"
                             name="product"
+                            rows={1}
                             aria-label="Sản phẩm"
                             autoComplete="off"
                             value={draft.product}
                             onChange={(e) =>
                               setDraft({ ...draft, product: e.target.value })
                             }
+                            onKeyDown={submitOnEnter}
                             placeholder="Sản phẩm…"
+                            className="field-sizing-content max-h-60 min-h-9 resize-none py-1.5"
                           />
                         </TableCell>
                         <TableCell>
@@ -1087,7 +1112,7 @@ export function TeamReportSheetView() {
                           colSpan={2}
                           className="text-xs text-muted-foreground"
                         >
-                          Enter để lưu · Esc để huỷ
+                          Enter để lưu · Shift + Enter xuống dòng · Esc để huỷ
                         </TableCell>
                         <TableCell>
                           <div className="inline-flex gap-1">
@@ -1180,7 +1205,7 @@ export function TeamReportSheetView() {
                       </TableCell>
                       <TableCell
                         className={cn(
-                          "max-w-[280px] whitespace-normal break-words align-middle text-sm",
+                          "max-w-[280px] whitespace-pre-line break-words align-middle text-sm",
                           !task.isOpen && "text-muted-foreground",
                         )}
                       >

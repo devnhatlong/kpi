@@ -385,6 +385,13 @@ export function TeamReportClassifyView() {
 
   const locked = data?.locked ?? false;
   const editable = ready && !locked && reportDate === today;
+  /*
+    Mở lại thì được cả trên bảng ngày cũ: việc đã đóng chỉ còn hiện ở bảng của
+    đúng ngày nó đóng, mà bảng ngày cũ chỉ cho xem - không nới chỗ này thì việc
+    đóng từ hôm qua trở về trước không còn đường nào mở ra để sửa. Server vẫn
+    chặn việc đã báo cáo hoàn thành trong bản đã trình.
+  */
+  const canReopen = ready && (reportDate !== today || !locked);
 
   const templateOf = (task: TeamReportTask) => {
     const axisId = refId(task.axisId);
@@ -440,6 +447,17 @@ export function TeamReportClassifyView() {
     visible.find(needsWork) ??
     visible[0] ??
     rows[0];
+
+  /*
+    Dòng mở sẵn phải được GHIM ngay khi hiện ra. Không ghim thì nó chỉ là "việc
+    đầu tiên còn phải làm" - chọn xong nội dung công việc là việc đó hết phải làm,
+    màn nhảy sang việc khác giữa lúc người dùng còn đang điền dở các ô còn lại.
+  */
+  const selectedId = selected?.task._id ?? null;
+  const pickedExists = rows.some((row) => row.task._id === pickedTaskId);
+  useEffect(() => {
+    if (selectedId && !pickedExists) setPickedTaskId(selectedId);
+  }, [selectedId, pickedExists]);
 
   const counts = useMemo(() => {
     const byReadiness: Record<TaskReadiness, number> = {
@@ -663,7 +681,18 @@ export function TeamReportClassifyView() {
       task,
       async () => {
         await reopenTeamReportTask(task._id, { version: task.version });
-        toast.success("Đã mở lại nhiệm vụ.");
+        if (reportDate === today) {
+          toast.success("Đã mở lại nhiệm vụ.");
+          return;
+        }
+        /* Mở lại từ bảng ngày cũ: chỉ bảng hôm nay sửa được, nên đưa luôn sang
+           đó đúng nhiệm vụ này - việc đang mở thì có mặt ở bảng hôm nay. */
+        setPickedDate(null);
+        setPickedTaskId(task._id);
+        syncUrl({ date: null, task: task._id });
+        toast.success("Đã mở lại nhiệm vụ.", {
+          description: "Đã chuyển sang bảng hôm nay để sửa tiếp.",
+        });
       },
       "Không mở lại được nhiệm vụ.",
     );
@@ -806,7 +835,8 @@ export function TeamReportClassifyView() {
           className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground"
         >
           Đang xem lại ngày {formatYmd(reportDate)}. Chỉ bảng của hôm nay mới
-          phân loại được.
+          phân loại được - việc đã đóng ở đây thì bấm Mở lại, màn sẽ chuyển sang
+          bảng hôm nay để sửa tiếp.
         </div>
       ) : null}
 
@@ -869,6 +899,7 @@ export function TeamReportClassifyView() {
           busyId={busyId}
           savedAt={savedAt}
           editable={editable}
+          canReopen={canReopen}
           onColumnSet={setColumnSet}
           onFilter={setFilter}
           onQuery={setQuery}
@@ -937,6 +968,7 @@ export function TeamReportClassifyView() {
               /* Riêng nút đóng/mở lại thì vẫn bấm được - không thì việc đã đóng
                  không còn đường nào mở ra. */
               lifecycleDisabled={!editable || busyId === selected.task._id}
+              reopenDisabled={!canReopen || busyId === selected.task._id}
               onPatch={requestPatch}
               onMarkDone={markDone}
               onReopen={reopen}
@@ -1264,12 +1296,31 @@ function QueueList({
     [axes],
   );
 
-  // Giữ dòng đang mở trong tầm nhìn của hàng đợi khi đi bằng Tiếp / Trước.
+  /*
+    Giữ dòng đang mở trong tầm nhìn của hàng đợi - khi đi bằng Tiếp / Trước, và
+    cả khi chính nó đổi chỗ: chọn nội dung công việc xong là hàng đợi xếp lại,
+    dòng đang điền trôi đi chỗ khác mà người dùng không biết nó ở đâu.
+
+    Cuộn riêng khung danh sách chứ không dùng `scrollIntoView`: hàm đó cuộn cả
+    trang, đang điền ở form bên phải mà trang giật lên là mất chỗ.
+  */
   useEffect(() => {
-    listRef.current
-      ?.querySelector<HTMLElement>("[aria-current='true']")
-      ?.scrollIntoView({ block: "nearest" });
-  }, [selectedId]);
+    const list = listRef.current;
+    const item = list?.querySelector<HTMLElement>("[aria-current='true']");
+    if (!list || !item) return;
+    // Đo bằng khung hình chứ không bằng offsetTop: offsetTop tính theo phần tử
+    // định vị gần nhất, mà khung danh sách không định vị.
+    const top =
+      item.getBoundingClientRect().top -
+      list.getBoundingClientRect().top +
+      list.scrollTop;
+    const bottom = top + item.offsetHeight;
+    if (top < list.scrollTop) {
+      list.scrollTo({ top, behavior: "smooth" });
+    } else if (bottom > list.scrollTop + list.clientHeight) {
+      list.scrollTo({ top: bottom - list.clientHeight, behavior: "smooth" });
+    }
+  }, [selectedId, selectedIndex]);
 
   return (
     <div
@@ -1381,6 +1432,7 @@ type TaskTableProps = {
   busyId: string | null;
   savedAt: string | null;
   editable: boolean;
+  canReopen: boolean;
   onColumnSet: (next: string) => void;
   onFilter: (next: QueueFilter) => void;
   onQuery: (next: string) => void;
@@ -1419,6 +1471,7 @@ function TaskTableView({
   busyId,
   savedAt,
   editable,
+  canReopen,
   onColumnSet,
   onFilter,
   onQuery,
@@ -1635,6 +1688,7 @@ function TaskTableView({
               cellErrors={cellErrors}
               busyId={busyId}
               editable={editable}
+              canReopen={canReopen}
               onPatch={onPatch}
               onOpen={onOpen}
               onMarkDone={onMarkDone}
@@ -1675,6 +1729,7 @@ function TaskTableBody({
   cellErrors,
   busyId,
   editable,
+  canReopen,
   onPatch,
   onOpen,
   onMarkDone,
@@ -1689,6 +1744,7 @@ function TaskTableBody({
   cellErrors: Record<string, string>;
   busyId: string | null;
   editable: boolean;
+  canReopen: boolean;
   onPatch: (task: TeamReportTask, input: TeamReportClassifyInput) => void;
   onOpen: (taskId: string) => void;
   onMarkDone: (task: TeamReportTask) => void;
@@ -1723,6 +1779,7 @@ function TaskTableBody({
           columns={columns}
           busy={busyId === row.task._id}
           editable={editable}
+          canReopen={canReopen}
           onPatch={onPatch}
           onOpen={onOpen}
           onMarkDone={onMarkDone}
@@ -1764,6 +1821,7 @@ function TaskTableRow({
   columns,
   busy,
   editable,
+  canReopen,
   onPatch,
   onOpen,
   onMarkDone,
@@ -1778,6 +1836,7 @@ function TaskTableRow({
   columns: TeamReportColumn[];
   busy: boolean;
   editable: boolean;
+  canReopen: boolean;
   onPatch: (task: TeamReportTask, input: TeamReportClassifyInput) => void;
   onOpen: (taskId: string) => void;
   onMarkDone: (task: TeamReportTask) => void;
@@ -2031,7 +2090,7 @@ function TaskTableRow({
               variant="ghost"
               aria-label="Mở lại nhiệm vụ"
               title="Mở lại để sửa tiếp"
-              disabled={lifecycleDisabled}
+              disabled={!canReopen || busy}
               onClick={() => onReopen(task)}
             >
               <Undo2 className="size-4" aria-hidden="true" />
@@ -2073,6 +2132,8 @@ type TaskDetailPanelProps = {
   disabled: boolean;
   /** Khoá riêng nút đóng / mở lại - không đi cùng `disabled`. */
   lifecycleDisabled: boolean;
+  /** Khoá riêng nút mở lại - bảng ngày cũ vẫn mở lại được. */
+  reopenDisabled: boolean;
   /** Nằm trong báo cáo đã trình - nói rõ vì sao biểu mẫu khoá. */
   lock: TeamReportTaskLock | null;
   /** Vị trí trong danh sách đang lọc; null = nhiệm vụ đang mở nằm ngoài bộ lọc. */
@@ -2125,6 +2186,7 @@ function TaskDetailBody({
   savedAt,
   disabled,
   lifecycleDisabled,
+  reopenDisabled,
   lock,
   position,
   onPrev,
@@ -2286,7 +2348,7 @@ function TaskDetailBody({
                   nhập. Vẫn phải bày ra vì nó là thứ nói rõ nhiệm vụ này phải
                   đẻ ra cái gì, người phân loại cần đọc để chọn đúng trục. */}
               {task.product ? (
-                <p className="break-words text-sm">
+                <p className="whitespace-pre-line break-words text-sm">
                   <span className="text-muted-foreground">Sản phẩm: </span>
                   {task.product}
                 </p>
@@ -2306,6 +2368,7 @@ function TaskDetailBody({
         <TaskLifecycleBar
           task={task}
           disabled={lifecycleDisabled}
+          reopenDisabled={reopenDisabled}
           onMarkDone={onMarkDone}
           onReopen={onReopen}
           onStop={onStop}
@@ -2621,12 +2684,14 @@ function NextTodoBanner({
 function TaskLifecycleBar({
   task,
   disabled,
+  reopenDisabled,
   onMarkDone,
   onReopen,
   onStop,
 }: {
   task: TeamReportTask;
   disabled: boolean;
+  reopenDisabled: boolean;
   onMarkDone: (task: TeamReportTask) => void;
   onReopen: (task: TeamReportTask) => void;
   onStop: (task: TeamReportTask) => void;
@@ -2671,7 +2736,7 @@ function TaskLifecycleBar({
           type="button"
           variant="outline"
           size="sm"
-          disabled={disabled}
+          disabled={reopenDisabled}
           onClick={() => onReopen(task)}
         >
           <Undo2 className="size-4" aria-hidden="true" />

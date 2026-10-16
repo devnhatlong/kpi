@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -358,12 +358,21 @@ function FreeTextCell({
     );
   }
 
+  /*
+    Ô chữ là textarea tự giãn chứ không phải input: sản phẩm hay là bản kết quả
+    gạch đầu dòng nhiều dòng, mà input thì trình duyệt nuốt mất dấu xuống dòng -
+    sửa một chữ rồi rời ô là cả bản dính thành một dòng.
+  */
   return (
-    <Input
+    <Textarea
+      rows={1}
       value={draft}
       disabled={disabled}
       aria-invalid={invalid}
-      className={cn("bg-background", invalid && INVALID_CLASS)}
+      className={cn(
+        "field-sizing-content min-h-9 resize-none bg-background py-1.5",
+        invalid && INVALID_CLASS,
+      )}
       placeholder={column.title}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}
