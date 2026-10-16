@@ -257,7 +257,10 @@ export function AppSidebar() {
             userHasAnyPermission(user, child.permissions)) &&
           // `roles` là điều kiện CỘNG THÊM, không thay quyền: có quyền rồi vẫn
           // phải đúng vai trò mới hiện.
-          (!child.roles?.length || userHasAnyRole(user, child.roles)) &&
+          (!child.roles?.length ||
+            userHasAnyRole(user, child.roles) ||
+            (!!child.rolesExemptPermissions?.length &&
+              userHasAnyPermission(user, child.rolesExemptPermissions))) &&
           (!child.gate ||
             (child.gate === "adjustment-access" && adjustmentAllowed) ||
             (child.gate === "adjustment-inbox" && adjustmentInbox) ||

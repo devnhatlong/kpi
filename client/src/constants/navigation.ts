@@ -42,6 +42,8 @@ export type NavSubItem = {
    * chuỗi - không có cấp trên nào để trình lên, nên màn đó vô nghĩa với họ.
    */
   roles?: string[];
+  /** Có một quyền trong đây thì bỏ qua `roles` - xem `NavItem`. */
+  rolesExemptPermissions?: string[];
   /**
    * Cổng kiểm ĐỘNG - server quyết theo luật quản trị đặt, không suy được từ
    * quyền hay vai trò. Sidebar hỏi server một lượt rồi ẩn/hiện mục.
@@ -114,17 +116,25 @@ export const NAV_ITEMS: NavItem[] = [
     title: "Báo cáo ngày",
     icon: CalendarCheck,
     children: [
+      /* Đội nhập bằng quyền nhập; trưởng / phó phòng, xã cũng nhập được việc
+         của chính đơn vị mình (quyền duyệt + vai trưởng đơn vị) để thêm vào
+         báo cáo tổng hợp trước khi trình - cùng luật `canEnterUnitTasks` bên
+         server. Tỉnh và tài khoản chỉ duyệt không có vai đó nên không thấy. */
       {
         title: "Nhập nhiệm vụ ngày",
         href: "/team-report/sheet",
         icon: ClipboardPen,
-        permissions: [PERM.TEAM_REPORT_ENTRY],
+        permissions: [PERM.TEAM_REPORT_ENTRY, PERM.TEAM_REPORT_REVIEW],
+        roles: ["UNIT_ADMIN", "VICE_UNIT_ADMIN"],
+        rolesExemptPermissions: [PERM.TEAM_REPORT_ENTRY],
       },
       {
         title: "Phân loại nhiệm vụ",
         href: "/team-report/classify",
         icon: Table2,
-        permissions: [PERM.TEAM_REPORT_ENTRY],
+        permissions: [PERM.TEAM_REPORT_ENTRY, PERM.TEAM_REPORT_REVIEW],
+        roles: ["UNIT_ADMIN", "VICE_UNIT_ADMIN"],
+        rolesExemptPermissions: [PERM.TEAM_REPORT_ENTRY],
       },
       /*
         Không có mục "Duyệt báo cáo ngày": luồng thật là đội gom bảng ngày

@@ -63,6 +63,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/common/searchable-select";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
+import { PERM } from "@/constants/permissions";
+import { useAuth } from "@/features/auth/auth-provider";
+import { userHasAnyPermission } from "@/features/auth/types";
 import {
   classifyTeamReportTask,
   closeTeamReportTask,
@@ -2208,6 +2211,12 @@ function TaskDetailBody({
   /* Đã báo cáo (chờ hay đã duyệt): trục và nội dung công việc giữ nguyên;
      tiến độ, kết quả và các ô khác vẫn cập nhật tiếp cho kỳ sau. */
   const classificationLocked = disabled || !!lock;
+  /* Bản của chính đơn vị mở ở đúng trang lập của mình: đội ở "Tạo báo cáo",
+     phòng / xã (không có quyền nhập) ở "Tạo báo cáo của đơn vị". */
+  const { user } = useAuth();
+  const summaryHref = userHasAnyPermission(user, [PERM.TEAM_REPORT_ENTRY])
+    ? "/team-report/summary"
+    : "/team-report/summary/unit";
 
   const options = useMemo(
     () => contents.filter((content) => content.axisId === axisId),
@@ -2387,7 +2396,7 @@ function TaskDetailBody({
               Nhiệm vụ đang nằm trong{" "}
               {lock.own ? (
                 <Link
-                  href={`/team-report/summary?id=${lock.summaryId}`}
+                  href={`${summaryHref}?id=${lock.summaryId}`}
                   className="font-medium underline underline-offset-4"
                 >
                   {lock.title}

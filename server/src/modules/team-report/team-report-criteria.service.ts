@@ -8,8 +8,6 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
-import { Permission } from '@/common/enums/permission.enum';
-import { RoleCode } from '@/common/enums/role-code.enum';
 import {
   Department,
   DepartmentDocument,
@@ -41,17 +39,8 @@ import {
   type TeamReportSummaryCriteria,
 } from './schemas/team-report-summary.schema';
 import { departmentLabels } from './team-report.department-label';
+import { canEnterUnitTasks } from './team-report.entry-access';
 import { serverDateYmd } from './team-report.time';
-
-/**
- * Vai được chấm bảng A khi chỉ có quyền DUYỆT: trưởng / phó đơn vị cấp phòng,
- * xã - đúng những vai lập "báo cáo của đơn vị" để trình tiếp lên trên. Tài
- * khoản chỉ duyệt và cấp tỉnh có quyền duyệt nhưng không trình bảng A đi đâu.
- */
-const UNIT_SCORER_ROLES: string[] = [
-  RoleCode.UNIT_ADMIN,
-  RoleCode.VICE_UNIT_ADMIN,
-];
 
 /** Bộ cột của mẫu bảng A, đã rút gọn còn đúng thứ bảng cần. */
 type CriteriaTemplate = {
@@ -551,13 +540,10 @@ export class TeamReportCriteriaService {
       .find({ code: { $in: roleCodes }, isActive: true })
       .select('permissions');
     const permissions = new Set(roles.flatMap((role) => role.permissions));
-    const allowed =
-      roleCodes.includes(RoleCode.SUPER_ADMIN) ||
-      permissions.has(Permission.TEAM_REPORT_ENTRY) ||
-      (permissions.has(Permission.TEAM_REPORT_REVIEW) &&
-        roleCodes.some((code) => UNIT_SCORER_ROLES.includes(code)));
-    if (!allowed) {
-      throw new ForbiddenException('Bạn không có quyền thực hiện thao tác này.');
+    if (!canEnterUnitTasks(roleCodes, permissions)) {
+      throw new ForbiddenException(
+        'Bạn không có quyền thực hiện thao tác này.',
+      );
     }
   }
 

@@ -52,8 +52,14 @@ export class TeamReportController {
 
   // ------------------------------------------------ giai đoạn 1: nhập thô
 
+  /*
+    Các route nhập và phân loại KHÔNG gắn @Permissions: đội vào bằng quyền
+    nhập, trưởng / phó phòng, xã vào bằng quyền duyệt + vai trưởng đơn vị (họ
+    tự thêm việc của mình trước khi lập báo cáo tổng hợp). Guard đòi đủ mọi
+    quyền nên không nói được "hoặc" - service chặn ở `requireEntryActor`.
+  */
+
   @ApiOperation({ summary: 'Bảng nhập của đội cho một ngày' })
-  @Permissions(Permission.TEAM_REPORT_ENTRY)
   @Get('sheet')
   sheet(
     @CurrentUser() user: JwtPayloadUser,
@@ -63,7 +69,6 @@ export class TeamReportController {
   }
 
   @ApiOperation({ summary: 'Thêm một nhiệm vụ vào bảng' })
-  @Permissions(Permission.TEAM_REPORT_ENTRY)
   @Post('tasks')
   createTask(
     @CurrentUser() user: JwtPayloadUser,
@@ -79,7 +84,6 @@ export class TeamReportController {
   */
 
   @ApiOperation({ summary: 'Sửa một nhiệm vụ (giai đoạn 1)' })
-  @Permissions(Permission.TEAM_REPORT_ENTRY)
   @Patch('tasks/:id')
   updateTask(
     @CurrentUser() user: JwtPayloadUser,
@@ -90,7 +94,6 @@ export class TeamReportController {
   }
 
   @ApiOperation({ summary: 'Phân loại và chấm một nhiệm vụ (giai đoạn 2)' })
-  @Permissions(Permission.TEAM_REPORT_ENTRY)
   @Patch('tasks/:id/classify')
   classifyTask(
     @CurrentUser() user: JwtPayloadUser,
@@ -101,7 +104,6 @@ export class TeamReportController {
   }
 
   @ApiOperation({ summary: 'Đóng một nhiệm vụ: xong, hoặc dừng giữa chừng' })
-  @Permissions(Permission.TEAM_REPORT_ENTRY)
   @Patch('tasks/:id/close')
   closeTask(
     @CurrentUser() user: JwtPayloadUser,
@@ -112,7 +114,6 @@ export class TeamReportController {
   }
 
   @ApiOperation({ summary: 'Mở lại một nhiệm vụ đã đóng' })
-  @Permissions(Permission.TEAM_REPORT_ENTRY)
   @Patch('tasks/:id/reopen')
   reopenTask(
     @CurrentUser() user: JwtPayloadUser,
@@ -123,7 +124,6 @@ export class TeamReportController {
   }
 
   @ApiOperation({ summary: 'Đổi ngày khai của một nhiệm vụ (nhập muộn)' })
-  @Permissions(Permission.TEAM_REPORT_ENTRY)
   @Patch('tasks/:id/created-date')
   moveTaskDate(
     @CurrentUser() user: JwtPayloadUser,
@@ -134,7 +134,6 @@ export class TeamReportController {
   }
 
   @ApiOperation({ summary: 'Xoá một nhiệm vụ chưa từng gửi đi' })
-  @Permissions(Permission.TEAM_REPORT_ENTRY)
   @Delete('tasks/:id')
   deleteTask(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
     return this.teamReportService.deleteTask(user.uid, id);
@@ -143,7 +142,6 @@ export class TeamReportController {
   // ------------------------------------------------ giai đoạn 2: phân loại
 
   @ApiOperation({ summary: 'Bảng phân loại, kèm danh mục nội dung công việc' })
-  @Permissions(Permission.TEAM_REPORT_ENTRY)
   @Get('classify')
   classifyBoard(
     @CurrentUser() user: JwtPayloadUser,

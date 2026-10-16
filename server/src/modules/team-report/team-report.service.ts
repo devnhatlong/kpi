@@ -107,6 +107,7 @@ import {
   TeamReportSummaryListQueryDto,
   UpdateTeamReportTaskDto,
 } from './dto/team-report.dto';
+import { canEnterUnitTasks } from './team-report.entry-access';
 import { isYmd, serverDateYmd } from './team-report.time';
 import {
   applyApprove,
@@ -285,7 +286,7 @@ export class TeamReportService {
    * chốt, mất những việc chốt hôm qua thì nó không còn khớp báo cáo đã gửi.
    */
   async sheet(userId: string, query: TeamReportSheetQueryDto) {
-    const actor = await this.requireActor(userId);
+    const actor = await this.requireEntryActor(userId);
     const reportDate = this.requireDate(query.reportDate);
     const today = serverDateYmd();
 
@@ -344,7 +345,7 @@ export class TeamReportService {
   }
 
   async createTask(userId: string, dto: CreateTeamReportTaskDto) {
-    const actor = await this.requireActor(userId);
+    const actor = await this.requireEntryActor(userId);
     const today = serverDateYmd();
     const reportDate = dto.reportDate?.trim()
       ? this.requireDate(dto.reportDate)
@@ -434,7 +435,7 @@ export class TeamReportService {
   }
 
   async updateTask(userId: string, id: string, dto: UpdateTeamReportTaskDto) {
-    const actor = await this.requireActor(userId);
+    const actor = await this.requireEntryActor(userId);
     const task = await this.requireOwnTask(actor, id);
     await this.assertDayEditable(actor.departmentId, serverDateYmd());
     this.assertClosedNotEdited(task);
@@ -462,7 +463,7 @@ export class TeamReportService {
   }
 
   async deleteTask(userId: string, id: string) {
-    const actor = await this.requireActor(userId);
+    const actor = await this.requireEntryActor(userId);
     const task = await this.requireOwnTask(actor, id);
     await this.assertDayEditable(actor.departmentId, serverDateYmd());
 
@@ -502,7 +503,7 @@ export class TeamReportService {
    * gửi: một ngày vài chục nhiệm vụ thì danh sách đó không ai dò nổi.
    */
   async closeTask(userId: string, id: string, dto: CloseTeamReportTaskDto) {
-    const actor = await this.requireActor(userId);
+    const actor = await this.requireEntryActor(userId);
     const task = await this.requireOwnTask(actor, id);
     this.assertVersion(task, dto.version);
 
@@ -541,7 +542,7 @@ export class TeamReportService {
    * đường lùi, không thì cách duy nhất là khai lại một dòng mới.
    */
   async reopenTask(userId: string, id: string, dto: ReopenTeamReportTaskDto) {
-    const actor = await this.requireActor(userId);
+    const actor = await this.requireEntryActor(userId);
     const task = await this.requireOwnTask(actor, id);
     this.assertVersion(task, dto.version);
 
@@ -587,7 +588,7 @@ export class TeamReportService {
     id: string,
     dto: MoveTeamReportTaskDateDto,
   ) {
-    const actor = await this.requireActor(userId);
+    const actor = await this.requireEntryActor(userId);
     const task = await this.requireOwnTask(actor, id);
     this.assertVersion(task, dto.version);
     const createdDate = this.requireDate(dto.createdDate);
@@ -638,7 +639,7 @@ export class TeamReportService {
    * mỗi lần đổi trục.
    */
   async classifyBoard(userId: string, query: TeamReportClassifyQueryDto) {
-    const actor = await this.requireActor(userId);
+    const actor = await this.requireEntryActor(userId);
     const reportDate = this.requireDate(query.reportDate);
 
     const filter: Record<string, unknown> = {
@@ -743,7 +744,7 @@ export class TeamReportService {
     id: string,
     dto: ClassifyTeamReportTaskDto,
   ) {
-    const actor = await this.requireActor(userId);
+    const actor = await this.requireEntryActor(userId);
     const task = await this.requireOwnTask(actor, id);
     await this.assertDayEditable(actor.departmentId, serverDateYmd());
     this.assertClosedNotEdited(task);
@@ -2158,12 +2159,24 @@ export class TeamReportService {
       chữ cái: người dùng quen nhìn các đội theo đúng thứ tự trên sơ đồ phòng.
     */
     const names = await this.departmentNames(scope);
-    const departments = (await this.childDepartments(actor.departmentId))
+    const children = (await this.childDepartments(actor.departmentId))
       .filter((department) => department.isActive !== false)
       .map((department) => ({
         id: String(department._id),
         name: department.name ?? '',
       }));
+    /* Phòng / xã cũng tự nhập việc của mình - đứng đầu bộ lọc, kẻo lọc theo
+       đơn vị thì không còn cách nào chỉ xem riêng việc của chính phòng. Đội
+       không có đơn vị con nên bộ lọc vẫn rỗng như cũ. */
+    const departments = children.length
+      ? [
+          {
+            id: String(actor.departmentId),
+            name: names.get(String(actor.departmentId)) ?? '',
+          },
+          ...children,
+        ]
+      : children;
 
     return {
       message: 'OK',
@@ -4114,6 +4127,34 @@ export class TeamReportService {
       departmentId: new Types.ObjectId(String(user.departmentId)),
       reviewOnly: isReviewOnlyUser(user),
     };
+  }
+
+  /**
+   * Người được nhập / phân loại việc của CHÍNH đơn vị mình - xem
+   * `canEnterUnitTasks`. Các route nhập không gắn `@Permissions` (guard đòi đủ
+   * mọi quyền, không nói được "hoặc"), nên chặn phải nằm ở đây.
+   *
+   * Việc phòng / xã tự nhập mang `departmentId` của phòng / xã, nên tự rơi vào
+   * kho chọn của "báo cáo của đơn vị" (`scopeDepartmentIds` gồm cả đơn vị mình).
+   */
+  private async requireEntryActor(userId: string): Promise<Actor> {
+    const actor = await this.requireActor(userId);
+    const user = await this.userModel
+      .findById(actor.id)
+      .select('roleAssignments');
+    const roleCodes = (user?.roleAssignments ?? []).map(
+      (assignment) => assignment.roleCode,
+    );
+    const roles = await this.roleModel
+      .find({ code: { $in: roleCodes }, isActive: true })
+      .select('permissions');
+    const permissions = new Set(roles.flatMap((role) => role.permissions));
+    if (!canEnterUnitTasks(roleCodes, permissions)) {
+      throw new ForbiddenException(
+        'Bạn không có quyền thực hiện thao tác này.',
+      );
+    }
+    return actor;
   }
 
   /**
