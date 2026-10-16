@@ -138,6 +138,17 @@ type ResolvedTemplate = {
   footer?: unknown;
 };
 
+/** Một dòng đủ để tính điểm theo trục - nhiệm vụ sống hay dòng bản chụp đều được. */
+type ScoreRow = {
+  axisId: Types.ObjectId | string | null;
+  formTemplateId: Types.ObjectId | string | null;
+  formTemplateVersion: number | null;
+  fieldValues?: Record<string, string | number> | null;
+  catalogValues?: Record<string, { id: string; name: string }> | null;
+  reviewValues?: Record<string, string | number> | null;
+  reviewCatalogValues?: Record<string, { id: string; name: string }> | null;
+};
+
 /**
  * Trần dòng cho kho nhiệm vụ của báo cáo tổng hợp.
  *
@@ -1542,19 +1553,11 @@ export class TeamReportService {
    * một hàng nên phải chọn một bộ tiêu đề.
    */
   private async axisScoresOf(
-    rows: Array<{
-      axisId: Types.ObjectId | string | null;
-      formTemplateId: Types.ObjectId | string | null;
-      formTemplateVersion: number | null;
-      fieldValues?: Record<string, string | number> | null;
-      catalogValues?: Record<string, { id: string; name: string }> | null;
-      reviewValues?: Record<string, string | number> | null;
-      reviewCatalogValues?: Record<string, { id: string; name: string }> | null;
-    }>,
+    rows: ScoreRow[],
     templates: Record<string, ResolvedTemplate>,
     catalogs: ScoreCatalogs,
   ) {
-    const byAxis = new Map<string, typeof rows>();
+    const byAxis = new Map<string, ScoreRow[]>();
     for (const row of rows) {
       const id = row.axisId ? String(row.axisId) : '';
       if (!id) continue;
@@ -1562,52 +1565,69 @@ export class TeamReportService {
     }
     if (!byAxis.size) return [];
 
-    const axes = await this.axisModel
-      .find({
-        _id: { $in: [...byAxis.keys()].map((id) => new Types.ObjectId(id)) },
-      })
+    const axes = await this.axesOf([...byAxis.keys()]);
+    return axes.map((axis) =>
+      this.axisScoreOf(
+        axis,
+        byAxis.get(String(axis._id)) ?? [],
+        templates,
+        catalogs,
+      ),
+    );
+  }
+
+  private axesOf(ids: string[]) {
+    return this.axisModel
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
       .select('code name maxScore sortOrder')
       .sort({ sortOrder: 1, code: 1 });
+  }
 
-    return axes.map((axis) => {
-      const axisRows = byAxis.get(String(axis._id)) ?? [];
-
-      let key = '';
-      let version = -1;
-      for (const row of axisRows) {
-        if (!row.formTemplateId) continue;
-        const rowVersion = row.formTemplateVersion ?? 1;
-        if (rowVersion > version) {
-          version = rowVersion;
-          key = `${String(row.formTemplateId)}:${rowVersion}`;
-        }
+  /**
+   * Điểm MỘT trục từ các dòng của nó - phần thuần tính toán của `axisScoresOf`,
+   * tách ra để tính lại nhiều lần (điểm góp của từng việc) mà không truy vấn lại.
+   */
+  private axisScoreOf(
+    axis: { _id: unknown; name: string; maxScore?: number | null },
+    axisRows: ScoreRow[],
+    templates: Record<string, ResolvedTemplate>,
+    catalogs: ScoreCatalogs,
+  ) {
+    let key = '';
+    let version = -1;
+    for (const row of axisRows) {
+      if (!row.formTemplateId) continue;
+      const rowVersion = row.formTemplateVersion ?? 1;
+      if (rowVersion > version) {
+        version = rowVersion;
+        key = `${String(row.formTemplateId)}:${rowVersion}`;
       }
-      const template = templates[key] ?? null;
+    }
+    const template = templates[key] ?? null;
 
-      const totals = computeAxisFooter(
-        axisRows,
+    const totals = computeAxisFooter(
+      axisRows,
+      template?.columns ?? [],
+      template?.footer as never,
+      axis.maxScore ?? 0,
+      catalogs,
+    );
+
+    return {
+      axisId: String(axis._id),
+      axisName: axis.name,
+      maxScore: axis.maxScore ?? 0,
+      taskCount: axisRows.length,
+      /** Khoá mẫu để client bày dòng tổng dưới đúng bộ cột. */
+      templateKey: key,
+      /** Diễn giải công thức - để bảng ghi được "[(B/A)+(C/A)] / 2" như mẫu giấy. */
+      formula: describeFooter(
         template?.columns ?? [],
         template?.footer as never,
-        axis.maxScore ?? 0,
-        catalogs,
-      );
-
-      return {
-        axisId: String(axis._id),
-        axisName: axis.name,
-        maxScore: axis.maxScore ?? 0,
-        taskCount: axisRows.length,
-        /** Khoá mẫu để client bày dòng tổng dưới đúng bộ cột. */
-        templateKey: key,
-        /** Diễn giải công thức - để bảng ghi được "[(B/A)+(C/A)] / 2" như mẫu giấy. */
-        formula: describeFooter(
-          template?.columns ?? [],
-          template?.footer as never,
-          totals.columnTotals,
-        ),
-        ...totals,
-      };
-    });
+        totals.columnTotals,
+      ),
+      ...totals,
+    };
   }
 
   /**
@@ -2306,16 +2326,22 @@ export class TeamReportService {
    */
   async previewSummaryScore(userId: string, dto: PreviewTeamReportSummaryDto) {
     const actor = await this.requireActor(userId);
-    const ids = [...new Set(dto.taskIds)].map((id) =>
-      this.requireObjectId(id, 'Nhiệm vụ'),
+    const pickedIds = new Set(
+      dto.taskIds.map((id) => String(this.requireObjectId(id, 'Nhiệm vụ'))),
     );
-    if (!ids.length) {
-      return { message: 'OK', data: { axisScores: [] } };
+    const candidateIds = new Set(
+      (dto.candidateIds ?? []).map((id) =>
+        String(this.requireObjectId(id, 'Nhiệm vụ')),
+      ),
+    );
+    const allIds = [...new Set([...pickedIds, ...candidateIds])];
+    if (!allIds.length) {
+      return { message: 'OK', data: { axisScores: [], taskScores: {} } };
     }
 
     const tasks = await this.taskModel
       .find({
-        _id: { $in: ids },
+        _id: { $in: allIds.map((id) => new Types.ObjectId(id)) },
         departmentId: {
           $in: await this.scopeDepartmentIds(actor.departmentId),
         },
@@ -2329,21 +2355,77 @@ export class TeamReportService {
       })) as never,
     );
     const catalogs = await this.catalogsForTemplates(Object.values(templates));
+    const rowOf = new Map<string, ScoreRow>(
+      tasks.map((task) => [
+        String(task._id),
+        {
+          axisId: this.axisIdOf(task) || null,
+          formTemplateId: task.formTemplateId,
+          formTemplateVersion: task.formTemplateVersion,
+          fieldValues: task.fieldValues,
+          catalogValues: task.catalogValues,
+          reviewValues: task.reviewValues,
+          reviewCatalogValues: task.reviewCatalogValues,
+        },
+      ]),
+    );
+
+    const picked = [...pickedIds].filter((id) => rowOf.has(id));
     const axisScores = await this.axisScoresOf(
-      tasks.map((task) => ({
-        axisId: this.axisIdOf(task) || null,
-        formTemplateId: task.formTemplateId,
-        formTemplateVersion: task.formTemplateVersion,
-        fieldValues: task.fieldValues,
-        catalogValues: task.catalogValues,
-        reviewValues: task.reviewValues,
-        reviewCatalogValues: task.reviewCatalogValues,
-      })),
+      picked.map((id) => rowOf.get(id)!),
       templates,
       catalogs,
     );
 
-    return { message: 'OK', data: { axisScores } };
+    /*
+      Điểm ĐÃ CHẤM của riêng từng việc, đọc theo đúng công thức trục của nó -
+      để người lập thấy việc nào được bao nhiêu mà không phải mở tab phân loại.
+
+      - Trục tính tỉ lệ (1, 3, 4): trung bình các ô tự chấm trên "Điểm" chuẩn
+        của việc, vd. tiến độ 25 + chất lượng 12,5 trên chuẩn 25 → 18,75 / 25.
+      - Trục cộng dồn (2): tổng các ô điểm của việc, không có mẫu số.
+
+      KHÔNG bày "tích vào thì tổng đổi bao nhiêu": con số đó có lúc âm (việc
+      dưới 100% kéo tỉ lệ trục xuống), có lúc 0 (mục đã chạm trần) - đọc lên
+      thành "tích vào bị trừ điểm", người dùng không hiểu được.
+    */
+    const axisIds = [
+      ...new Set(
+        [...rowOf.values()]
+          .map((row) => (row.axisId ? String(row.axisId) : ''))
+          .filter(Boolean),
+      ),
+    ];
+    const axes = new Map(
+      (await this.axesOf(axisIds)).map((axis) => [String(axis._id), axis]),
+    );
+    const taskScores: Record<string, { score: number; max: number | null }> =
+      {};
+    for (const id of candidateIds) {
+      const row = rowOf.get(id);
+      const axis = row?.axisId ? axes.get(String(row.axisId)) : undefined;
+      if (!row || !axis) continue;
+      const formula = this.axisScoreOf(
+        axis,
+        [row],
+        templates,
+        catalogs,
+      ).formula;
+      if (!formula) continue;
+      const parts = formula.parts.map((part) => part.total);
+      // Chưa ô điểm nào có số thì là "chưa chấm", không phải 0 điểm.
+      if (parts.every((total) => total === null)) continue;
+      const sum = parts.reduce<number>((acc, total) => acc + (total ?? 0), 0);
+      if (formula.mode === 'sum') {
+        taskScores[id] = { score: sum, max: null };
+        continue;
+      }
+      const base = formula.base?.total ?? null;
+      if (!base) continue;
+      taskScores[id] = { score: sum / parts.length, max: base };
+    }
+
+    return { message: 'OK', data: { axisScores, taskScores } };
   }
 
   /**

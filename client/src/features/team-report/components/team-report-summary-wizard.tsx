@@ -55,6 +55,7 @@ import {
 } from "@/features/team-report/components/summary-conclusion-fields";
 import { loadCriteriaOfPeriod } from "@/features/team-report/components/team-report-criteria-preview";
 import { useAuth } from "@/features/auth/auth-provider";
+import { SearchableSelect } from "@/components/common/searchable-select";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
   createTeamReportSummary,
@@ -129,6 +130,36 @@ function defaultTitle(from: string, to: string): string {
     : `Báo cáo tổng hợp ${formatYmd(from)} - ${formatYmd(to)}`;
 }
 
+/**
+ * Điểm ĐÃ CHẤM của riêng một nhiệm vụ - số server trả, client chỉ bày.
+ *
+ * Trục tính tỉ lệ có mẫu số ("18,75/25 điểm") để đọc ra ngay việc được bao
+ * nhiêu phần; trục cộng dồn chỉ có số điểm. Chưa chấm thì không bày nhãn.
+ */
+function TaskScoreBadge({
+  value,
+}: {
+  value: { score: number; max: number | null } | undefined;
+}) {
+  if (!value) return null;
+  const full = value.max !== null && value.score >= value.max;
+  return (
+    <Badge
+      variant="outline"
+      title="Điểm đã chấm của nhiệm vụ này"
+      className={cn(
+        "whitespace-nowrap font-normal tabular-nums",
+        full || value.max === null
+          ? "border-emerald-300 text-emerald-700 dark:border-emerald-900 dark:text-emerald-400"
+          : "border-amber-300 text-amber-800 dark:border-amber-900 dark:text-amber-300",
+      )}
+    >
+      {formatScore(value.score)}
+      {value.max !== null ? `/${formatScore(value.max)}` : ""} điểm
+    </Badge>
+  );
+}
+
 type WizardProps = {
   open: boolean;
   /** `UNIT` = phòng gom việc của các đội; khi đó có thêm bộ lọc theo đội. */
@@ -167,6 +198,7 @@ export function TeamReportSummaryWizard({
   const [filter, setFilter] = useState<PickFilter>("ALL");
   /** "ALL" hoặc id một trục - lọc kho theo trục trước khi lọc theo trạng thái. */
   const [axisFilter, setAxisFilter] = useState("ALL");
+  const [contentFilter, setContentFilter] = useState("ALL");
   /*
     "ALL" hoặc id một đội. Chỉ bản của PHÒNG mới dùng tới - kho của phòng gồm
     việc của tất cả các đội, không lọc được thì nhìn một danh sách vài trăm dòng
@@ -231,6 +263,7 @@ export function TeamReportSummaryWizard({
       setQuery("");
       setFilter("ALL");
       setAxisFilter("ALL");
+      setContentFilter("ALL");
       setDeptFilter("ALL");
       setPicked(new Set());
       setRecipientId("");
@@ -334,13 +367,30 @@ export function TeamReportSummaryWizard({
     trong lúc tính lại - để nó nháy về 0 rồi nhảy lại thì nhìn như vừa mất điểm.
   */
   const pickedIds = useMemo(() => [...picked].sort(), [picked]);
-  const { data: preview = [], isValidating: previewing } = useSWR(
-    open && step === "pick" && pickedIds.length
-      ? (["team-report", "summary-preview", pickedIds.join(",")] as const)
+  /* Gửi kèm cả kho đang bày để server trả điểm đã chấm của từng dòng - đọc
+     theo công thức trục ở client là chép công thức ra hai nơi. */
+  const candidateIds = useMemo(
+    () => (data?.tasks ?? []).map(({ task }) => task._id).sort(),
+    [data],
+  );
+  const { data: previewData, isValidating: previewing } = useSWR(
+    open && step === "pick" && (pickedIds.length || candidateIds.length)
+      ? ([
+          "team-report",
+          "summary-preview",
+          pickedIds.join(","),
+          candidateIds.join(","),
+        ] as const)
       : null,
-    () => previewTeamReportSummaryScore(pickedIds, level),
+    () => previewTeamReportSummaryScore(pickedIds, candidateIds, level),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
+  /* Bỏ tích hết thì tổng về 0 ngay, không giữ số của lượt trước. */
+  const preview = useMemo(
+    () => (pickedIds.length ? (previewData?.axisScores ?? []) : []),
+    [pickedIds.length, previewData],
+  );
+  const taskScores = previewData?.taskScores ?? {};
 
   /* Bảng A của kỳ - cộng vào điểm tạm tính y như server cộng lúc trình. */
   const { data: criteriaData } = useSWR(
@@ -389,14 +439,47 @@ export function TeamReportSummaryWizard({
     return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [all]);
 
-  /* Đếm cho dải nút trạng thái tính SAU khi đã lọc trục: đang xem Trục 2 mà
-     con số vẫn của cả kho thì bấm vào ra ít hơn hẳn, nhìn như mất dòng. */
-  const byAxis = useMemo(
+  const inAxis = useMemo(
     () =>
       axisFilter === "ALL"
         ? all
         : all.filter((row) => refId(row.task.axisId) === axisFilter),
     [all, axisFilter],
+  );
+
+  /* Nội dung công việc chỉ có nghĩa TRONG một trục (mỗi trục một phụ lục riêng),
+     nên danh sách dựng từ các dòng của trục đang lọc - chọn trục khác là ra bộ
+     nội dung của trục đó. Giữ thứ tự xuất hiện trong kho (đã xếp theo nội
+     dung), không sắp lại chữ cái: tên nội dung dài và na ná nhau. */
+  const contentOptions = useMemo(() => {
+    if (axisFilter === "ALL") return [];
+    const seen = new Map<string, { id: string; name: string; count: number }>();
+    for (const row of inAxis) {
+      const id = refId(row.task.workContentId);
+      if (!id) continue;
+      const found = seen.get(id);
+      if (found) found.count += 1;
+      else
+        seen.set(id, {
+          id,
+          name: refName(row.task.workContentId) || "Chưa rõ nội dung",
+          count: 1,
+        });
+    }
+    return [...seen.values()];
+  }, [inAxis, axisFilter]);
+
+  /* Đếm cho dải nút trạng thái tính SAU khi đã lọc trục / nội dung: đang xem
+     Trục 2 mà con số vẫn của cả kho thì bấm vào ra ít hơn hẳn, nhìn như mất
+     dòng. */
+  const byAxis = useMemo(
+    () =>
+      contentFilter === "ALL"
+        ? inAxis
+        : inAxis.filter(
+            (row) => refId(row.task.workContentId) === contentFilter,
+          ),
+    [inAxis, contentFilter],
   );
 
   const counts = useMemo(
@@ -525,7 +608,18 @@ export function TeamReportSummaryWizard({
         {/* Khung rộng: mỗi dòng nhiệm vụ mang tên việc, nội dung công việc, sản
             phẩm và hạn - khung hẹp thì tên nào cũng gãy làm ba dòng và danh sách
             dài gấp đôi mà đọc chẳng nhanh hơn. */}
-        <DialogContent className="max-h-[92vh] overflow-y-auto overscroll-contain sm:max-w-5xl">
+        {/* Bước chọn nhiệm vụ mở rộng gần hết màn: mỗi dòng mang tên việc dài,
+            sản phẩm và cả hàng nhãn (đội, trục, điểm góp, tình trạng) - ép vào
+            khung 5xl là dòng nào cũng gãy ba bốn hàng. Hai bước kia ít chữ, giữ
+            khung cũ cho khỏi trống. */}
+        <DialogContent
+          className={cn(
+            "max-h-[92vh] overflow-y-auto overscroll-contain",
+            step === "pick"
+              ? "sm:max-w-[min(96vw,96rem)]"
+              : "sm:max-w-5xl",
+          )}
+        >
           <DialogHeader>
             <DialogTitle>Lập báo cáo tổng hợp</DialogTitle>
             <DialogDescription className="sr-only">
@@ -730,6 +824,7 @@ export function TeamReportSummaryWizard({
                       onValueChange={(next) => {
                         setDeptFilter(next);
                         setAxisFilter("ALL");
+                        setContentFilter("ALL");
                       }}
                     >
                       <SelectTrigger aria-label="Lọc theo đội" className="w-52">
@@ -746,7 +841,14 @@ export function TeamReportSummaryWizard({
                     </Select>
                   ) : null}
                   {axisOptions.length > 1 ? (
-                    <Select value={axisFilter} onValueChange={setAxisFilter}>
+                    <Select
+                      value={axisFilter}
+                      onValueChange={(next) => {
+                        setAxisFilter(next);
+                        // Nội dung của trục cũ không thuộc trục mới.
+                        setContentFilter("ALL");
+                      }}
+                    >
                       <SelectTrigger
                         aria-label="Lọc theo trục"
                         className="w-44"
@@ -764,6 +866,29 @@ export function TeamReportSummaryWizard({
                         ))}
                       </SelectContent>
                     </Select>
+                  ) : null}
+                  {/* Chỉ hiện khi đã chọn một trục: nội dung công việc thuộc
+                      phụ lục của từng trục, gộp mọi trục vào một danh sách là
+                      vài chục dòng na ná nhau. Có ô tìm vì tên nội dung dài. */}
+                  {contentOptions.length ? (
+                    <SearchableSelect
+                      value={contentFilter}
+                      aria-label="Lọc theo nội dung công việc"
+                      triggerClassName="w-72"
+                      placeholder="Tất cả nội dung"
+                      searchPlaceholder="Gõ để tìm nội dung…"
+                      options={[
+                        {
+                          value: "ALL",
+                          label: `Tất cả nội dung (${inAxis.length})`,
+                        },
+                        ...contentOptions.map((content) => ({
+                          value: content.id,
+                          label: `${content.name} (${content.count})`,
+                        })),
+                      ]}
+                      onValueChange={setContentFilter}
+                    />
                   ) : null}
                   <Button
                     type="button"
@@ -927,6 +1052,7 @@ export function TeamReportSummaryWizard({
                               {refName(task.axisId)}
                             </Badge>
                           ) : null}
+                          <TaskScoreBadge value={taskScores[task._id]} />
                           {task.isOpen ? null : (
                             <Badge
                               variant="secondary"
@@ -1026,7 +1152,9 @@ export function TeamReportSummaryWizard({
                     Đã chọn <strong>{picked.size}</strong> / {all.length} nhiệm
                     vụ
                   </p>
-                  {axisFilter === "ALL" && filter === "ALL" ? null : (
+                  {axisFilter === "ALL" &&
+                  contentFilter === "ALL" &&
+                  filter === "ALL" ? null : (
                     <p className="text-xs text-muted-foreground">
                       Đang xem {candidates.length} dòng theo bộ lọc
                     </p>

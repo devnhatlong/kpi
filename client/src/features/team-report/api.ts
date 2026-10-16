@@ -448,17 +448,25 @@ export function fetchTeamReportSummaryCandidates(params: {
  * Để cân nhắc trước khi chốt: thêm bớt vài việc rồi nhìn tổng điểm đổi theo.
  * Server tính bằng đúng công thức của bản đã lập, nên con số xem trước chính là
  * con số sẽ ra.
+ *
+ * `candidateIds` là các dòng đang bày trong kho: server trả kèm điểm ĐÃ CHẤM
+ * của riêng từng dòng (`taskScores`) theo công thức trục của nó - `max` là
+ * điểm chuẩn với trục tính tỉ lệ, null với trục cộng dồn. Dòng chưa chấm thì
+ * vắng mặt.
  */
 export function previewTeamReportSummaryScore(
   taskIds: string[],
+  candidateIds: string[],
   level?: TeamReportSummaryLevel,
 ) {
   return unwrapData(
-    api.post<ApiResponse<{ axisScores: TeamReportAxisScore[] }>>(
-      `${summaryBase(level)}/preview`,
-      { taskIds },
-    ),
-  ).then((data) => data.axisScores);
+    api.post<
+      ApiResponse<{
+        axisScores: TeamReportAxisScore[];
+        taskScores: Record<string, { score: number; max: number | null }>;
+      }>
+    >(`${summaryBase(level)}/preview`, { taskIds, candidateIds }),
+  );
 }
 
 export function fetchTeamReportRecipients(

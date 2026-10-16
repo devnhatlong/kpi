@@ -59,7 +59,9 @@ export class CreateTeamReportTaskDto {
      (kiểm tra bao nhiêu cơ sở, xác minh bao nhiêu trường hợp...) - một bản như
      vậy đã ~700 ký tự, bản tổng hợp cả tháng dài gấp nhiều lần. Vẫn giữ trần để
      một lần dán nhầm cả văn bản không đi vào. */
-  @ApiPropertyOptional({ description: 'Sản phẩm, ô chữ tự do, được xuống dòng' })
+  @ApiPropertyOptional({
+    description: 'Sản phẩm, ô chữ tự do, được xuống dòng',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(10000)
@@ -335,6 +337,16 @@ export class PreviewTeamReportSummaryDto {
   @IsArray()
   @IsMongoId({ each: true })
   taskIds!: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'Các dòng đang bày trong kho - server trả kèm điểm đã chấm của từng dòng',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsMongoId({ each: true })
+  candidateIds?: string[];
 }
 
 /**
