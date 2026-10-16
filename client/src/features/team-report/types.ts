@@ -468,6 +468,11 @@ export type TeamReportClassifyBoard = TeamReportSheet & {
   catalogs: TeamReportCatalogs;
   /** Phân loại hết mới gửi được - cấp trên không cộng được dòng chưa rõ thuộc đâu. */
   canSubmit: boolean;
+  /**
+   * Vì sao ngày đang xem không phân loại bù được - null là được (như hôm nay).
+   * Cùng luật nhập bù với bảng nhập.
+   */
+  editBlockedReason?: string | null;
   /** Điểm từng trục của bảng hôm nay - đội thấy trước khi gửi. */
   axisScores: TeamReportAxisScore[];
 };

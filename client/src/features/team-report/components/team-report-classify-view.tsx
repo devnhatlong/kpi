@@ -387,14 +387,25 @@ export function TeamReportClassifyView() {
   const pendingLocks = useMemo(() => data?.pendingLocks ?? {}, [data]);
 
   const locked = data?.locked ?? false;
-  const editable = ready && !locked && reportDate === today;
   /*
-    Mở lại thì được cả trên bảng ngày cũ: việc đã đóng chỉ còn hiện ở bảng của
-    đúng ngày nó đóng, mà bảng ngày cũ chỉ cho xem - không nới chỗ này thì việc
-    đóng từ hôm qua trở về trước không còn đường nào mở ra để sửa. Server vẫn
-    chặn việc đã báo cáo hoàn thành trong bản đã trình.
+    Ngày cũ phân loại được y như hôm nay, miễn còn trong luật nhập bù (server
+    trả `editBlockedReason`: ngoài kỳ đang chạy / kỳ trước, hoặc kỳ đã có báo
+    cáo tháng trình đi). Việc nằm trong báo cáo đã trình thì vẫn khoá RIÊNG từng
+    dòng theo `pendingLocks` - đó mới là thứ thật sự không được sửa.
+  */
+  const editBlockedReason = data?.editBlockedReason ?? null;
+  const editable =
+    ready && !locked && (reportDate === today || !editBlockedReason);
+  /*
+    Mở lại thì được cả trên bảng ngày cũ NGOÀI kỳ nhập bù: việc đã đóng chỉ
+    còn hiện ở bảng của đúng ngày nó đóng - không nới chỗ này thì việc đóng từ
+    lâu không còn đường nào mở ra để sửa. Server vẫn chặn việc đã báo cáo hoàn
+    thành trong bản đã trình.
   */
   const canReopen = ready && (reportDate !== today || !locked);
+  /* Đóng từ bảng ngày cũ thì ngày xong là ngày đó - server kiểm lại theo luật
+     nhập bù. */
+  const closedDate = reportDate !== today ? reportDate : undefined;
 
   const templateOf = (task: TeamReportTask) => {
     const axisId = refId(task.axisId);
@@ -656,6 +667,7 @@ export function TeamReportClassifyView() {
         const closed = await closeTeamReportTask(task._id, {
           version: task.version,
           done: true,
+          closedDate,
         });
         toast.success("Đã đánh dấu hoàn thành.", {
           description:
@@ -684,12 +696,12 @@ export function TeamReportClassifyView() {
       task,
       async () => {
         await reopenTeamReportTask(task._id, { version: task.version });
-        if (reportDate === today) {
+        if (editable) {
           toast.success("Đã mở lại nhiệm vụ.");
           return;
         }
-        /* Mở lại từ bảng ngày cũ: chỉ bảng hôm nay sửa được, nên đưa luôn sang
-           đó đúng nhiệm vụ này - việc đang mở thì có mặt ở bảng hôm nay. */
+        /* Mở lại từ bảng ngày cũ NGOÀI kỳ nhập bù: bảng đó chỉ xem, nên đưa
+           luôn sang bảng hôm nay đúng nhiệm vụ này để sửa tiếp. */
         setPickedDate(null);
         setPickedTaskId(task._id);
         syncUrl({ date: null, task: task._id });
@@ -745,6 +757,7 @@ export function TeamReportClassifyView() {
         await closeTeamReportTask(stopping._id, {
           version: stopping.version,
           reason,
+          closedDate,
         });
         toast.success("Đã dừng nhiệm vụ.");
       },
@@ -837,9 +850,10 @@ export function TeamReportClassifyView() {
           role="status"
           className="rounded-md border bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground"
         >
-          Đang xem lại ngày {formatYmd(reportDate)}. Chỉ bảng của hôm nay mới
-          phân loại được - việc đã đóng ở đây thì bấm Mở lại, màn sẽ chuyển sang
-          bảng hôm nay để sửa tiếp.
+          Đang xem lại ngày {formatYmd(reportDate)}.{" "}
+          {editBlockedReason
+            ? `${editBlockedReason} Việc đã đóng ở đây thì bấm Mở lại, màn sẽ chuyển sang bảng hôm nay để sửa tiếp.`
+            : "Phân loại, chấm và đánh dấu xong được như bảng hôm nay - việc đánh dấu xong ở đây mang ngày xong là ngày này."}
         </div>
       ) : null}
 

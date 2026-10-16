@@ -195,7 +195,13 @@ export function deleteTeamReportTask(id: string) {
  */
 export function closeTeamReportTask(
   id: string,
-  input: { version: number; done?: boolean; reason?: string },
+  input: {
+    version: number;
+    done?: boolean;
+    reason?: string;
+    /** Đóng từ bảng ngày cũ: ngày xong là ngày đó. Trống = hôm nay. */
+    closedDate?: string;
+  },
 ) {
   return unwrapData(
     api.patch<ApiResponse<TeamReportTask>>(

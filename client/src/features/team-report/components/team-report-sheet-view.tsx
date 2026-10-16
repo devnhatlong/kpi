@@ -361,13 +361,19 @@ export function TeamReportSheetView() {
   const tasks = useMemo(() => data?.tasks ?? [], [data]);
   const locked = data?.locked ?? false;
   const day = data?.day ?? null;
-  /* Sửa dòng chỉ ở bảng HÔM NAY: nhiệm vụ là bản ghi sống, sửa ở ngày cũ là
-     sửa số hiện tại chứ không phải số của hôm đó. */
-  const editable = ready && !locked && reportDate === today;
-  /* THÊM thì được cả ngày cũ trong tháng (nhập bù) - server nói ngày nào
-     không thêm được và vì sao. */
+  /* THÊM thì được cả ngày cũ (nhập bù) - server nói ngày nào không thêm được
+     và vì sao: ngoài kỳ đang chạy / kỳ trước, hoặc kỳ đã có báo cáo tháng
+     trình đi. */
   const addBlockedReason = data?.addBlockedReason ?? null;
   const canAdd = ready && !!data && !locked && !addBlockedReason;
+  /*
+    Sửa / xoá / đổi ngày khai theo ĐÚNG luật của thêm: ngày nào nhập bù được thì
+    sửa được như hôm nay. Trước đây chỉ bảng hôm nay mới sửa, nên ngày cũ chỉ
+    thêm được mà gõ sai tên thì không chữa nổi - phải sang hôm nay tìm lại.
+    Việc đã nằm trong báo cáo đã trình thì server vẫn chặn riêng từng dòng.
+  */
+  const editable =
+    ready && !locked && (reportDate === today || canAdd);
 
   const similar = useMemo(
     () =>
@@ -539,6 +545,8 @@ export function TeamReportSheetView() {
       await closeTeamReportTask(closing._id, {
         version: closing.version,
         reason,
+        // Dừng từ bảng ngày cũ: ngày dừng là ngày đó, không phải hôm nay.
+        closedDate: reportDate !== today ? reportDate : undefined,
       });
       setClosing(null);
       setCloseReason("");
@@ -765,7 +773,7 @@ export function TeamReportSheetView() {
               ) : null}
               {addBlockedReason
                 ? addBlockedReason
-                : "Có thể nhập bù nhiệm vụ cho ngày này. Sửa và cập nhật tiến độ làm ở bảng hôm nay."}
+                : "Có thể nhập bù, sửa và xoá nhiệm vụ của ngày này như ở bảng hôm nay."}
             </div>
           ) : null}
 

@@ -175,6 +175,14 @@ export class CloseTeamReportTaskDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Ngày xong YYYY-MM-DD khi đóng từ bảng ngày cũ; trống = hôm nay',
+  })
+  @IsOptional()
+  @IsString()
+  closedDate?: string;
 }
 
 /** Mở lại một nhiệm vụ đã đóng nhầm. */

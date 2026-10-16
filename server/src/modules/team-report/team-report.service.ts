@@ -527,8 +527,34 @@ export class TeamReportService {
       );
     }
 
+    /*
+      Đóng từ bảng NGÀY CŨ thì ngày xong là ngày đó, không phải hôm nay: việc
+      xong hôm 15 mà ghi ngày 16 thì rời khỏi chính bảng 15 đang xem, và báo
+      cáo kỳ chứa ngày 15 lại ghi nó là "đang làm". Lùi được tới đâu theo ĐÚNG
+      luật nhập bù, và không trước ngày khai.
+    */
+    const today = serverDateYmd();
+    let closedDate = today;
+    if (dto.closedDate?.trim() && dto.closedDate.trim() !== today) {
+      closedDate = this.requireDate(dto.closedDate.trim());
+      if (closedDate > today) {
+        throw new BadRequestException('Không đóng việc vào ngày chưa tới.');
+      }
+      if (closedDate < task.createdDate) {
+        throw new BadRequestException(
+          'Ngày xong không được trước ngày khai nhiệm vụ.',
+        );
+      }
+      const blocked = await this.addBlockedReason(
+        actor.departmentId,
+        closedDate,
+        today,
+      );
+      if (blocked) throw new BadRequestException(blocked);
+    }
+
     task.isOpen = false;
-    task.closedDate = serverDateYmd();
+    task.closedDate = closedDate;
     task.closedReason = done ? '' : reason;
     task.version += 1;
     this.appendEdit(
@@ -726,6 +752,13 @@ export class TeamReportService {
         reportDate,
         axisScores,
         locked: !!day && day.status !== 'RETURNED',
+        /** Vì sao ngày này không nhập / phân loại bù được - null là được. Cùng
+            luật với bảng nhập, để hai tab không mỗi tab khoá một kiểu. */
+        editBlockedReason: await this.addBlockedReason(
+          actor.departmentId,
+          reportDate,
+          serverDateYmd(),
+        ),
         day,
         tasks,
         /** Nhiệm vụ nằm trong báo cáo đã trình (chờ / đã duyệt) - khoá, tra theo id. */
