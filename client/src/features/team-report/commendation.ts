@@ -227,25 +227,32 @@ export function rowFromTeam(
   };
 }
 
-export function fetchCommendationInbox(query: {
+/** Số đếm cho huy hiệu trên các tab của hộp đến. */
+export type CommendationInboxCounts = {
+  /** LEAD = bảng chờ tôi duyệt; INFORM = bảng theo dõi chưa mở. */
+  boxes: Record<CommendationInboxBox, number>;
+  /** Số bảng theo trạng thái, trong hộp đang xem. */
+  statuses: Record<"PENDING" | "APPROVED" | "RETURNED" | "ALL", number>;
+};
+
+export async function fetchCommendationInbox(query: {
   box: CommendationInboxBox;
   status?: TeamReportDayStatus | "";
   page?: number;
   limit?: number;
 }) {
-  return unwrapPaginated(
-    api.get<ApiResponse<CommendationInboxRow[]>>(
-      "/team-report/commendations/incoming",
-      {
-        params: {
-          box: query.box,
-          page: query.page ?? 1,
-          limit: query.limit ?? 20,
-          ...(query.status ? { status: query.status } : {}),
-        },
-      },
-    ),
-  );
+  const response = await api.get<
+    ApiResponse<CommendationInboxRow[]> & { counts?: CommendationInboxCounts }
+  >("/team-report/commendations/incoming", {
+    params: {
+      box: query.box,
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+      ...(query.status ? { status: query.status } : {}),
+    },
+  });
+  const list = await unwrapPaginated(Promise.resolve(response));
+  return { ...list, counts: response.data.counts ?? null };
 }
 
 export function fetchCommendationIncoming(id: string) {

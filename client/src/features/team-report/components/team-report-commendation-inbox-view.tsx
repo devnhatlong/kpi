@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
+import { CountBadge } from "@/components/common/count-badge";
 import {
   commendationKeys,
   decideCommendation,
@@ -68,13 +69,18 @@ export function TeamReportCommendationInboxView() {
   const [status, setStatus] = useState<StatusBox>("PENDING");
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const list = useSWR(commendationKeys.inbox(box, status, 1), () =>
-    fetchCommendationInbox({
-      box,
-      status: status as TeamReportDayStatus | "",
-      limit: 50,
-    }),
+  const list = useSWR(
+    commendationKeys.inbox(box, status, 1),
+    () =>
+      fetchCommendationInbox({
+        box,
+        status: status as TeamReportDayStatus | "",
+        limit: 50,
+      }),
+    // Giữ số đếm cũ trong lúc tải tab mới - huy hiệu không chớp tắt.
+    { keepPreviousData: true },
   );
+  const counts = list.data?.counts ?? null;
 
   if (openId) {
     return (
@@ -116,21 +122,58 @@ export function TeamReportCommendationInboxView() {
                 // Hộp theo dõi không có "chờ tôi duyệt" - mở sẵn tất cả.
                 setStatus(next === "LEAD" ? "PENDING" : "");
               }}
+              /* Huy hiệu ở hai hộp = việc đang chờ TÔI: chủ trì - bảng chờ
+                 tôi duyệt; theo dõi - bảng mới chưa mở. */
               items={[
-                { value: "LEAD" as const, label: "Chủ trì duyệt" },
-                { value: "INFORM" as const, label: "Theo dõi" },
+                {
+                  value: "LEAD" as const,
+                  label: (
+                    <span className="inline-flex items-center">
+                      Chủ trì duyệt
+                      <CountBadge
+                        count={counts?.boxes.LEAD}
+                        label={`${counts?.boxes.LEAD ?? 0} bảng chờ bạn duyệt`}
+                      />
+                    </span>
+                  ),
+                },
+                {
+                  value: "INFORM" as const,
+                  label: (
+                    <span className="inline-flex items-center">
+                      Theo dõi
+                      <CountBadge
+                        count={counts?.boxes.INFORM}
+                        label={`${counts?.boxes.INFORM ?? 0} bảng mới chưa xem`}
+                      />
+                    </span>
+                  ),
+                },
               ]}
             />
             <SegmentedTabs
               ariaLabel="Trạng thái"
               value={status}
               onChange={setStatus}
-              items={[
-                { value: "PENDING" as const, label: "Chờ duyệt" },
-                { value: "APPROVED" as const, label: "Đã duyệt" },
-                { value: "RETURNED" as const, label: "Đã trả lại" },
-                { value: "" as const, label: "Tất cả" },
-              ]}
+              items={(
+                [
+                  ["PENDING", "Chờ duyệt"],
+                  ["APPROVED", "Đã duyệt"],
+                  ["RETURNED", "Đã trả lại"],
+                  ["", "Tất cả"],
+                ] as const
+              ).map(([value, text]) => ({
+                value,
+                label: (
+                  <span className="inline-flex items-center">
+                    {text}
+                    <CountBadge
+                      count={counts?.statuses[value || "ALL"]}
+                      label={`${counts?.statuses[value || "ALL"] ?? 0} bảng`}
+                    />
+                  </span>
+                ),
+              }))}
             />
           </div>
         </CardContent>
@@ -180,7 +223,10 @@ export function TeamReportCommendationInboxView() {
                     </span>
                     <Badge
                       variant="secondary"
-                      className={cn("font-normal", DAY_STATUS_CLASS[row.status])}
+                      className={cn(
+                        "font-normal",
+                        DAY_STATUS_CLASS[row.status],
+                      )}
                     >
                       {stagedStatusLabel(row)}
                     </Badge>
@@ -302,8 +348,7 @@ function CommendationIncomingDetail({
                   {data.sentByName ? `${data.sentByName} gửi` : "Đã gửi"}
                   {data.sentAt
                     ? ` lúc ${formatServerHm(data.sentAt)}`
-                    : ""}{" "}
-                  · {data.praises.length} biểu dương ·{" "}
+                    : ""} · {data.praises.length} biểu dương ·{" "}
                   {data.criticisms.length} phê bình
                 </p>
               </div>

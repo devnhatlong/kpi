@@ -656,11 +656,30 @@ export function fetchTeamReportSummaryInbox(
   if (query.period) params.period = query.period;
   if (query.fromDate) params.fromDate = query.fromDate;
   if (query.toDate) params.toDate = query.toDate;
-  return unwrapPaginated(
-    api.get<ApiResponse<TeamReportSummary[]>>("/team-report/summary/incoming", {
-      params,
-    }),
+  return withInboxCounts(
+    api.get<SummaryInboxResponse>("/team-report/summary/incoming", { params }),
   );
+}
+
+/** Số đếm cho huy hiệu đỏ trên các tab hộp đến bản tổng hợp. */
+export type TeamReportSummaryInboxCounts = {
+  /** Việc đang chờ tôi ở mỗi hộp (không theo bộ lọc). */
+  boxes: Record<"LEAD" | "COORDINATE" | "INFORM", number>;
+  /** Số bản theo trạng thái trong hộp đang xem, theo bộ lọc đang chọn. */
+  statuses: Record<"PENDING" | "APPROVED" | "RETURNED" | "ALL", number>;
+};
+
+type SummaryInboxResponse = ApiResponse<TeamReportSummary[]> & {
+  counts?: TeamReportSummaryInboxCounts;
+};
+
+/** Như `unwrapPaginated` nhưng giữ lại `counts` server trả kèm. */
+async function withInboxCounts(
+  request: Promise<{ data: SummaryInboxResponse }>,
+) {
+  const response = await request;
+  const list = await unwrapPaginated(Promise.resolve(response));
+  return { ...list, counts: response.data.counts ?? null };
 }
 
 /** Hộp đến "Phối hợp" / "Nhận để biết" - bản có đơn vị tôi ở đúng vai đó. */
@@ -678,8 +697,8 @@ export function fetchTeamReportSummaryParticipantInbox(
   if (query.period) params.period = query.period;
   if (query.fromDate) params.fromDate = query.fromDate;
   if (query.toDate) params.toDate = query.toDate;
-  return unwrapPaginated(
-    api.get<ApiResponse<TeamReportSummary[]>>(
+  return withInboxCounts(
+    api.get<SummaryInboxResponse>(
       role === "COORDINATE"
         ? "/team-report/summary/coordinating"
         : "/team-report/summary/informed",
@@ -950,10 +969,7 @@ export type TeamReportAdjustmentScope = {
 };
 
 export type TeamReportRouteKind =
-  | "ADJUSTMENT"
-  | "SUMMARY"
-  | "APPRAISAL"
-  | "COMMENDATION";
+  "ADJUSTMENT" | "SUMMARY" | "APPRAISAL" | "COMMENDATION";
 
 export type TeamReportAdjustmentRoute = {
   _id?: string;

@@ -657,7 +657,14 @@ export class TeamReportService {
     task.createdDate = createdDate;
     task.version += 1;
     const label = (ymd: string) => ymd.split('-').reverse().join('/');
-    this.appendEdit(task, actor, 'Ngày khai', label(from), label(createdDate), '');
+    this.appendEdit(
+      task,
+      actor,
+      'Ngày khai',
+      label(from),
+      label(createdDate),
+      '',
+    );
     await task.save();
 
     return {
@@ -2520,9 +2527,7 @@ export class TeamReportService {
            tới bản bị trả, cuối cùng là nháp. */
         const rank = { APPROVED: 0, PENDING: 1, RETURNED: 2, DRAFT: 3 };
         const best = [...mine].sort(
-          (a, b) =>
-            (rank[a.status as keyof typeof rank] ?? 9) -
-            (rank[b.status as keyof typeof rank] ?? 9),
+          (a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9),
         )[0];
         return {
           ...item,
@@ -2722,9 +2727,7 @@ export class TeamReportService {
         sumOf((axis) => axis.convertedScore ?? 0) +
           (summary.criteria.total ?? 0),
       ),
-      maxScore: round(
-        sumOf((axis) => axis.maxScore) + summary.criteria.max,
-      ),
+      maxScore: round(sumOf((axis) => axis.maxScore) + summary.criteria.max),
       proposedRating: dto.conclusion.proposedRating,
       compilerName: dto.conclusion.compilerName.trim(),
       compilerPhone: dto.conclusion.compilerPhone.trim(),
@@ -2916,7 +2919,10 @@ export class TeamReportService {
     ]);
     await relabelPopulated(this.departmentModel, rows);
 
-    return buildPaginatedResponse(rows, total, page, limit, 'OK');
+    return {
+      ...buildPaginatedResponse(rows, total, page, limit, 'OK'),
+      counts: await this.summaryInboxCounts(actor, query, 'LEAD'),
+    };
   }
 
   /** Các đơn vị từng trình bản tổng hợp tới đơn vị tôi - cho ô lọc hộp đến. */
@@ -3107,7 +3113,83 @@ export class TeamReportService {
     // Hộp "nhận để biết" không được thấy ý kiến phối hợp, kể cả ở danh sách.
     const data: object[] =
       role === 'INFORM' ? rows.map((row) => this.withoutOpinions(row)) : rows;
-    return buildPaginatedResponse(data, total, page, limit, 'OK');
+    return {
+      ...buildPaginatedResponse(data, total, page, limit, 'OK'),
+      counts: await this.summaryInboxCounts(actor, query, role),
+    };
+  }
+
+  /**
+   * Số đếm cho huy hiệu đỏ trên các tab hộp đến bản tổng hợp.
+   *
+   * - `boxes` = VIỆC ĐANG CHỜ TÔI ở mỗi hộp, không theo bộ lọc: chủ trì - bản
+   *   chờ tôi duyệt; phối hợp - bản còn chờ duyệt mà tôi chưa gửi ý kiến;
+   *   nhận để biết - bản tôi chưa mở.
+   * - `statuses` = số bản theo trạng thái trong hộp đang xem, THEO đúng bộ lọc
+   *   đang chọn (đơn vị, loại, kỳ, tên) - để số trên tab khớp danh sách bấm ra.
+   */
+  private async summaryInboxCounts(
+    actor: Actor,
+    query: TeamReportSummaryListQueryDto,
+    box: 'LEAD' | 'COORDINATE' | 'INFORM',
+  ) {
+    const extra: Record<string, unknown> = {};
+    if (query.departmentId && Types.ObjectId.isValid(query.departmentId)) {
+      extra.departmentId = new Types.ObjectId(query.departmentId);
+    }
+    if (query.period) extra.period = query.period;
+    if (query.fromDate && isYmd(query.fromDate)) {
+      extra.toDate = { $gte: query.fromDate };
+    }
+    if (query.toDate && isYmd(query.toDate)) {
+      extra.fromDate = { $lte: query.toDate };
+    }
+    if (query.q?.trim()) extra.title = { $regex: this.likeRegex(query.q) };
+
+    const inBox = (status?: string): Record<string, unknown> =>
+      box === 'LEAD'
+        ? { ...leadInboxFilter(actor.id, status), ...extra }
+        : {
+            participants: { $elemMatch: { userId: actor.id, role: box } },
+            status: status ? status : { $ne: 'DRAFT' },
+            ...extra,
+          };
+    const count = (where: Record<string, unknown>) =>
+      this.summaryModel.countDocuments(where);
+
+    const [lead, coordinate, inform, pending, approved, returned, all] =
+      await Promise.all([
+        count(leadInboxFilter(actor.id, 'PENDING')),
+        count({
+          participants: {
+            $elemMatch: {
+              userId: actor.id,
+              role: 'COORDINATE',
+              comment: { $in: ['', null] },
+            },
+          },
+          status: 'PENDING',
+        }),
+        count({
+          participants: {
+            $elemMatch: { userId: actor.id, role: 'INFORM', seenAt: null },
+          },
+          status: { $ne: 'DRAFT' },
+        }),
+        count(inBox('PENDING')),
+        count(inBox('APPROVED')),
+        count(inBox('RETURNED')),
+        count(inBox()),
+      ]);
+    return {
+      boxes: { LEAD: lead, COORDINATE: coordinate, INFORM: inform },
+      statuses: {
+        PENDING: pending,
+        APPROVED: approved,
+        RETURNED: returned,
+        ALL: all,
+      },
+    };
   }
 
   /**
@@ -3621,7 +3703,9 @@ export class TeamReportService {
       row.product = scratch.product;
       row.fieldValues = scratch.fieldValues;
       row.catalogValues = scratch.catalogValues;
-      if (String(scratch.workContentId ?? '') !== String(row.workContentId ?? '')) {
+      if (
+        String(scratch.workContentId ?? '') !== String(row.workContentId ?? '')
+      ) {
         row.workContentId = scratch.workContentId;
         row.workContentName =
           (

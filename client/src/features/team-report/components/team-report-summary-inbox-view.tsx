@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { DatePickerInput } from "@/components/common/date-picker-input";
 import { SearchableSelect } from "@/components/common/searchable-select";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
+import { CountBadge } from "@/components/common/count-badge";
 import {
   Select,
   SelectContent,
@@ -110,11 +111,16 @@ export function TeamReportSummaryInboxView() {
     page,
     limit,
   };
-  const list = useSWR([...teamReportKeys.summaryInbox(params), box], () =>
-    box === "LEAD"
-      ? fetchTeamReportSummaryInbox(params)
-      : fetchTeamReportSummaryParticipantInbox(box, params),
+  const list = useSWR(
+    [...teamReportKeys.summaryInbox(params), box],
+    () =>
+      box === "LEAD"
+        ? fetchTeamReportSummaryInbox(params)
+        : fetchTeamReportSummaryParticipantInbox(box, params),
+    // Giữ số đếm cũ trong lúc tải tab mới - huy hiệu không chớp tắt.
+    { keepPreviousData: true },
   );
+  const counts = list.data?.counts ?? null;
   const senders = useSWR(
     ["team-report", "summary-inbox-senders"],
     fetchTeamReportSummaryInboxSenders,
@@ -178,13 +184,32 @@ export function TeamReportSummaryInboxView() {
                 setPickedId(null);
                 setPage(1);
               }}
-              items={[
-                { value: "LEAD" as const, label: "Chủ trì" },
-                { value: "COORDINATE" as const, label: "Phối hợp" },
-                { value: "INFORM" as const, label: "Nhận để biết" },
-              ]}
+              /* Huy hiệu ở các hộp = việc đang chờ TÔI: chủ trì - bản chờ tôi
+                 duyệt; phối hợp - bản chưa gửi ý kiến; nhận để biết - bản
+                 chưa mở. */
+              items={(
+                [
+                  ["LEAD", "Chủ trì", "bản chờ bạn duyệt"],
+                  ["COORDINATE", "Phối hợp", "bản chờ ý kiến của bạn"],
+                  ["INFORM", "Nhận để biết", "bản mới chưa xem"],
+                ] as const
+              ).map(([value, text, hint]) => ({
+                value,
+                label: (
+                  <span className="inline-flex items-center">
+                    {text}
+                    <CountBadge
+                      count={counts?.boxes[value]}
+                      label={`${counts?.boxes[value] ?? 0} ${hint}`}
+                    />
+                  </span>
+                ),
+              }))}
             />
-            <Badge variant="secondary" className="whitespace-nowrap font-normal">
+            <Badge
+              variant="secondary"
+              className="whitespace-nowrap font-normal"
+            >
               {meta?.total ?? 0} báo cáo
             </Badge>
           </div>
@@ -303,12 +328,25 @@ export function TeamReportSummaryInboxView() {
                 setStatus(next);
                 setPage(1);
               }}
-              items={[
-                { value: "PENDING" as const, label: "Chờ duyệt" },
-                { value: "APPROVED" as const, label: "Đã duyệt" },
-                { value: "RETURNED" as const, label: "Đã trả lại" },
-                { value: "ALL" as const, label: "Tất cả" },
-              ]}
+              items={(
+                [
+                  ["PENDING", "Chờ duyệt"],
+                  ["APPROVED", "Đã duyệt"],
+                  ["RETURNED", "Đã trả lại"],
+                  ["ALL", "Tất cả"],
+                ] as const
+              ).map(([value, text]) => ({
+                value,
+                label: (
+                  <span className="inline-flex items-center">
+                    {text}
+                    <CountBadge
+                      count={counts?.statuses[value]}
+                      label={`${counts?.statuses[value] ?? 0} báo cáo`}
+                    />
+                  </span>
+                ),
+              }))}
               className="flex-wrap"
             />
 

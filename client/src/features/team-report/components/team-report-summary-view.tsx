@@ -18,6 +18,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
+import { CountBadge } from "@/components/common/count-badge";
 import {
   Select,
   SelectContent,
@@ -264,8 +265,8 @@ export function TeamReportSummaryView({
         >
           <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1">
-            <strong className="tabular-nums">{returnedCount}</strong> báo cáo
-            bị cấp trên trả lại, cần sửa rồi trình lại.
+            <strong className="tabular-nums">{returnedCount}</strong> báo cáo bị
+            cấp trên trả lại, cần sửa rồi trình lại.
           </span>
           <span className="shrink-0 text-xs font-medium underline-offset-4 hover:underline">
             Xem ngay
@@ -353,18 +354,13 @@ export function TeamReportSummaryView({
                 return {
                   value: item.value,
                   label: (
-                    <span className="tabular-nums">
-                      {item.label}{" "}
-                      <span
-                        className={cn(
-                          "text-xs",
-                          item.value === "RETURNED" && count > 0
-                            ? "font-semibold text-amber-700 dark:text-amber-400"
-                            : "text-muted-foreground",
-                        )}
-                      >
-                        {count}
-                      </span>
+                    // Huy hiệu đỏ như các hộp đến; số 0 thì ẩn.
+                    <span className="inline-flex items-center">
+                      {item.label}
+                      <CountBadge
+                        count={count}
+                        label={`${count} báo cáo ${item.label.toLowerCase()}`}
+                      />
                     </span>
                   ),
                 };
@@ -504,7 +500,9 @@ export function TeamReportSummaryView({
               role="alert"
               className="space-y-3 p-6 text-sm text-destructive"
             >
-              <p>{getApiErrorMessage(detail.error, "Không tải được báo cáo.")}</p>
+              <p>
+                {getApiErrorMessage(detail.error, "Không tải được báo cáo.")}
+              </p>
               <Button
                 type="button"
                 size="sm"

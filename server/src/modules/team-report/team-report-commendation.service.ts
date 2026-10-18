@@ -381,20 +381,49 @@ export class TeamReportCommendationService implements OnModuleInit {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
     const box = query.box ?? 'LEAD';
-    const filter: Record<string, unknown> =
+    const boxFilter = (status?: string): Record<string, unknown> =>
       box === 'LEAD'
-        ? leadInboxFilter(actor.id, query.status)
+        ? leadInboxFilter(actor.id, status)
         : {
             participants: { $elemMatch: { userId: actor.id, role: box } },
-            status: query.status ? query.status : { $ne: 'DRAFT' },
+            status: status ? status : { $ne: 'DRAFT' },
           };
-    const [rows, total] = await Promise.all([
+    const filter = boxFilter(query.status);
+    const count = (where: Record<string, unknown>) =>
+      this.sheetModel.countDocuments(where);
+    const [rows, total, counts] = await Promise.all([
       this.sheetModel
         .find(filter)
         .sort({ sentAt: -1, periodMonth: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
-      this.sheetModel.countDocuments(filter),
+      count(filter),
+      /*
+        Số đếm cho các tab (huy hiệu đỏ): hai hộp = VIỆC ĐANG CHỜ TÔI (chủ trì:
+        bảng chờ tôi duyệt; theo dõi: bảng chưa mở), còn các ô trạng thái =
+        số bảng ở trạng thái đó trong hộp đang xem.
+      */
+      Promise.all([
+        count(leadInboxFilter(actor.id, 'PENDING')),
+        count({
+          participants: {
+            $elemMatch: { userId: actor.id, role: 'INFORM', seenAt: null },
+          },
+          status: { $ne: 'DRAFT' },
+        }),
+        count(boxFilter('PENDING')),
+        count(boxFilter('APPROVED')),
+        count(boxFilter('RETURNED')),
+        count(boxFilter()),
+      ]).then(([lead, inform, pending, approved, returned, all]) => ({
+        boxes: { LEAD: lead, INFORM: inform },
+        statuses: {
+          PENDING: pending,
+          APPROVED: approved,
+          RETURNED: returned,
+          ALL: all,
+        },
+      })),
     ]);
     const labels = await departmentLabels(
       this.departmentModel,
@@ -420,12 +449,16 @@ export class TeamReportCommendationService implements OnModuleInit {
         /** Đội theo dõi đã mở bản này chưa. */
         seen: box === 'LEAD' ? true : !!this.participantOf(row, actor)?.seenAt,
       })),
+      counts,
       meta: {
         page,
         limit,
         total,
         totalPages: Math.max(1, Math.ceil(total / limit)),
       },
+      /* Có `success` thì TransformInterceptor trả nguyên khối như đã dựng;
+         thiếu nó, interceptor gói lại chỉ còn message/data/meta - `counts` mất. */
+      success: true,
     };
   }
 
