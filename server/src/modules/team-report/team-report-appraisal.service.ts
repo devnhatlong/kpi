@@ -218,16 +218,10 @@ export class TeamReportAppraisalService {
     /* Chỉ bảng CẤP PHÒNG - bảng của các đội gửi trưởng phòng là bản nội bộ
        trong phòng, chưa qua trưởng phòng tổng hợp nên không phải đề xuất
        chính thức gửi các đội PV01. */
-    const phong = await this.levelModel
-      .findOne({ code: 'PHONG' })
-      .select('_id');
-    const phongDepartments = phong
-      ? await this.departmentModel.find({ levelId: phong._id }).select('_id')
-      : [];
     const sheets = await this.commendationModel
       .find({
         periodMonth,
-        departmentId: { $in: phongDepartments.map((dept) => dept._id) },
+        departmentId: { $in: await this.phongDepartmentIds() },
         status: { $ne: 'DRAFT' },
         $or: [
           { 'praises.departmentIds': { $in: objectIds } },
@@ -267,6 +261,48 @@ export class TeamReportAppraisalService {
       push(sheet.criticisms, 'criticisms');
     }
     return result;
+  }
+
+  /** Id các đơn vị PHÒNG (bảng biểu dương cấp phòng mới tính). */
+  private async phongDepartmentIds() {
+    const phong = await this.levelModel
+      .findOne({ code: 'PHONG' })
+      .select('_id');
+    if (!phong) return [];
+    return (
+      await this.departmentModel.find({ levelId: phong._id }).select('_id')
+    ).map((dept) => dept._id);
+  }
+
+  /**
+   * Đơn vị được NÊU TÊN trong bảng biểu dương / phê bình cấp phòng cùng tháng
+   * gửi tới tài khoản này (chủ trì, duyệt cuối hoặc theo dõi) - chờ duyệt hay
+   * đã duyệt đều tính, chỉ bỏ nháp. Đây là nguồn thứ hai đưa đơn vị vào bảng
+   * thẩm định, bên cạnh báo cáo tháng tôi đã duyệt.
+   */
+  private async commendationUnitIds(
+    actorId: Types.ObjectId,
+    periodMonth: string,
+  ): Promise<string[]> {
+    const sheets = await this.commendationModel
+      .find({
+        periodMonth,
+        departmentId: { $in: await this.phongDepartmentIds() },
+        status: { $ne: 'DRAFT' },
+        $or: [
+          { recipientId: actorId },
+          { finalRecipientId: actorId },
+          { 'participants.userId': actorId },
+        ],
+      })
+      .select('praises.departmentIds criticisms.departmentIds');
+    const ids = new Set<string>();
+    for (const sheet of sheets) {
+      for (const row of [...sheet.praises, ...sheet.criticisms]) {
+        for (const id of row.departmentIds) ids.add(String(id));
+      }
+    }
+    return [...ids];
   }
 
   /** Cổng menu: được lập bảng / được nhận bảng. */
@@ -309,11 +345,16 @@ export class TeamReportAppraisalService {
       periodMonth,
     });
     const hints = await this.selfScoreHints(actor.id, periodMonth);
+    /* Hai nguồn đơn vị vào bảng (user chốt 2026-10-18): báo cáo tháng tôi đã
+       duyệt, VÀ đơn vị được nêu tên trong bảng biểu dương / phê bình cấp phòng
+       gửi tới tôi cùng tháng - bảng đó chờ duyệt hay đã duyệt đều tính. */
+    const mentioned = await this.commendationUnitIds(actor.id, periodMonth);
+    const candidateIds = [...new Set([...Object.keys(hints), ...mentioned])];
     const labels = await departmentLabels(this.departmentModel, [
-      ...Object.keys(hints),
+      ...candidateIds,
       ...(sheet?.units ?? []).map((unit) => unit.departmentId),
     ]);
-    const approved = Object.keys(hints).map((id) => ({
+    const approved = candidateIds.map((id) => ({
       id,
       name: labels.get(id) ?? '',
     }));
@@ -343,7 +384,11 @@ export class TeamReportAppraisalService {
           maxScore: item.maxScore,
         })),
         /** Đơn vị tôi đã duyệt báo cáo tháng - nguồn thêm lại đơn vị đã bỏ. */
-        suggestedUnits: approved.map((unit) => ({ ...unit, approved: true })),
+        /** `approved` = đã có báo cáo tháng tôi duyệt (có điểm tự chấm). */
+        suggestedUnits: approved.map((unit) => ({
+          ...unit,
+          approved: unit.id in hints,
+        })),
         /** Bảng sẽ trình tới đâu (luồng APPRAISAL) - để hộp trình nói rõ. */
         route: {
           units: await this.routing.unitsFor('APPRAISAL', userId),
@@ -398,9 +443,11 @@ export class TeamReportAppraisalService {
       .select('_id');
     const known = new Set(existing.map((dept) => String(dept._id)));
     const hints = await this.selfScoreHints(actor.id, periodMonth);
-    // Chỉ đơn vị có báo cáo tháng tôi đã duyệt (hoặc đã nằm sẵn trong bảng).
+    // Đơn vị có báo cáo tháng tôi đã duyệt, được nêu trong bảng biểu dương /
+    // phê bình gửi tới tôi, hoặc đã nằm sẵn trong bảng.
     const allowed = new Set([
       ...Object.keys(hints),
+      ...(await this.commendationUnitIds(actor.id, periodMonth)),
       ...(sheet?.units ?? []).map((unit) => String(unit.departmentId)),
     ]);
     /* Tự chấm KHÔNG nhận từ client: là tổng điểm trên báo cáo tháng đơn vị
@@ -426,7 +473,7 @@ export class TeamReportAppraisalService {
       }
       if (!allowed.has(unit.departmentId)) {
         throw new BadRequestException(
-          `"${labels.get(unit.departmentId)}" chưa có báo cáo tháng do bạn duyệt - không đưa vào bảng thẩm định được.`,
+          `"${labels.get(unit.departmentId)}" chưa có báo cáo tháng do bạn duyệt, cũng không có trong bảng biểu dương, phê bình gửi tới bạn - không đưa vào bảng thẩm định được.`,
         );
       }
       if (seen.has(unit.departmentId)) {

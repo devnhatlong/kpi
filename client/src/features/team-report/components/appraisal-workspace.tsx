@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { CountBadge } from "@/components/common/count-badge";
 import { SearchableSelect } from "@/components/common/searchable-select";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
@@ -124,6 +125,9 @@ export function AppraisalWorkspace({
     [units],
   );
   const doneCount = rows.filter((row) => unitComplete(row.unit)).length;
+  const adjustedCount = rows.filter(
+    ({ totals }) => totals.bonusTotal > 0 || totals.penaltyTotal > 0,
+  ).length;
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -225,12 +229,16 @@ export function AppraisalWorkspace({
       <div className="mx-auto max-w-xl space-y-3 rounded-lg border border-dashed px-4 py-10 text-center">
         <p className="font-medium">Chưa có đơn vị nào để thẩm định</p>
         <p className="text-sm text-muted-foreground">
-          Bảng chỉ gồm đơn vị có{" "}
+          Đơn vị tự vào bảng khi có{" "}
           <strong className="text-foreground">
             báo cáo tháng do chính tài khoản này duyệt
           </strong>
-          , kèm sẵn điểm tự chấm. Tháng này bạn chưa duyệt báo cáo tháng nào -
-          duyệt ở mục Báo cáo tổng hợp → Duyệt báo cáo, đơn vị sẽ tự hiện ở đây.
+          , hoặc được{" "}
+          <strong className="text-foreground">
+            nêu tên trong bảng biểu dương, phê bình
+          </strong>{" "}
+          các phòng gửi tới bạn tháng này. Tháng này chưa có đơn vị nào như
+          vậy.
         </p>
         {editable && missingSuggestions.length ? (
           <AddUnitPicker options={missingSuggestions} onPick={addUnit} />
@@ -245,7 +253,8 @@ export function AppraisalWorkspace({
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
           <span>
             <strong className="font-semibold">{pendingApproved.length}</strong>{" "}
-            đơn vị vừa được duyệt báo cáo tháng, chưa có trong bảng.
+            đơn vị mới (có báo cáo tháng bạn vừa duyệt, hoặc được nêu trong
+            bảng biểu dương, phê bình), chưa có trong bảng.
           </span>
           <Button
             type="button"
@@ -336,13 +345,30 @@ export function AppraisalWorkspace({
               onChange={setFilter}
               className="w-full"
               items={[
-                { value: "ALL" as const, label: `Tất cả (${units.length})` },
+                { value: "ALL" as const, label: "Tất cả", count: units.length },
                 {
                   value: "TODO" as const,
-                  label: `Chưa xong (${units.length - doneCount})`,
+                  label: "Chưa xong",
+                  count: units.length - doneCount,
                 },
-                { value: "ADJUSTED" as const, label: "Có cộng/trừ" },
-              ]}
+                {
+                  value: "ADJUSTED" as const,
+                  label: "Có cộng/trừ",
+                  count: adjustedCount,
+                },
+              ].map((item) => ({
+                value: item.value,
+                label: (
+                  // Huy hiệu đỏ như các hộp đến; số 0 thì ẩn.
+                  <span className="inline-flex items-center">
+                    {item.label}
+                    <CountBadge
+                      count={item.count}
+                      label={`${item.count} đơn vị ${item.label.toLowerCase()}`}
+                    />
+                  </span>
+                ),
+              }))}
             />
             <ul
               className="max-h-[32rem] divide-y overflow-y-auto rounded-md border lg:max-h-[calc(100vh-18rem)]"
@@ -1188,7 +1214,9 @@ function UnitEditor({
                 . Không sửa ở đây; cần điều chỉnh thì cộng / trừ bên dưới.
               </>
             ) : (
-              "Lấy từ báo cáo tháng đơn vị đã trình lúc lập bảng."
+              /* Đơn vị vào bảng từ bảng biểu dương, phê bình - chưa có báo cáo
+                 tháng được duyệt nên chưa có điểm tự chấm. */
+              "Chưa có báo cáo tháng được duyệt - điểm tự chấm sẽ tự điền khi bạn duyệt báo cáo tháng của đơn vị. Có thể chuẩn bị cộng / trừ trước; trình được khi đã có điểm tự chấm."
             )}
           </p>
         </div>
