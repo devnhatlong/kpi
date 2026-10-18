@@ -380,7 +380,7 @@ export async function exportTeamReportToExcel(input: TeamReportExportInput) {
     sheet.mergeCells(cursor, 1, cursor, widest);
     const noteCell = sheet.getCell(cursor, 1);
     noteCell.value = `Ghi chú: ${input.note.trim()}`;
-    noteCell.alignment = { wrapText: true, vertical: "top" };
+    noteCell.alignment = { wrapText: true, vertical: "middle" };
     cursor += 1;
   }
   cursor += 1;
@@ -445,7 +445,7 @@ export async function exportTeamReportToExcel(input: TeamReportExportInput) {
                       ? Number(String(raw).replace(",", "."))
                       : String(raw ?? "");
           cell.alignment = {
-            vertical: "top",
+            vertical: "middle",
             wrapText: true,
             horizontal:
               column.semanticKey === "criterion" || column.dataType === "text"
@@ -559,14 +559,14 @@ export async function exportTeamReportToExcel(input: TeamReportExportInput) {
       if (multiUnit) {
         const unitCell = sheet.getCell(cursor, 1);
         unitCell.value = row.departmentName ?? "";
-        unitCell.alignment = { vertical: "top", wrapText: true };
+        unitCell.alignment = { vertical: "middle", wrapText: true };
         setOutlineBorder(unitCell);
       }
       visible.forEach((column, colIndex) => {
         const cell = sheet.getCell(cursor, colIndex + 1 + unitOffset);
         cell.value = cellValue(row, column, index + 1, entry);
         cell.alignment = {
-          vertical: "top",
+          vertical: "middle",
           wrapText: true,
           horizontal:
             column.dataType === "number" || column.semanticKey === "stt"
@@ -774,7 +774,7 @@ export async function exportTeamReportToExcel(input: TeamReportExportInput) {
         }
         const cell = sheet.getCell(cursor + index, col1);
         cell.value = text;
-        cell.alignment = { horizontal: "center" };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
         if (index === 0) cell.font = { bold: true };
       });
     };

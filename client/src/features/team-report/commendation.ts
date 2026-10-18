@@ -101,6 +101,8 @@ export type CommendationIncomingData = CommendationSheet & {
   criteria: Array<{ id: string; name: string }>;
   viewerRole: "RECIPIENT" | "COORDINATOR" | "INFORMED";
   canDecide: boolean;
+  /** Người chốt bảng - trả lại được cả khi bảng đã duyệt. */
+  canReturnApproved?: boolean;
 };
 
 export type CommendationInboxBox = "LEAD" | "INFORM";
@@ -253,6 +255,26 @@ export async function fetchCommendationInbox(query: {
   });
   const list = await unwrapPaginated(Promise.resolve(response));
   return { ...list, counts: response.data.counts ?? null };
+}
+
+/** Toàn bộ bảng trong hộp đến đang lọc, đủ dòng - để xuất Excel tổng hợp. */
+export function fetchCommendationInboxExport(query: {
+  box: CommendationInboxBox;
+  status?: TeamReportDayStatus | "";
+}) {
+  return unwrapData(
+    api.get<
+      ApiResponse<{
+        criteria: Array<{ id: string; name: string }>;
+        sheets: CommendationSheet[];
+      }>
+    >("/team-report/commendations/incoming/export", {
+      params: {
+        box: query.box,
+        ...(query.status ? { status: query.status } : {}),
+      },
+    }),
+  );
 }
 
 export function fetchCommendationIncoming(id: string) {

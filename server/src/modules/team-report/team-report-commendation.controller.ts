@@ -50,6 +50,17 @@ export class TeamReportCommendationController {
     return this.service.inbox(user.uid, query);
   }
 
+  @ApiOperation({
+    summary: 'Toàn bộ bảng trong hộp đến đang lọc - để xuất Excel tổng hợp',
+  })
+  @Get('incoming/export')
+  inboxExport(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: TeamReportAdjustmentInboxQueryDto,
+  ) {
+    return this.service.inboxExport(user.uid, query);
+  }
+
   @ApiOperation({ summary: 'Mở một bảng biểu dương, phê bình gửi tới tôi' })
   @Get('incoming/:id')
   incomingDetail(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {

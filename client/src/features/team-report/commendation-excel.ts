@@ -25,6 +25,8 @@ export type CommendationExportRow = {
   content: string;
   evidence: string;
   note: string;
+  /** Đơn vị đề xuất - chỉ có ở bản xuất tổng hợp nhiều đơn vị. */
+  source?: string;
 };
 
 export type CommendationExportInput = {
@@ -45,14 +47,17 @@ const HEAD_FILL: ExcelJS.Fill = {
   fgColor: { argb: "FFE2E8F0" },
 };
 
-const LAST_COL = 6;
-
-export async function exportCommendationToExcel(
+/**
+ * Ghi MỘT trang tính theo mẫu. `withSource` = bản tổng hợp nhiều đơn vị: thêm
+ * cột cuối "Đơn vị đề xuất" để biết dòng nào của phòng nào.
+ */
+function writeSheet(
+  workbook: ExcelJS.Workbook,
   input: CommendationExportInput,
+  withSource: boolean,
 ) {
   const [y, m] = input.periodMonth.split("-");
-  const workbook = new ExcelJS.Workbook();
-  workbook.created = new Date();
+  const LAST_COL = withSource ? 7 : 6;
   const sheet = workbook.addWorksheet(sheetName(`Thang ${m}-${y}`, "Bang"), {
     pageSetup: {
       paperSize: 9,
@@ -62,7 +67,7 @@ export async function exportCommendationToExcel(
       fitToHeight: 0,
     },
   });
-  [5, 30, 24, 50, 32, 16].forEach((width, index) => {
+  [5, 30, 24, 50, 32, 16, 18].slice(0, LAST_COL).forEach((width, index) => {
     sheet.getColumn(index + 1).width = width;
   });
 
@@ -116,7 +121,7 @@ export async function exportCommendationToExcel(
     const cell = sheet.getCell(row, col);
     cell.value = value;
     cell.alignment = {
-      vertical: "top",
+      vertical: "middle",
       wrapText: true,
       horizontal: col === 1 ? "center" : undefined,
     };
@@ -139,6 +144,9 @@ export async function exportCommendationToExcel(
     ],
     ["Căn cứ, tài liệu kiểm chứng", 5, 5],
     ["Ghi chú", 6, 6],
+    ...(withSource
+      ? ([["Đơn vị đề xuất", 7, 7]] as Array<[string, number, number]>)
+      : []),
   ]);
   cursor += 1;
 
@@ -159,6 +167,7 @@ export async function exportCommendationToExcel(
       body(top + i, 4, row?.content ?? "");
       body(top + i, 5, row?.evidence ?? "");
       body(top + i, 6, row?.note ?? "");
+      if (withSource) body(top + i, 7, row?.source ?? "");
     }
     for (const [col, value] of [
       [1, index + 1],
@@ -187,6 +196,9 @@ export async function exportCommendationToExcel(
     ],
     ["Căn cứ, tài liệu kiểm chứng", 5, 5],
     ["Ghi chú", 6, 6],
+    ...(withSource
+      ? ([["Đơn vị đề xuất", 7, 7]] as Array<[string, number, number]>)
+      : []),
   ]);
   cursor += 1;
   const criticisms = input.criticisms.length
@@ -199,14 +211,73 @@ export async function exportCommendationToExcel(
     body(cursor, 3, row?.content ?? "");
     body(cursor, 5, row?.evidence ?? "");
     body(cursor, 6, row?.note ?? "");
+    if (withSource) body(cursor, 7, row?.source ?? "");
     cursor += 1;
   });
+}
 
-  const buffer = await workbook.xlsx.writeBuffer();
+function download(buffer: ExcelJS.Buffer, name: string) {
   saveAs(
     new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }),
-    `${slugify(`bieu-duong-phe-binh-${m}-${y}-${input.unitName}`)}.xlsx`,
+    `${slugify(name)}.xlsx`,
+  );
+}
+
+export async function exportCommendationToExcel(
+  input: CommendationExportInput,
+) {
+  const [y, m] = input.periodMonth.split("-");
+  const workbook = new ExcelJS.Workbook();
+  workbook.created = new Date();
+  writeSheet(workbook, input, false);
+  download(
+    await workbook.xlsx.writeBuffer(),
+    `bieu-duong-phe-binh-${m}-${y}-${input.unitName}`,
+  );
+}
+
+/**
+ * Xuất TỔNG HỢP nhiều bảng (hộp đến): mỗi THÁNG một trang tính, dòng của mọi
+ * đơn vị gộp chung theo mẫu - biểu dương vẫn gom theo nhóm nội dung - kèm cột
+ * "Đơn vị đề xuất".
+ */
+export async function exportCommendationsCombined(input: {
+  criteria: Array<{ id: string; name: string }>;
+  sheets: Array<{
+    periodMonth: string;
+    departmentName: string;
+    praises: CommendationExportRow[];
+    criticisms: CommendationExportRow[];
+  }>;
+  /** Ghi ở dòng "Đơn vị:" - VD "Tất cả đơn vị · Đã duyệt". */
+  scopeLabel: string;
+}) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.created = new Date();
+  const months = [...new Set(input.sheets.map((s) => s.periodMonth))].sort(
+    (a, b) => b.localeCompare(a),
+  );
+  for (const month of months) {
+    const sheets = input.sheets.filter((s) => s.periodMonth === month);
+    const tag = (rows: CommendationExportRow[], source: string) =>
+      rows.map((row) => ({ ...row, source }));
+    writeSheet(
+      workbook,
+      {
+        periodMonth: month,
+        unitName: `${input.scopeLabel} (${sheets.length} đơn vị)`,
+        criteria: input.criteria,
+        praises: sheets.flatMap((s) => tag(s.praises, s.departmentName)),
+        criticisms: sheets.flatMap((s) => tag(s.criticisms, s.departmentName)),
+      },
+      true,
+    );
+  }
+  const label = months.length === 1 ? months[0]! : "nhieu-thang";
+  download(
+    await workbook.xlsx.writeBuffer(),
+    `bieu-duong-phe-binh-tong-hop-${label}`,
   );
 }

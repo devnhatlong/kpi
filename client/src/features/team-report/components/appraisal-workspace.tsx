@@ -9,7 +9,9 @@ import {
   FileDown,
   Loader2,
   Plus,
+  Save,
   Search,
+  Send,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -34,10 +36,13 @@ import {
   hintText,
   unitComplete,
   unitEditable,
+  unitSaved,
   type AppraisalCommendationHint,
   type AppraisalCommendationHints,
   type AppraisalComposerData,
   type AppraisalCriterion,
+  type AppraisalSelfClaim,
+  type AppraisalSelfClaims,
   type AppraisalUnit,
 } from "@/features/team-report/appraisal";
 import {
@@ -56,7 +61,15 @@ import { Badge } from "@/components/ui/badge";
 import { formatServerHm } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
-type Filter = "ALL" | "TODO" | "ADJUSTED";
+type Filter = "ALL" | "TODO" | "SAVED";
+
+type UnitActions = {
+  busy: boolean;
+  onSave: (departmentId: string) => void;
+  onSend: (departmentId: string) => void;
+  /** Lý do chưa trình được; null = trình được (hoặc đã trình). */
+  sendBlocker: (unit: AppraisalUnit) => string | null;
+};
 type Mode = "UNIT" | "TABLE";
 
 const fmt = (value: number | null | undefined) =>
@@ -84,6 +97,9 @@ export function AppraisalWorkspace({
   newlyApprovedIds = [],
   exportInfo,
   commendations = {},
+  selfClaims,
+  savedUnits,
+  unitActions,
 }: {
   units: AppraisalUnit[];
   criteria: AppraisalCriterion[];
@@ -96,6 +112,12 @@ export function AppraisalWorkspace({
   exportInfo?: Omit<AppraisalExportInput, "units" | "criteria">;
   /** Biểu dương / phê bình các phòng gửi cùng tháng, theo id đơn vị. */
   commendations?: AppraisalCommendationHints;
+  /** Đơn vị tự nhận (Trục 2) - không truyền thì bảng không có cột đó. */
+  selfClaims?: AppraisalSelfClaims;
+  /** Đơn vị trong bản đã lưu - để lọc "Đã lưu" và đánh dấu "Chưa lưu". */
+  savedUnits?: AppraisalUnit[];
+  /** Lưu / trình RIÊNG đơn vị đang mở - bày ở cuối khối đơn vị. */
+  unitActions?: UnitActions;
 }) {
   const [mode, setMode] = useState<Mode>("UNIT");
   const [exporting, setExporting] = useState(false);
@@ -107,7 +129,7 @@ export function AppraisalWorkspace({
     setExporting(true);
     try {
       await exportAppraisalToExcel(
-        { ...exportInfo, criteria, units: picked },
+        { ...exportInfo, criteria, units: picked, selfClaims },
         { single },
       );
     } catch (error) {
@@ -121,22 +143,23 @@ export function AppraisalWorkspace({
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const rows = useMemo(
-    () => units.map((unit) => ({ unit, totals: appraisalTotals(unit) })),
-    [units],
+    () =>
+      units.map((unit) => ({
+        unit,
+        totals: appraisalTotals(unit),
+        saved: savedUnits ? unitSaved(unit, savedUnits) : true,
+      })),
+    [units, savedUnits],
   );
   const doneCount = rows.filter((row) => unitComplete(row.unit)).length;
-  const adjustedCount = rows.filter(
-    ({ totals }) => totals.bonusTotal > 0 || totals.penaltyTotal > 0,
-  ).length;
+  const savedCount = rows.filter((row) => row.saved).length;
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows.filter(({ unit, totals }) => {
+    return rows.filter(({ unit, saved }) => {
       if (q && !unit.departmentName.toLowerCase().includes(q)) return false;
       if (filter === "TODO") return !unitComplete(unit);
-      if (filter === "ADJUSTED") {
-        return totals.bonusTotal > 0 || totals.penaltyTotal > 0;
-      }
+      if (filter === "SAVED") return saved;
       return true;
     });
   }, [rows, query, filter]);
@@ -351,11 +374,15 @@ export function AppraisalWorkspace({
                   label: "Chưa xong",
                   count: units.length - doneCount,
                 },
-                {
-                  value: "ADJUSTED" as const,
-                  label: "Có cộng/trừ",
-                  count: adjustedCount,
-                },
+                ...(savedUnits
+                  ? [
+                      {
+                        value: "SAVED" as const,
+                        label: "Đã lưu",
+                        count: savedCount,
+                      },
+                    ]
+                  : []),
               ].map((item) => ({
                 value: item.value,
                 label: (
@@ -379,7 +406,7 @@ export function AppraisalWorkspace({
                   Không có đơn vị nào khớp.
                 </li>
               ) : null}
-              {visible.map(({ unit, totals }) => {
+              {visible.map(({ unit, totals, saved }) => {
                 const active =
                   selected?.unit.departmentId === unit.departmentId;
                 const complete = unitComplete(unit);
@@ -412,6 +439,13 @@ export function AppraisalWorkspace({
                           {unit.departmentName}
                         </span>
                         <UnitStatusBadge unit={unit} className="mt-1" />
+                        {/* Sửa rồi mà chưa bấm Lưu nháp - nhắc ngay ở danh
+                            sách, khỏi phải nhớ đã đụng vào đơn vị nào. */}
+                        {editable && !saved ? (
+                          <span className="mt-1 block text-xs font-medium text-amber-700 dark:text-amber-400">
+                            Chưa lưu
+                          </span>
+                        ) : null}
                         <CommendationCount
                           hint={commendations[unit.departmentId]}
                         />
@@ -455,6 +489,10 @@ export function AppraisalWorkspace({
               editable={editable && unitEditable(selected.unit)}
               hint={hints[selected.unit.departmentId]}
               commendation={commendations[selected.unit.departmentId]}
+              saved={selected.saved}
+              actions={unitActions}
+              showClaims={selfClaims !== undefined}
+              claims={selfClaims?.[selected.unit.departmentId]}
               onChange={(next) => patchUnit(selected.unit.departmentId, next)}
               onRemove={
                 // Đã trình một lần thì không bỏ khỏi bảng được nữa.
@@ -697,38 +735,12 @@ function SummaryTable({
 
 /* Cột cố định cho từng loại dòng - ô điểm và ô chữ cùng cao 36px, thẳng hàng
    với nút xoá; ô chữ tự giãn khi gõ dài (field-sizing). */
-const BONUS_GRID = "sm:grid-cols-[1fr_8rem_2.25rem]";
 const PENALTY_GRID = "sm:grid-cols-[1fr_8rem_2.25rem]";
 /* Ô trống: cao đúng 36px như ô điểm (placeholder dài không được kéo ô ra hai
    dòng); có chữ rồi mới tự giãn theo nội dung. */
 const TEXT_CELL =
   "min-h-9 resize-none overflow-hidden py-[7px] leading-5 [field-sizing:content] placeholder-shown:h-9 placeholder-shown:[field-sizing:fixed] placeholder:truncate";
 
-/** Tiêu đề cột của một nhóm dòng - ô trống không nhãn thì không ai biết gõ gì. */
-function RowHeads({
-  columns,
-  template,
-  trailing,
-}: {
-  columns: string[];
-  template: string;
-  trailing: boolean;
-}) {
-  return (
-    <div
-      aria-hidden="true"
-      className={cn(
-        "hidden gap-2 text-xs font-medium text-muted-foreground sm:grid",
-        template,
-      )}
-    >
-      {columns.map((title) => (
-        <span key={title}>{title}</span>
-      ))}
-      {trailing ? <span /> : null}
-    </div>
-  );
-}
 
 /**
  * Chỉ giữ chữ số và MỘT dấu thập phân ("," hoặc ".") - gõ chữ (kể cả bộ gõ
@@ -874,6 +886,68 @@ function PenaltyRow({
   );
 }
 
+/** Ô "Tiêu chí cộng điểm" - gộp dọc hết các dòng con của tiêu chí. */
+function GroupHead({
+  group,
+  rowSpan,
+}: {
+  group: { name: string; maxScore: number | null };
+  rowSpan: number;
+}) {
+  return (
+    <td rowSpan={rowSpan} className="border-r px-2.5 py-2">
+      <p className="text-pretty font-medium leading-snug">{group.name}</p>
+      {group.maxScore !== null ? (
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Tối đa {formatScore(group.maxScore)} điểm
+        </p>
+      ) : null}
+    </td>
+  );
+}
+
+/**
+ * Ô "Đơn vị tự nhận": các việc đơn vị khai ở Trục 2 đúng nội dung này, mỗi
+ * việc kèm điểm tự chấm; dưới cùng là tổng tự nhận (đã chặn trần tiêu chí).
+ * Chỉ đọc - người thẩm định đối chiếu rồi ghi kết quả công nhận bên cạnh.
+ */
+function ClaimCell({
+  claim,
+  rowSpan,
+}: {
+  claim?: AppraisalSelfClaim;
+  rowSpan: number;
+}) {
+  return (
+    <td rowSpan={rowSpan} className="border-r bg-muted/20 px-2.5 py-2">
+      {claim?.lines.length ? (
+        <div className="space-y-2">
+          <ul className="space-y-1.5">
+            {claim.lines.map((line, index) => (
+              // Chỉ sản phẩm - tên nhiệm vụ không cần cho người thẩm định.
+              <li key={index} className="break-words text-xs leading-snug">
+                {line.product.trim() || (
+                  <span className="italic text-muted-foreground">
+                    (chưa ghi sản phẩm)
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="border-t pt-1.5 text-xs font-semibold tabular-nums">
+            Tự chấm{" "}
+            <span className="text-emerald-700 dark:text-emerald-400">
+              +{formatScore(claim.total)}
+            </span>
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs italic text-muted-foreground">Không nhận.</p>
+      )}
+    </td>
+  );
+}
+
 function UnitEditor({
   unit,
   criteria,
@@ -886,13 +960,23 @@ function UnitEditor({
   positionLabel,
   onExport,
   commendation,
+  showClaims = false,
+  claims,
+  saved,
+  actions,
 }: {
+  saved: boolean;
+  actions?: UnitActions;
   unit: AppraisalUnit;
   criteria: AppraisalCriterion[];
   editable: boolean;
   hint?: { score: number; maxScore: number; title: string };
   /** Biểu dương / phê bình cùng tháng nhắc tới đơn vị này. */
   commendation?: AppraisalCommendationHints[string];
+  /** Bày cột "Đơn vị tự nhận" (chỉ bên lập bảng có dữ liệu này). */
+  showClaims?: boolean;
+  /** Đơn vị tự nhận theo id tiêu chí. */
+  claims?: Record<string, AppraisalSelfClaim>;
   onChange: (next: AppraisalUnit) => void;
   onRemove?: () => void;
   onPrev?: () => void;
@@ -904,6 +988,11 @@ function UnitEditor({
   const totals = appraisalTotals(unit);
   const set = (patch: Partial<AppraisalUnit>) =>
     onChange({ ...unit, ...patch });
+  // null = báo cáo tháng không có dòng Trục 2 nào khớp tiêu chí.
+  const claimList = Object.values(claims ?? {});
+  const claimTotal = claimList.length
+    ? claimList.reduce((sum, claim) => sum + claim.total, 0)
+    : null;
 
   /* Tiêu chí theo danh mục, cộng thêm tiêu chí cũ chỉ còn trong bản đã lưu
      (danh mục đổi sau khi lập) - không để mất dòng nào. */
@@ -1313,300 +1402,397 @@ function UnitEditor({
             Cộng điểm và trừ điểm theo tiêu chí
           </h4>
           <p className="text-xs text-muted-foreground">
-            Như phụ lục giấy: mỗi tiêu chí có hai cột độc lập - cùng một tiêu
-            chí vừa cộng vừa trừ được. Mỗi thành tích / vi phạm một dòng. Điểm
-            cộng của một tiêu chí chỉ tính tới mức tối đa; điểm trừ không trần.
+            Bố cục như phụ lục giấy. Cột &quot;Đơn vị tự nhận&quot; lấy từ Trục
+            2 của báo cáo tháng, chỉ đọc. Mỗi thành tích / vi phạm một dòng; điểm
+            cộng của một tiêu chí chỉ tính tới mức tối đa, điểm trừ không trần.
           </p>
         </div>
-        <div className="divide-y rounded-md border">
-          {groups.map((group) => {
-            const bonuses = unit.bonuses
-              .map((bonus, index) => ({ bonus, index }))
-              .filter(({ bonus }) => bonus.itemId === group.id);
-            const penalties = unit.penalties
-              .map((penalty, index) => ({ penalty, index }))
-              .filter(({ penalty }) => penalty.itemId === group.id);
-            /* Đang sửa mà tiêu chí chưa có dòng nào thì bày sẵn MỘT dòng trống
-               (index -1) ở cả hai bên - gõ vào là thành dòng thật. */
-            const shownBonuses = editable
-              ? bonuses.length
-                ? bonuses
-                : [
-                    {
-                      bonus: {
-                        itemId: group.id,
-                        itemName: group.name,
-                        maxScore: group.maxScore,
-                        score: null,
-                        evidence: "",
+        {/* Bảng rộng hơn khung trên màn nhỏ thì cuộn ngang TRONG khung, không
+            đẩy cả trang. */}
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full min-w-[60rem] border-collapse text-sm">
+            <thead className="bg-muted/50 text-xs text-muted-foreground">
+              <tr>
+                <th
+                  rowSpan={2}
+                  className="w-[15%] border-b border-r px-2.5 py-2 text-left font-medium"
+                >
+                  Tiêu chí cộng điểm
+                </th>
+                <th
+                  colSpan={showClaims ? 3 : 2}
+                  className="border-b border-r px-2.5 py-1.5 text-center font-semibold text-emerald-800 dark:text-emerald-300"
+                >
+                  Cộng điểm
+                </th>
+                <th
+                  colSpan={2}
+                  className="border-b px-2.5 py-1.5 text-center font-semibold text-rose-800 dark:text-rose-300"
+                >
+                  Trừ điểm
+                </th>
+              </tr>
+              <tr>
+                {showClaims ? (
+                  <th className="w-[19%] border-b border-r px-2.5 py-1.5 text-left font-medium">
+                    Đơn vị tự nhận
+                  </th>
+                ) : null}
+                <th className="border-b border-r px-2.5 py-1.5 text-left font-medium">
+                  Kết quả thẩm định, công nhận
+                </th>
+                <th className="w-32 border-b border-r px-2.5 py-1.5 text-left font-medium">
+                  Điểm cộng sau thẩm định
+                </th>
+                <th className="border-b border-r px-2.5 py-1.5 text-left font-medium">
+                  Cụ thể nội dung trừ điểm
+                </th>
+                <th className="w-32 border-b px-2.5 py-1.5 text-left font-medium">
+                  Điểm trừ
+                </th>
+              </tr>
+            </thead>
+            {groups.map((group) => {
+              const bonuses = unit.bonuses
+                .map((bonus, index) => ({ bonus, index }))
+                .filter(({ bonus }) => bonus.itemId === group.id);
+              const penalties = unit.penalties
+                .map((penalty, index) => ({ penalty, index }))
+                .filter(({ penalty }) => penalty.itemId === group.id);
+              /* Đang sửa mà tiêu chí chưa có dòng nào thì bày sẵn MỘT dòng
+                 trống (index -1) ở cả hai bên - gõ vào là thành dòng thật. */
+              const shownBonuses: Array<{
+                bonus: AppraisalUnit["bonuses"][number] | null;
+                index: number;
+              }> = editable
+                ? bonuses.length
+                  ? bonuses
+                  : [
+                      {
+                        bonus: {
+                          itemId: group.id,
+                          itemName: group.name,
+                          maxScore: group.maxScore,
+                          score: null,
+                          evidence: "",
+                        },
+                        index: -1,
                       },
-                      index: -1,
-                    },
-                  ]
-              : bonuses.filter(
-                  ({ bonus }) => bonus.score !== null || bonus.evidence.trim(),
-                );
-            const shownPenalties =
-              editable && !penalties.length
-                ? [
-                    {
-                      penalty: {
-                        itemId: group.id,
-                        itemName: group.name,
-                        content: "",
-                        score: null,
+                    ]
+                : bonuses.filter(
+                    ({ bonus }) => bonus.score !== null || bonus.evidence.trim(),
+                  );
+              const shownPenalties: Array<{
+                penalty: AppraisalUnit["penalties"][number] | null;
+                index: number;
+              }> =
+                editable && !penalties.length
+                  ? [
+                      {
+                        penalty: {
+                          itemId: group.id,
+                          itemName: group.name,
+                          content: "",
+                          score: null,
+                        },
+                        index: -1,
                       },
-                      index: -1,
-                    },
-                  ]
-                : penalties;
-            const used = bonuses.reduce(
-              (sum, { bonus }) => sum + (bonus.score ?? 0),
-              0,
-            );
-            const minus = penalties.reduce(
-              (sum, { penalty }) => sum + (penalty.score ?? 0),
-              0,
-            );
-            const over = group.maxScore !== null && used > group.maxScore;
-            return (
-              <div key={group.id} className="space-y-3 p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="min-w-0 flex-1 text-sm font-semibold">
-                    {group.name}
-                    {group.maxScore !== null ? (
-                      <span className="font-normal text-muted-foreground">
-                        {" "}
-                        (tối đa {formatScore(group.maxScore)} điểm)
-                      </span>
-                    ) : null}
-                  </p>
-                  <span className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums">
-                    <span
-                      className={cn(
-                        "rounded-full border px-2 py-0.5",
-                        over
-                          ? "border-destructive text-destructive"
-                          : "border-emerald-300 text-emerald-800 dark:border-emerald-900 dark:text-emerald-300",
-                      )}
-                      title={
-                        over
-                          ? "Vượt mức tối đa - chỉ tính tới mức tối đa của tiêu chí"
-                          : undefined
-                      }
-                    >
-                      +{formatScore(used)}
-                    </span>
-                    <span className="rounded-full border border-rose-300 px-2 py-0.5 text-rose-800 dark:border-rose-900 dark:text-rose-300">
-                      −{formatScore(minus)}
-                    </span>
-                  </span>
-                </div>
-
-                <div className="grid gap-3 xl:grid-cols-2">
-                  {/* ---------------------------------------------- cộng */}
-                  <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50/40 p-2.5 dark:border-emerald-900/60 dark:bg-emerald-950/10">
-                    <p className="flex flex-wrap items-baseline justify-between gap-x-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                      Điểm cộng
-                      {group.maxScore !== null ? (
-                        <span
-                          className={cn(
-                            "font-normal tabular-nums",
-                            over ? "text-destructive" : "text-muted-foreground",
-                          )}
-                        >
-                          {over
-                            ? `Vượt tối đa - chỉ tính ${formatScore(group.maxScore)} điểm`
-                            : `Tổng các dòng tối đa ${formatScore(group.maxScore)} · còn ${formatScore(
-                                Math.max(0, group.maxScore - used),
-                              )}`}
-                        </span>
+                    ]
+                  : penalties;
+              const used = bonuses.reduce(
+                (sum, { bonus }) => sum + (bonus.score ?? 0),
+                0,
+              );
+              const over = group.maxScore !== null && used > group.maxScore;
+              const praises = (commendation?.praises ?? []).filter(
+                (h) => h.itemId === group.id,
+              );
+              const claim = claims?.[group.id];
+              /* Dòng con = dòng cộng thứ i ghép với dòng trừ thứ i, như phụ lục
+                 giấy - hai bên dài ngắn khác nhau thì ô thiếu để trống. */
+              const lineCount = Math.max(
+                shownBonuses.length,
+                shownPenalties.length,
+                1,
+              );
+              const span =
+                lineCount + (praises.length ? 1 : 0) + (editable ? 1 : 0);
+              return (
+                <tbody
+                  key={group.id}
+                  className="border-b last:border-b-0 [&_td]:align-top"
+                >
+                  {praises.length ? (
+                    <tr>
+                      <GroupHead group={group} rowSpan={span} />
+                      {showClaims ? (
+                        <ClaimCell claim={claim} rowSpan={span} />
                       ) : null}
-                    </p>
-                    {/* Soi chiếu: các phòng đề xuất biểu dương đơn vị này ở
-                        đúng nhóm nội dung = tiêu chí này. */}
-                    {(commendation?.praises ?? [])
-                      .filter((h) => h.itemId === group.id)
-                      .map((h) => {
-                        const taken = bonusUsed(h);
-                        return (
-                          <div
-                            key={h.rowId}
-                            className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-dashed border-emerald-300 bg-background px-2.5 py-2 dark:border-emerald-900"
-                          >
-                            <HintText hint={h} label="Đề xuất biểu dương" />
-                            {taken ? (
-                              <span className="shrink-0 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                                Đã đưa vào
-                              </span>
-                            ) : editable ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 shrink-0 bg-background"
-                                onClick={() => addBonusFromHint(h, group)}
-                              >
-                                <Plus className="size-3.5" aria-hidden="true" />
-                                Đưa vào điểm cộng
-                              </Button>
+                      <td colSpan={2} className="border-r px-2 pt-2">
+                        <div className="space-y-1.5">
+                          {praises.map((h) => (
+                            <div
+                              key={h.rowId}
+                              className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-dashed border-emerald-300 bg-emerald-50/40 px-2.5 py-2 dark:border-emerald-900 dark:bg-emerald-950/10"
+                            >
+                              <HintText hint={h} label="Đề xuất biểu dương" />
+                              {bonusUsed(h) ? (
+                                <span className="shrink-0 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                                  Đã đưa vào
+                                </span>
+                              ) : editable ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 shrink-0 bg-background"
+                                  onClick={() => addBonusFromHint(h, group)}
+                                >
+                                  <Plus
+                                    className="size-3.5"
+                                    aria-hidden="true"
+                                  />
+                                  Đưa vào điểm cộng
+                                </Button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td colSpan={2} />
+                    </tr>
+                  ) : null}
+                  {Array.from({ length: lineCount }, (_, line) => {
+                    const b = shownBonuses[line];
+                    const p = shownPenalties[line];
+                    const first = line === 0 && !praises.length;
+                    return (
+                      <tr key={line}>
+                        {first ? (
+                          <>
+                            <GroupHead group={group} rowSpan={span} />
+                            {showClaims ? (
+                              <ClaimCell claim={claim} rowSpan={span} />
                             ) : null}
-                          </div>
-                        );
-                      })}
-                    {shownBonuses.length === 0 ? (
-                      <p className="text-xs italic text-muted-foreground">
-                        Không cộng.
-                      </p>
-                    ) : (
-                      <RowHeads
-                        columns={["Cụ thể nội dung minh chứng", "Điểm cộng"]}
-                        template={BONUS_GRID}
-                        trailing={editable}
-                      />
-                    )}
-                    {shownBonuses.map(({ bonus, index }) => (
-                      <div
-                        key={index}
-                        className={cn("grid items-start gap-2", BONUS_GRID)}
-                      >
-                        <Textarea
-                          value={bonus.evidence}
-                          disabled={!editable}
-                          rows={1}
-                          aria-label={`Minh chứng cộng - ${group.name}`}
-                          placeholder="VD: Hoàn thành 17/27 giao dịch đáng ngờ, vượt mức dẫn đầu cụm thi đua…"
-                          className={cn(TEXT_CELL, "bg-background")}
-                          onChange={(event) =>
-                            patchBonus(
-                              index,
-                              { evidence: event.target.value },
-                              group,
-                            )
-                          }
-                        />
-                        <ScoreInput
-                          label={`Điểm cộng - ${group.name}`}
-                          value={bonus.score}
-                          /* Trần là của CẢ TIÊU CHÍ: dòng này chỉ được phần
-                             còn lại sau các dòng khác cùng tiêu chí. */
-                          max={
-                            group.maxScore === null
-                              ? null
-                              : Math.max(
-                                  0,
-                                  group.maxScore - (used - (bonus.score ?? 0)),
-                                )
-                          }
-                          disabled={!editable}
-                          onCommit={(score) =>
-                            patchBonus(index, { score }, group)
-                          }
-                        />
-                        {editable && index >= 0 ? (
-                          <RemoveRow
-                            label="Bỏ dòng cộng điểm"
-                            onClick={() => removeBonus(index)}
-                          />
+                          </>
                         ) : null}
-                      </div>
-                    ))}
-                    {editable ? (
-                      <AddRow
-                        label="Thêm dòng cộng"
-                        onClick={() =>
-                          set({
-                            bonuses: [
-                              ...unit.bonuses,
-                              {
-                                itemId: group.id,
-                                itemName: group.name,
-                                maxScore: group.maxScore,
-                                score: null,
-                                evidence: "",
-                              },
-                            ],
-                          })
-                        }
-                      />
-                    ) : null}
-                  </div>
+                        <td className="border-r px-2 py-1.5">
+                          {b?.bonus ? (
+                            <Textarea
+                              value={b.bonus.evidence}
+                              disabled={!editable}
+                              rows={1}
+                              aria-label={`Kết quả thẩm định, công nhận - ${group.name}`}
+                              placeholder={
+                                line === 0
+                                  ? "Nội dung công nhận / minh chứng…"
+                                  : undefined
+                              }
+                              className={cn(TEXT_CELL, "bg-background")}
+                              onChange={(event) =>
+                                patchBonus(
+                                  b.index,
+                                  { evidence: event.target.value },
+                                  group,
+                                )
+                              }
+                            />
+                          ) : null}
+                        </td>
+                        <td className="border-r px-2 py-1.5">
+                          {b?.bonus ? (
+                            <div className="flex items-start gap-1">
+                              <ScoreInput
+                                className="min-w-0 flex-1"
+                                label={`Điểm cộng - ${group.name}`}
+                                value={b.bonus.score}
+                                /* Trần là của CẢ TIÊU CHÍ: dòng này chỉ được
+                                   phần còn lại sau các dòng khác. */
+                                max={
+                                  group.maxScore === null
+                                    ? null
+                                    : Math.max(
+                                        0,
+                                        group.maxScore -
+                                          (used - (b.bonus.score ?? 0)),
+                                      )
+                                }
+                                disabled={!editable}
+                                onCommit={(score) =>
+                                  patchBonus(b.index, { score }, group)
+                                }
+                              />
+                              {editable && b.index >= 0 ? (
+                                <RemoveRow
+                                  label="Bỏ dòng cộng điểm"
+                                  onClick={() => removeBonus(b.index)}
+                                />
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="border-r px-2 py-1.5">
+                          {p?.penalty ? (
+                            <Textarea
+                              value={p.penalty.content}
+                              disabled={!editable}
+                              rows={1}
+                              aria-label={`Nội dung trừ - ${group.name}`}
+                              placeholder={
+                                line === 0
+                                  ? "VD: Chậm tiến độ, bị phê bình tại Thông báo số…"
+                                  : undefined
+                              }
+                              className={cn(TEXT_CELL, "bg-background")}
+                              onChange={(event) =>
+                                patchPenalty(
+                                  p.index,
+                                  { content: event.target.value },
+                                  group,
+                                )
+                              }
+                            />
+                          ) : null}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          {p?.penalty ? (
+                            <div className="flex items-start gap-1">
+                              <ScoreInput
+                                className="min-w-0 flex-1"
+                                label={`Điểm trừ - ${group.name}`}
+                                value={p.penalty.score}
+                                disabled={!editable}
+                                onCommit={(score) =>
+                                  patchPenalty(p.index, { score }, group)
+                                }
+                              />
+                              {editable && p.index >= 0 ? (
+                                <RemoveRow
+                                  label="Bỏ dòng trừ điểm"
+                                  onClick={() => removePenalty(p.index)}
+                                />
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {editable ? (
+                    <tr>
+                      <td colSpan={2} className="border-r px-2 pb-2 pt-0.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <AddRow
+                            label="Thêm dòng cộng"
+                            onClick={() =>
+                              set({
+                                bonuses: [
+                                  ...unit.bonuses,
+                                  {
+                                    itemId: group.id,
+                                    itemName: group.name,
+                                    maxScore: group.maxScore,
+                                    score: null,
+                                    evidence: "",
+                                  },
+                                ],
+                              })
+                            }
+                          />
+                          {group.maxScore !== null ? (
+                            <span
+                              className={cn(
+                                "text-xs tabular-nums",
+                                over
+                                  ? "text-destructive"
+                                  : "text-muted-foreground",
+                              )}
+                            >
+                              {over
+                                ? `Vượt tối đa - chỉ tính ${formatScore(group.maxScore)}`
+                                : `Còn ${formatScore(Math.max(0, group.maxScore - used))} / ${formatScore(group.maxScore)}`}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td colSpan={2} className="px-2 pb-2 pt-0.5">
+                        <AddRow
+                          label="Thêm dòng trừ"
+                          onClick={() =>
+                            set({
+                              penalties: [
+                                ...unit.penalties,
+                                {
+                                  itemId: group.id,
+                                  itemName: group.name,
+                                  content: "",
+                                  score: null,
+                                },
+                              ],
+                            })
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              );
+            })}
 
-                  {/* ----------------------------------------------- trừ */}
-                  <div className="space-y-2 rounded-md border border-rose-200 bg-rose-50/40 p-2.5 dark:border-rose-900/60 dark:bg-rose-950/10">
-                    <p className="flex flex-wrap items-baseline justify-between gap-x-2 text-xs font-semibold text-rose-800 dark:text-rose-300">
-                      Điểm trừ
-                      <span className="font-normal text-muted-foreground">
-                        Không giới hạn
-                      </span>
-                    </p>
-                    {shownPenalties.length === 0 ? (
-                      <p className="text-xs italic text-muted-foreground">
-                        Không trừ.
-                      </p>
-                    ) : (
-                      <RowHeads
-                        columns={["Cụ thể nội dung trừ điểm", "Điểm trừ"]}
-                        template={PENALTY_GRID}
-                        trailing={editable}
-                      />
-                    )}
-                    {shownPenalties.map(({ penalty, index }) => (
+            {loosePenalties.length ? (
+              <tbody className="border-t [&_td]:align-top">
+                {loosePenalties.map(({ penalty, index }, line) => (
+                  <tr key={index}>
+                    {line === 0 ? (
+                      <td
+                        rowSpan={loosePenalties.length}
+                        colSpan={showClaims ? 4 : 3}
+                        className="border-r px-2.5 py-2 text-sm font-semibold"
+                      >
+                        Trừ điểm khác
+                      </td>
+                    ) : null}
+                    <td colSpan={2} className="px-2 py-1.5">
                       <PenaltyRow
-                        key={index}
-                        label={group.name}
+                        label="Trừ điểm khác"
                         penalty={penalty}
                         editable={editable}
-                        onPatch={(patch) => patchPenalty(index, patch, group)}
-                        onRemove={
-                          index >= 0 ? () => removePenalty(index) : undefined
-                        }
+                        onPatch={(patch) => patchPenalty(index, patch)}
+                        onRemove={() => removePenalty(index)}
                       />
-                    ))}
-                    {editable ? (
-                      <AddRow
-                        label="Thêm dòng trừ"
-                        onClick={() =>
-                          set({
-                            penalties: [
-                              ...unit.penalties,
-                              {
-                                itemId: group.id,
-                                itemName: group.name,
-                                content: "",
-                                score: null,
-                              },
-                            ],
-                          })
-                        }
-                      />
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            ) : null}
 
-          {loosePenalties.length ? (
-            <div className="space-y-2 p-3">
-              <p className="text-sm font-semibold">Trừ điểm khác</p>
-              <RowHeads
-                columns={["Cụ thể nội dung trừ điểm", "Điểm trừ"]}
-                template={PENALTY_GRID}
-                trailing={editable}
-              />
-              {loosePenalties.map(({ penalty, index }) => (
-                <PenaltyRow
-                  key={index}
-                  label="Trừ điểm khác"
-                  penalty={penalty}
-                  editable={editable}
-                  onPatch={(patch) => patchPenalty(index, patch)}
-                  onRemove={() => removePenalty(index)}
-                />
-              ))}
-            </div>
-          ) : null}
+            {/* Dòng tổng như phụ lục giấy. */}
+            <tfoot className="border-t-2 bg-muted/40 text-sm font-semibold tabular-nums">
+              <tr>
+                <td className="border-r px-2.5 py-2">Tổng điểm cộng / trừ</td>
+                {showClaims ? (
+                  <td className="border-r px-2.5 py-2 text-muted-foreground">
+                    {claimTotal !== null ? (
+                      <>
+                        Tự nhận{" "}
+                        <span className="text-emerald-700 dark:text-emerald-400">
+                          +{formatScore(claimTotal)}
+                        </span>
+                      </>
+                    ) : null}
+                  </td>
+                ) : null}
+                <td className="border-r" />
+                <td className="border-r px-2.5 py-2 text-right text-emerald-700 dark:text-emerald-400">
+                  +{formatScore(totals.bonusTotal)}
+                </td>
+                <td className="border-r" />
+                <td className="px-2.5 py-2 text-right text-rose-700 dark:text-rose-400">
+                  −{formatScore(totals.penaltyTotal)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </section>
 
@@ -1668,6 +1854,82 @@ function UnitEditor({
           />
         </div>
       </section>
+
+      {/* ------------------------------------- lưu / trình RIÊNG đơn vị này */}
+      {actions && editable ? (
+        <UnitActionBar
+          unit={unit}
+          saved={saved}
+          actions={actions}
+          finalScore={totals.finalScore}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Thanh cuối khối đơn vị: Lưu và Trình CHỈ đơn vị đang mở. Dính đáy màn khi
+ * cuộn - bảng tiêu chí dài, kéo xuống tận cuối mới thấy nút là bất tiện.
+ */
+function UnitActionBar({
+  unit,
+  saved,
+  actions,
+  finalScore,
+}: {
+  unit: AppraisalUnit;
+  saved: boolean;
+  actions: UnitActions;
+  finalScore: number | null;
+}) {
+  const blocker = actions.sendBlocker(unit);
+  return (
+    <div className="sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-wrap items-center justify-between gap-2 rounded-b-lg border-t bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <p className="min-w-0 flex-1 text-xs">
+        {!saved ? (
+          <span className="font-medium text-amber-700 dark:text-amber-400">
+            Đơn vị này có thay đổi chưa lưu.
+          </span>
+        ) : blocker ? (
+          <span className="text-muted-foreground">{blocker}</span>
+        ) : (
+          <span className="text-muted-foreground">
+            Đã lưu - sau thẩm định{" "}
+            <strong className="text-foreground tabular-nums">
+              {fmt(finalScore)}
+            </strong>
+            {unit.proposedRating ? ` · ${unit.proposedRating}` : ""}. Sẵn sàng
+            trình.
+          </span>
+        )}
+      </p>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={actions.busy || saved}
+          onClick={() => actions.onSave(unit.departmentId)}
+        >
+          {actions.busy ? (
+            <Loader2
+              className="size-4 motion-safe:animate-spin"
+              aria-hidden="true"
+            />
+          ) : (
+            <Save className="size-4" aria-hidden="true" />
+          )}
+          {saved ? "Đã lưu" : "Lưu"}
+        </Button>
+        <Button
+          type="button"
+          disabled={actions.busy || !!blocker}
+          onClick={() => actions.onSend(unit.departmentId)}
+        >
+          <Send className="size-4" aria-hidden="true" />
+          {unit.status === "RETURNED" ? "Trình lại" : "Trình duyệt"}
+        </Button>
+      </div>
     </div>
   );
 }

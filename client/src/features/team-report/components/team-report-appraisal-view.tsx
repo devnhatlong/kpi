@@ -34,6 +34,7 @@ import {
   sendAppraisal,
   unitComplete,
   unitEditable,
+  unitSaved,
   type AppraisalUnit,
 } from "@/features/team-report/appraisal";
 import { AppraisalWorkspace } from "@/features/team-report/components/appraisal-workspace";
@@ -112,8 +113,10 @@ function mergeAppraisalUnits(
  * thẩm định lại kết quả tự chấm của các đơn vị mình theo dõi, tháng một bản,
  * rồi trình theo luồng (mặc định về Đội CNTT duyệt).
  *
- * Giữ bản nháp ở màn hình và lưu bằng nút, không tự lưu từng ô: cả bảng là
- * một văn bản, lưu nửa chừng giữa hai đơn vị là ra một bản không ai định có.
+ * Giữ bản nháp ở màn hình và lưu bằng nút, không tự lưu từng ô (cả đội dùng
+ * chung tài khoản - tự lưu liên tục là đè nhau). Lưu và trình theo TỪNG ĐƠN
+ * VỊ ở cuối khối đơn vị (user chốt 2026-10-18); đầu bảng chỉ còn thao tác
+ * hàng loạt "Lưu tất cả" / "Trình nhiều đơn vị".
  */
 export function TeamReportAppraisalView() {
   const { ready } = useServerTime();
@@ -225,54 +228,151 @@ export function TeamReportAppraisalView() {
   };
 
   /*
-    Trình RIÊNG từng đơn vị. Đơn vị trình được = còn sửa được (chưa trình / bị
-    trả lại) VÀ đủ ô bắt buộc (tự chấm + xếp loại). Đơn vị đã trình nằm yên,
-    không cản các đơn vị khác.
+    Sau khi lưu / trình MỘT đơn vị: đơn vị đó lấy bản server vừa trả, các đơn
+    vị khác giữ nguyên phần đang sửa dở. Hết chỗ nào khác bản lưu thì thoát
+    chế độ sửa.
   */
-  const pendingUnits = units.filter(unitEditable);
-  const readyUnits = pendingUnits.filter(unitComplete);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-
-  const openSend = () => {
-    setLeaderName(data?.leaderName ?? "");
-    setCommanderName(data?.commanderName ?? "");
-    setNameError(false);
-    // Mặc định chọn hết đơn vị đã đủ - phần lớn lượt trình là "trình hết".
-    setPicked(new Set(readyUnits.map((unit) => unit.departmentId)));
-    setSendOpen(true);
+  const settle = (fresh: AppraisalBase, ids: string[]) => {
+    const next = units.map(
+      (unit) =>
+        (ids.includes(unit.departmentId)
+          ? fresh.units.find((item) => item.departmentId === unit.departmentId)
+          : undefined) ?? unit,
+    );
+    const clean =
+      next.length === fresh.units.length &&
+      next.every((unit) => unitSaved(unit, fresh.units));
+    if (clean) {
+      setDraft(null);
+      setBase(null);
+    } else {
+      setDraft(next);
+      setBase({ version: fresh.version, units: fresh.units });
+    }
   };
 
   /*
-    Nút trình chỉ mở khi bảng ĐÃ LƯU và có ít nhất một đơn vị đủ để trình -
-    bản trình đi là bản đang lưu chứ không phải bản trên màn. Nói rõ lý do
-    ngay cạnh nút: nút xám không lời là người ta bấm thử mãi.
+    Lưu MỘT đơn vị: gửi bản đang lưu trên server, chỉ thay đúng đơn vị này
+    bằng bản trên màn - phần đang sửa dở ở đơn vị khác không đi theo. Bị 409
+    thì đọc lại và thử lại; chỉ dừng khi người khác cũng vừa sửa CHÍNH đơn vị
+    này (lúc đó giữ bản của mình trên màn để xem).
   */
-  const sendBlocker = !units.length
-    ? "Chưa có đơn vị nào để trình."
-    : dirty || !data?._id
-      ? "Lưu nháp trước rồi mới trình."
-      : !pendingUnits.length
-        ? null
-        : !readyUnits.length
-          ? `Chưa đơn vị nào đủ tự chấm / xếp loại để trình.`
-          : null;
+  const saveUnit = async (departmentId: string) => {
+    if (!data) return;
+    const mine = units.find((unit) => unit.departmentId === departmentId);
+    if (!mine) return;
+    setSaving(true);
+    const before = (base ?? data).units.find(
+      (unit) => unit.departmentId === departmentId,
+    );
+    let current: AppraisalBase = base ?? data;
+    try {
+      for (let attempt = 0; ; attempt += 1) {
+        const others = current.units.filter(
+          (unit) => unit.departmentId !== departmentId,
+        );
+        try {
+          await saveAppraisal(month, {
+            version: current.version,
+            leaderName: data.leaderName,
+            commanderName: data.commanderName,
+            units: current.units.some(
+              (unit) => unit.departmentId === departmentId,
+            )
+              ? current.units.map((unit) =>
+                  unit.departmentId === departmentId ? mine : unit,
+                )
+              : [...others, mine],
+          });
+          const fresh = await mutate();
+          if (fresh) settle(fresh, [departmentId]);
+          toast.success(`Đã lưu ${mine.departmentName}.`);
+          return;
+        } catch (err) {
+          if (!isConflict(err) || attempt >= 2) throw err;
+          const fresh = await mutate();
+          if (!fresh) throw err;
+          const theirs = fresh.units.find(
+            (unit) => unit.departmentId === departmentId,
+          );
+          if (before && theirs && !unitSaved(before, [theirs])) {
+            setBase({ version: fresh.version, units: fresh.units });
+            toast.warning(
+              `Người khác vừa lưu ${mine.departmentName}. Đang giữ bản của bạn trên màn - xem lại rồi bấm Lưu lần nữa để ghi đè.`,
+            );
+            return;
+          }
+          current = fresh;
+        }
+      }
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Không lưu được."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /*
+    Trình RIÊNG từng đơn vị. Đơn vị trình được = còn sửa được (chưa trình / bị
+    trả lại), ĐÃ LƯU (bản trình đi là bản trên server, không phải bản trên màn)
+    VÀ đủ ô bắt buộc (tự chấm + xếp loại).
+  */
+  const isSaved = (unit: AppraisalUnit) =>
+    !!data?._id && unitSaved(unit, data.units);
+  const pendingUnits = units.filter(unitEditable);
+  const readyUnits = pendingUnits.filter(
+    (unit) => unitComplete(unit) && isSaved(unit),
+  );
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  /** Hộp trình đang mở theo kiểu HÀNG LOẠT (nút đầu bảng) hay một đơn vị. */
+  const [batch, setBatch] = useState(false);
+
+  /** Mở hộp trình - `only` = trình riêng đơn vị đó, không thì chọn hết. */
+  const openSend = (only?: string) => {
+    setBatch(!only);
+    setLeaderName(data?.leaderName ?? "");
+    setCommanderName(data?.commanderName ?? "");
+    setNameError(false);
+    setPicked(
+      new Set(only ? [only] : readyUnits.map((unit) => unit.departmentId)),
+    );
+    setSendOpen(true);
+  };
+
+  /** Lý do một đơn vị chưa trình được - nói ngay cạnh nút trình của nó. */
+  const unitSendBlocker = (unit: AppraisalUnit) =>
+    !unitEditable(unit)
+      ? null
+      : !isSaved(unit)
+        ? "Lưu đơn vị này trước rồi mới trình."
+        : unit.selfScore === null
+          ? "Chưa có điểm tự chấm - cần báo cáo tháng được duyệt."
+          : !unit.proposedRating
+            ? "Chọn đề xuất mức xếp loại để trình."
+            : null;
+  const unsavedCount = units.filter((unit) => !isSaved(unit)).length;
 
   const send = async () => {
     if (!leaderName.trim() || !commanderName.trim()) {
       setNameError(true);
       return;
     }
-    if (!picked.size) return;
+    // Chỉ đơn vị ĐÃ LƯU và đủ thông tin - lọc lại lúc gửi cho chắc.
+    const ids = [...picked].filter((id) =>
+      readyUnits.some((unit) => unit.departmentId === id),
+    );
+    if (!ids.length) return;
     setSaving(true);
     try {
       await sendAppraisal(month, {
-        departmentIds: [...picked],
+        departmentIds: ids,
         leaderName: leaderName.trim(),
         commanderName: commanderName.trim(),
       });
-      await mutate();
+      const fresh = await mutate();
+      if (fresh && draft !== null) settle(fresh, ids);
       setSendOpen(false);
-      toast.success(`Đã trình ${picked.size} đơn vị.`);
+      toast.success(`Đã trình ${ids.length} đơn vị.`);
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Không trình được."));
     } finally {
@@ -420,40 +520,38 @@ export function TeamReportAppraisalView() {
                       Bỏ thay đổi
                     </Button>
                   ) : null}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={
-                      saving || (!dirty && (!!data._id || !units.length))
-                    }
-                    onClick={() => void save()}
-                  >
-                    {saving ? (
-                      <Loader2
-                        className="size-4 motion-safe:animate-spin"
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <Save className="size-4" aria-hidden="true" />
-                    )}
-                    Lưu nháp
-                  </Button>
-                  {sendBlocker ? (
-                    <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
-                      {sendBlocker}
-                    </span>
+                  {/* Lưu / trình THƯỜNG NGÀY nằm ở cuối từng đơn vị. Ở đây
+                      chỉ còn thao tác HÀNG LOẠT: lưu hết các đơn vị đang sửa
+                      dở, trình một lượt nhiều đơn vị. */}
+                  {dirty && unsavedCount > 1 ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={saving}
+                      onClick={() => void save()}
+                    >
+                      {saving ? (
+                        <Loader2
+                          className="size-4 motion-safe:animate-spin"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <Save className="size-4" aria-hidden="true" />
+                      )}
+                      Lưu tất cả ({unsavedCount})
+                    </Button>
                   ) : null}
-                  <Button
-                    type="button"
-                    disabled={saving || !!sendBlocker || !readyUnits.length}
-                    onClick={openSend}
-                  >
-                    <Send className="size-4" aria-hidden="true" />
-                    Trình duyệt
-                    {!sendBlocker && readyUnits.length
-                      ? ` (${readyUnits.length})`
-                      : ""}
-                  </Button>
+                  {readyUnits.length > 1 ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={saving}
+                      onClick={() => openSend()}
+                    >
+                      <Send className="size-4" aria-hidden="true" />
+                      Trình nhiều đơn vị ({readyUnits.length})
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -475,7 +573,19 @@ export function TeamReportAppraisalView() {
               suggestedUnits={data.suggestedUnits}
               newlyApprovedIds={data.newlyApprovedIds}
               commendations={data.commendationHints}
+              selfClaims={data.selfClaims ?? {}}
+              savedUnits={data._id ? data.units : []}
               onChange={edit}
+              unitActions={
+                editable
+                  ? {
+                      busy: saving,
+                      onSave: (id) => void saveUnit(id),
+                      onSend: (id) => openSend(id),
+                      sendBlocker: unitSendBlocker,
+                    }
+                  : undefined
+              }
               exportInfo={{
                 periodMonth: month,
                 teamName: data.departmentName,
@@ -519,6 +629,33 @@ export function TeamReportAppraisalView() {
             </DialogDescription>
           </DialogHeader>
 
+          {/* Trình hàng loạt: cảnh báo trước - một lượt bấm là nhiều đơn vị
+              khoá lại cùng lúc. Chỉ đơn vị ĐÃ LƯU mới chọn được; nêu rõ đơn
+              vị nào bị bỏ ra và vì sao. */}
+          {batch ? (
+            <div
+              role="alert"
+              className="space-y-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+            >
+              <p>
+                <strong className="font-semibold">
+                  Trình cùng lúc {picked.size} đơn vị.
+                </strong>{" "}
+                Các đơn vị này sẽ khoá lại cho tới khi được duyệt hoặc trả lại.
+                Bản trình đi là bản ĐÃ LƯU - xem lại điểm và mức xếp loại từng
+                đơn vị bên dưới trước khi trình.
+              </p>
+              {pendingUnits.length > readyUnits.length ? (
+                <p>
+                  {pendingUnits.length - readyUnits.length} đơn vị chưa lưu hoặc
+                  chưa đủ thông tin sẽ{" "}
+                  <strong className="font-semibold">không được trình</strong> -
+                  lý do ghi ở từng dòng.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {/* Chọn đơn vị trình lần này - chỉ bày đơn vị chưa trình / bị trả
               lại; đơn vị chưa đủ ô thì bày xám kèm lý do, không chọn được. */}
           <fieldset className="space-y-2">
@@ -549,7 +686,8 @@ export function TeamReportAppraisalView() {
             </div>
             <ul className="max-h-64 divide-y overflow-y-auto rounded-md border">
               {pendingUnits.map((unit) => {
-                const ready = unitComplete(unit);
+                const blocker = unitSendBlocker(unit);
+                const ready = !blocker;
                 const checked = picked.has(unit.departmentId);
                 const inputId = `send-unit-${unit.departmentId}`;
                 return (
@@ -584,7 +722,7 @@ export function TeamReportAppraisalView() {
                           ? `Sau thẩm định ${formatScore(
                               appraisalTotals(unit).finalScore ?? 0,
                             )} · ${unit.proposedRating}`
-                          : "Chưa đủ tự chấm / xếp loại - chưa trình được"}
+                          : blocker}
                         {unit.status === "RETURNED" ? " · trình lại" : ""}
                       </span>
                     </label>

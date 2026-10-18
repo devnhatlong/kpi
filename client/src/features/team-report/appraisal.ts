@@ -131,7 +131,25 @@ export function hintText(hint: AppraisalCommendationHint) {
   return evidence ? `${hint.content.trim()} (${evidence})` : hint.content.trim();
 }
 
+/**
+ * "Đơn vị tự nhận" ở MỘT tiêu chí: các dòng Trục 2 của báo cáo tháng (cùng bản
+ * cho điểm tự chấm). `total` đã chặn ở trần tiêu chí.
+ */
+export type AppraisalSelfClaim = {
+  lines: Array<{ name: string; product: string; score: number | null }>;
+  total: number;
+  maxScore: number;
+};
+
+/** Theo id đơn vị → id tiêu chí. */
+export type AppraisalSelfClaims = Record<
+  string,
+  Record<string, AppraisalSelfClaim>
+>;
+
 export type AppraisalComposerData = AppraisalSheet & {
+  /** Đơn vị tự nhận theo tiêu chí - Trục 2 của báo cáo tháng. */
+  selfClaims: AppraisalSelfClaims;
   /** Biểu dương / phê bình cùng tháng theo id đơn vị. */
   commendationHints: AppraisalCommendationHints;
   criteria: AppraisalCriterion[];
@@ -213,6 +231,26 @@ export function appraisalTotals(unit: AppraisalUnit) {
 /** Đơn vị đã đủ để trình: có tự chấm và đã chọn xếp loại. */
 export function unitComplete(unit: AppraisalUnit) {
   return unit.selfScore !== null && !!unit.proposedRating;
+}
+
+/** Phần người thẩm định nhập - để so đơn vị trên màn với bản đã lưu. */
+function editableFingerprint(unit: AppraisalUnit) {
+  return JSON.stringify([
+    unit.bonuses.map((b) => [b.itemId, b.score, b.evidence]),
+    unit.penalties.map((p) => [p.itemId, p.score, p.content]),
+    unit.proposedRating,
+    unit.ratingNote,
+    unit.upgradeNote,
+  ]);
+}
+
+/**
+ * Đơn vị ĐÃ LƯU: có trong bản đã lưu trên server và chưa sửa gì thêm so với
+ * bản đó. `saved` rỗng = bảng chưa lưu lần nào.
+ */
+export function unitSaved(unit: AppraisalUnit, saved: AppraisalUnit[]) {
+  const before = saved.find((item) => item.departmentId === unit.departmentId);
+  return !!before && editableFingerprint(before) === editableFingerprint(unit);
 }
 
 /* -------------------------------------------------------------------- API */

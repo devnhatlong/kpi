@@ -43,6 +43,7 @@ import { departmentLabels } from './team-report.department-label';
 import {
   applyApprove,
   isApprover,
+  isClosingApprover,
   isHandler,
   leadInboxFilter,
   resetStages,
@@ -376,18 +377,50 @@ export class TeamReportCommendationService implements OnModuleInit {
   // ------------------------------------------------------------ người nhận
 
   /** Hộp đến: `box` LEAD = chủ trì duyệt; INFORM / COORDINATE = theo dõi. */
+  /** Điều kiện của một hộp đến (chủ trì / theo dõi) theo ô trạng thái. */
+  private inboxFilter(
+    actor: Actor,
+    box: string,
+    status?: string,
+  ): Record<string, unknown> {
+    return box === 'LEAD'
+      ? leadInboxFilter(actor.id, status)
+      : {
+          participants: { $elemMatch: { userId: actor.id, role: box } },
+          status: status ? status : { $ne: 'DRAFT' },
+        };
+  }
+
+  /**
+   * TOÀN BỘ bảng trong hộp đến đang lọc (không phân trang), đủ dòng - để xuất
+   * Excel tổng hợp tất cả đơn vị. KHÔNG đánh dấu "đã xem": xuất file không
+   * phải là mở từng bảng ra đọc.
+   */
+  async inboxExport(userId: string, query: TeamReportAdjustmentInboxQueryDto) {
+    const actor = await this.requireActor(userId);
+    const sheets = await this.sheetModel
+      .find(this.inboxFilter(actor, query.box ?? 'LEAD', query.status))
+      .sort({ periodMonth: -1, sentAt: 1 })
+      .limit(500);
+    return {
+      message: 'OK',
+      data: {
+        criteria: await this.criteria(),
+        sheets: await Promise.all(
+          sheets.map((sheet) =>
+            this.toClient(sheet, sheet.periodMonth, sheet.departmentId),
+          ),
+        ),
+      },
+    };
+  }
+
   async inbox(userId: string, query: TeamReportAdjustmentInboxQueryDto) {
     const actor = await this.requireActor(userId);
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
     const box = query.box ?? 'LEAD';
-    const boxFilter = (status?: string): Record<string, unknown> =>
-      box === 'LEAD'
-        ? leadInboxFilter(actor.id, status)
-        : {
-            participants: { $elemMatch: { userId: actor.id, role: box } },
-            status: status ? status : { $ne: 'DRAFT' },
-          };
+    const boxFilter = (status?: string) => this.inboxFilter(actor, box, status);
     const filter = boxFilter(query.status);
     const count = (where: Record<string, unknown>) =>
       this.sheetModel.countDocuments(where);
@@ -482,6 +515,7 @@ export class TeamReportCommendationService implements OnModuleInit {
         criteria: await this.criteria(),
         viewerRole,
         canDecide: isHandler(sheet, actor.id),
+        canReturnApproved: isClosingApprover(sheet, actor.id),
       },
     };
   }
@@ -492,10 +526,21 @@ export class TeamReportCommendationService implements OnModuleInit {
     if (viewerRole !== 'RECIPIENT') {
       throw new ForbiddenException('Chỉ đơn vị chủ trì mới duyệt được bảng.');
     }
-    if (sheet.status !== 'PENDING') {
+    /* Đã duyệt rồi vẫn TRẢ LẠI được (user chốt 2026-10-18, như báo cáo tổng
+       hợp): chỉ người CHỐT bản, bắt buộc lý do, chỉ trả chứ không duyệt lại.
+       Dòng các đội đã kéo vào bảng phòng là bản chép nên không vướng gì. */
+    if (sheet.status === 'APPROVED') {
+      if (dto.decision !== 'RETURN') {
+        throw new BadRequestException('Bảng đã được duyệt.');
+      }
+      if (!isClosingApprover(sheet, actor.id)) {
+        throw new ForbiddenException(
+          'Chỉ người đã duyệt chốt bảng này mới trả lại được.',
+        );
+      }
+    } else if (sheet.status !== 'PENDING') {
       throw new BadRequestException('Chỉ duyệt được bảng đang chờ duyệt.');
-    }
-    if (!isHandler(sheet, actor.id)) {
+    } else if (!isHandler(sheet, actor.id)) {
       throw new BadRequestException(
         'Bảng đang chờ cấp duyệt khác - không quyết được lúc này.',
       );
@@ -529,6 +574,7 @@ export class TeamReportCommendationService implements OnModuleInit {
         ...(await this.toClient(sheet, sheet.periodMonth, sheet.departmentId)),
         viewerRole,
         canDecide: isHandler(sheet, actor.id),
+        canReturnApproved: isClosingApprover(sheet, actor.id),
       },
     };
   }

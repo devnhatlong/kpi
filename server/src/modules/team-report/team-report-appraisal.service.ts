@@ -39,6 +39,7 @@ import {
   DepartmentLevel,
   DepartmentLevelDocument,
 } from '@/modules/department-levels/schemas/department-level.schema';
+import { FormTemplatesService } from '@/modules/mission-form-config/form-templates.service';
 import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
 import { departmentLabels } from './team-report.department-label';
 import {
@@ -182,6 +183,7 @@ export class TeamReportAppraisalService {
     @InjectModel(DepartmentLevel.name)
     private readonly levelModel: Model<DepartmentLevelDocument>,
     private readonly routing: TeamReportAdjustmentRoutingService,
+    private readonly formTemplatesService: FormTemplatesService,
   ) {}
 
   /**
@@ -404,6 +406,8 @@ export class TeamReportAppraisalService {
               .map((unit) => unit.id)
           : [],
         selfScoreHints: hints,
+        /** Đơn vị tự nhận theo tiêu chí - dòng Trục 2 của báo cáo tháng. */
+        selfClaims: await this.selfClaims(actor.id, periodMonth, items),
         /** Biểu dương / phê bình cùng tháng nhắc tới từng đơn vị - để soi chiếu. */
         commendationHints: await this.commendationHints(periodMonth, [
           ...units.map((unit) => unit.departmentId),
@@ -947,9 +951,120 @@ export class TeamReportAppraisalService {
     approverId: Types.ObjectId,
     periodMonth: string,
   ) {
+    const rows = await this.monthlyReports(approverId, periodMonth).select(
+      'departmentId title period conclusion updatedAt',
+    );
+    const hints: Record<
+      string,
+      { score: number; maxScore: number; title: string }
+    > = {};
+    for (const row of rows) {
+      const key = String(row.departmentId);
+      if (hints[key] || !row.conclusion) continue;
+      hints[key] = {
+        score: row.conclusion.totalScore,
+        maxScore: row.conclusion.maxScore ?? 0,
+        title: row.title,
+      };
+    }
+    return hints;
+  }
+
+  /**
+   * "ĐƠN VỊ TỰ NHẬN" theo từng tiêu chí cộng điểm: các dòng TRỤC 2 của chính
+   * báo cáo tháng cho điểm tự chấm (cùng bản, cùng luật chọn bản mới nhất).
+   *
+   * Năm nội dung Trục 2 trùng tên năm tiêu chí Điểm cộng (I) nên nối theo TÊN
+   * nội dung công việc (bỏ hoa thường / khoảng trắng thừa) - hai danh mục là
+   * hai collection khác nhau, không có khoá chung. Dòng không khớp tiêu chí nào
+   * thì bỏ qua.
+   *
+   * Điểm mỗi dòng = các cột điểm của công thức trục (`footer.ratioColumnKeys`)
+   * trong bản chụp - số đã chốt, cấp trên chấm lại đã đè. Tổng của tiêu chí
+   * chặn ở trần tiêu chí như `computeAxisFooter`.
+   */
+  private async selfClaims(
+    approverId: Types.ObjectId,
+    periodMonth: string,
+    items: AdjustmentItemDocument[],
+  ) {
+    type Line = { name: string; product: string; score: number | null };
+    type Claim = { lines: Line[]; total: number; maxScore: number };
+    const result: Record<string, Record<string, Claim>> = {};
+    const reports = await this.monthlyReports(approverId, periodMonth).select(
+      'departmentId conclusion rows.name rows.product rows.workContentName rows.fieldValues rows.formTemplateId rows.formTemplateVersion',
+    );
+    const norm = (text: string) =>
+      text.trim().replace(/\s+/g, ' ').toLowerCase();
+    const itemByName = new Map(items.map((item) => [norm(item.name), item]));
+    const scoreKeys = new Map<string, string[]>();
+    const keysOf = async (
+      templateId: Types.ObjectId | null,
+      version: number | null,
+    ) => {
+      if (!templateId) return [];
+      const cacheKey = `${String(templateId)}:${version ?? 1}`;
+      if (!scoreKeys.has(cacheKey)) {
+        const resolved = await this.formTemplatesService.resolveVersion(
+          templateId,
+          version ?? 1,
+        );
+        const footer = resolved?.footer as
+          { enabled?: boolean; ratioColumnKeys?: string[] } | undefined;
+        scoreKeys.set(
+          cacheKey,
+          footer?.enabled ? (footer.ratioColumnKeys ?? []) : [],
+        );
+      }
+      return scoreKeys.get(cacheKey) ?? [];
+    };
+
+    for (const report of reports) {
+      const deptId = String(report.departmentId);
+      // Bản mới nhất có kết luận - đúng bản `selfScoreHints` lấy điểm.
+      if (result[deptId] || !report.conclusion) continue;
+      const claims: Record<string, Claim> = {};
+      for (const row of report.rows) {
+        const item = itemByName.get(norm(row.workContentName ?? ''));
+        if (!item) continue;
+        let score: number | null = null;
+        for (const key of await keysOf(
+          row.formTemplateId,
+          row.formTemplateVersion,
+        )) {
+          const raw = String(row.fieldValues?.[key] ?? '').trim();
+          const value = Number(raw.replace(',', '.'));
+          if (raw && Number.isFinite(value)) score = (score ?? 0) + value;
+        }
+        const claim = (claims[String(item._id)] ??= {
+          lines: [],
+          total: 0,
+          maxScore: item.maxScore ?? 0,
+        });
+        claim.lines.push({
+          name: row.name ?? '',
+          product: row.product ?? '',
+          score,
+        });
+        claim.total += score ?? 0;
+      }
+      for (const claim of Object.values(claims)) {
+        claim.total = round2(
+          claim.maxScore > 0
+            ? Math.min(claim.total, claim.maxScore)
+            : claim.total,
+        );
+      }
+      result[deptId] = claims;
+    }
+    return result;
+  }
+
+  /** Báo cáo tháng tôi đã duyệt, mới nhất trước - xem `selfScoreHints`. */
+  private monthlyReports(approverId: Types.ObjectId, periodMonth: string) {
     const from = `${periodMonth}-01`;
     const to = `${periodMonth}-31`;
-    const rows = await this.summaryModel
+    return this.summaryModel
       .find({
         period: 'MONTH',
         conclusion: { $ne: null },
@@ -971,22 +1086,7 @@ export class TeamReportAppraisalService {
           },
         ],
       })
-      .sort({ updatedAt: -1 })
-      .select('departmentId title period conclusion updatedAt');
-    const hints: Record<
-      string,
-      { score: number; maxScore: number; title: string }
-    > = {};
-    for (const row of rows) {
-      const key = String(row.departmentId);
-      if (hints[key] || !row.conclusion) continue;
-      hints[key] = {
-        score: row.conclusion.totalScore,
-        maxScore: row.conclusion.maxScore ?? 0,
-        title: row.title,
-      };
-    }
-    return hints;
+      .sort({ updatedAt: -1 });
   }
 
   private assertMonth(periodMonth: string) {

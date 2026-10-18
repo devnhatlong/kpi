@@ -4,6 +4,8 @@ import { saveAs } from "file-saver";
 import {
   appraisalTotals,
   type AppraisalCriterion,
+  type AppraisalSelfClaim,
+  type AppraisalSelfClaims,
   type AppraisalUnit,
 } from "@/features/team-report/appraisal";
 import {
@@ -30,9 +32,10 @@ const COLUMNS = [
   { title: "Đơn vị", width: 18 },
   { title: "Tổng điểm tự chấm", width: 11 },
   { title: "Tiêu chí cộng điểm", width: 32 },
-  { title: "Cụ thể nội dung minh chứng", width: 40 },
-  { title: "Điểm cộng", width: 9 },
-  { title: "Cụ thể nội dung trừ điểm", width: 36 },
+  { title: "Đơn vị tự nhận", width: 32 },
+  { title: "Kết quả thẩm định, công nhận", width: 36 },
+  { title: "Điểm cộng sau thẩm định", width: 11 },
+  { title: "Cụ thể nội dung trừ điểm", width: 32 },
   { title: "Điểm trừ", width: 9 },
   { title: "Tổng điểm sau thẩm định", width: 12 },
   { title: "Đề xuất mức xếp loại", width: 28 },
@@ -40,7 +43,7 @@ const COLUMNS = [
 const LAST_COL = COLUMNS.length;
 
 /** Cột gộp dọc suốt khối của một đơn vị. */
-const SPAN_COLS = [1, 2, 3, 9, 10];
+const SPAN_COLS = [1, 2, 3, 10, 11];
 
 const HEAD_FILL: ExcelJS.Fill = {
   type: "pattern",
@@ -61,6 +64,8 @@ export type AppraisalExportInput = {
   /** Danh mục tiêu chí - giữ đúng thứ tự phụ lục; bỏ trống thì suy từ dữ liệu. */
   criteria?: AppraisalCriterion[];
   units: AppraisalUnit[];
+  /** Đơn vị tự nhận (Trục 2) theo id đơn vị → id tiêu chí. */
+  selfClaims?: AppraisalSelfClaims;
   leaderName: string;
   commanderName: string;
   /** "Nháp", "Đã duyệt"... - ghi cạnh tiêu đề, bản nháp in ra không bị nhầm. */
@@ -109,11 +114,25 @@ function ratingText(unit: AppraisalUnit) {
   return unit.proposedRating;
 }
 
+/**
+ * Ô "Đơn vị tự nhận": mỗi việc Trục 2 một dòng - CHỈ sản phẩm, không in tên
+ * nhiệm vụ (user chốt); cuối là "(tự chấm +X)" - X đã chặn ở trần tiêu chí.
+ * Không nhận thì để trống.
+ */
+function claimText(claim: AppraisalSelfClaim | undefined) {
+  if (!claim?.lines.length) return "";
+  const lines = claim.lines
+    .map((line) => line.product.trim())
+    .filter(Boolean)
+    .map((product) => `- ${product}`);
+  return [...lines, `(tự chấm +${formatScore(claim.total)})`].join("\n");
+}
+
 function styleBody(
   cell: ExcelJS.Cell,
   align: "left" | "center" | "right" = "left",
 ) {
-  cell.alignment = { vertical: "top", horizontal: align, wrapText: true };
+  cell.alignment = { vertical: "middle", horizontal: align, wrapText: true };
   setOutlineBorder(cell);
 }
 
@@ -124,12 +143,14 @@ function writeUnit(
   ordinal: number,
   unit: AppraisalUnit,
   criteria: AppraisalCriterion[],
+  claims: Record<string, AppraisalSelfClaim> = {},
 ) {
   const totals = appraisalTotals(unit);
   let cursor = top;
 
   const groups: Array<{
     label: string;
+    claim: string;
     bonuses: AppraisalUnit["bonuses"];
     penalties: AppraisalUnit["penalties"];
   }> = groupsOf(unit, criteria).map((group) => ({
@@ -137,6 +158,7 @@ function writeUnit(
       group.maxScore !== null
         ? `${group.name} (tối đa ${formatScore(group.maxScore)} điểm)`
         : group.name,
+    claim: claimText(claims[group.id]),
     // Dòng trống bày sẵn trên màn (chưa điểm, chưa minh chứng) thì không in.
     bonuses: unit.bonuses.filter(
       (bonus) =>
@@ -155,32 +177,46 @@ function writeUnit(
       !penalty.itemId && (penalty.score !== null || penalty.content.trim()),
   );
   if (loose.length) {
-    groups.push({ label: "Trừ điểm khác", bonuses: [], penalties: loose });
+    groups.push({
+      label: "Trừ điểm khác",
+      claim: "",
+      bonuses: [],
+      penalties: loose,
+    });
   }
 
   for (const group of groups) {
     const lines = Math.max(1, group.bonuses.length, group.penalties.length);
-    if (lines > 1) sheet.mergeCells(cursor, 4, cursor + lines - 1, 4);
-    const criterion = sheet.getCell(cursor, 4);
-    criterion.value = group.label;
-    styleBody(criterion);
+    // Tiêu chí và "đơn vị tự nhận" gộp dọc suốt các dòng của tiêu chí.
+    for (const [col, value] of [
+      [4, group.label],
+      [5, group.claim],
+    ] as const) {
+      if (lines > 1) sheet.mergeCells(cursor, col, cursor + lines - 1, col);
+      const cell = sheet.getCell(cursor, col);
+      cell.value = value;
+      styleBody(cell);
+    }
 
     for (let i = 0; i < lines; i += 1) {
       const row = cursor + i;
       const bonus = group.bonuses[i];
       const penalty = group.penalties[i];
       const values: Array<[number, string | number, "left" | "center"]> = [
-        [5, bonus?.evidence ?? "", "left"],
-        [6, scoreCell(bonus?.score), "center"],
-        [7, penalty?.content ?? "", "left"],
-        [8, scoreCell(penalty?.score), "center"],
+        [6, bonus?.evidence ?? "", "left"],
+        [7, scoreCell(bonus?.score), "center"],
+        [8, penalty?.content ?? "", "left"],
+        [9, scoreCell(penalty?.score), "center"],
       ];
       for (const [col, value, align] of values) {
         const cell = sheet.getCell(row, col);
         cell.value = value;
         styleBody(cell, align);
       }
-      if (i > 0) setOutlineBorder(sheet.getCell(row, 4));
+      if (i > 0) {
+        setOutlineBorder(sheet.getCell(row, 4));
+        setOutlineBorder(sheet.getCell(row, 5));
+      }
     }
     cursor += lines;
   }
@@ -189,9 +225,10 @@ function writeUnit(
   const totalCells: Array<[number, string | number]> = [
     [4, "Tổng điểm cộng / trừ"],
     [5, ""],
-    [6, totals.bonusTotal],
-    [7, ""],
-    [8, totals.penaltyTotal],
+    [6, ""],
+    [7, totals.bonusTotal],
+    [8, ""],
+    [9, totals.penaltyTotal],
   ];
   for (const [col, value] of totalCells) {
     const cell = sheet.getCell(cursor, col);
@@ -207,8 +244,8 @@ function writeUnit(
     1: ordinal,
     2: unit.shortName || unit.departmentName,
     3: scoreCell(unit.selfScore),
-    9: scoreCell(totals.finalScore),
-    10: ratingText(unit),
+    10: scoreCell(totals.finalScore),
+    11: ratingText(unit),
   };
   for (const col of SPAN_COLS) {
     if (bottom > top) sheet.mergeCells(top, col, bottom, col);
@@ -219,7 +256,7 @@ function writeUnit(
       horizontal: "center",
       wrapText: true,
     };
-    if (col === 2 || col === 9) cell.font = { bold: true };
+    if (col === 2 || col === 10) cell.font = { bold: true };
     setOutlineBorder(cell);
   }
 
@@ -285,16 +322,18 @@ export async function exportAppraisalToExcel(
     cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
     setOutlineBorder(cell);
   };
-  for (const col of [1, 2, 3, 4, 9, 10]) {
+  for (const col of [1, 2, 3, 4, 10, 11]) {
     sheet.mergeCells(headTop, col, headTop + 1, col);
     head(headTop, col, COLUMNS[col - 1]!.title);
   }
-  sheet.mergeCells(headTop, 5, headTop, 6);
+  sheet.mergeCells(headTop, 5, headTop, 7);
   head(headTop, 5, "Cộng điểm");
-  sheet.mergeCells(headTop, 7, headTop, 8);
-  head(headTop, 7, "Trừ điểm");
-  for (const col of [5, 6, 7, 8]) head(headTop + 1, col, COLUMNS[col - 1]!.title);
-  sheet.getRow(headTop + 1).height = 30;
+  sheet.mergeCells(headTop, 8, headTop, 9);
+  head(headTop, 8, "Trừ điểm");
+  for (const col of [5, 6, 7, 8, 9]) {
+    head(headTop + 1, col, COLUMNS[col - 1]!.title);
+  }
+  sheet.getRow(headTop + 1).height = 45;
   // In nhiều trang thì trang nào cũng có tiêu đề cột.
   sheet.pageSetup.printTitlesRow = `${headTop}:${headTop + 1}`;
   sheet.views = [{ state: "frozen", ySplit: headTop + 1 }];
@@ -303,7 +342,14 @@ export async function exportAppraisalToExcel(
   let cursor = headTop + 2;
   const criteria = input.criteria ?? [];
   input.units.forEach((unit, index) => {
-    cursor = writeUnit(sheet, cursor, index + 1, unit, criteria);
+    cursor = writeUnit(
+      sheet,
+      cursor,
+      index + 1,
+      unit,
+      criteria,
+      input.selfClaims?.[unit.departmentId],
+    );
   });
   if (!input.units.length) {
     sheet.mergeCells(cursor, 1, cursor, LAST_COL);
@@ -318,12 +364,12 @@ export async function exportAppraisalToExcel(
       sheet.mergeCells(cursor + index, from, cursor + index, to);
       const cell = sheet.getCell(cursor + index, from);
       cell.value = text;
-      cell.alignment = { horizontal: "center" };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
       if (index === 0 || index === lines.length - 1) cell.font = { bold: true };
     });
   };
   sign(1, 4, ["LÃNH ĐẠO PHỤ TRÁCH", "", "", "", input.leaderName]);
-  sign(7, 10, ["CHỈ HUY ĐỘI", "", "", "", input.commanderName]);
+  sign(8, 11, ["CHỈ HUY ĐỘI", "", "", "", input.commanderName]);
 
   const buffer = await workbook.xlsx.writeBuffer();
   const name = only

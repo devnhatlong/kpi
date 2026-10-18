@@ -32,10 +32,14 @@ import {
   commendationKeys,
   decideCommendation,
   fetchCommendationInbox,
+  fetchCommendationInboxExport,
   fetchCommendationIncoming,
   type CommendationInboxBox,
 } from "@/features/team-report/commendation";
-import { exportCommendationToExcel } from "@/features/team-report/commendation-excel";
+import {
+  exportCommendationToExcel,
+  exportCommendationsCombined,
+} from "@/features/team-report/commendation-excel";
 import { CommendationTables } from "@/features/team-report/components/commendation-tables";
 import { ApprovalChain } from "@/features/team-report/components/participants-block";
 import { commendationExportRows } from "@/features/team-report/components/team-report-commendation-view";
@@ -53,6 +57,12 @@ import { cn } from "@/lib/utils";
 
 type StatusBox = "PENDING" | "APPROVED" | "RETURNED" | "";
 
+const STATUS_TEXT: Record<Exclude<StatusBox, "">, string> = {
+  PENDING: "Chờ duyệt",
+  APPROVED: "Đã duyệt",
+  RETURNED: "Đã trả lại",
+};
+
 const monthLabel = (month: string) => {
   const [y, m] = month.split("-");
   return `Tháng ${m}/${y}`;
@@ -68,6 +78,7 @@ export function TeamReportCommendationInboxView() {
   const [box, setBox] = useState<CommendationInboxBox>("LEAD");
   const [status, setStatus] = useState<StatusBox>("PENDING");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const list = useSWR(
     commendationKeys.inbox(box, status, 1),
@@ -93,6 +104,37 @@ export function TeamReportCommendationInboxView() {
   }
 
   const rows = list.data?.data ?? [];
+
+  /* Xuất TẤT CẢ đơn vị đang hiện theo bộ lọc (hộp + trạng thái), không chỉ
+     trang đang thấy - server trả đủ dòng từng bảng. */
+  const exportAll = async () => {
+    setExporting(true);
+    try {
+      const { criteria, sheets } = await fetchCommendationInboxExport({
+        box,
+        status: status as TeamReportDayStatus | "",
+      });
+      if (!sheets.length) {
+        toast.info("Không có bảng nào để xuất.");
+        return;
+      }
+      await exportCommendationsCombined({
+        criteria,
+        scopeLabel: `Tổng hợp các đơn vị${status ? ` · ${STATUS_TEXT[status]}` : ""
+          }`,
+        sheets: sheets.map((sheet) => ({
+          periodMonth: sheet.periodMonth,
+          departmentName: sheet.departmentName,
+          praises: commendationExportRows(sheet.praises, []),
+          criticisms: commendationExportRows(sheet.criticisms, []),
+        })),
+      });
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Không xuất được Excel."));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -175,6 +217,24 @@ export function TeamReportCommendationInboxView() {
                 ),
               }))}
             />
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-background"
+              disabled={exporting || !rows.length}
+              onClick={() => void exportAll()}
+              title="Xuất tất cả bảng đang hiện theo bộ lọc vào một file Excel"
+            >
+              {exporting ? (
+                <Loader2
+                  className="size-4 motion-safe:animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <FileDown className="size-4" aria-hidden="true" />
+              )}
+              Xuất tổng hợp
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -300,6 +360,10 @@ function CommendationIncomingDetail({
   };
 
   const decidable = data?.status === "PENDING" && data.canDecide;
+  /* Bảng đã duyệt vẫn trả lại được - chỉ người chốt bảng (server quyết
+     `canReturnApproved`), và chỉ trả, không duyệt lại. */
+  const returnable =
+    data?.status === "APPROVED" && !!data.canReturnApproved;
 
   return (
     <div className="space-y-4">
@@ -386,6 +450,16 @@ function CommendationIncomingDetail({
                       Duyệt
                     </Button>
                   </>
+                ) : returnable ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={RETURN_BUTTON_CLASS}
+                    onClick={() => setDialog("RETURN")}
+                  >
+                    <Undo2 className="size-4" aria-hidden="true" />
+                    Trả lại
+                  </Button>
                 ) : null}
               </div>
             </div>
@@ -430,9 +504,12 @@ function CommendationIncomingDetail({
               {data?.departmentName} -{" "}
               {data ? monthLabel(data.periodMonth).toLowerCase() : ""}.
               {dialog === "APPROVE" &&
-              data?.finalRecipientName &&
-              data.stage !== "FINAL"
+                data?.finalRecipientName &&
+                data.stage !== "FINAL"
                 ? ` Đây là duyệt cấp 1 - duyệt xong chuyển lên ${data.finalRecipientName} duyệt cuối.`
+                : ""}
+              {dialog === "RETURN" && data?.status === "APPROVED"
+                ? " Bảng này đã duyệt - trả lại thì phòng sửa rồi gửi lại, đi lại từ cấp 1."
                 : ""}
             </DialogDescription>
           </DialogHeader>

@@ -252,7 +252,7 @@ export async function exportAdjustmentToExcel(input: AdjustmentExportInput) {
         const cell = sheet.getCell(top, col);
         cell.value = leftValue(column, item, index + 1);
         cell.alignment = {
-          vertical: "top",
+          vertical: "middle",
           wrapText: true,
           horizontal:
             column.semanticKey === "stt" ||
@@ -274,7 +274,7 @@ export async function exportAdjustmentToExcel(input: AdjustmentExportInput) {
             ? cellValue(column, line.fieldValues?.[column.key], catalogs)
             : "";
           cell.alignment = {
-            vertical: "top",
+            vertical: "middle",
             wrapText: true,
             horizontal:
               column.dataType === "number" || column.dataType === "boolean"
@@ -300,7 +300,7 @@ export async function exportAdjustmentToExcel(input: AdjustmentExportInput) {
       value.value = bonus ? input.totals.bonus : input.totals.penalty;
       value.font = { bold: true };
       value.fill = TOTAL_FILL;
-      value.alignment = { horizontal: "center" };
+      value.alignment = { horizontal: "center", vertical: "middle" };
       setOutlineBorder(value);
       cursor += 1;
     }
@@ -321,7 +321,7 @@ export async function exportAdjustmentToExcel(input: AdjustmentExportInput) {
     const valueCell = sheet.getCell(cursor, 3);
     valueCell.value = value;
     valueCell.font = { bold: true };
-    valueCell.alignment = { horizontal: "center" };
+    valueCell.alignment = { horizontal: "center", vertical: "middle" };
     setOutlineBorder(valueCell);
     cursor += 1;
   }

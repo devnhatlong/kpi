@@ -350,7 +350,7 @@ export async function exportSummaryReportToExcel(
     sheet.mergeCells(cursor, 1, cursor, widestCol);
     const noteCell = sheet.getCell(cursor, 1);
     noteCell.value = `Ghi chú: ${report.note.trim()}`;
-    noteCell.alignment = { wrapText: true, vertical: "top" };
+    noteCell.alignment = { wrapText: true, vertical: "middle" };
     cursor += 1;
   }
   cursor += 1;
@@ -418,7 +418,7 @@ export async function exportSummaryReportToExcel(
         const cell = sheet.getCell(cursor, index + 1);
         cell.value = criteriaCellText(row, column, rowIndex);
         cell.alignment = {
-          vertical: "top",
+          vertical: "middle",
           wrapText: true,
           horizontal:
             column.dataType === "number" || column.semanticKey === "stt"
@@ -544,7 +544,7 @@ export async function exportSummaryReportToExcel(
         visible.forEach((column, index) => {
           const cell = sheet.getCell(cursor, index + 1);
           cell.value = exportCellText(row, column);
-          cell.alignment = { vertical: "top", wrapText: true };
+          cell.alignment = { vertical: "middle", wrapText: true };
           setOutlineBorder(cell);
         });
         cursor += 1;
