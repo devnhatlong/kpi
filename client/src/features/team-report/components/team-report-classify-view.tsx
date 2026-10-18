@@ -191,6 +191,87 @@ function scoreGroupLocked(
   return column.semanticKey === "score_group" && !!contentGroupId;
 }
 
+/**
+ * THỨ TỰ NHẬP (user chốt 2026-10-18): chọn nội dung công việc → nhập điểm →
+ * chọn %. Trả lý do ô còn khoá, null = nhập được.
+ *
+ * Đọc vai của cột từ CẤU HÌNH cột tự tính (`percent_of`), không đoán theo tiêu
+ * đề: cột nền (`baseColumnKey`, "Điểm") là ô điểm, cột phần trăm
+ * (`percentColumnKey`, "Thực tế hoàn thành %") là ô %. Mẫu không có cột tự
+ * tính thì không khoá gì.
+ */
+function entryOrderBlocker(
+  column: TeamReportColumn,
+  template: TeamReportTemplate | null | undefined,
+  task: TeamReportTask,
+  contentId: string | null | undefined,
+): string | null {
+  const autos = (template?.columns ?? [])
+    .map((item) => item.autoValue)
+    .filter((auto) => auto?.kind === "percent_of");
+  const isBase = autos.some((auto) => auto?.baseColumnKey === column.key);
+  if (isBase && !contentId) return "Chọn nội dung công việc trước";
+  const auto = autos.find((item) => item?.percentColumnKey === column.key);
+  if (auto) {
+    if (!contentId) return "Chọn nội dung công việc trước";
+    const base = template?.columns.find(
+      (item) => item.key === auto.baseColumnKey,
+    );
+    const filled = base
+      ? catalogOfColumn(base)
+        ? !!finalCatalogValue(task, base.key)?.id
+        : String(finalFieldValue(task, base.key) ?? "").trim() !== ""
+      : true;
+    if (!filled) return `Nhập ${base?.title ?? "điểm"} trước`;
+  }
+  return null;
+}
+
+/**
+ * Bỏ chọn nội dung công việc ("Chưa chọn") thì XOÁ LUÔN chuỗi phụ thuộc vào
+ * nó: nhóm điểm, điểm, các ô % - không để lại con số chấm cho một nội dung
+ * không còn nữa. Ô tự tính (điểm tự chấm) server tự tính lại thành trống.
+ */
+function clearScoringPatch(template: TeamReportTemplate | null | undefined) {
+  const fieldValues: Record<string, string> = {};
+  const catalogValues: Record<string, string> = {};
+  const columns = template?.columns ?? [];
+  const keys = new Set<string>();
+  for (const column of columns) {
+    const auto = column.autoValue;
+    if (auto?.kind === "percent_of") {
+      keys.add(auto.baseColumnKey);
+      keys.add(auto.percentColumnKey);
+    }
+    if (column.semanticKey === "score_group") keys.add(column.key);
+  }
+  for (const column of columns) {
+    if (!keys.has(column.key) || column.autoValue) continue;
+    if (catalogOfColumn(column)) catalogValues[column.key] = "";
+    else fieldValues[column.key] = "";
+  }
+  return {
+    ...(Object.keys(fieldValues).length ? { fieldValues } : {}),
+    ...(Object.keys(catalogValues).length ? { catalogValues } : {}),
+  };
+}
+
+/** Gộp `clearScoringPatch` vào một lượt sửa khi ô nội dung của mẫu bị xoá. */
+function withContentReset<
+  T extends {
+    fieldValues?: Record<string, string>;
+    catalogValues?: Record<string, string>;
+  },
+>(patch: T, cleared: boolean, template: TeamReportTemplate | null | undefined) {
+  if (!cleared) return patch;
+  const reset = clearScoringPatch(template);
+  return {
+    ...patch,
+    fieldValues: { ...reset.fieldValues, ...patch.fieldValues },
+    catalogValues: { ...reset.catalogValues, ...patch.catalogValues },
+  };
+}
+
 /** Bỏ dấu, bỏ hoa thường - gõ "ra soat" vẫn ra "Rà soát". */
 function fold(value: string) {
   return value
@@ -1960,6 +2041,7 @@ function TaskTableRow({
             onPatch(task, {
               version: task.version,
               workContentId: value === "__none__" ? null : value,
+              ...(value === "__none__" ? clearScoringPatch(row.template) : {}),
             })
           }
         />
@@ -1991,9 +2073,20 @@ function TaskTableRow({
           ? (finalCatalogValue(task, column.key)?.id ?? "")
           : String(finalFieldValue(task, column.key) ?? "");
         const error = cellErrors[cellErrorKey(task, column.key)];
+        // Cùng thứ tự nhập như dạng nhiệm vụ: nội dung → điểm → %.
+        const orderBlocker = entryOrderBlocker(
+          column,
+          row.template,
+          task,
+          contentId,
+        );
 
         return (
-          <TableCell key={merged.key} className="align-middle">
+          <TableCell
+            key={merged.key}
+            className="align-middle"
+            title={!disabled && orderBlocker ? orderBlocker : undefined}
+          >
             <DynamicColumnCell
               column={column}
               value={value}
@@ -2002,19 +2095,28 @@ function TaskTableRow({
               disabled={
                 (column.key === contentColumnKey
                   ? classificationLocked
-                  : disabled) || scoreGroupLocked(column, contentGroupId)
+                  : disabled) ||
+                scoreGroupLocked(column, contentGroupId) ||
+                !!orderBlocker
               }
               evidence={task.evidence}
               onEvidenceChange={(items) =>
                 onPatch(task, { version: task.version, evidence: items })
               }
               onCommit={(next) =>
-                onPatch(task, {
-                  version: task.version,
-                  ...(catalog
-                    ? { catalogValues: { [column.key]: next } }
-                    : { fieldValues: { [column.key]: next } }),
-                })
+                onPatch(
+                  task,
+                  withContentReset(
+                    {
+                      version: task.version,
+                      ...(catalog
+                        ? { catalogValues: { [column.key]: next } }
+                        : { fieldValues: { [column.key]: next } }),
+                    },
+                    column.key === contentColumnKey && !next,
+                    row.template,
+                  ),
+                )
               }
             />
             {/* Bảng ngang chật, nên chỉ một dòng ngắn dưới ô - viền đỏ đã chỉ
@@ -2528,6 +2630,9 @@ function TaskDetailBody({
                       onPatch(task, {
                         version: task.version,
                         workContentId: value === "__none__" ? null : value,
+                        ...(value === "__none__"
+                          ? clearScoringPatch(template)
+                          : {}),
                       })
                     }
                   />
@@ -2541,6 +2646,12 @@ function TaskDetailBody({
                     ? (finalCatalogValue(task, column.key)?.id ?? "")
                     : String(finalFieldValue(task, column.key) ?? "");
                   const error = cellErrors[cellErrorKey(task, column.key)];
+                  const orderBlocker = entryOrderBlocker(
+                    column,
+                    template,
+                    task,
+                    contentId,
+                  );
 
                   return (
                     <Field
@@ -2560,7 +2671,9 @@ function TaskDetailBody({
                           ? "Cấp trên đã chấm lại ô này"
                           : scoreGroupLocked(column, contentGroupId)
                             ? "Tự theo nội dung công việc"
-                            : undefined
+                            : !disabled && orderBlocker
+                              ? orderBlocker
+                              : undefined
                       }
                       description={autoFormulaText(column, template)}
                     >
@@ -2581,7 +2694,8 @@ function TaskDetailBody({
                             (column.key === contentColumn?.key
                               ? classificationLocked
                               : disabled) ||
-                            scoreGroupLocked(column, contentGroupId)
+                            scoreGroupLocked(column, contentGroupId) ||
+                            !!orderBlocker
                           }
                           evidence={task.evidence}
                           onEvidenceChange={(items) =>
@@ -2591,12 +2705,19 @@ function TaskDetailBody({
                             })
                           }
                           onCommit={(next) =>
-                            onPatch(task, {
-                              version: task.version,
-                              ...(catalog
-                                ? { catalogValues: { [column.key]: next } }
-                                : { fieldValues: { [column.key]: next } }),
-                            })
+                            onPatch(
+                              task,
+                              withContentReset(
+                                {
+                                  version: task.version,
+                                  ...(catalog
+                                    ? { catalogValues: { [column.key]: next } }
+                                    : { fieldValues: { [column.key]: next } }),
+                                },
+                                column.key === contentColumn?.key && !next,
+                                template,
+                              ),
+                            )
                           }
                         />
                       )}

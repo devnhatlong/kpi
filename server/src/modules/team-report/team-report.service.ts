@@ -1552,6 +1552,9 @@ export class TeamReportService {
       const id = String(raw ?? '').trim();
       if (!id) {
         delete catalogValues[key];
+        // Bỏ chọn ở cột nội dung của mẫu = bỏ phân loại, như chọn "Chưa chọn"
+        // ở ô riêng - không để trường cứng giữ nội dung cũ.
+        if (column.semanticKey === 'work_content') task.workContentId = null;
         continue;
       }
       const name = await this.catalogName(catalog, id);
