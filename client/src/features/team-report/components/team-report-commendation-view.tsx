@@ -107,7 +107,9 @@ export function commendationExportRows(
   return rows.map((row) => ({
     itemId: row.itemId,
     itemName: row.itemName,
-    units: row.departmentIds
+    units: row.noUnit
+      ? "Không có đơn vị"
+      : row.departmentIds
       .map((id, index) => {
         const choice = byId.get(id);
         if (choice) return choice.group === "Phòng" ? choice.code : choice.name;

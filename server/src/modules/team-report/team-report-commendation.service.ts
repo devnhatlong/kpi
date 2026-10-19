@@ -258,6 +258,8 @@ export class TeamReportCommendationService implements OnModuleInit {
         itemName: item?.name ?? '',
         departmentIds: ids.map((id) => new Types.ObjectId(id)),
         departmentNames: ids.map((id) => labels.get(id) ?? ''),
+        // Đã chọn đơn vị thì "không có đơn vị" mất nghĩa.
+        noUnit: !ids.length && !!row.noUnit,
         content: row.content?.trim() ?? '',
         evidence: row.evidence?.trim() ?? '',
         note: row.note?.trim() ?? '',
@@ -271,6 +273,7 @@ export class TeamReportCommendationService implements OnModuleInit {
     // Dòng trống hẳn (bấm "Thêm" rồi thôi) thì bỏ, không lưu thành dòng rỗng.
     const filled = (row: TeamReportCommendationRowDto) =>
       row.departmentIds.length ||
+      row.noUnit ||
       row.content?.trim() ||
       row.evidence?.trim() ||
       row.note?.trim();
@@ -327,7 +330,7 @@ export class TeamReportCommendationService implements OnModuleInit {
     ];
     for (const [index, { row, praise }] of rows.entries()) {
       const where = praise ? 'biểu dương' : 'phê bình';
-      if (!row.departmentIds.length) {
+      if (!row.departmentIds.length && !row.noUnit) {
         throw new BadRequestException(
           `Có dòng ${where} chưa chọn đơn vị (dòng ${index + 1}).`,
         );
@@ -641,6 +644,7 @@ export class TeamReportCommendationService implements OnModuleInit {
       itemName: row.itemName,
       departmentIds: row.departmentIds.map(String),
       departmentNames: row.departmentNames,
+      noUnit: !!row.noUnit,
       /** Tên gọn khi in: phòng in MÃ (PC03), cấp xã giữ tên. */
       departmentShortNames: row.departmentIds.map(
         (id, index) =>

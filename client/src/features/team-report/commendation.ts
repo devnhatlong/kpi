@@ -18,6 +18,8 @@ export type CommendationRow = {
   itemId: string | null;
   itemName: string;
   departmentIds: string[];
+  /** Chọn tường minh "Không có đơn vị" (khi không nêu đơn vị nào). */
+  noUnit?: boolean;
   /** Tên chép lúc lưu - dòng chưa lưu thì client tự tra từ danh mục. */
   departmentNames: string[];
   /** Tên gọn khi in (phòng in mã, cấp xã giữ tên) - server trả. */
@@ -187,6 +189,7 @@ export function saveCommendation(
     _id: row._id,
     itemId: row.itemId,
     departmentIds: row.departmentIds,
+    noUnit: !row.departmentIds.length && !!row.noUnit,
     content: row.content,
     evidence: row.evidence,
     note: row.note,

@@ -1036,6 +1036,13 @@ export class TeamReportCommendationRowDto {
   @IsMongoId({ each: true })
   departmentIds!: string[];
 
+  @ApiPropertyOptional({
+    description: 'Chọn "Không có đơn vị" - chỉ có nghĩa khi departmentIds rỗng',
+  })
+  @IsOptional()
+  @IsBoolean()
+  noUnit?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

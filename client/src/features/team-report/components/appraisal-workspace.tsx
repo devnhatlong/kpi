@@ -256,12 +256,7 @@ export function AppraisalWorkspace({
           <strong className="text-foreground">
             báo cáo tháng do chính tài khoản này duyệt
           </strong>
-          , hoặc được{" "}
-          <strong className="text-foreground">
-            nêu tên trong bảng biểu dương, phê bình
-          </strong>{" "}
-          các phòng gửi tới bạn tháng này. Tháng này chưa có đơn vị nào như
-          vậy.
+          . Tháng này chưa có đơn vị nào như vậy.
         </p>
         {editable && missingSuggestions.length ? (
           <AddUnitPicker options={missingSuggestions} onPick={addUnit} />
@@ -276,8 +271,7 @@ export function AppraisalWorkspace({
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
           <span>
             <strong className="font-semibold">{pendingApproved.length}</strong>{" "}
-            đơn vị mới (có báo cáo tháng bạn vừa duyệt, hoặc được nêu trong
-            bảng biểu dương, phê bình), chưa có trong bảng.
+            đơn vị mới có báo cáo tháng bạn vừa duyệt, chưa có trong bảng.
           </span>
           <Button
             type="button"
@@ -1303,9 +1297,9 @@ function UnitEditor({
                 . Không sửa ở đây; cần điều chỉnh thì cộng / trừ bên dưới.
               </>
             ) : (
-              /* Đơn vị vào bảng từ bảng biểu dương, phê bình - chưa có báo cáo
-                 tháng được duyệt nên chưa có điểm tự chấm. */
-              "Chưa có báo cáo tháng được duyệt - điểm tự chấm sẽ tự điền khi bạn duyệt báo cáo tháng của đơn vị. Có thể chuẩn bị cộng / trừ trước; trình được khi đã có điểm tự chấm."
+              /* Chỉ còn gặp ở đơn vị ĐÃ TRÌNH mà báo cáo tháng sau đó bị trả
+                 lại - đơn vị chưa trình thì đã tự rời bảng. */
+              "Báo cáo tháng của đơn vị hiện không còn ở trạng thái bạn đã duyệt (có thể vừa bị trả lại) - giữ điểm tự chấm đã lưu; duyệt lại báo cáo tháng thì điểm tự cập nhật."
             )}
           </p>
         </div>

@@ -44,6 +44,13 @@ export class TeamReportCommendationRow {
   @Prop({ type: [String], default: [] })
   departmentNames!: string[];
 
+  /**
+   * "Không có đơn vị" - chọn tường minh khi dòng không nêu đơn vị nào (VD
+   * nhóm này tháng này không có). Chỉ true khi `departmentIds` rỗng.
+   */
+  @Prop({ type: Boolean, default: false })
+  noUnit!: boolean;
+
   /** Biểu dương: nội dung, kết quả nổi bật. Phê bình: nội dung tồn tại, hạn chế. */
   @Prop({ trim: true, default: '' })
   content!: string;

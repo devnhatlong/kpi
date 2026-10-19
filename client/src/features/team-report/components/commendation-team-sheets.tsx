@@ -379,7 +379,9 @@ function TeamSheetCard({
                 <div className="min-w-0 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className="text-sm font-semibold">
-                      {row.departmentNames.join(", ") || "-"}
+                      {row.noUnit
+                        ? "Không có đơn vị"
+                        : row.departmentNames.join(", ") || "-"}
                     </span>
                     {praise && row.itemName ? (
                       <span className="rounded border bg-muted/50 px-1.5 py-0.5 text-[11px] text-muted-foreground">

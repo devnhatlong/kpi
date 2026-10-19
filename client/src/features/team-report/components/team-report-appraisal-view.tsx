@@ -35,6 +35,7 @@ import {
   unitComplete,
   unitEditable,
   unitSaved,
+  type AppraisalComposerData,
   type AppraisalUnit,
 } from "@/features/team-report/appraisal";
 import { AppraisalWorkspace } from "@/features/team-report/components/appraisal-workspace";
@@ -106,6 +107,78 @@ function mergeAppraisalUnits(
     rows: merged.rows.map((unit) => sent.get(unit.departmentId) ?? unit),
     conflicts: merged.conflicts,
   };
+}
+
+/**
+ * Khung "Đang chờ báo cáo tháng" - thu gọn mặc định, mở ra là danh sách đơn
+ * vị kèm số biểu dương / phê bình đang nêu tên nó.
+ */
+function AwaitingReport({
+  units,
+  hints,
+}: {
+  units: Array<{ id: string; name: string }>;
+  hints: AppraisalComposerData["commendationHints"];
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="rounded-md border bg-muted/30">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        <ChevronRight
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-90",
+          )}
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1">
+          <strong className="font-semibold">
+            {units.length} đơn vị đang chờ báo cáo tháng
+          </strong>{" "}
+          <span className="text-muted-foreground">
+            - được nêu trong bảng biểu dương, phê bình nhưng chưa có báo cáo
+            tháng do bạn duyệt, nên chưa vào bảng thẩm định.
+          </span>
+        </span>
+      </button>
+      {open ? (
+        <ul className="divide-y border-t">
+          {units.map((unit) => {
+            const hint = hints[unit.id];
+            return (
+              <li
+                key={unit.id}
+                className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+              >
+                <span className="min-w-0 font-medium">{unit.name}</span>
+                <span className="flex gap-2 text-xs">
+                  {hint?.praises.length ? (
+                    <span className="text-emerald-700 dark:text-emerald-400">
+                      {hint.praises.length} biểu dương
+                    </span>
+                  ) : null}
+                  {hint?.criticisms.length ? (
+                    <span className="text-rose-700 dark:text-rose-400">
+                      {hint.criticisms.length} phê bình
+                    </span>
+                  ) : null}
+                </span>
+              </li>
+            );
+          })}
+          <li className="px-3 py-2 text-xs text-muted-foreground">
+            Đơn vị trình báo cáo tổng hợp tháng lên và bạn duyệt xong thì tự vào
+            bảng, kèm sẵn các gợi ý biểu dương / phê bình này.
+          </li>
+        </ul>
+      ) : null}
+    </section>
+  );
 }
 
 /**
@@ -563,6 +636,27 @@ export function TeamReportAppraisalView() {
                 </strong>{" "}
                 - mở từng đơn vị để xem lý do, sửa, lưu rồi trình lại.
               </p>
+            ) : null}
+
+            {data.droppedUnits?.length ? (
+              <p className="rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
+                <strong className="font-semibold">
+                  {data.droppedUnits.length} đơn vị đã rời bảng
+                </strong>{" "}
+                ({data.droppedUnits.join(", ")}) - không còn báo cáo tháng do bạn
+                duyệt (báo cáo có thể vừa bị trả lại). Duyệt lại báo cáo tháng
+                thì đơn vị tự hiện lại ở mục &quot;đơn vị mới&quot;.
+              </p>
+            ) : null}
+
+            {/* Đơn vị được nêu trong bảng biểu dương, phê bình nhưng chưa có
+                báo cáo tháng do mình duyệt: chưa vào bảng, chỉ báo để biết -
+                báo cáo được duyệt là tự vào, gợi ý cộng / trừ vẫn còn. */}
+            {data.awaitingReport?.length ? (
+              <AwaitingReport
+                units={data.awaitingReport}
+                hints={data.commendationHints}
+              />
             ) : null}
 
             <AppraisalWorkspace

@@ -14,6 +14,9 @@ import {
 } from "@/features/team-report/commendation";
 import { cn } from "@/lib/utils";
 
+/** Giá trị giả trong ô chọn đơn vị = "Không có đơn vị". */
+const NO_UNIT = "__no_unit__";
+
 /* Ô chữ tự giãn theo nội dung, trống thì cao đúng một dòng. */
 const TEXT_CELL =
   "min-h-9 resize-none py-[7px] leading-5 [field-sizing:content] bg-background";
@@ -61,13 +64,21 @@ export function CommendationTables({
   const showSource =
     sourceTags || [...praises, ...criticisms].some((row) => !!row.sourceName);
   const options = useMemo(
-    () =>
-      departmentChoices.map((choice) => ({
+    () => [
+      // Chọn tường minh khi dòng không nêu đơn vị nào (VD tháng này không có).
+      {
+        value: NO_UNIT,
+        label: "Không có đơn vị",
+        hint: "Không nêu đơn vị nào",
+        keywords: "khong co don vi",
+      },
+      ...departmentChoices.map((choice) => ({
         value: choice.id,
         label: choice.name,
         hint: choice.group,
         keywords: choice.code,
       })),
+    ],
     [departmentChoices],
   );
 
@@ -111,15 +122,33 @@ export function CommendationTables({
   ) =>
     editable ? (
       <MultiSelect
-        value={row.departmentIds}
-        onValueChange={(ids) => patch({ departmentIds: ids })}
+        value={row.noUnit ? [NO_UNIT] : row.departmentIds}
+        onValueChange={(ids) => {
+          /* "Không có đơn vị" loại trừ các đơn vị khác: vừa chọn nó thì bỏ
+             hết đơn vị; đang có nó mà chọn thêm đơn vị thì bỏ nó đi. */
+          const picked = ids.includes(NO_UNIT) && !row.noUnit;
+          patch(
+            picked
+              ? { departmentIds: [], noUnit: true }
+              : {
+                  departmentIds: ids.filter((id) => id !== NO_UNIT),
+                  noUnit: false,
+                },
+          );
+        }}
         options={options}
         searchPlaceholder="Gõ mã hoặc tên đơn vị…"
-        triggerClassName={cn(!row.departmentIds.length && "border-dashed")}
+        triggerClassName={cn(
+          !row.departmentIds.length && !row.noUnit && "border-dashed",
+        )}
         placeholder={`Chọn ${label.toLowerCase()}…`}
       />
     ) : (
-      <span className="text-sm">{row.departmentNames.join(", ") || "-"}</span>
+      <span className="text-sm">
+        {row.noUnit
+          ? "Không có đơn vị"
+          : row.departmentNames.join(", ") || "-"}
+      </span>
     );
 
   const textCell = (
