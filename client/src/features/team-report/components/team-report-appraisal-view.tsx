@@ -467,7 +467,7 @@ export function TeamReportAppraisalView() {
                   (
                     [
                       ["DRAFT", "Chưa trình"],
-                      ["RETURNED", "Bị trả lại"],
+                      ["RETURNED", "Thẩm định bị trả lại"],
                       ["PENDING", "Chờ duyệt"],
                       ["APPROVED", "Đã duyệt"],
                     ] as const
@@ -555,26 +555,6 @@ export function TeamReportAppraisalView() {
                 </div>
               ) : null}
             </div>
-
-            {counts.RETURNED > 0 ? (
-              <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-                <strong className="font-semibold">
-                  {counts.RETURNED} đơn vị bị trả lại
-                </strong>{" "}
-                - mở từng đơn vị để xem lý do, sửa, lưu rồi trình lại.
-              </p>
-            ) : null}
-
-            {data.droppedUnits?.length ? (
-              <p className="rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
-                <strong className="font-semibold">
-                  {data.droppedUnits.length} đơn vị đã rời bảng
-                </strong>{" "}
-                ({data.droppedUnits.join(", ")}) - không còn báo cáo tháng do bạn
-                duyệt (báo cáo có thể vừa bị trả lại). Duyệt lại báo cáo tháng
-                thì đơn vị tự hiện lại ở mục &quot;đơn vị mới&quot;.
-              </p>
-            ) : null}
 
             <AppraisalWorkspace
               units={units}

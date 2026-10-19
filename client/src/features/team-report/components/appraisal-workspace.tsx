@@ -620,11 +620,15 @@ export function UnitStatusBadge({
         className,
       )}
     >
-      {stagedStatusLabel({
-        status: unit.status,
-        stage: unit.stage ?? "FIRST",
-        finalRecipientName: unit.finalRecipientName ?? "",
-      })}
+      {/* Ghi rõ CÁI GÌ bị trả lại - "Trả lại" trơn dễ hiểu nhầm thành báo
+          cáo tháng của đơn vị bị trả. */}
+      {unit.status === "RETURNED"
+        ? "Thẩm định bị trả lại"
+        : stagedStatusLabel({
+            status: unit.status,
+            stage: unit.stage ?? "FIRST",
+            finalRecipientName: unit.finalRecipientName ?? "",
+          })}
     </Badge>
   );
 }
@@ -1239,7 +1243,7 @@ function UnitEditor({
         </p>
       ) : unit.status === "RETURNED" ? (
         <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-          <strong className="font-semibold">Bị trả lại:</strong>{" "}
+          <strong className="font-semibold">Thẩm định bị trả lại:</strong>{" "}
           {unit.returnReason || "không nêu lý do"} - sửa, lưu rồi trình lại đơn
           vị này.
         </p>

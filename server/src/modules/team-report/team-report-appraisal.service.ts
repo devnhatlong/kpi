@@ -338,12 +338,11 @@ export class TeamReportAppraisalService {
       name: labels.get(id) ?? '',
     }));
 
-    /* Đơn vị CHƯA TRÌNH LẦN NÀO mà không có báo cáo tháng tôi đã duyệt (chỉ
-       vào từ bảng biểu dương theo luật cũ, báo cáo tháng bị trả lại…) thì rời
-       bảng - không để
-       một dòng không điểm, không trình được nằm đó. Đơn vị đã trình (kể cả bị
-       đội CNTT trả lại) thì giữ: đó là chỗ sửa để trình lại. Lần lưu kế tiếp
-       ghi hẳn việc rời bảng; nguồn quay lại thì đơn vị hiện lại ở "đơn vị mới". */
+    /* Đơn vị CHƯA TRÌNH LẦN NÀO mà không có báo cáo tháng tôi đã duyệt (sót
+       từ luật cũ, báo cáo tháng bị trả lại…) thì LẶNG LẼ rời bảng - user chốt
+       2026-10-19 không cần báo. Đơn vị đã trình (kể cả bị đội CNTT trả lại)
+       thì giữ: đó là chỗ sửa để trình lại. Lần lưu kế tiếp ghi hẳn việc rời
+       bảng; báo cáo được duyệt lại thì đơn vị hiện lại ở "đơn vị mới". */
     const candidates = new Set(candidateIds);
     const orphaned = (sheet?.units ?? []).filter(
       (unit) =>
@@ -389,11 +388,6 @@ export class TeamReportAppraisalService {
             userId,
           ),
         },
-        /** Đơn vị vừa rời bảng vì không còn báo cáo tháng tôi duyệt - để màn hình báo. */
-        droppedUnits: orphaned.map(
-          (unit) =>
-            labels.get(String(unit.departmentId)) ?? unit.departmentName,
-        ),
         /** Đã duyệt báo cáo tháng nhưng chưa có trong bảng đã lưu. */
         newlyApprovedIds: sheet
           ? approved
