@@ -1,4 +1,5 @@
 import type { ApiResponse } from "@/features/auth/types";
+import type { CommendationUnitOrder } from "@/features/team-report/commendation-excel";
 import { api, unwrapData, unwrapPaginated } from "@/lib/api-client";
 import type {
   TeamReportDayStatus,
@@ -266,6 +267,8 @@ export function fetchCommendationInboxExport(query: {
     api.get<
       ApiResponse<{
         criteria: Array<{ id: string; name: string }>;
+        /** Mọi đơn vị theo thứ tự cây, kèm khối - cho bản xuất nâng cao. */
+        units: CommendationUnitOrder[];
         sheets: CommendationSheet[];
       }>
     >("/team-report/commendations/incoming/export", {

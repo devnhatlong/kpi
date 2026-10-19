@@ -406,6 +406,7 @@ export class TeamReportCommendationService implements OnModuleInit {
       message: 'OK',
       data: {
         criteria: await this.criteria(),
+        units: await this.unitsByBlock(),
         sheets: await Promise.all(
           sheets.map((sheet) =>
             this.toClient(sheet, sheet.periodMonth, sheet.departmentId),
@@ -724,6 +725,67 @@ export class TeamReportCommendationService implements OnModuleInit {
       .find({ section: 'BONUS', isActive: true })
       .sort({ sortOrder: 1, code: 1 });
     return items.map((item) => ({ id: String(item._id), name: item.name }));
+  }
+
+  /**
+   * MỌI đơn vị được biểu dương / phê bình (phòng + cấp cơ sở) theo ĐÚNG thứ
+   * tự cây đơn vị ở trang quản trị, kèm KHỐI chứa nó (nút cấp 1 dưới gốc: Khối
+   * Xây dựng lực lượng, Khối An ninh, …) - cho bản xuất nâng cao xếp theo khối.
+   * `label` = mã với phòng, tên với cấp xã (như cột đơn vị khi in).
+   */
+  private async unitsByBlock() {
+    const levels = await this.levelModel
+      .find({ code: { $in: TARGET_LEVELS } })
+      .select('code');
+    const targetLevel = new Map(
+      levels.map((level) => [String(level._id), level.code]),
+    );
+    const all = await this.departmentModel
+      .find({ isActive: true })
+      .select('code name levelId parentId sortOrder')
+      .sort({ sortOrder: 1, name: 1 });
+    const children = new Map<string, DepartmentDocument[]>();
+    for (const dept of all) {
+      const key = String(dept.parentId ?? '');
+      children.set(key, [...(children.get(key) ?? []), dept]);
+    }
+    const labels = await departmentLabels(
+      this.departmentModel,
+      all
+        .filter((dept) => targetLevel.has(String(dept.levelId)))
+        .map((dept) => dept._id),
+    );
+    const result: Array<{
+      id: string;
+      label: string;
+      name: string;
+      blockId: string;
+      blockName: string;
+    }> = [];
+    const walk = (
+      parentId: string,
+      depth: number,
+      block: { id: string; name: string } | null,
+    ) => {
+      for (const dept of children.get(parentId) ?? []) {
+        // Nút cấp 1 dưới gốc là khối; gốc (tỉnh) thì chưa có khối.
+        const here =
+          depth === 1 ? { id: String(dept._id), name: dept.name } : block;
+        const code = targetLevel.get(String(dept.levelId));
+        if (code && here) {
+          result.push({
+            id: String(dept._id),
+            label: code === 'PHONG' ? dept.code : dept.name,
+            name: labels.get(String(dept._id)) ?? dept.name,
+            blockId: here.id,
+            blockName: here.name,
+          });
+        }
+        walk(String(dept._id), depth + 1, here);
+      }
+    };
+    walk('', 0, null);
+    return result;
   }
 
   /** Đơn vị cho ô chọn: phòng (nhãn có mã) rồi tới cấp cơ sở, theo cây. */

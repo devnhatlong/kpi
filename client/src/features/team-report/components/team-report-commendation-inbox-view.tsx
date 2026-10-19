@@ -5,6 +5,7 @@ import useSWR from "swr";
 import {
   ArrowLeft,
   Check,
+  ChevronDown,
   FileDown,
   Inbox,
   Loader2,
@@ -38,8 +39,15 @@ import {
 } from "@/features/team-report/commendation";
 import {
   exportCommendationToExcel,
+  exportCommendationsAdvanced,
   exportCommendationsCombined,
 } from "@/features/team-report/commendation-excel";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CommendationTables } from "@/features/team-report/components/commendation-tables";
 import { ApprovalChain } from "@/features/team-report/components/participants-block";
 import { commendationExportRows } from "@/features/team-report/components/team-report-commendation-view";
@@ -127,6 +135,50 @@ export function TeamReportCommendationInboxView() {
           departmentName: sheet.departmentName,
           praises: commendationExportRows(sheet.praises, []),
           criticisms: commendationExportRows(sheet.criticisms, []),
+        })),
+      });
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Không xuất được Excel."));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  /* Xuất nâng cao: tách mỗi dòng theo TỪNG đơn vị được nêu tên, server trả
+     kèm thứ tự đơn vị theo khối của cây đơn vị. */
+  const exportAdvanced = async (kind: "PRAISE" | "CRITICISM") => {
+    setExporting(true);
+    try {
+      const { units, sheets } = await fetchCommendationInboxExport({
+        box,
+        status: status as TeamReportDayStatus | "",
+      });
+      if (!sheets.length) {
+        toast.info("Không có bảng nào để xuất.");
+        return;
+      }
+      await exportCommendationsAdvanced({
+        kind,
+        units,
+        scopeLabel: `Tổng hợp các đơn vị${
+          status ? ` · ${STATUS_TEXT[status]}` : ""
+        }`,
+        sheets: sheets.map((sheet) => ({
+          periodMonth: sheet.periodMonth,
+          rows: (kind === "PRAISE" ? sheet.praises : sheet.criticisms).flatMap(
+            (row) =>
+              row.departmentIds.map((departmentId, index) => ({
+                departmentId,
+                departmentLabel:
+                  row.departmentShortNames?.[index] ??
+                  row.departmentNames[index] ??
+                  "",
+                content: row.content,
+                evidence: row.evidence,
+                note: row.note,
+                source: sheet.departmentName,
+              })),
+          ),
         })),
       });
     } catch (err) {
@@ -235,6 +287,34 @@ export function TeamReportCommendationInboxView() {
               )}
               Xuất tổng hợp
             </Button>
+            {/* Xuất NÂNG CAO: một loại mỗi file, mỗi đơn vị một dòng, xếp
+                theo khối của cây đơn vị. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="bg-background"
+                  disabled={exporting || !rows.length}
+                >
+                  <FileDown className="size-4" aria-hidden="true" />
+                  Xuất nâng cao
+                  <ChevronDown className="size-4" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onSelect={() => void exportAdvanced("PRAISE")}
+                >
+                  1. Xuất biểu dương
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => void exportAdvanced("CRITICISM")}
+                >
+                  2. Xuất phê bình, chấn chỉnh
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </CardContent>
       </Card>
