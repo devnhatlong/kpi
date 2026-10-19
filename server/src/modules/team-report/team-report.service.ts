@@ -3275,23 +3275,32 @@ export class TeamReportService {
           'Chỉ người đã duyệt chốt bản này mới trả lại được.',
         );
       }
-      /* Việc đã được cấp trên gom vào bản của họ và trình đi thì không trả về
-         được nữa: bản đó đang đi lên với những việc sắp không còn được tính. Bản
-         của cấp trên còn nháp / bị trả thì không chặn - lúc trình sẽ bị chặn
-         và người lập bỏ việc đó ra (`assertSelectableTasks`). */
+      /* Việc đã được cấp trên gom vào BẤT KỲ bản tổng hợp nào của họ - kể cả
+         nháp hay bị trả lại - thì không trả về được nữa (user chốt 2026-10-19,
+         thay luật cũ chỉ chặn bản chờ / đã duyệt). Trả về là bản cấp trên kẹt
+         những việc không còn được tính, tới lúc trình mới vỡ ra. Muốn đội sửa
+         thì cấp trên bỏ các việc đó khỏi bản của mình trước. */
       const upper = await this.summaryModel
         .findOne({
           _id: { $ne: summary._id },
           departmentId: { $ne: summary.departmentId },
-          status: { $in: ['PENDING', 'APPROVED'] },
           'rows.taskId': { $in: summary.rows.map((row) => row.taskId) },
         })
         .select('title status');
       if (upper) {
+        const state =
+          upper.status === 'APPROVED'
+            ? 'đã được duyệt'
+            : upper.status === 'PENDING'
+              ? 'đang chờ duyệt'
+              : upper.status === 'RETURNED'
+                ? 'đang bị trả lại'
+                : 'đang nháp';
         throw new BadRequestException(
-          `Nhiệm vụ của bản này đã nằm trong "${upper.title}" ` +
-            (upper.status === 'APPROVED' ? 'đã được duyệt' : 'đang chờ duyệt') +
-            ' - trả lại bản đó (hoặc rút về) trước rồi mới trả lại bản này.',
+          `Nhiệm vụ của bản này đã được đưa vào báo cáo tổng hợp "${upper.title}" (${state}) - không trả lại được. ` +
+            (upper.status === 'DRAFT' || upper.status === 'RETURNED'
+              ? 'Bỏ các nhiệm vụ đó khỏi báo cáo kia trước rồi mới trả lại bản này.'
+              : 'Báo cáo kia phải được trả lại (hoặc rút về) và bỏ các nhiệm vụ đó ra trước.'),
         );
       }
     } else if (!isHandler(summary, actor.id)) {
@@ -3432,6 +3441,14 @@ export class TeamReportService {
         '',
         summary,
       );
+      /* Tài liệu kiểm chứng: thuộc NHIỆM VỤ (không theo cột), nên ghi thẳng
+         vào nhiệm vụ sống - lần chụp lại bên dưới mang theo. Bổ sung tệp lúc
+         bản bị trả lại là chuyện thường (cấp trên chê thiếu căn cứ). */
+      if (patch.evidence !== undefined) {
+        task.evidence = this.mapEvidence(patch.evidence);
+        task.markModified('evidence');
+        changed += 1;
+      }
       task.version += 1;
       await task.save();
     }

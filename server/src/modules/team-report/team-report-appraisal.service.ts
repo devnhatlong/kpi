@@ -350,10 +350,20 @@ export class TeamReportAppraisalService {
         !unit.sentAt &&
         !candidates.has(String(unit.departmentId)),
     );
-    const units = sheet
+    /* Đơn vị có báo cáo tháng tôi đã duyệt (kể cả mới duyệt cấp 1, đang chờ
+       duyệt cuối) mà bảng đã lưu chưa có thì TỰ VÀO BẢNG (user chốt
+       2026-10-19) - nguồn đã hoàn toàn tự động nên không còn chuyện đội "cố ý
+       bỏ" để phải bấm thêm tay. Lần lưu kế tiếp ghi hẳn vào bảng. */
+    const kept = sheet
       ? sheet.units.filter((unit) => !orphaned.includes(unit))
-      : approved.map((unit) => this.blankUnit(unit.id, unit.name, items));
-    const inSheet = new Set(units.map((unit) => String(unit.departmentId)));
+      : [];
+    const keptIds = new Set(kept.map((unit) => String(unit.departmentId)));
+    const units = [
+      ...kept,
+      ...approved
+        .filter((unit) => !keptIds.has(unit.id))
+        .map((unit) => this.blankUnit(unit.id, unit.name, items)),
+    ];
 
     /* Tự chấm = điểm báo cáo tháng của đơn vị, không ai sửa tay. Đơn vị còn
        sửa được thì luôn lấy số MỚI NHẤT (báo cáo có thể vừa được chấm lại /
@@ -388,12 +398,8 @@ export class TeamReportAppraisalService {
             userId,
           ),
         },
-        /** Đã duyệt báo cáo tháng nhưng chưa có trong bảng đã lưu. */
-        newlyApprovedIds: sheet
-          ? approved
-              .filter((unit) => !inSheet.has(unit.id))
-              .map((unit) => unit.id)
-          : [],
+        /** Giữ cho client cũ - đơn vị mới duyệt nay tự vào bảng nên luôn rỗng. */
+        newlyApprovedIds: [],
         selfScoreHints: hints,
         /** Đơn vị tự nhận theo tiêu chí - dòng Trục 2 của báo cáo tháng. */
         selfClaims: await this.selfClaims(actor.id, periodMonth, items),
@@ -1056,13 +1062,20 @@ export class TeamReportAppraisalService {
     return result;
   }
 
-  /** Báo cáo tháng tôi đã duyệt, mới nhất trước - xem `selfScoreHints`. */
+  /**
+   * Báo cáo tôi đã duyệt cho tháng thẩm định - xem `selfScoreHints`.
+   *
+   * Lấy cả kỳ THÁNG lẫn kỳ TỰ CHỌN (user chốt 2026-10-19 - PX01 lập "kỳ tự
+   * chọn" 15/09 → 19/10 thay cho báo cáo tháng). Một đơn vị có cả hai thì ƯU
+   * TIÊN báo cáo tháng: sắp `period` giảm dần ("MONTH" > "CUSTOM"), rồi mới
+   * nhất trước - chỗ gọi lấy bản đầu tiên của mỗi đơn vị.
+   */
   private monthlyReports(approverId: Types.ObjectId, periodMonth: string) {
     const from = `${periodMonth}-01`;
     const to = `${periodMonth}-31`;
     return this.summaryModel
       .find({
-        period: 'MONTH',
+        period: { $in: ['MONTH', 'CUSTOM'] },
         conclusion: { $ne: null },
         // Kỳ tháng 15 tháng trước - 14 tháng này: xét theo NGÀY KẾT THÚC (14/10 thuộc
         // tháng 10), không theo ngày bắt đầu (15/09 lại rơi sang tháng 9).
@@ -1082,7 +1095,7 @@ export class TeamReportAppraisalService {
           },
         ],
       })
-      .sort({ updatedAt: -1 });
+      .sort({ period: -1, updatedAt: -1 });
   }
 
   private assertMonth(periodMonth: string) {

@@ -1591,12 +1591,36 @@ export function TeamReportSummaryPanel({
                             }
 
                             if (column.dataType === "file") {
+                              /* Đội sửa bản của mình (nháp / bị trả lại) thì
+                                 đính kèm / bỏ tệp ngay tại đây - bị trả lại vì
+                                 thiếu căn cứ là chuyện thường. Cấp trên chấm
+                                 lại thì chỉ xem: tệp là của đội. */
+                              const evidenceEditable = editable && owner;
                               return (
                                 <TableCell
                                   key={column.key}
                                   className="align-middle"
                                 >
-                                  <EvidenceCell items={row.evidence ?? []} />
+                                  <EvidenceCell
+                                    items={row.evidence ?? []}
+                                    disabled={
+                                      savingCell === String(row.taskId)
+                                    }
+                                    onChange={
+                                      evidenceEditable
+                                        ? (next) =>
+                                            saveCell(String(row.taskId), {
+                                              taskId: String(row.taskId),
+                                              evidence: next.map((item) => ({
+                                                uploadId: String(
+                                                  item.uploadId,
+                                                ),
+                                                name: item.name,
+                                              })),
+                                            })
+                                        : undefined
+                                    }
+                                  />
                                 </TableCell>
                               );
                             }

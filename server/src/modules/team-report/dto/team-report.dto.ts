@@ -529,6 +529,18 @@ export class ReviewEditRowDto {
   @IsOptional()
   @IsObject()
   catalogValues?: Record<string, string>;
+
+  /**
+   * Tài liệu kiểm chứng MỚI của nhiệm vụ (cả danh sách). Chỉ ĐỘI sửa bản tổng
+   * hợp của mình (nháp / bị trả lại) mới dùng; cấp trên chấm lại thì bỏ qua.
+   */
+  @ApiPropertyOptional({ type: () => [TeamReportEvidenceDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => TeamReportEvidenceDto)
+  evidence?: TeamReportEvidenceDto[];
 }
 
 export class ReviewTeamReportDayDto {

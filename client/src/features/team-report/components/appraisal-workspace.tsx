@@ -251,14 +251,6 @@ export function AppraisalWorkspace({
     setMode("UNIT");
   };
 
-  const removeUnit = (id: string) => {
-    if (!onChange) return;
-    const index = units.findIndex((unit) => unit.departmentId === id);
-    const next = units.filter((unit) => unit.departmentId !== id);
-    onChange(next);
-    setSelectedId(next[Math.min(index, next.length - 1)]?.departmentId ?? null);
-  };
-
   if (!units.length) {
     return (
       <div className="mx-auto max-w-xl space-y-3 rounded-lg border border-dashed px-4 py-10 text-center">
@@ -505,12 +497,9 @@ export function AppraisalWorkspace({
               showClaims={selfClaims !== undefined}
               claims={selfClaims?.[selected.unit.departmentId]}
               onChange={(next) => patchUnit(selected.unit.departmentId, next)}
-              onRemove={
-                // Đã trình một lần thì không bỏ khỏi bảng được nữa.
-                editable && !selected.unit.sentAt
-                  ? () => removeUnit(selected.unit.departmentId)
-                  : undefined
-              }
+              /* Không có nút bỏ đơn vị: đơn vị vào bảng TỰ ĐỘNG theo báo cáo
+                 tháng đã duyệt (user chốt 2026-10-19), bỏ ra là lần mở sau
+                 nó quay lại. */
               onPrev={
                 position > 0
                   ? () =>
@@ -751,10 +740,14 @@ function SummaryTable({
 /* Cột cố định cho từng loại dòng - ô điểm và ô chữ cùng cao 36px, thẳng hàng
    với nút xoá; ô chữ tự giãn khi gõ dài (field-sizing). */
 const PENALTY_GRID = "sm:grid-cols-[1fr_8rem_2.25rem]";
+/* Ô CHỈ ĐỌC (đơn vị đã trình, nơi duyệt xem) vẫn là dữ liệu cần đọc - không
+   để mờ 50% như kiểu "khoá" mặc định; chỉ đổi nền và con trỏ cho biết không
+   sửa được. */
+const READONLY =
+  "disabled:cursor-default disabled:opacity-100 disabled:bg-muted/30 disabled:text-foreground";
 /* Ô trống: cao đúng 36px như ô điểm (placeholder dài không được kéo ô ra hai
    dòng); có chữ rồi mới tự giãn theo nội dung. */
-const TEXT_CELL =
-  "min-h-9 resize-none overflow-hidden py-[7px] leading-5 [field-sizing:content] placeholder-shown:h-9 placeholder-shown:[field-sizing:fixed] placeholder:truncate";
+const TEXT_CELL = `min-h-9 resize-none overflow-hidden py-[7px] leading-5 [field-sizing:content] placeholder-shown:h-9 placeholder-shown:[field-sizing:fixed] placeholder:truncate ${READONLY}`;
 
 
 /**
@@ -809,6 +802,7 @@ function ScoreInput({
         aria-invalid={invalid}
         className={cn(
           "h-9 pr-11 text-right tabular-nums",
+          READONLY,
           invalid && "border-destructive",
         )}
         onChange={(event) => setDraft(onlyDecimal(event.target.value))}
@@ -1826,7 +1820,7 @@ function UnitEditor({
           >
             <SelectTrigger
               id={`rating-${unit.departmentId}`}
-              className="w-full"
+              className={cn("w-full", READONLY)}
             >
               <SelectValue placeholder="Chọn mức xếp loại" />
             </SelectTrigger>

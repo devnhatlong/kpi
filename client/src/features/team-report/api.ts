@@ -344,6 +344,8 @@ export type TeamReportReviewRow = {
   /** Giá trị chỉnh theo khoá cột của mẫu gắn với nhiệm vụ. */
   fieldValues?: Record<string, string>;
   catalogValues?: Record<string, string>;
+  /** Cả danh sách tệp kiểm chứng mới - chỉ đội sửa bản của mình mới gửi. */
+  evidence?: Array<{ uploadId: string; name: string }>;
 };
 
 /**
