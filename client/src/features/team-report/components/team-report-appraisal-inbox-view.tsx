@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import useSWR from "swr";
-import { ArrowLeft, Check, Inbox, Loader2, Undo2 } from "lucide-react";
+import { Inbox, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -22,67 +21,109 @@ import { Textarea } from "@/components/ui/textarea";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
   appraisalKeys,
-  appraisalTotals,
   decideAppraisal,
-  fetchAppraisalInbox,
-  fetchAppraisalIncoming,
+  fetchAppraisalBoard,
+  type AppraisalBoardUnit,
+  type AppraisalUnit,
 } from "@/features/team-report/appraisal";
 import { AppraisalWorkspace } from "@/features/team-report/components/appraisal-workspace";
 import {
   MonthSwitcher,
   useCurrentMonth,
 } from "@/features/team-report/components/month-switcher";
-import { ApprovalChain } from "@/features/team-report/components/participants-block";
-import {
-  DAY_STATUS_CLASS,
-  RETURN_BUTTON_CLASS,
-} from "@/features/team-report/status-styles";
-import {
-  formatScore,
-  stagedStatusLabel,
-  type TeamReportDayStatus,
-} from "@/features/team-report/types";
+import { type TeamReportDayStatus } from "@/features/team-report/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { formatServerHm } from "@/lib/server-time";
-import { cn } from "@/lib/utils";
 
 type Box = "PENDING" | "APPROVED" | "RETURNED" | "";
 
-const monthLabel = (month: string) => {
-  const [y, m] = month.split("-");
-  return `Tháng ${m}/${y}`;
+const BOX_TEXT: Record<Exclude<Box, "">, string> = {
+  PENDING: "Chờ duyệt",
+  APPROVED: "Đã duyệt",
+  RETURNED: "Đã trả lại",
 };
 
-/** Hộp đến bảng thẩm định - mặc định Đội CNTT, theo luồng APPRAISAL. */
+/**
+ * Duyệt bảng thẩm định - CÙNG MỘT BÀN LÀM VIỆC với bên lập (danh sách đơn vị
+ * bên trái, chi tiết đơn vị bên phải, bảng tổng, xuất tổng hợp), chỉ đọc, thêm
+ * thanh duyệt / trả lại ở cuối từng đơn vị (user chốt 2026-10-19). Mỗi tháng
+ * xem riêng; xuất tổng hợp ra đúng các đơn vị đang lọc.
+ *
+ * Đơn vị khoá theo ID ĐƠN VỊ TRONG BẢNG, không theo id phòng: cùng một phòng
+ * có thể được hai đội thẩm định trình lên - bàn làm việc khoá theo
+ * `departmentId` nên ở đây gán `departmentId` = id đơn vị trong bảng.
+ */
 export function TeamReportAppraisalInboxView() {
   const [box, setBox] = useState<Box>("PENDING");
-  const [openId, setOpenId] = useState<string | null>(null);
-  // Mỗi tháng xem riêng - mặc định tháng hiện tại theo giờ server.
   const [pickedMonth, setPickedMonth] = useState<string | null>(null);
   const currentMonth = useCurrentMonth();
   const month = pickedMonth ?? currentMonth;
 
-  const list = useSWR(
-    month ? appraisalKeys.inbox(box, 1, month) : null,
+  const { data, error, isLoading, mutate } = useSWR(
+    month ? appraisalKeys.board(box, month) : null,
     () =>
-      fetchAppraisalInbox({
+      fetchAppraisalBoard({
         status: box as TeamReportDayStatus | "",
         periodMonth: month,
-        limit: 50,
       }),
+    { keepPreviousData: true },
   );
 
-  if (openId) {
-    return (
-      <AppraisalIncomingDetail
-        id={openId}
-        onBack={() => setOpenId(null)}
-        onChanged={() => void list.mutate()}
-      />
-    );
-  }
+  // departmentId = id đơn vị trong bảng (xem chú thích trên).
+  const byKey = useMemo(
+    () =>
+      new Map(
+        (data?.units ?? []).map((unit) => [String(unit._id), unit] as const),
+      ),
+    [data],
+  );
+  const units = useMemo(
+    () =>
+      (data?.units ?? []).map((unit) => ({
+        ...unit,
+        departmentId: String(unit._id),
+      })),
+    [data],
+  );
+  const boardUnit = (unit: AppraisalUnit): AppraisalBoardUnit | undefined =>
+    byKey.get(unit.departmentId);
 
-  const rows = list.data?.data ?? [];
+  const teams = [...new Set((data?.units ?? []).map((unit) => unit.teamName))];
+  const one = (pick: (unit: AppraisalBoardUnit) => string | undefined) => {
+    const values = [
+      ...new Set((data?.units ?? []).map(pick).filter(Boolean)),
+    ];
+    return values.length === 1 ? values[0]! : "";
+  };
+
+  const [dialog, setDialog] = useState<{
+    kind: "APPROVE" | "RETURN";
+    unit: AppraisalUnit;
+  } | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const decide = async () => {
+    if (!dialog) return;
+    if (dialog.kind === "RETURN" && !reason.trim()) return;
+    setBusy(true);
+    try {
+      await decideAppraisal(dialog.unit.departmentId, {
+        decision: dialog.kind,
+        reason: dialog.kind === "RETURN" ? reason.trim() : undefined,
+      });
+      toast.success(dialog.kind === "RETURN" ? "Đã trả lại." : "Đã duyệt.");
+      setDialog(null);
+      setReason("");
+      await mutate();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Không thực hiện được."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const dialogUnit = dialog ? boardUnit(dialog.unit) : undefined;
 
   return (
     <div className="space-y-4">
@@ -119,218 +160,58 @@ export function TeamReportAppraisalInboxView() {
         </CardContent>
       </Card>
 
-      <Card className="shadow-sm">
-        <CardContent className="p-0">
-          {list.isLoading ? (
-            <div className="space-y-2 p-4">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </div>
-          ) : rows.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-              Không có đơn vị nào.
-            </p>
-          ) : (
-            <ul className="divide-y">
-              {rows.map((row) => (
-                <li key={row._id}>
-                  <button
-                    type="button"
-                    onClick={() => setOpenId(row._id)}
-                    className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-left hover:bg-muted/50"
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-medium">{row.unitName}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {monthLabel(row.periodMonth)} · thẩm định bởi{" "}
-                        {row.departmentName}
-                        {row.sentAt
-                          ? ` · trình lúc ${formatServerHm(row.sentAt)}`
-                          : ""}
-                      </span>
-                    </span>
-                    <span className="text-right text-sm tabular-nums">
-                      <span className="block font-semibold">
-                        {row.finalScore === null
-                          ? "-"
-                          : formatScore(row.finalScore)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {row.proposedRating}
-                      </span>
-                    </span>
-                    <Badge
-                      variant="secondary"
-                      className={cn("font-normal", DAY_STATUS_CLASS[row.status])}
-                    >
-                      {stagedStatusLabel(row)}
-                    </Badge>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function AppraisalIncomingDetail({
-  id,
-  onBack,
-  onChanged,
-}: {
-  id: string;
-  onBack: () => void;
-  onChanged: () => void;
-}) {
-  const { data, error, isLoading, mutate } = useSWR(
-    appraisalKeys.incoming(id),
-    () => fetchAppraisalIncoming(id),
-  );
-  const [dialog, setDialog] = useState<"APPROVE" | "RETURN" | null>(null);
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const decide = async () => {
-    if (!dialog) return;
-    if (dialog === "RETURN" && !reason.trim()) return;
-    setBusy(true);
-    try {
-      await decideAppraisal(id, {
-        decision: dialog,
-        reason: dialog === "RETURN" ? reason.trim() : undefined,
-      });
-      setDialog(null);
-      setReason("");
-      await mutate();
-      onChanged();
-      toast.success(dialog === "RETURN" ? "Đã trả lại." : "Đã duyệt.");
-    } catch (err) {
-      toast.error(getApiErrorMessage(err, "Không thực hiện được."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const decidable = data?.status === "PENDING" && data.canDecide;
-  // Mở theo MỘT đơn vị - server trả bảng chỉ gồm đúng đơn vị đó.
-  const unit = data?.units[0] ?? null;
-  const finalScore = unit ? appraisalTotals(unit).finalScore : null;
-
-  return (
-    <div className="space-y-4">
-      <Button
-        type="button"
-        variant="outline"
-        className="bg-background"
-        onClick={onBack}
-      >
-        <ArrowLeft className="size-4" aria-hidden="true" />
-        Danh sách
-      </Button>
-
       {error ? (
         <p role="alert" className="text-sm text-destructive">
-          {getApiErrorMessage(error, "Không mở được bảng.")}
+          {getApiErrorMessage(error, "Không tải được bảng thẩm định.")}
         </p>
       ) : null}
+
       {isLoading || !data ? (
         error ? null : (
           <Skeleton className="h-96 w-full" />
         )
+      ) : !units.length ? (
+        <Card className="shadow-sm">
+          <CardContent className="px-4 py-10 text-center text-sm text-muted-foreground">
+            Không có đơn vị nào
+            {box ? ` ở mục "${BOX_TEXT[box]}"` : ""} trong tháng này.
+          </CardContent>
+        </Card>
       ) : (
         <Card className="shadow-sm">
-          <CardContent className="space-y-4 py-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-display text-lg font-semibold">
-                    {unit?.departmentName ?? "Đơn vị"} ·{" "}
-                    {monthLabel(data.periodMonth).toLowerCase()}
-                  </h2>
-                  <Badge
-                    variant="secondary"
-                    className={cn("font-normal", DAY_STATUS_CLASS[data.status])}
-                  >
-                    {stagedStatusLabel(data)}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Thẩm định bởi{" "}
-                  <strong className="font-medium text-foreground">
-                    {data.departmentName}
-                  </strong>
-                  {finalScore !== null
-                    ? ` · sau thẩm định ${formatScore(finalScore)}`
-                    : ""}
-                  {unit?.proposedRating ? ` · ${unit.proposedRating}` : ""}
-                  {data.sentAt
-                    ? ` · trình lúc ${formatServerHm(data.sentAt)}`
-                    : ""}
-                </p>
-              </div>
-              {decidable ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={RETURN_BUTTON_CLASS}
-                    onClick={() => setDialog("RETURN")}
-                  >
-                    <Undo2 className="size-4" aria-hidden="true" />
-                    Trả lại
-                  </Button>
-                  <Button type="button" onClick={() => setDialog("APPROVE")}>
-                    <Check className="size-4" aria-hidden="true" />
-                    Duyệt
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-
-            <ApprovalChain
-              status={data.status}
-              leadName={data.recipientName}
-              finalName={data.finalRecipientName}
-              stage={data.stage}
-              firstApproval={data.firstApproval}
-            />
-            {data.status === "RETURNED" ? (
-              <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-                <strong className="font-semibold">Đã trả lại:</strong>{" "}
-                {data.returnReason}
-              </p>
-            ) : null}
-
+          <CardContent className="py-4">
             <AppraisalWorkspace
-              units={data.units}
-              criteria={[]}
+              units={units}
+              criteria={data.criteria}
               editable={false}
+              commendations={data.commendationHints}
+              selfClaims={data.selfClaims}
+              unitNote={(unit) => {
+                const found = boardUnit(unit);
+                if (!found) return undefined;
+                return `Thẩm định bởi ${found.teamName}${
+                  found.sentAt ? ` · trình lúc ${formatServerHm(found.sentAt)}` : ""
+                }`;
+              }}
+              reviewActions={{
+                busy,
+                canDecide: (unit) => !!boardUnit(unit)?.canDecide,
+                onApprove: (unit) => setDialog({ kind: "APPROVE", unit }),
+                onReturn: (unit) => {
+                  setReason("");
+                  setDialog({ kind: "RETURN", unit });
+                },
+              }}
+              /* Xuất đúng các đơn vị đang lọc (trạng thái + tháng). Nhiều đội
+                 trình lên thì ghi đủ tên các đội; người ký chỉ ghi khi chung. */
               exportInfo={{
-                periodMonth: data.periodMonth,
-                teamName: data.departmentName,
-                leaderName: data.leaderName,
-                commanderName: data.commanderName,
-                statusLabel: stagedStatusLabel(data),
+                periodMonth: month,
+                teamName: teams.join(", "),
+                leaderName: one((unit) => unit.leaderName),
+                commanderName: one((unit) => unit.commanderName),
+                statusLabel: box ? BOX_TEXT[box] : undefined,
               }}
             />
-
-            <div className="grid gap-3 border-t pt-4 text-center text-sm sm:grid-cols-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Lãnh đạo phụ trách
-                </p>
-                <p className="mt-1 font-medium">{data.leaderName || "-"}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Chỉ huy đội
-                </p>
-                <p className="mt-1 font-medium">{data.commanderName || "-"}</p>
-              </div>
-            </div>
           </CardContent>
         </Card>
       )}
@@ -342,22 +223,22 @@ function AppraisalIncomingDetail({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {dialog === "RETURN"
+              {dialog?.kind === "RETURN"
                 ? "Trả lại đơn vị thẩm định?"
                 : "Duyệt đơn vị thẩm định?"}
             </DialogTitle>
             <DialogDescription>
-              {unit?.departmentName} -{" "}
-              {data ? monthLabel(data.periodMonth).toLowerCase() : ""} (đội{" "}
-              {data?.departmentName}). Chỉ quyết riêng đơn vị này.
-              {dialog === "APPROVE" &&
-              data?.finalRecipientName &&
-              data.stage !== "FINAL"
-                ? ` Đây là duyệt cấp 1 - duyệt xong chuyển lên ${data.finalRecipientName} duyệt cuối.`
+              {dialog?.unit.departmentName}
+              {dialogUnit ? ` (đội ${dialogUnit.teamName})` : ""}. Chỉ quyết
+              riêng đơn vị này.
+              {dialog?.kind === "APPROVE" &&
+              dialogUnit?.finalRecipientName &&
+              dialogUnit.stage !== "FINAL"
+                ? ` Đây là duyệt cấp 1 - duyệt xong chuyển lên ${dialogUnit.finalRecipientName} duyệt cuối.`
                 : ""}
             </DialogDescription>
           </DialogHeader>
-          {dialog === "RETURN" ? (
+          {dialog?.kind === "RETURN" ? (
             <div className="space-y-1.5">
               <Label htmlFor="appraisal-return-reason">
                 Lý do trả lại <span className="text-destructive">*</span>
@@ -367,7 +248,7 @@ function AppraisalIncomingDetail({
                 value={reason}
                 rows={3}
                 onChange={(event) => setReason(event.target.value)}
-                placeholder="Nêu rõ đơn vị / nội dung cần sửa…"
+                placeholder="Nêu rõ nội dung cần sửa…"
               />
             </div>
           ) : null}
@@ -381,8 +262,8 @@ function AppraisalIncomingDetail({
             </Button>
             <Button
               type="button"
-              variant={dialog === "RETURN" ? "destructive" : "default"}
-              disabled={busy || (dialog === "RETURN" && !reason.trim())}
+              variant={dialog?.kind === "RETURN" ? "destructive" : "default"}
+              disabled={busy || (dialog?.kind === "RETURN" && !reason.trim())}
               onClick={() => void decide()}
             >
               {busy ? (
@@ -391,7 +272,7 @@ function AppraisalIncomingDetail({
                   aria-hidden="true"
                 />
               ) : null}
-              {dialog === "RETURN" ? "Trả lại" : "Duyệt"}
+              {dialog?.kind === "RETURN" ? "Trả lại" : "Duyệt"}
             </Button>
           </DialogFooter>
         </DialogContent>

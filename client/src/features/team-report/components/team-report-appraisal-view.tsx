@@ -614,9 +614,7 @@ export function TeamReportAppraisalView() {
               Trình thẩm định {monthLabel(month).toLowerCase()}
             </DialogTitle>
             <DialogDescription>
-              Mỗi đơn vị được duyệt / trả lại riêng. Đơn vị đã trình khoá lại
-              cho tới khi được duyệt hoặc trả lại; các đơn vị khác vẫn sửa
-              được.
+              Đơn vị đã trình khoá lại cho tới khi được duyệt hoặc trả lại.
             </DialogDescription>
           </DialogHeader>
 
@@ -649,81 +647,133 @@ export function TeamReportAppraisalView() {
 
           {/* Chọn đơn vị trình lần này - chỉ bày đơn vị chưa trình / bị trả
               lại; đơn vị chưa đủ ô thì bày xám kèm lý do, không chọn được. */}
-          <fieldset className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <legend className="text-sm font-medium">
-                Đơn vị trình lần này{" "}
-                <span className="font-normal text-muted-foreground tabular-nums">
-                  ({picked.size}/{readyUnits.length})
-                </span>
-              </legend>
-              {readyUnits.length > 1 ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7"
-                  onClick={() =>
-                    setPicked(
-                      picked.size === readyUnits.length
-                        ? new Set()
-                        : new Set(readyUnits.map((unit) => unit.departmentId)),
-                    )
-                  }
-                >
-                  {picked.size === readyUnits.length ? "Bỏ chọn hết" : "Chọn hết"}
-                </Button>
-              ) : null}
-            </div>
-            <ul className="max-h-64 divide-y overflow-y-auto rounded-md border">
-              {pendingUnits.map((unit) => {
-                const blocker = unitSendBlocker(unit);
-                const ready = !blocker;
-                const checked = picked.has(unit.departmentId);
-                const inputId = `send-unit-${unit.departmentId}`;
-                return (
-                  <li
-                    key={unit.departmentId}
-                    className={cn(
-                      "flex items-start gap-2.5 px-3 py-2",
-                      !ready && "opacity-60",
-                    )}
+          {batch ? (
+            <fieldset className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <legend className="text-sm font-medium">
+                  Đơn vị trình lần này{" "}
+                  <span className="font-normal text-muted-foreground tabular-nums">
+                    ({picked.size}/{readyUnits.length})
+                  </span>
+                </legend>
+                {readyUnits.length > 1 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7"
+                    onClick={() =>
+                      setPicked(
+                        picked.size === readyUnits.length
+                          ? new Set()
+                          : new Set(readyUnits.map((unit) => unit.departmentId)),
+                      )
+                    }
                   >
-                    <Checkbox
-                      id={inputId}
-                      checked={checked}
-                      disabled={!ready}
-                      className="mt-0.5"
-                      onCheckedChange={(next) => {
-                        const copy = new Set(picked);
-                        if (next) copy.add(unit.departmentId);
-                        else copy.delete(unit.departmentId);
-                        setPicked(copy);
-                      }}
-                    />
-                    <label
-                      htmlFor={inputId}
-                      className="min-w-0 flex-1 cursor-pointer text-sm"
+                    {picked.size === readyUnits.length ? "Bỏ chọn hết" : "Chọn hết"}
+                  </Button>
+                ) : null}
+              </div>
+              <ul className="max-h-64 divide-y overflow-y-auto rounded-md border">
+                {pendingUnits.map((unit) => {
+                  const blocker = unitSendBlocker(unit);
+                  const ready = !blocker;
+                  const checked = picked.has(unit.departmentId);
+                  const inputId = `send-unit-${unit.departmentId}`;
+                  return (
+                    <li
+                      key={unit.departmentId}
+                      className={cn(
+                        "flex items-start gap-2.5 px-3 py-2",
+                        !ready && "opacity-60",
+                      )}
                     >
-                      <span className="block font-medium">
-                        {unit.departmentName}
-                      </span>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {ready
-                          ? `Sau thẩm định ${formatScore(
-                              appraisalTotals(unit).finalScore ?? 0,
-                            )} · ${unit.proposedRating}`
-                          : blocker}
-                        {unit.status === "RETURNED" ? " · trình lại" : ""}
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          </fieldset>
+                      <Checkbox
+                        id={inputId}
+                        checked={checked}
+                        disabled={!ready}
+                        className="mt-0.5"
+                        onCheckedChange={(next) => {
+                          const copy = new Set(picked);
+                          if (next) copy.add(unit.departmentId);
+                          else copy.delete(unit.departmentId);
+                          setPicked(copy);
+                        }}
+                      />
+                      <label
+                        htmlFor={inputId}
+                        className="min-w-0 flex-1 cursor-pointer text-sm"
+                      >
+                        <span className="block font-medium">
+                          {unit.departmentName}
+                        </span>
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {ready
+                            ? `Sau thẩm định ${formatScore(
+                                appraisalTotals(unit).finalScore ?? 0,
+                              )} · ${unit.proposedRating}`
+                            : blocker}
+                          {unit.status === "RETURNED" ? " · trình lại" : ""}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </fieldset>
+          ) : (
+            /* Trình RIÊNG một đơn vị (nút ở cuối khối đơn vị): chỉ nói đơn vị
+               đó, không bày các đơn vị khác trong bảng - chúng không đi theo. */
+            (() => {
+              const unit = pendingUnits.find((item) =>
+                picked.has(item.departmentId),
+              );
+              if (!unit) return null;
+              return (
+                <div className="rounded-md border px-3 py-2 text-sm">
+                  <span className="block font-medium">
+                    {unit.departmentName}
+                  </span>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    Sau thẩm định{" "}
+                    {formatScore(appraisalTotals(unit).finalScore ?? 0)} ·{" "}
+                    {unit.proposedRating}
+                    {unit.status === "RETURNED" ? " · trình lại" : ""}
+                  </span>
+                </div>
+              );
+            })()
+          )}
 
-          {routeUnits ? (
+          {/* Luồng chỉ có MỘT nơi nhận (chủ trì, không phối hợp / nhận để biết)
+              thì nói gọn một dòng - bảng đủ ba cột vai với hai cột trống làm
+              người ta tưởng đang gửi thêm cho nơi khác. */}
+          {routeUnits &&
+          routeUnits.length === 1 &&
+          routeUnits[0]!.role === "LEAD" &&
+          routeUnits[0]!.isActive ? (
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">Trình tới </span>
+              <strong className="font-semibold">
+                {routeUnits[0]!.fullName}
+              </strong>
+              {data?.route.finalReviewer ? (
+                <>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    → duyệt cuối{" "}
+                  </span>
+                  <strong className="font-semibold">
+                    {data.route.finalReviewer.fullName}
+                  </strong>
+                </>
+              ) : null}
+              <span className="text-muted-foreground">
+                {" "}
+                - duyệt hoặc trả lại. Không gửi cho nơi nào khác.
+              </span>
+            </div>
+          ) : routeUnits ? (
             <SummaryRecipientFields
               idPrefix="appraisal"
               recipients={[]}

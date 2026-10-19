@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from "react";
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
+  Undo2,
   CircleCheck,
   CircleDashed,
   FileDown,
@@ -56,12 +58,23 @@ import {
   stagedStatusLabel,
   type TeamReportRating,
 } from "@/features/team-report/types";
-import { DAY_STATUS_CLASS } from "@/features/team-report/status-styles";
+import {
+  DAY_STATUS_CLASS,
+  RETURN_BUTTON_CLASS,
+} from "@/features/team-report/status-styles";
 import { Badge } from "@/components/ui/badge";
 import { formatServerHm } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
 type Filter = "ALL" | "TODO" | "SAVED" | "COMMENDED";
+
+type ReviewActions = {
+  busy: boolean;
+  /** Tôi đang cầm đơn vị này (chờ đúng bước của tôi). */
+  canDecide: (unit: AppraisalUnit) => boolean;
+  onApprove: (unit: AppraisalUnit) => void;
+  onReturn: (unit: AppraisalUnit) => void;
+};
 
 type UnitActions = {
   busy: boolean;
@@ -100,6 +113,8 @@ export function AppraisalWorkspace({
   selfClaims,
   savedUnits,
   unitActions,
+  reviewActions,
+  unitNote,
 }: {
   units: AppraisalUnit[];
   criteria: AppraisalCriterion[];
@@ -118,6 +133,10 @@ export function AppraisalWorkspace({
   savedUnits?: AppraisalUnit[];
   /** Lưu / trình RIÊNG đơn vị đang mở - bày ở cuối khối đơn vị. */
   unitActions?: UnitActions;
+  /** Bên DUYỆT: duyệt / trả lại riêng đơn vị đang mở - thanh cuối khối. */
+  reviewActions?: ReviewActions;
+  /** Dòng phụ dưới tên đơn vị (VD đội thẩm định nào trình lên). */
+  unitNote?: (unit: AppraisalUnit) => string | undefined;
 }) {
   const [mode, setMode] = useState<Mode>("UNIT");
   const [exporting, setExporting] = useState(false);
@@ -441,6 +460,11 @@ export function AppraisalWorkspace({
                         <span className="line-clamp-2 text-sm font-medium">
                           {unit.departmentName}
                         </span>
+                        {unitNote?.(unit) ? (
+                          <span className="block text-xs text-muted-foreground">
+                            {unitNote(unit)}
+                          </span>
+                        ) : null}
                         <UnitStatusBadge unit={unit} className="mt-1" />
                         {/* Sửa rồi mà chưa bấm Lưu nháp - nhắc ngay ở danh
                             sách, khỏi phải nhớ đã đụng vào đơn vị nào. */}
@@ -494,6 +518,8 @@ export function AppraisalWorkspace({
               commendation={commendations[selected.unit.departmentId]}
               saved={selected.saved}
               actions={unitActions}
+              reviewActions={reviewActions}
+              note={unitNote?.(selected.unit)}
               showClaims={selfClaims !== undefined}
               claims={selfClaims?.[selected.unit.departmentId]}
               onChange={(next) => patchUnit(selected.unit.departmentId, next)}
@@ -973,9 +999,14 @@ function UnitEditor({
   claims,
   saved,
   actions,
+  reviewActions,
+  note,
 }: {
   saved: boolean;
   actions?: UnitActions;
+  reviewActions?: ReviewActions;
+  /** Dòng phụ dưới tên đơn vị (đội thẩm định nào trình). */
+  note?: string;
   unit: AppraisalUnit;
   criteria: AppraisalCriterion[];
   editable: boolean;
@@ -1165,6 +1196,9 @@ function UnitEditor({
           <h3 className="text-pretty break-words font-display text-base font-semibold">
             {unit.departmentName}
           </h3>
+          {note ? (
+            <p className="text-xs text-muted-foreground">{note}</p>
+          ) : null}
           <UnitStatusBadge unit={unit} />
         </div>
         <div className="flex items-center gap-1">
@@ -1311,6 +1345,9 @@ function UnitEditor({
                 ) : null}
                 . Không sửa ở đây; cần điều chỉnh thì cộng / trừ bên dưới.
               </>
+            ) : reviewActions ? (
+              // Bên duyệt: số đã chốt lúc đội trình lên.
+              "Tổng điểm KPI trên báo cáo tổng hợp tháng của đơn vị - chốt lúc đội thẩm định trình."
             ) : (
               /* Chỉ còn gặp ở đơn vị ĐÃ TRÌNH mà báo cáo tháng sau đó bị trả
                  lại - đơn vị chưa trình thì đã tự rời bảng. */
@@ -1872,6 +1909,70 @@ function UnitEditor({
           actions={actions}
           finalScore={totals.finalScore}
         />
+      ) : null}
+      {reviewActions ? (
+        <ReviewActionBar
+          unit={unit}
+          actions={reviewActions}
+          finalScore={totals.finalScore}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Thanh cuối khối cho BÊN DUYỆT: duyệt / trả lại riêng đơn vị đang mở. Dính
+ * đáy màn như thanh lưu / trình của bên lập. Không cầm đơn vị (đã quyết, chờ
+ * cấp khác) thì chỉ nói trạng thái.
+ */
+function ReviewActionBar({
+  unit,
+  actions,
+  finalScore,
+}: {
+  unit: AppraisalUnit;
+  actions: ReviewActions;
+  finalScore: number | null;
+}) {
+  const decidable = actions.canDecide(unit);
+  return (
+    <div className="sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-wrap items-center justify-between gap-2 rounded-b-lg border-t bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+        Sau thẩm định{" "}
+        <strong className="text-foreground tabular-nums">
+          {fmt(finalScore)}
+        </strong>
+        {unit.proposedRating ? ` · ${unit.proposedRating}` : ""}
+        {decidable
+          ? ""
+          : unit.status === "APPROVED"
+            ? ` · đã duyệt${unit.decidedByName ? ` bởi ${unit.decidedByName}` : ""}`
+            : unit.status === "RETURNED"
+              ? " · đã trả lại, chờ đội sửa"
+              : " · đang chờ cấp duyệt khác"}
+      </p>
+      {decidable ? (
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className={RETURN_BUTTON_CLASS}
+            disabled={actions.busy}
+            onClick={() => actions.onReturn(unit)}
+          >
+            <Undo2 className="size-4" aria-hidden="true" />
+            Trả lại
+          </Button>
+          <Button
+            type="button"
+            disabled={actions.busy}
+            onClick={() => actions.onApprove(unit)}
+          >
+            <Check className="size-4" aria-hidden="true" />
+            Duyệt
+          </Button>
+        </div>
       ) : null}
     </div>
   );

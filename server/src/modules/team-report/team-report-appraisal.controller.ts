@@ -52,6 +52,18 @@ export class TeamReportAppraisalController {
 
   @ApiOperation({
     summary:
+      'Bảng duyệt: TOÀN BỘ đơn vị thẩm định trình tới tôi theo bộ lọc, đủ chi tiết',
+  })
+  @Get('incoming/board')
+  board(
+    @CurrentUser() user: JwtPayloadUser,
+    @Query() query: TeamReportAdjustmentInboxQueryDto,
+  ) {
+    return this.service.board(user.uid, query);
+  }
+
+  @ApiOperation({
+    summary:
       'Mở một đơn vị thẩm định trình tới tôi (:id = id đơn vị trong bảng)',
   })
   @Get('incoming/:id')

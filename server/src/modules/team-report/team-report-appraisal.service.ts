@@ -759,6 +759,103 @@ export class TeamReportAppraisalService {
     };
   }
 
+  /**
+   * BẢNG DUYỆT: toàn bộ đơn vị đã trình tới tôi theo bộ lọc (trạng thái +
+   * tháng), ĐỦ CHI TIẾT như bảng bên lập - để nơi duyệt xem cùng một bàn làm
+   * việc và xuất tổng hợp mọi đơn vị. Không phân trang (chặn 300 dòng).
+   *
+   * Mọi tra cứu theo đơn vị (đơn vị tự nhận, biểu dương) khoá theo ID ĐƠN VỊ
+   * TRONG BẢNG (`_id`), không theo id phòng: cùng một phòng có thể được hai đội
+   * thẩm định trình lên.
+   */
+  async board(userId: string, query: TeamReportAdjustmentInboxQueryDto) {
+    const actor = await this.requireActor(userId);
+    const rows = await this.sheetModel.aggregate<
+      TeamReportAppraisalUnit & { teamId: Types.ObjectId; periodMonth: string }
+    >([
+      {
+        $match: {
+          $or: [
+            { 'units.recipientId': actor.id },
+            { 'units.finalRecipientId': actor.id },
+          ],
+        },
+      },
+      { $unwind: '$units' },
+      {
+        $replaceRoot: {
+          newRoot: {
+            $mergeObjects: [
+              '$units',
+              { teamId: '$departmentId', periodMonth: '$periodMonth' },
+            ],
+          },
+        },
+      },
+      {
+        $match: {
+          ...leadInboxFilter(actor.id, query.status),
+          ...(query.periodMonth ? { periodMonth: query.periodMonth } : {}),
+        },
+      },
+      { $sort: { sentAt: -1 } },
+      { $limit: 300 },
+    ]);
+    const labels = await departmentLabels(this.departmentModel, [
+      ...rows.map((row) => row.teamId),
+      ...rows.map((row) => row.departmentId),
+    ]);
+    const short = await this.shortNames(rows);
+    const items = await this.bonusItems();
+    const months = [...new Set(rows.map((row) => row.periodMonth))];
+
+    // Đơn vị tự nhận + biểu dương tra theo id PHÒNG, rồi chuyển sang id đơn vị.
+    const claimsByDept: Record<string, unknown> = {};
+    const hintsByDept: Record<string, unknown> = {};
+    for (const month of months) {
+      const ids = rows
+        .filter((row) => row.periodMonth === month)
+        .map((row) => row.departmentId);
+      Object.assign(
+        claimsByDept,
+        await this.selfClaims(null, month, items, ids),
+      );
+      Object.assign(hintsByDept, await this.commendationHints(month, ids));
+    }
+    const selfClaims: Record<string, unknown> = {};
+    const commendationHints: Record<string, unknown> = {};
+    for (const row of rows) {
+      const dept = String(row.departmentId);
+      if (claimsByDept[dept]) selfClaims[String(row._id)] = claimsByDept[dept];
+      if (hintsByDept[dept]) {
+        commendationHints[String(row._id)] = hintsByDept[dept];
+      }
+    }
+
+    return {
+      message: 'OK',
+      data: {
+        criteria: items.map((item) => ({
+          id: String(item._id),
+          name: item.name,
+          rule: item.rule,
+          maxScore: item.maxScore,
+        })),
+        units: rows.map((row) => ({
+          ...this.unitView(row, short),
+          departmentName:
+            labels.get(String(row.departmentId)) ?? row.departmentName,
+          periodMonth: row.periodMonth,
+          /** Đội thẩm định (người lập). */
+          teamName: labels.get(String(row.teamId)) ?? '',
+          canDecide: isHandler(row, actor.id),
+        })),
+        selfClaims,
+        commendationHints,
+      },
+    };
+  }
+
   /** Mở MỘT đơn vị đã trình - `id` là id của đơn vị trong bảng. */
   async incomingDetail(userId: string, id: string) {
     const actor = await this.requireActor(userId);
@@ -855,31 +952,36 @@ export class TeamReportAppraisalService {
       decidedAt: sheet?.decidedAt ?? null,
       returnReason: sheet?.returnReason ?? '',
       updatedAt: sheet?.updatedAt ?? null,
-      units: units.map((unit) => ({
-        _id: unit._id ? String(unit._id) : null,
-        ...lifecycleView(unit),
-        departmentId: String(unit.departmentId),
-        departmentName: unit.departmentName,
-        shortName: short.get(String(unit.departmentId)) ?? unit.departmentName,
-        selfScore: unit.selfScore ?? null,
-        bonuses: unit.bonuses.map((bonus) => ({
-          itemId: bonus.itemId ? String(bonus.itemId) : null,
-          itemName: bonus.itemName,
-          maxScore: bonus.maxScore ?? null,
-          score: bonus.score ?? null,
-          evidence: bonus.evidence,
-        })),
-        penalties: unit.penalties.map((penalty) => ({
-          itemId: penalty.itemId ? String(penalty.itemId) : null,
-          itemName: penalty.itemName ?? '',
-          content: penalty.content,
-          score: penalty.score ?? null,
-        })),
-        upgradeNote: unit.upgradeNote,
-        proposedRating: unit.proposedRating,
-        ratingNote: unit.ratingNote,
-        ...appraisalTotals(unit),
+      units: units.map((unit) => this.unitView(unit, short)),
+    };
+  }
+
+  /** Một đơn vị dạng client đọc - dùng chung cho bảng lập lẫn bảng duyệt. */
+  private unitView(unit: TeamReportAppraisalUnit, short: Map<string, string>) {
+    return {
+      _id: unit._id ? String(unit._id) : null,
+      ...lifecycleView(unit),
+      departmentId: String(unit.departmentId),
+      departmentName: unit.departmentName,
+      shortName: short.get(String(unit.departmentId)) ?? unit.departmentName,
+      selfScore: unit.selfScore ?? null,
+      bonuses: unit.bonuses.map((bonus) => ({
+        itemId: bonus.itemId ? String(bonus.itemId) : null,
+        itemName: bonus.itemName,
+        maxScore: bonus.maxScore ?? null,
+        score: bonus.score ?? null,
+        evidence: bonus.evidence,
       })),
+      penalties: unit.penalties.map((penalty) => ({
+        itemId: penalty.itemId ? String(penalty.itemId) : null,
+        itemName: penalty.itemName ?? '',
+        content: penalty.content,
+        score: penalty.score ?? null,
+      })),
+      upgradeNote: unit.upgradeNote,
+      proposedRating: unit.proposedRating,
+      ratingNote: unit.ratingNote,
+      ...appraisalTotals(unit),
     };
   }
 
@@ -986,14 +1088,19 @@ export class TeamReportAppraisalService {
    * chặn ở trần tiêu chí như `computeAxisFooter`.
    */
   private async selfClaims(
-    approverId: Types.ObjectId,
+    approverId: Types.ObjectId | null,
     periodMonth: string,
     items: AdjustmentItemDocument[],
+    departmentIds?: Array<Types.ObjectId | string>,
   ) {
     type Line = { name: string; product: string; score: number | null };
     type Claim = { lines: Line[]; total: number; maxScore: number };
     const result: Record<string, Record<string, Claim>> = {};
-    const reports = await this.monthlyReports(approverId, periodMonth).select(
+    const reports = await this.monthlyReports(
+      approverId,
+      periodMonth,
+      departmentIds,
+    ).select(
       'departmentId conclusion rows.name rows.product rows.workContentName rows.fieldValues rows.formTemplateId rows.formTemplateVersion',
     );
     const norm = (text: string) =>
@@ -1070,30 +1177,49 @@ export class TeamReportAppraisalService {
    * TIÊN báo cáo tháng: sắp `period` giảm dần ("MONTH" > "CUSTOM"), rồi mới
    * nhất trước - chỗ gọi lấy bản đầu tiên của mỗi đơn vị.
    */
-  private monthlyReports(approverId: Types.ObjectId, periodMonth: string) {
+  private monthlyReports(
+    approverId: Types.ObjectId | null,
+    periodMonth: string,
+    departmentIds?: Array<Types.ObjectId | string>,
+  ) {
     const from = `${periodMonth}-01`;
     const to = `${periodMonth}-31`;
-    return this.summaryModel
-      .find({
-        period: { $in: ['MONTH', 'CUSTOM'] },
-        conclusion: { $ne: null },
-        // Kỳ tháng 15 tháng trước - 14 tháng này: xét theo NGÀY KẾT THÚC (14/10 thuộc
-        // tháng 10), không theo ngày bắt đầu (15/09 lại rơi sang tháng 9).
-        toDate: { $gte: from, $lte: to },
-        $or: [
+    /* approverId null = nơi duyệt bảng thẩm định xem: lấy báo cáo của các đơn
+       vị được hỏi đã qua duyệt (chờ duyệt cuối / đã duyệt), ai duyệt cũng được. */
+    const approved = approverId
+      ? [
           {
-            status: 'APPROVED',
+            status: 'APPROVED' as const,
             $or: [
               { recipientId: approverId },
               { finalRecipientId: approverId },
             ],
           },
           {
-            status: 'PENDING',
-            stage: 'FINAL',
+            status: 'PENDING' as const,
+            stage: 'FINAL' as const,
             'firstApproval.byId': approverId,
           },
-        ],
+        ]
+      : [
+          { status: 'APPROVED' as const },
+          { status: 'PENDING' as const, stage: 'FINAL' as const },
+        ];
+    return this.summaryModel
+      .find({
+        ...(departmentIds
+          ? {
+              departmentId: {
+                $in: departmentIds.map((id) => new Types.ObjectId(String(id))),
+              },
+            }
+          : {}),
+        period: { $in: ['MONTH', 'CUSTOM'] },
+        conclusion: { $ne: null },
+        // Kỳ tháng 15 tháng trước - 14 tháng này: xét theo NGÀY KẾT THÚC (14/10 thuộc
+        // tháng 10), không theo ngày bắt đầu (15/09 lại rơi sang tháng 9).
+        toDate: { $gte: from, $lte: to },
+        $or: approved,
       })
       .sort({ period: -1, updatedAt: -1 });
   }

@@ -172,6 +172,26 @@ export type AppraisalComposerData = AppraisalSheet & {
 
 export type AppraisalIncomingData = AppraisalSheet & { canDecide: boolean };
 
+/** Một đơn vị trên BẢNG DUYỆT - kèm đội thẩm định và quyền quyết của tôi. */
+export type AppraisalBoardUnit = AppraisalUnit & {
+  periodMonth: string;
+  /** Đội thẩm định (người lập). */
+  teamName: string;
+  canDecide: boolean;
+};
+
+/**
+ * Bảng duyệt: toàn bộ đơn vị trình tới tôi theo bộ lọc. `selfClaims` và
+ * `commendationHints` khoá theo ID ĐƠN VỊ TRONG BẢNG (`_id`) - cùng một phòng
+ * có thể được hai đội trình lên.
+ */
+export type AppraisalBoardData = {
+  criteria: AppraisalCriterion[];
+  units: AppraisalBoardUnit[];
+  selfClaims: AppraisalSelfClaims;
+  commendationHints: AppraisalCommendationHints;
+};
+
 /** Một dòng hộp đến = MỘT ĐƠN VỊ đã trình (`_id` là id đơn vị trong bảng). */
 export type AppraisalInboxRow = {
   _id: string;
@@ -261,6 +281,8 @@ export const appraisalKeys = {
   inbox: (status: string, page: number, month = "") =>
     ["team-report", "appraisal-inbox", status, page, month] as const,
   incoming: (id: string) => ["team-report", "appraisal-incoming", id],
+  board: (status: string, month: string) =>
+    ["team-report", "appraisal-board", status, month] as const,
 };
 
 export function fetchAppraisalAccess() {
@@ -347,6 +369,23 @@ export function fetchAppraisalInbox(query: {
         params: {
           page: query.page ?? 1,
           limit: query.limit ?? 20,
+          ...(query.status ? { status: query.status } : {}),
+          ...(query.periodMonth ? { periodMonth: query.periodMonth } : {}),
+        },
+      },
+    ),
+  );
+}
+
+export function fetchAppraisalBoard(query: {
+  status?: TeamReportDayStatus | "";
+  periodMonth?: string;
+}) {
+  return unwrapData(
+    api.get<ApiResponse<AppraisalBoardData>>(
+      "/team-report/appraisals/incoming/board",
+      {
+        params: {
           ...(query.status ? { status: query.status } : {}),
           ...(query.periodMonth ? { periodMonth: query.periodMonth } : {}),
         },
