@@ -34,6 +34,56 @@ export function isAllowedExtension(fileName: string): boolean {
 }
 
 /**
+ * Content-Type trả về khi tải tệp - suy từ đuôi, KHÔNG lấy `mimetype` trình
+ * duyệt gửi lúc upload. Tin trường đó là để người upload tự đặt `text/html`
+ * cho một tệp .txt chứa script, rồi tệp chạy như trang web trên chính origin
+ * của phần mềm (đọc được token trong localStorage).
+ *
+ * Không có trong bảng thì trả octet-stream - trình duyệt chỉ tải về.
+ */
+const MIME_BY_EXTENSION: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx':
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx':
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.txt': 'text/plain; charset=utf-8',
+  '.csv': 'text/csv; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.zip': 'application/zip',
+  '.rar': 'application/vnd.rar',
+  '.7z': 'application/x-7z-compressed',
+};
+
+export function mimeTypeFor(fileName: string): string {
+  return (
+    MIME_BY_EXTENSION[extname(fileName).toLowerCase()] ??
+    'application/octet-stream'
+  );
+}
+
+/**
+ * Header chặn tệp tải về bị chạy như trang web: không cho đoán kiểu nội dung,
+ * và nếu trình duyệt có mở thẳng thì trang đó nằm trong sandbox - không script,
+ * không đọc được storage của origin.
+ */
+export function setFileSecurityHeaders(res: {
+  setHeader(name: string, value: string): unknown;
+}) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+}
+
+/**
  * Sửa tên tệp bị đọc sai bảng mã.
  * Busboy trả `originalname` là chuỗi UTF-8 nhưng bị hiểu thành Latin-1, nên
  * "hướng dẫn.pdf" thành "hÆ°á»›ng dáº«n.pdf".

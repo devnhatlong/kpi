@@ -15,6 +15,7 @@ import {
 import { PermissionsGuard } from '@/common/guards/permissions.guard';
 import { RolesGuard } from '@/common/guards/roles.guard';
 import { RefreshTokenCleanupTask } from './tasks/refresh-token-cleanup.task';
+import { LoginThrottleService } from './login-throttle.service';
 
 @Module({
   controllers: [AuthsController],
@@ -27,6 +28,7 @@ import { RefreshTokenCleanupTask } from './tasks/refresh-token-cleanup.task';
     PermissionsGuard,
     RolesGuard,
     RefreshTokenCleanupTask,
+    LoginThrottleService,
   ],
   imports: [
     forwardRef(() => UsersModule),

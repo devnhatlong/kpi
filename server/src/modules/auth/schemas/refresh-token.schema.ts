@@ -16,6 +16,13 @@ export class RefreshToken {
 
   @Prop({ type: Date, default: null })
   revokedAt?: Date | null;
+
+  /**
+   * Phiên mở bằng mật khẩu thứ 2 (quản trị vào hộ) - giữ qua các lần làm mới
+   * token để phiên đó không bị bắt đổi mật khẩu thay chủ tài khoản.
+   */
+  @Prop({ default: false })
+  viaSecondaryPassword?: boolean;
 }
 
 export type RefreshTokenDocument = HydratedDocument<RefreshToken>;

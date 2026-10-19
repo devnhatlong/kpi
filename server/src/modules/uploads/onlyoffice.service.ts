@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { extname } from 'path';
@@ -139,10 +140,16 @@ export class OnlyOfficeService {
   }
 
   private sign(uploadId: string, expires: number): string {
+    /* Không có chuỗi dự phòng cố định: chuỗi đó nằm trong mã nguồn, ai đọc
+       được mã là tự ký được link mở mọi tệp. Thiếu cả hai thì báo lỗi. */
     const secret =
       this.config.get<string>('ONLYOFFICE_FILE_SECRET') ||
-      this.config.get<string>('JWT_SECRET') ||
-      'onlyoffice';
+      this.config.get<string>('JWT_SECRET');
+    if (!secret) {
+      throw new ServiceUnavailableException(
+        'Chưa cấu hình ONLYOFFICE_FILE_SECRET hoặc JWT_SECRET.',
+      );
+    }
     return createHmac('sha256', secret)
       .update(`${uploadId}.${expires}`)
       .digest('hex');

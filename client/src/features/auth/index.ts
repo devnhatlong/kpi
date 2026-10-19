@@ -3,6 +3,7 @@ export {
   RequireAuth,
   RedirectIfAuthenticated,
   RestrictRoutesByPermission,
+  RequirePasswordChange,
 } from "@/features/auth/auth-guards";
 export { LoginForm } from "@/features/auth/components/LoginForm";
 export * from "@/features/auth/types";

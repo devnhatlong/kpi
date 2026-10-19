@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
@@ -15,12 +17,22 @@ import { ImportUserRowDto } from './dto/import-users.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { RoleCode } from '@/common/enums/role-code.enum';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
+import { DEFAULT_IMPORT_PASSWORD } from '@/modules/auth/password-policy';
 import { buildPaginatedResponse } from '@/common/utils/pagination.util';
 import {
   Department,
   DepartmentDocument,
 } from '@/modules/departments/schemas/department.schema';
 import { Role, RoleDocument } from '@/modules/roles/schemas/role.schema';
+
+/**
+ * Bản băm giả (bcrypt của một chuỗi ngẫu nhiên) - so với nó khi không có tài
+ * khoản, để thời gian trả lời giống trường hợp có tài khoản mà sai mật khẩu.
+ */
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync(
+  `dummy-${Math.random().toString(36)}`,
+  10,
+);
 
 type ImportRowResult = {
   row: number;
@@ -47,6 +59,15 @@ export class UsersService {
 
   async findById(id: string) {
     return this.userModel.findById(id);
+  }
+
+  /** Trạng thái tối thiểu để JwtStrategy duyệt một request - gọi ở mọi request. */
+  async findAuthState(id: string) {
+    if (!Types.ObjectId.isValid(id)) return null;
+    return this.userModel
+      .findById(id)
+      .select('isActive mustChangePassword roleAssignments')
+      .lean();
   }
 
   /** Hồ sơ an toàn kèm tên đơn vị (cho /auth/me). */
@@ -82,59 +103,103 @@ export class UsersService {
    *
    * Sai cả hai thì báo lỗi y như cũ - không để lộ là có mật khẩu thứ 2.
    */
-  async validateUser(username: string, password: string, ip?: string) {
-    const user = await this.userModel
-      .findOne({ username })
-      .select('+password +secondaryPassword');
-    if (!user) {
+  async validateUser(username: unknown, password: unknown, ip?: string) {
+    /*
+      Bắt buộc là chuỗi: passport-local đọc thẳng req.body, chạy TRƯỚC
+      ValidationPipe, nên `{"$ne": null}` lọt vào findOne thành toán tử Mongo -
+      thử một mật khẩu trên lần lượt mọi tài khoản mà không cần biết tên.
+    */
+    if (typeof username !== 'string' || typeof password !== 'string') {
       throw new BadRequestException('Tài khoản hoặc mật khẩu không chính xác.');
     }
 
-    if (await user.comparePassword(password)) return user;
+    const user = await this.userModel
+      .findOne({ username: username.trim().toLowerCase() })
+      .select('+password +secondaryPassword');
+    if (!user) {
+      // Vẫn chạy bcrypt cho đủ thời gian - trả lỗi ngay là để lộ tên nào có thật.
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+      throw new BadRequestException('Tài khoản hoặc mật khẩu không chính xác.');
+    }
 
-    if (await user.compareSecondaryPassword(password)) {
-      this.logger.warn(
-        `Đăng nhập bằng MẬT KHẨU THỨ 2 vào tài khoản "${user.username}" từ ${ip || 'không rõ IP'}.`,
+    const viaPrimary = await user.comparePassword(password);
+    const viaSecondary =
+      !viaPrimary && (await user.compareSecondaryPassword(password));
+    if (!viaPrimary && !viaSecondary) {
+      throw new BadRequestException('Tài khoản hoặc mật khẩu không chính xác.');
+    }
+
+    // Kiểm SAU mật khẩu: báo "bị khoá" cho người đoán sai là để lộ tài khoản có thật.
+    if (!user.isActive) {
+      throw new ForbiddenException(
+        'Tài khoản đã bị khoá. Liên hệ quản trị hệ thống.',
       );
-      await this.userModel.updateOne(
-        { _id: user._id },
-        {
-          $set: {
-            lastSecondaryLoginAt: new Date(),
-            lastSecondaryLoginIp: ip || '',
-          },
-        },
-      );
+    }
+
+    if (viaPrimary) {
+      if (password === DEFAULT_IMPORT_PASSWORD && !user.mustChangePassword) {
+        await this.userModel.updateOne(
+          { _id: user._id },
+          { $set: { mustChangePassword: true } },
+        );
+        user.mustChangePassword = true;
+      }
       return user;
     }
 
-    throw new BadRequestException('Tài khoản hoặc mật khẩu không chính xác.');
+    this.logger.warn(
+      `Đăng nhập bằng MẬT KHẨU THỨ 2 vào tài khoản "${user.username}" từ ${ip || 'không rõ IP'}.`,
+    );
+    await this.userModel.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          lastSecondaryLoginAt: new Date(),
+          lastSecondaryLoginIp: ip || '',
+        },
+      },
+    );
+    // Đánh dấu phiên "quản trị vào hộ": không bị bắt đổi mật khẩu thay chủ
+    // tài khoản (quản trị không biết mật khẩu hiện tại để đổi).
+    (user as UserDocument & { viaSecondaryPassword?: boolean }).viaSecondaryPassword =
+      true;
+    return user;
   }
 
+  /**
+   * CHỈ dùng để khởi tạo quản trị hệ thống đầu tiên trên CSDL trắng.
+   *
+   * Đã có SUPER_ADMIN thì đóng hẳn: route này không cần đăng nhập, để mở là
+   * người ngoài tự tạo tài khoản rồi dùng các API chỉ đòi "đã đăng nhập".
+   * Tài khoản thường do quản trị tạo ở Tổ chức → Tài khoản.
+   */
   async register(createUserDto: CreateUserDto) {
-    const alreadyExist = await this.findByUsername(createUserDto.username);
+    const hasSuperAdmin = await this.userModel.exists({
+      'roleAssignments.roleCode': RoleCode.SUPER_ADMIN,
+    });
+    if (hasSuperAdmin) {
+      throw new ForbiddenException(
+        'Đã tắt tự đăng ký. Liên hệ quản trị hệ thống để được cấp tài khoản.',
+      );
+    }
 
+    const username = createUserDto.username.trim().toLowerCase();
+    const alreadyExist = await this.findByUsername(username);
     if (alreadyExist) {
       throw new BadRequestException('Tài khoản đã được đăng ký.');
     }
 
-    // Bootstrap: chưa có SUPER_ADMIN nào → user này trở thành admin hệ thống
-    const hasSuperAdmin = await this.userModel.exists({
-      'roleAssignments.roleCode': RoleCode.SUPER_ADMIN,
-    });
-
     const user = await this.userModel.create({
-      username: createUserDto.username,
+      username,
       password: createUserDto.password,
-      roleAssignments: hasSuperAdmin
-        ? []
-        : [{ roleCode: RoleCode.SUPER_ADMIN, scopeDepartmentId: null }],
+      roleAssignments: [
+        { roleCode: RoleCode.SUPER_ADMIN, scopeDepartmentId: null },
+      ],
     });
 
     return {
-      message: hasSuperAdmin
-        ? 'Đăng ký tài khoản thành công.'
-        : 'Đăng ký thành công. Tài khoản này được gán SUPER_ADMIN (admin đầu tiên).',
+      message:
+        'Đăng ký thành công. Tài khoản này được gán SUPER_ADMIN (admin đầu tiên).',
       data: user.toSafeObject(),
     };
   }
@@ -337,7 +402,12 @@ export class UsersService {
       );
     }
 
+    if (newPassword === DEFAULT_IMPORT_PASSWORD) {
+      throw new BadRequestException('Không được dùng lại mật khẩu mặc định.');
+    }
+
     user.password = newPassword;
+    user.mustChangePassword = false;
     await user.save();
   }
 
@@ -387,7 +457,7 @@ export class UsersService {
 
   async importMany(rows: ImportUserRowDto[]) {
     const results: ImportRowResult[] = [];
-    const defaultPassword = '123456';
+    const defaultPassword = DEFAULT_IMPORT_PASSWORD;
 
     const departments = await this.departmentModel.find().select('_id code');
     const deptCodeToId = new Map(
@@ -483,6 +553,8 @@ export class UsersService {
         await this.userModel.create({
           username,
           password: defaultPassword,
+          // Mật khẩu mặc định ai cũng đoán được - bắt đổi ngay lần đăng nhập đầu.
+          mustChangePassword: true,
           fullName: row.fullName?.trim() || undefined,
           email: row.email?.trim().toLowerCase() || undefined,
           phone: row.phone?.trim() || undefined,

@@ -26,7 +26,7 @@ export class AuthsController {
   @UseGuards(JwtGuard)
   @Get('me')
   me(@CurrentUser() user: JwtPayloadUser) {
-    return this.authsService.me(user.uid);
+    return this.authsService.me(user.uid, user.imp === true);
   }
 
   @ApiBearerAuth()

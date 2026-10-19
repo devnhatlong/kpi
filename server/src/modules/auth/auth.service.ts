@@ -49,9 +49,13 @@ export class AuthsService {
     return await this.usersService.validateUser(username, password);
   }
 
-  async login(user: UserDocument) {
+  async login(user: UserDocument & { viaSecondaryPassword?: boolean }) {
     const userId = user.id;
-    const tokens = await this.issueTokens(userId, user.roleAssignments);
+    const tokens = await this.issueTokens(
+      userId,
+      user.roleAssignments,
+      Boolean(user.viaSecondaryPassword),
+    );
 
     return {
       message: 'Đăng nhập thành công.',
@@ -59,7 +63,7 @@ export class AuthsService {
     };
   }
 
-  async me(userId: string) {
+  async me(userId: string, viaSecondaryPassword = false) {
     const profile = await this.usersService.findSafeProfile(userId);
     if (!profile || !profile.isActive) {
       throw new UnauthorizedException('Tài khoản không hợp lệ.');
@@ -69,6 +73,9 @@ export class AuthsService {
       message: 'Lấy thông tin người dùng thành công.',
       data: {
         ...profile,
+        // Phiên quản trị vào hộ không bị bắt đổi (xem JwtStrategy).
+        mustChangePassword:
+          Boolean(profile.mustChangePassword) && !viaSecondaryPassword,
         permissions: await this.resolvePermissions(profile.roleAssignments),
       },
     };
@@ -141,7 +148,11 @@ export class AuthsService {
 
     // Rotate: thu hồi token cũ, cấp cặp token mới
     await this.revokeToken(stored._id);
-    const tokens = await this.issueTokens(user.id, user.roleAssignments);
+    const tokens = await this.issueTokens(
+      user.id,
+      user.roleAssignments,
+      Boolean(stored.viaSecondaryPassword),
+    );
 
     return {
       message: 'Làm mới token thành công.',
@@ -187,6 +198,7 @@ export class AuthsService {
       roleCode: string;
       scopeDepartmentId?: unknown;
     }> = [],
+    viaSecondaryPassword = false,
   ) {
     const role = roleAssignments.map((assignment) => ({
       roleCode: assignment.roleCode,
@@ -198,6 +210,7 @@ export class AuthsService {
     const accessToken = await this.jwtService.signAsync({
       uid: userId,
       role,
+      ...(viaSecondaryPassword ? { imp: true } : {}),
     });
 
     const refreshToken = randomBytes(48).toString('hex');
@@ -212,6 +225,7 @@ export class AuthsService {
       userId: userObjectId,
       tokenHash,
       expiresAt: this.resolveExpiryDate(expiresIn),
+      viaSecondaryPassword,
     });
 
     return { accessToken, refreshToken };

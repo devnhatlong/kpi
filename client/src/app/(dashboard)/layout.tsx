@@ -4,6 +4,7 @@ import { Suspense, type ReactNode } from "react";
 
 import {
   RequireAuth,
+  RequirePasswordChange,
   RestrictRoutesByPermission,
 } from "@/features/auth/auth-guards";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
@@ -23,10 +24,12 @@ export default function DashboardLayout({
       }
     >
       <RequireAuth>
-        <RestrictRoutesByPermission>
-          <ServerTimeSync />
-          <DashboardShell>{children}</DashboardShell>
-        </RestrictRoutesByPermission>
+        <RequirePasswordChange>
+          <RestrictRoutesByPermission>
+            <ServerTimeSync />
+            <DashboardShell>{children}</DashboardShell>
+          </RestrictRoutesByPermission>
+        </RequirePasswordChange>
       </RequireAuth>
     </Suspense>
   );

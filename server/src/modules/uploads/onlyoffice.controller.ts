@@ -6,12 +6,16 @@ import { CurrentUser } from '@/common/decorators';
 import type { JwtPayloadUser } from '@/common/interfaces/jwt-payload-user.interface';
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import { OnlyOfficeService } from './onlyoffice.service';
-import { asciiFallbackName } from './upload-file.utils';
+import { UploadAccessService } from './upload-access.service';
+import { asciiFallbackName, setFileSecurityHeaders } from './upload-file.utils';
 
 @ApiTags('OnlyOffice')
 @Controller('onlyoffice')
 export class OnlyOfficeController {
-  constructor(private readonly onlyOffice: OnlyOfficeService) {}
+  constructor(
+    private readonly onlyOffice: OnlyOfficeService,
+    private readonly uploadAccess: UploadAccessService,
+  ) {}
 
   @ApiOperation({ summary: 'Có Document Server để xem tệp trực tiếp không' })
   @ApiBearerAuth()
@@ -26,6 +30,9 @@ export class OnlyOfficeController {
   @UseGuards(JwtGuard)
   @Get('config/:id')
   async config(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
+    // Link có chữ ký mở được tệp mà không cần token - chỉ cấp cho người có
+    // quyền xem đúng tệp đó.
+    await this.uploadAccess.assertCanRead(user.uid, id);
     const data = await this.onlyOffice.viewerConfig(id, {
       id: user.uid,
       name: user.uid,
@@ -46,6 +53,7 @@ export class OnlyOfficeController {
     @Res() res: Response,
   ) {
     const file = await this.onlyOffice.openForDocumentServer(id, exp, sig);
+    setFileSecurityHeaders(res);
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader('Content-Length', String(file.size));
     res.setHeader(

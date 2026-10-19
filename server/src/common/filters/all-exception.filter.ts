@@ -18,6 +18,7 @@ export class AllExceptionFilter implements ExceptionFilter {
         let status: number;
         let message: string = 'Lỗi không xác định. Vui lòng thử lại sau.';
         let error: string = '';
+        let code: string = '';
 
         if (exception instanceof HttpException) {
             // Khi lỗi có chủ đích (biết trước - lỗi HTTP)
@@ -29,6 +30,11 @@ export class AllExceptionFilter implements ExceptionFilter {
             } else if (typeof exceptionResponse === 'object') {
                 const exceptionResponseObj = exceptionResponse as Record<string, any>;
                 message = exceptionResponseObj.message || exceptionResponseObj.error || 'Lỗi không xác định';
+                // Mã máy đọc được (vd PASSWORD_CHANGE_REQUIRED) để client rẽ nhánh
+                // mà không phải so chuỗi thông báo tiếng Việt.
+                if (typeof exceptionResponseObj.code === 'string') {
+                    code = exceptionResponseObj.code;
+                }
 
                 // Lỗi validation DTO
                 if (Array.isArray(exceptionResponseObj.message)) {
@@ -46,6 +52,7 @@ export class AllExceptionFilter implements ExceptionFilter {
             success: false,
             message: message,
             ... (error && { error }),
+            ... (code && { code }),
             timestamp: new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false }),
             path: request.url,
             responseTime: responseTime

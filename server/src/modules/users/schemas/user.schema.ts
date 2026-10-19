@@ -76,6 +76,14 @@ export class User {
     @Prop({ default: true, index: true })
     isActive!: boolean;
 
+    /**
+     * Phải đổi mật khẩu trước khi dùng tiếp - bật khi tài khoản còn mật khẩu
+     * mặc định. Đang bật thì JwtStrategy chỉ cho gọi vài route tối thiểu (xem
+     * PASSWORD_CHANGE_ALLOWED_PATHS); đổi mật khẩu xong tự tắt.
+     */
+    @Prop({ default: false })
+    mustChangePassword!: boolean;
+
     @Prop({ type: Date, default: null })
     lastLoginAt?: Date | null;
 }

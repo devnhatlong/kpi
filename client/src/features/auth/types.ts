@@ -52,7 +52,18 @@ export type AuthUser = {
   permissions?: string[];
   isActive: boolean;
   lastLoginAt?: string | null;
+  /**
+   * Còn mật khẩu mặc định - server chặn mọi API trừ đổi mật khẩu cho tới khi
+   * đổi xong, nên client đưa thẳng tới trang đổi mật khẩu.
+   */
+  mustChangePassword?: boolean;
 };
+
+/** Mã lỗi server trả khi tài khoản phải đổi mật khẩu trước khi dùng tiếp. */
+export const PASSWORD_CHANGE_REQUIRED = "PASSWORD_CHANGE_REQUIRED";
+
+/** Trang đổi mật khẩu - nơi tài khoản bị bắt đổi được phép ở lại. */
+export const PASSWORD_CHANGE_PATH = "/settings?tab=security";
 
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 

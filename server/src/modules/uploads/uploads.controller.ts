@@ -2,6 +2,8 @@ import {
   BadRequestException,
   Controller,
   Get,
+  HttpException,
+  HttpStatus,
   Param,
   Post,
   Res,
@@ -24,6 +26,7 @@ import { CurrentUser } from '@/common/decorators';
 import type { JwtPayloadUser } from '@/common/interfaces/jwt-payload-user.interface';
 import { JwtGuard } from '../auth/guards/jwt.guard';
 import { UploadsService } from './uploads.service';
+import { UploadAccessService } from './upload-access.service';
 import { UploadExceptionFilter } from './upload-exception.filter';
 import {
   ALLOWED_UPLOAD_EXTENSIONS,
@@ -32,7 +35,12 @@ import {
   contentMatchesExtension,
   fixOriginalName,
   isAllowedExtension,
+  setFileSecurityHeaders,
 } from './upload-file.utils';
+
+/** Hạn mức upload: tối đa chừng này tệp mỗi tài khoản trong một cửa sổ. */
+const UPLOAD_QUOTA_PER_WINDOW = 200;
+const UPLOAD_QUOTA_WINDOW_MS = 60 * 60 * 1000;
 
 @ApiTags('Uploads')
 @ApiBearerAuth()
@@ -42,7 +50,10 @@ import {
 @UseFilters(UploadExceptionFilter)
 @Controller('uploads')
 export class UploadsController {
-  constructor(private readonly uploadsService: UploadsService) {}
+  constructor(
+    private readonly uploadsService: UploadsService,
+    private readonly uploadAccess: UploadAccessService,
+  ) {}
 
   @ApiOperation({ summary: 'Tải một tệp lên, trả về id để gắn vào nhiệm vụ' })
   @ApiConsumes('multipart/form-data')
@@ -66,6 +77,17 @@ export class UploadsController {
   ) {
     if (!file) throw new BadRequestException('Chưa chọn tệp.');
 
+    // Hạn mức theo tài khoản: chặn một tài khoản đẩy liên tục tệp 10MB làm
+    // đầy CSDL. Mức rộng hơn hẳn nhu cầu thật của một đội trong một giờ.
+    const since = new Date(Date.now() - UPLOAD_QUOTA_WINDOW_MS);
+    const recent = await this.uploadsService.countUploadsSince(user.uid, since);
+    if (recent >= UPLOAD_QUOTA_PER_WINDOW) {
+      throw new HttpException(
+        'Tài khoản đã tải lên quá nhiều tệp trong một giờ. Vui lòng thử lại sau.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     // Tên tiếng Việt bị busboy đọc thành Latin-1; phải sửa trước khi lưu.
     const originalName = fixOriginalName(file.originalname);
 
@@ -82,7 +104,6 @@ export class UploadsController {
 
     const data = await this.uploadsService.saveBuffer({
       originalName,
-      mimeType: file.mimetype,
       buffer: file.buffer,
       uploadedById: user.uid,
     });
@@ -92,9 +113,15 @@ export class UploadsController {
 
   @ApiOperation({ summary: 'Tải tệp về theo id' })
   @Get(':id')
-  async download(@Param('id') id: string, @Res() res: Response) {
+  async download(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    await this.uploadAccess.assertCanRead(user.uid, id);
     const file = await this.uploadsService.openForDownload(id);
 
+    setFileSecurityHeaders(res);
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader('Content-Length', String(file.size));
     // Vừa có bản ASCII cho trình duyệt cũ, vừa có bản UTF-8 giữ tên tiếng Việt.

@@ -5,7 +5,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useAuth } from "@/features/auth/auth-provider";
 import { DEFAULT_APP_PATH } from "@/features/auth/constants";
-import { userHasAnyPermission } from "@/features/auth/types";
+import {
+  PASSWORD_CHANGE_PATH,
+  userHasAnyPermission,
+} from "@/features/auth/types";
 import { pathRequiresPermissions } from "@/constants/navigation";
 import type { AuthUser } from "@/features/auth/types";
 
@@ -70,6 +73,30 @@ export function RestrictRoutesByPermission({
   useEffect(() => {
     if (!blocked) return;
     router.replace(DEFAULT_APP_PATH);
+  }, [blocked, router]);
+
+  if (blocked) return null;
+  return <>{children}</>;
+}
+
+/**
+ * Tài khoản còn mật khẩu mặc định chỉ được ở trang đổi mật khẩu. Server cũng
+ * chặn mọi API khác (403 PASSWORD_CHANGE_REQUIRED) - đây chỉ là lớp điều hướng
+ * cho người dùng khỏi gặp một loạt lỗi.
+ */
+export function RequirePasswordChange({ children }: { children: ReactNode }) {
+  const { user, status } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const blocked =
+    status === "authenticated" &&
+    Boolean(user?.mustChangePassword) &&
+    pathname !== "/settings";
+
+  useEffect(() => {
+    if (!blocked) return;
+    router.replace(PASSWORD_CHANGE_PATH);
   }, [blocked, router]);
 
   if (blocked) return null;

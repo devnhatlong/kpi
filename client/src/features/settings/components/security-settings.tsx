@@ -12,7 +12,8 @@ import { useAuth } from "@/features/auth/auth-provider";
 import { changeMyPassword } from "@/features/settings/api";
 import { getApiErrorMessage } from "@/lib/api-client";
 
-const MIN_PASSWORD_LENGTH = 6;
+/** Phải khớp MIN_PASSWORD_LENGTH bên server (auth/password-policy.ts). */
+const MIN_PASSWORD_LENGTH = 8;
 
 type PasswordFieldProps = {
   id: string;
@@ -57,7 +58,7 @@ function PasswordField({ id, label, value, onChange }: PasswordFieldProps) {
 
 export function SecuritySettings() {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -95,6 +96,16 @@ export function SecuritySettings() {
       <h2 className="font-display text-lg font-semibold tracking-tight">
         Đổi mật khẩu
       </h2>
+
+      {user?.mustChangePassword ? (
+        <p
+          role="alert"
+          className="max-w-md rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+        >
+          Tài khoản đang dùng mật khẩu mặc định. Vui lòng đổi mật khẩu mới
+          (ít nhất {MIN_PASSWORD_LENGTH} ký tự) để tiếp tục sử dụng phần mềm.
+        </p>
+      ) : null}
 
       <div className="max-w-md space-y-4">
         <PasswordField

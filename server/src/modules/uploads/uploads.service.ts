@@ -6,6 +6,8 @@ import {
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection, Types, mongo } from 'mongoose';
 
+import { mimeTypeFor } from './upload-file.utils';
+
 /** Tên bucket -> hai collection uploads.files và uploads.chunks. */
 const BUCKET_NAME = 'uploads';
 
@@ -44,14 +46,14 @@ export class UploadsService {
   /** Ghi buffer vào GridFS, trả về con trỏ để nghiệp vụ lưu lại. */
   async saveBuffer(input: {
     originalName: string;
-    mimeType: string;
     buffer: Buffer;
     uploadedById: string;
   }): Promise<UploadRef> {
     const bucket = this.bucket();
+    const mimeType = mimeTypeFor(input.originalName);
     const stream = bucket.openUploadStream(input.originalName, {
       metadata: {
-        contentType: input.mimeType,
+        contentType: mimeType,
         uploadedById: new Types.ObjectId(input.uploadedById),
         uploadedAt: new Date(),
       },
@@ -68,7 +70,7 @@ export class UploadsService {
       id: String(stream.id),
       name: input.originalName,
       size: input.buffer.length,
-      mimeType: input.mimeType,
+      mimeType,
     };
   }
 
@@ -83,13 +85,40 @@ export class UploadsService {
     const [file] = await bucket.find({ _id: objectId }).limit(1).toArray();
     if (!file) throw new NotFoundException('Không tìm thấy tệp.');
 
-    const metadata = (file.metadata ?? {}) as { contentType?: string };
+    const metadata = (file.metadata ?? {}) as {
+      uploadedById?: Types.ObjectId;
+    };
     return {
       fileName: file.filename,
       size: file.length,
-      mimeType: metadata.contentType || 'application/octet-stream',
+      // Theo đuôi, kể cả tệp cũ đã lưu contentType do trình duyệt gửi - xem
+      // `mimeTypeFor`.
+      mimeType: mimeTypeFor(file.filename),
+      uploadedById: metadata.uploadedById ? String(metadata.uploadedById) : '',
       stream: bucket.openDownloadStream(objectId),
     };
+  }
+
+  /** Người upload của một tệp - để kiểm quyền mà không mở stream. */
+  async uploaderOf(id: string): Promise<string | null> {
+    if (!Types.ObjectId.isValid(id)) return null;
+    const [file] = await this.bucket()
+      .find({ _id: new Types.ObjectId(id) })
+      .project({ 'metadata.uploadedById': 1 })
+      .limit(1)
+      .toArray();
+    if (!file) return null;
+    const uploadedById = (file.metadata as { uploadedById?: Types.ObjectId })
+      ?.uploadedById;
+    return uploadedById ? String(uploadedById) : '';
+  }
+
+  /** Số tệp một người đã tải lên kể từ `since` - cho hạn mức upload. */
+  async countUploadsSince(userId: string, since: Date): Promise<number> {
+    return this.connection.collection(`${BUCKET_NAME}.files`).countDocuments({
+      'metadata.uploadedById': new Types.ObjectId(userId),
+      uploadDate: { $gte: since },
+    });
   }
 
   /** Lọc ra id tệp thật sự tồn tại - dùng khi lưu nhiệm vụ. */

@@ -1,6 +1,11 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 
-import type { ApiResponse, AuthTokens } from "@/features/auth/types";
+import {
+  PASSWORD_CHANGE_PATH,
+  PASSWORD_CHANGE_REQUIRED,
+  type ApiResponse,
+  type AuthTokens,
+} from "@/features/auth/types";
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "@/lib/auth-storage";
 
 const API_BASE_URL =
@@ -55,9 +60,27 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
+/**
+ * Server chặn vì tài khoản phải đổi mật khẩu mặc định: đưa về trang đổi mật
+ * khẩu. Đang ở đó rồi thì thôi - không thì trang tự nạp lại mãi.
+ */
+function redirectToPasswordChange() {
+  if (typeof window === "undefined") return;
+  if (window.location.pathname === "/settings") return;
+  window.location.assign(PASSWORD_CHANGE_PATH);
+}
+
 api.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError<ApiResponse<unknown>>) => {
+  async (error: AxiosError<ApiResponse<unknown> & { code?: string }>) => {
+    if (
+      error.response?.status === 403 &&
+      error.response.data?.code === PASSWORD_CHANGE_REQUIRED
+    ) {
+      redirectToPasswordChange();
+      return Promise.reject(error);
+    }
+
     const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
     if (
       error.response?.status === 401 &&
