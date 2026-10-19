@@ -61,7 +61,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatServerHm } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
 
-type Filter = "ALL" | "TODO" | "SAVED";
+type Filter = "ALL" | "TODO" | "SAVED" | "COMMENDED";
 
 type UnitActions = {
   busy: boolean;
@@ -153,6 +153,14 @@ export function AppraisalWorkspace({
   );
   const doneCount = rows.filter((row) => unitComplete(row.unit)).length;
   const savedCount = rows.filter((row) => row.saved).length;
+  /** Đơn vị được nêu trong bảng biểu dương / phê bình cùng tháng. */
+  const commended = (departmentId: string) => {
+    const hint = commendations[departmentId];
+    return !!hint && (hint.praises.length > 0 || hint.criticisms.length > 0);
+  };
+  const commendedCount = rows.filter((row) =>
+    commended(row.unit.departmentId),
+  ).length;
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -160,9 +168,13 @@ export function AppraisalWorkspace({
       if (q && !unit.departmentName.toLowerCase().includes(q)) return false;
       if (filter === "TODO") return !unitComplete(unit);
       if (filter === "SAVED") return saved;
+      if (filter === "COMMENDED") {
+        const hint = commendations[unit.departmentId];
+        return !!hint && (hint.praises.length > 0 || hint.criticisms.length > 0);
+      }
       return true;
     });
-  }, [rows, query, filter]);
+  }, [rows, query, filter, commendations]);
 
   const selected =
     rows.find((row) => row.unit.departmentId === selectedId) ??
@@ -377,6 +389,11 @@ export function AppraisalWorkspace({
                       },
                     ]
                   : []),
+                {
+                  value: "COMMENDED" as const,
+                  label: "Có biểu dương, phê bình",
+                  count: commendedCount,
+                },
               ].map((item) => ({
                 value: item.value,
                 label: (

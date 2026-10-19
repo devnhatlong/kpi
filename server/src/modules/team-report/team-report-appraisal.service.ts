@@ -285,38 +285,6 @@ export class TeamReportAppraisalService {
     ).map((dept) => dept._id);
   }
 
-  /**
-   * Đơn vị được NÊU TÊN trong bảng biểu dương / phê bình cấp phòng cùng tháng
-   * gửi tới tài khoản này (chủ trì, duyệt cuối hoặc theo dõi) - chờ duyệt hay
-   * đã duyệt đều tính; nháp và BỊ TRẢ LẠI thì không (phòng đang sửa, nội dung
-   * chưa chốt - user chốt 2026-10-19). Đây là nguồn thứ hai đưa đơn vị vào bảng
-   * thẩm định, bên cạnh báo cáo tháng tôi đã duyệt.
-   */
-  private async commendationUnitIds(
-    actorId: Types.ObjectId,
-    periodMonth: string,
-  ): Promise<string[]> {
-    const sheets = await this.commendationModel
-      .find({
-        periodMonth,
-        departmentId: { $in: await this.phongDepartmentIds() },
-        status: { $in: LIVE_COMMENDATION },
-        $or: [
-          { recipientId: actorId },
-          { finalRecipientId: actorId },
-          { 'participants.userId': actorId },
-        ],
-      })
-      .select('praises.departmentIds criticisms.departmentIds');
-    const ids = new Set<string>();
-    for (const sheet of sheets) {
-      for (const row of [...sheet.praises, ...sheet.criticisms]) {
-        for (const id of row.departmentIds) ids.add(String(id));
-      }
-    }
-    return [...ids];
-  }
-
   /** Cổng menu: được lập bảng / được nhận bảng. */
   async access(userId: string) {
     const [allowed, listed] = await Promise.all([
@@ -358,15 +326,11 @@ export class TeamReportAppraisalService {
     });
     const hints = await this.selfScoreHints(actor.id, periodMonth);
     /* MỘT nguồn đơn vị vào bảng (user chốt 2026-10-19): báo cáo tháng TÔI ĐÃ
-       DUYỆT. Đơn vị chỉ được nêu tên trong bảng biểu dương / phê bình mà chưa
-       có báo cáo đó thì KHÔNG vào bảng - liệt kê riêng ở `awaitingReport` để
-       biết; báo cáo được duyệt là tự vào, gợi ý cộng / trừ vẫn còn đủ. */
-    const mentioned = await this.commendationUnitIds(actor.id, periodMonth);
+       DUYỆT - không cần nằm trong bảng biểu dương / phê bình. Bảng biểu dương
+       chỉ cho gợi ý cộng / trừ (`commendationHints`). */
     const candidateIds = Object.keys(hints);
-    const awaitingIds = mentioned.filter((id) => !(id in hints));
     const labels = await departmentLabels(this.departmentModel, [
       ...candidateIds,
-      ...awaitingIds,
       ...(sheet?.units ?? []).map((unit) => unit.departmentId),
     ]);
     const approved = candidateIds.map((id) => ({
@@ -425,20 +389,11 @@ export class TeamReportAppraisalService {
             userId,
           ),
         },
-        /** Đơn vị vừa rời bảng vì không còn nguồn - để màn hình báo. Đơn vị
-            đang chờ báo cáo tháng thì đã nằm ở `awaitingReport`, khỏi báo hai lần. */
-        droppedUnits: orphaned
-          .filter((unit) => !awaitingIds.includes(String(unit.departmentId)))
-          .map(
-            (unit) =>
-              labels.get(String(unit.departmentId)) ?? unit.departmentName,
-          ),
-        /** Được nêu trong bảng biểu dương / phê bình nhưng chưa có báo cáo
-            tháng tôi duyệt - chưa vào bảng thẩm định. */
-        awaitingReport: awaitingIds.map((id) => ({
-          id,
-          name: labels.get(id) ?? '',
-        })),
+        /** Đơn vị vừa rời bảng vì không còn báo cáo tháng tôi duyệt - để màn hình báo. */
+        droppedUnits: orphaned.map(
+          (unit) =>
+            labels.get(String(unit.departmentId)) ?? unit.departmentName,
+        ),
         /** Đã duyệt báo cáo tháng nhưng chưa có trong bảng đã lưu. */
         newlyApprovedIds: sheet
           ? approved
@@ -452,7 +407,6 @@ export class TeamReportAppraisalService {
         commendationHints: await this.commendationHints(periodMonth, [
           ...units.map((unit) => unit.departmentId),
           ...approved.map((unit) => unit.id),
-          ...awaitingIds,
         ]),
         /* Bảng luôn mở để thêm / sửa đơn vị chưa trình - từng đơn vị khoá
            riêng theo trạng thái của nó (`units[].status`). */

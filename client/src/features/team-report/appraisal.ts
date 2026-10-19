@@ -161,13 +161,7 @@ export type AppraisalComposerData = AppraisalSheet & {
    * Đơn vị CHƯA TRÌNH vừa rời bảng vì không còn nguồn (bảng biểu dương nêu
    * tên bị trả lại…) - tên để báo; lần lưu kế tiếp ghi hẳn.
    */
-  droppedUnits?: string[];
-  /**
-   * Được nêu trong bảng biểu dương, phê bình nhưng CHƯA có báo cáo tháng do
-   * tài khoản này duyệt - chưa vào bảng thẩm định, chỉ liệt kê để biết.
-   */
-  awaitingReport?: Array<{ id: string; name: string }>;
-  /** Nơi nhận theo luồng APPRAISAL; units null = chưa có luồng. */
+  droppedUnits?: string[];  /** Nơi nhận theo luồng APPRAISAL; units null = chưa có luồng. */
   route: {
     units: TeamReportRouteUnitView[] | null;
     finalReviewer: TeamReportRouteUnitView | null;
