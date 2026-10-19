@@ -48,6 +48,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  MonthSwitcher,
+  useCurrentMonth,
+} from "@/features/team-report/components/month-switcher";
 import { CommendationTables } from "@/features/team-report/components/commendation-tables";
 import { ApprovalChain } from "@/features/team-report/components/participants-block";
 import { commendationExportRows } from "@/features/team-report/components/team-report-commendation-view";
@@ -87,13 +91,18 @@ export function TeamReportCommendationInboxView() {
   const [status, setStatus] = useState<StatusBox>("PENDING");
   const [openId, setOpenId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  // Mỗi tháng xem riêng - mặc định tháng hiện tại theo giờ server.
+  const [pickedMonth, setPickedMonth] = useState<string | null>(null);
+  const currentMonth = useCurrentMonth();
+  const month = pickedMonth ?? currentMonth;
 
   const list = useSWR(
-    commendationKeys.inbox(box, status, 1),
+    month ? commendationKeys.inbox(box, status, 1, month) : null,
     () =>
       fetchCommendationInbox({
         box,
         status: status as TeamReportDayStatus | "",
+        periodMonth: month,
         limit: 50,
       }),
     // Giữ số đếm cũ trong lúc tải tab mới - huy hiệu không chớp tắt.
@@ -121,6 +130,7 @@ export function TeamReportCommendationInboxView() {
       const { criteria, sheets } = await fetchCommendationInboxExport({
         box,
         status: status as TeamReportDayStatus | "",
+        periodMonth: month,
       });
       if (!sheets.length) {
         toast.info("Không có bảng nào để xuất.");
@@ -152,6 +162,7 @@ export function TeamReportCommendationInboxView() {
       const { units, sheets } = await fetchCommendationInboxExport({
         box,
         status: status as TeamReportDayStatus | "",
+        periodMonth: month,
       });
       if (!sheets.length) {
         toast.info("Không có bảng nào để xuất.");
@@ -208,6 +219,7 @@ export function TeamReportCommendationInboxView() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <MonthSwitcher month={month} onChange={setPickedMonth} />
             <SegmentedTabs
               ariaLabel="Hộp"
               value={box}

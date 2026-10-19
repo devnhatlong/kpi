@@ -28,6 +28,10 @@ import {
   fetchAppraisalIncoming,
 } from "@/features/team-report/appraisal";
 import { AppraisalWorkspace } from "@/features/team-report/components/appraisal-workspace";
+import {
+  MonthSwitcher,
+  useCurrentMonth,
+} from "@/features/team-report/components/month-switcher";
 import { ApprovalChain } from "@/features/team-report/components/participants-block";
 import {
   DAY_STATUS_CLASS,
@@ -53,9 +57,19 @@ const monthLabel = (month: string) => {
 export function TeamReportAppraisalInboxView() {
   const [box, setBox] = useState<Box>("PENDING");
   const [openId, setOpenId] = useState<string | null>(null);
+  // Mỗi tháng xem riêng - mặc định tháng hiện tại theo giờ server.
+  const [pickedMonth, setPickedMonth] = useState<string | null>(null);
+  const currentMonth = useCurrentMonth();
+  const month = pickedMonth ?? currentMonth;
 
-  const list = useSWR(appraisalKeys.inbox(box, 1), () =>
-    fetchAppraisalInbox({ status: box as TeamReportDayStatus | "", limit: 50 }),
+  const list = useSWR(
+    month ? appraisalKeys.inbox(box, 1, month) : null,
+    () =>
+      fetchAppraisalInbox({
+        status: box as TeamReportDayStatus | "",
+        periodMonth: month,
+        limit: 50,
+      }),
   );
 
   if (openId) {
@@ -88,17 +102,20 @@ export function TeamReportAppraisalInboxView() {
               </p>
             </div>
           </div>
-          <SegmentedTabs
-            ariaLabel="Trạng thái"
-            value={box}
-            onChange={setBox}
-            items={[
-              { value: "PENDING" as const, label: "Chờ duyệt" },
-              { value: "APPROVED" as const, label: "Đã duyệt" },
-              { value: "RETURNED" as const, label: "Đã trả lại" },
-              { value: "" as const, label: "Tất cả" },
-            ]}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <SegmentedTabs
+              ariaLabel="Trạng thái"
+              value={box}
+              onChange={setBox}
+              items={[
+                { value: "PENDING" as const, label: "Chờ duyệt" },
+                { value: "APPROVED" as const, label: "Đã duyệt" },
+                { value: "RETURNED" as const, label: "Đã trả lại" },
+                { value: "" as const, label: "Tất cả" },
+              ]}
+            />
+            <MonthSwitcher month={month} onChange={setPickedMonth} />
+          </div>
         </CardContent>
       </Card>
 

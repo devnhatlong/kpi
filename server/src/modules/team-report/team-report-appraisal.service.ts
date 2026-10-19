@@ -711,7 +711,13 @@ export class TeamReportAppraisalService {
           },
         },
       },
-      { $match: leadInboxFilter(actor.id, query.status) },
+      {
+        $match: {
+          ...leadInboxFilter(actor.id, query.status),
+          // Mỗi tháng xem riêng - không truyền thì như cũ (mọi tháng).
+          ...(query.periodMonth ? { periodMonth: query.periodMonth } : {}),
+        },
+      },
       { $sort: { sentAt: -1, periodMonth: -1 } },
       {
         $facet: {

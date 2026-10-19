@@ -376,18 +376,24 @@ export class TeamReportCommendationService implements OnModuleInit {
 
   // ------------------------------------------------------------ người nhận
 
-  /** Hộp đến: `box` LEAD = chủ trì duyệt; INFORM / COORDINATE = theo dõi. */
-  /** Điều kiện của một hộp đến (chủ trì / theo dõi) theo ô trạng thái. */
+  /**
+   * Điều kiện của một hộp đến (LEAD = chủ trì duyệt; INFORM / COORDINATE =
+   * theo dõi) theo ô trạng thái. Có `periodMonth` thì chỉ tháng đó - mỗi tháng
+   * xem riêng (user chốt 2026-10-19).
+   */
   private inboxFilter(
     actor: Actor,
     box: string,
     status?: string,
+    periodMonth?: string,
   ): Record<string, unknown> {
+    const month = periodMonth ? { periodMonth } : {};
     return box === 'LEAD'
-      ? leadInboxFilter(actor.id, status)
+      ? { ...leadInboxFilter(actor.id, status), ...month }
       : {
           participants: { $elemMatch: { userId: actor.id, role: box } },
           status: status ? status : { $ne: 'DRAFT' },
+          ...month,
         };
   }
 
@@ -399,7 +405,14 @@ export class TeamReportCommendationService implements OnModuleInit {
   async inboxExport(userId: string, query: TeamReportAdjustmentInboxQueryDto) {
     const actor = await this.requireActor(userId);
     const sheets = await this.sheetModel
-      .find(this.inboxFilter(actor, query.box ?? 'LEAD', query.status))
+      .find(
+        this.inboxFilter(
+          actor,
+          query.box ?? 'LEAD',
+          query.status,
+          query.periodMonth,
+        ),
+      )
       .sort({ periodMonth: -1, sentAt: 1 })
       .limit(500);
     return {
@@ -421,7 +434,8 @@ export class TeamReportCommendationService implements OnModuleInit {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
     const box = query.box ?? 'LEAD';
-    const boxFilter = (status?: string) => this.inboxFilter(actor, box, status);
+    const boxFilter = (status?: string) =>
+      this.inboxFilter(actor, box, status, query.periodMonth);
     const filter = boxFilter(query.status);
     const count = (where: Record<string, unknown>) =>
       this.sheetModel.countDocuments(where);
@@ -438,12 +452,13 @@ export class TeamReportCommendationService implements OnModuleInit {
         số bảng ở trạng thái đó trong hộp đang xem.
       */
       Promise.all([
-        count(leadInboxFilter(actor.id, 'PENDING')),
+        count(this.inboxFilter(actor, 'LEAD', 'PENDING', query.periodMonth)),
         count({
           participants: {
             $elemMatch: { userId: actor.id, role: 'INFORM', seenAt: null },
           },
           status: { $ne: 'DRAFT' },
+          ...(query.periodMonth ? { periodMonth: query.periodMonth } : {}),
         }),
         count(boxFilter('PENDING')),
         count(boxFilter('APPROVED')),

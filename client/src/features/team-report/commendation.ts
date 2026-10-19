@@ -153,8 +153,8 @@ export function commendationRowComplete(row: CommendationRow, praise: boolean) {
 export const commendationKeys = {
   access: (userId: string) => ["team-report", "commendation-access", userId],
   sheet: (month: string) => ["team-report", "commendation", month],
-  inbox: (box: string, status: string, page: number) =>
-    ["team-report", "commendation-inbox", box, status, page] as const,
+  inbox: (box: string, status: string, page: number, month = "") =>
+    ["team-report", "commendation-inbox", box, status, page, month] as const,
   incoming: (id: string) => ["team-report", "commendation-incoming", id],
 };
 
@@ -241,6 +241,8 @@ export type CommendationInboxCounts = {
 export async function fetchCommendationInbox(query: {
   box: CommendationInboxBox;
   status?: TeamReportDayStatus | "";
+  /** "YYYY-MM" - chỉ bảng của tháng đó. */
+  periodMonth?: string;
   page?: number;
   limit?: number;
 }) {
@@ -252,6 +254,7 @@ export async function fetchCommendationInbox(query: {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
       ...(query.status ? { status: query.status } : {}),
+      ...(query.periodMonth ? { periodMonth: query.periodMonth } : {}),
     },
   });
   const list = await unwrapPaginated(Promise.resolve(response));
@@ -262,6 +265,7 @@ export async function fetchCommendationInbox(query: {
 export function fetchCommendationInboxExport(query: {
   box: CommendationInboxBox;
   status?: TeamReportDayStatus | "";
+  periodMonth?: string;
 }) {
   return unwrapData(
     api.get<
@@ -275,6 +279,7 @@ export function fetchCommendationInboxExport(query: {
       params: {
         box: query.box,
         ...(query.status ? { status: query.status } : {}),
+        ...(query.periodMonth ? { periodMonth: query.periodMonth } : {}),
       },
     }),
   );

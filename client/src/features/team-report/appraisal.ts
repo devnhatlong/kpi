@@ -258,8 +258,8 @@ export function unitSaved(unit: AppraisalUnit, saved: AppraisalUnit[]) {
 export const appraisalKeys = {
   access: (userId: string) => ["team-report", "appraisal-access", userId],
   sheet: (month: string) => ["team-report", "appraisal", month],
-  inbox: (status: string, page: number) =>
-    ["team-report", "appraisal-inbox", status, page] as const,
+  inbox: (status: string, page: number, month = "") =>
+    ["team-report", "appraisal-inbox", status, page, month] as const,
   incoming: (id: string) => ["team-report", "appraisal-incoming", id],
 };
 
@@ -335,6 +335,8 @@ export function sendAppraisal(
 
 export function fetchAppraisalInbox(query: {
   status?: TeamReportDayStatus | "";
+  /** "YYYY-MM" - chỉ đơn vị của bảng tháng đó. */
+  periodMonth?: string;
   page?: number;
   limit?: number;
 }) {
@@ -346,6 +348,7 @@ export function fetchAppraisalInbox(query: {
           page: query.page ?? 1,
           limit: query.limit ?? 20,
           ...(query.status ? { status: query.status } : {}),
+          ...(query.periodMonth ? { periodMonth: query.periodMonth } : {}),
         },
       },
     ),

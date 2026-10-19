@@ -12,6 +12,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
   ValidateNested,
@@ -731,6 +732,14 @@ export class TeamReportAdjustmentInboxQueryDto {
   @IsOptional()
   @IsIn([...TEAM_REPORT_DAY_STATUSES])
   status?: string;
+
+  /** Lọc theo tháng (YYYY-MM) - bảng theo tháng nào xem riêng tháng đó. */
+  @ApiPropertyOptional({ example: '2026-10' })
+  @IsOptional()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, {
+    message: 'Tháng phải có dạng YYYY-MM.',
+  })
+  periodMonth?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
