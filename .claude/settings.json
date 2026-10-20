@@ -737,7 +737,10 @@
       "Bash(node e2e-security.js)",
       "PowerShell(Get-NetTCPConnection -LocalPort 3000,8080 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $p = Get-CimInstance Win32_Process -Filter \"ProcessId=$\\($_.OwningProcess\\)\"; \"{0} pid={1} {2}\" -f $_.LocalPort, $p.ProcessId, $p.CommandLine }; Get-ChildItem -Force -Name D:\\\\Project\\\\WebApp\\\\KPI\\\\client\\\\.next -ErrorAction SilentlyContinue)",
       "Bash(node scripts/link-adjustment-work-contents.js --apply)",
-      "Bash(node scripts/link-adjustment-work-contents.js)"
+      "Bash(node scripts/link-adjustment-work-contents.js)",
+      "Bash(node e2e-unlock.js)",
+      "Bash(curl -s -o /dev/null http://localhost:8080/api/v1/system/server-time)",
+      "Bash(curl -s -o /dev/null -w \"server %{http_code}\\\\n\" http://localhost:8080/api/v1/system/server-time)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

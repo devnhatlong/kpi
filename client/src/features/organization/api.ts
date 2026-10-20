@@ -297,6 +297,27 @@ export async function deleteUsers(ids: string[]) {
   );
 }
 
+/** Một khoá đăng nhập tạm thời đang có hiệu lực (gõ sai quá nhiều lần). */
+export type LoginLock = {
+  key: string;
+  type: "USER_IP" | "USER" | "IP";
+  username: string;
+  ip: string;
+  failures: number;
+  lockedUntil: string;
+};
+
+export async function fetchLoginLocks() {
+  return unwrapData(api.get<ApiResponse<LoginLock[]>>("/auth/login-locks"));
+}
+
+/** `key` = một khoá; `username` = mọi khoá của tài khoản; rỗng = mở hết. */
+export async function unlockLogin(target: { key?: string; username?: string }) {
+  return unwrapData(
+    api.post<ApiResponse<{ removed: number }>>("/auth/login-locks/unlock", target),
+  );
+}
+
 export async function importUsers(rows: ImportUserRow[]) {
   return unwrapData(
     api.post<ApiResponse<ImportUsersResult>>("/users/import", { rows }),

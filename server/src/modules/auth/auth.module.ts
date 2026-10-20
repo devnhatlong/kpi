@@ -16,9 +16,10 @@ import { PermissionsGuard } from '@/common/guards/permissions.guard';
 import { RolesGuard } from '@/common/guards/roles.guard';
 import { RefreshTokenCleanupTask } from './tasks/refresh-token-cleanup.task';
 import { LoginThrottleService } from './login-throttle.service';
+import { LoginLocksController } from './login-locks.controller';
 
 @Module({
-  controllers: [AuthsController],
+  controllers: [AuthsController, LoginLocksController],
   providers: [
     AuthsService,
     LocalStrategy,

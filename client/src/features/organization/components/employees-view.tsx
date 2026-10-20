@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   Download,
   FileSpreadsheet,
+  LockOpen,
   Pencil,
   Plus,
   Search,
@@ -57,6 +58,7 @@ import {
   userKeys,
 } from "@/features/organization/api";
 import { ImportUsersDialog } from "@/features/organization/components/import-users-dialog";
+import { LoginLocksDialog } from "@/features/organization/components/login-locks-dialog";
 import { UserFormDialog } from "@/features/organization/components/user-form-dialog";
 import { downloadUsersImportTemplate } from "@/features/organization/excel";
 import type { UserAccount } from "@/features/organization/types";
@@ -91,6 +93,7 @@ export function EmployeesView() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [locksOpen, setLocksOpen] = useState(false);
   const [edit, setEdit] = useState<UserAccount | null>(null);
   const [deleting, setDeleting] = useState<UserAccount | null>(null);
   /* Chọn hàng loạt - giữ id qua các trang, xoá một lượt. */
@@ -202,6 +205,10 @@ export function EmployeesView() {
           <Button variant="outline" onClick={() => setImportOpen(true)}>
             <FileSpreadsheet className="h-4 w-4" />
             Import Excel
+          </Button>
+          <Button variant="outline" onClick={() => setLocksOpen(true)}>
+            <LockOpen className="h-4 w-4" />
+            Khoá đăng nhập
           </Button>
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />
@@ -419,6 +426,8 @@ export function EmployeesView() {
         onOpenChange={setImportOpen}
         onSuccess={() => mutate()}
       />
+
+      <LoginLocksDialog open={locksOpen} onOpenChange={setLocksOpen} />
 
       <AlertDialog
         open={!!deleting}
