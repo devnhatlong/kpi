@@ -142,12 +142,15 @@ export function blankCommendationRow(): CommendationRow {
 }
 
 /** Dòng đã đủ để gửi: có đơn vị, có nội dung (biểu dương thêm nhóm nội dung). */
+/**
+ * Dòng đủ để gửi. "Không có đơn vị" là chọn tường minh rằng nhóm này tháng
+ * này không có gì - đủ rồi, không bắt ghi nội dung. Phải khớp luật `send`
+ * bên server (team-report-commendation.service.ts).
+ */
 export function commendationRowComplete(row: CommendationRow, praise: boolean) {
-  return (
-    row.departmentIds.length > 0 &&
-    row.content.trim().length > 0 &&
-    (!praise || !!row.itemId)
-  );
+  if (praise && !row.itemId) return false;
+  if (row.noUnit && !row.departmentIds.length) return true;
+  return row.departmentIds.length > 0 && row.content.trim().length > 0;
 }
 
 /* -------------------------------------------------------------------- API */

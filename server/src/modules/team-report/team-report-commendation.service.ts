@@ -335,7 +335,9 @@ export class TeamReportCommendationService implements OnModuleInit {
           `Có dòng ${where} chưa chọn đơn vị (dòng ${index + 1}).`,
         );
       }
-      if (!row.content.trim()) {
+      // "Không có đơn vị" = nhóm này tháng này không có gì để nêu - không
+      // bắt ghi nội dung. Phải khớp `commendationRowComplete` bên client.
+      if (!row.noUnit && !row.content.trim()) {
         throw new BadRequestException(
           `Có dòng ${where} chưa ghi nội dung (dòng ${index + 1}).`,
         );

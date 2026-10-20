@@ -239,7 +239,12 @@ export function TeamReportSummaryInboxView() {
                 { value: "", label: "Mọi đơn vị" },
                 ...(senders.data ?? []).map((d) => ({
                   value: d.id,
-                  label: d.code ? `${d.code} - ${d.name}` : d.name,
+                  // Nhãn phòng từ server đã mở đầu bằng mã ("PX03 - Phòng…") -
+                  // ghép thêm mã nữa là thành "PX03 - PX03 - Phòng…".
+                  label:
+                    d.code && !d.name.startsWith(d.code)
+                      ? `${d.code} - ${d.name}`
+                      : d.name,
                 })),
               ]}
               placeholder="Mọi đơn vị"
