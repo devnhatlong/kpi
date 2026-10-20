@@ -31,6 +31,13 @@ import {
  */
 const DEFAULT_MAX_SESSIONS_PER_USER = 60;
 
+/**
+ * Khoảng ân hạn sau khi xoay vòng refresh token. Các tab cùng trình duyệt dùng
+ * chung MỘT cookie; mở lại trình duyệt là mọi tab cùng gọi làm mới gần như một
+ * lúc, chỉ tab đầu tiên cầm token còn "sống".
+ */
+const ROTATION_GRACE_MS = 30 * 1000;
+
 @Injectable()
 export class AuthsService {
   private readonly logger = new Logger(AuthsService.name);
@@ -146,8 +153,9 @@ export class AuthsService {
       throw new UnauthorizedException('Tài khoản không hợp lệ.');
     }
 
-    // Rotate: thu hồi token cũ, cấp cặp token mới
-    await this.revokeToken(stored._id);
+    // Rotate: thu hồi token cũ, cấp cặp token mới. Token đang trong khoảng
+    // ân hạn (đã xoay vòng vài giây trước bởi tab khác) thì không đụng nữa.
+    if (!stored.revokedAt) await this.rotateToken(stored._id);
     const tokens = await this.issueTokens(
       user.id,
       user.roleAssignments,
@@ -160,7 +168,8 @@ export class AuthsService {
     };
   }
 
-  async logout(refreshToken: string) {
+  async logout(refreshToken: string | null) {
+    if (!refreshToken) return { message: 'Đăng xuất thành công.' };
     const tokenHash = this.hashToken(refreshToken);
     await this.refreshTokenModel.updateOne(
       { tokenHash, revokedAt: null },
@@ -179,10 +188,13 @@ export class AuthsService {
     return { message: 'Đã đăng xuất khỏi tất cả thiết bị.' };
   }
 
-  /** Job định kỳ: xóa các refresh token đã revoke. */
+  /**
+   * Job định kỳ: xóa các refresh token đã revoke. Chừa token vừa xoay vòng
+   * (còn trong khoảng ân hạn) - xoá sớm là tab đến sau bị đăng xuất oan.
+   */
   async purgeRevokedTokens() {
     const result = await this.refreshTokenModel.deleteMany({
-      revokedAt: { $ne: null },
+      revokedAt: { $ne: null, $lt: new Date(Date.now() - 5 * 60 * 1000) },
     });
 
     if (result.deletedCount > 0) {
@@ -221,14 +233,15 @@ export class AuthsService {
 
     await this.enforceTokenLimit(userObjectId);
 
+    const refreshExpiresAt = this.resolveExpiryDate(expiresIn);
     await this.refreshTokenModel.create({
       userId: userObjectId,
       tokenHash,
-      expiresAt: this.resolveExpiryDate(expiresIn),
+      expiresAt: refreshExpiresAt,
       viaSecondaryPassword,
     });
 
-    return { accessToken, refreshToken };
+    return { accessToken, refreshToken, refreshExpiresAt };
   }
 
   /**
@@ -261,12 +274,25 @@ export class AuthsService {
     await this.refreshTokenModel.deleteMany({ _id: { $in: idsToRemove } });
   }
 
+  /**
+   * Token còn dùng được: chưa thu hồi, HOẶC vừa bị xoay vòng trong khoảng ân
+   * hạn (không phải bị đăng xuất). Token bị đăng xuất / thu hồi vì tài khoản
+   * khoá không có `rotatedAt` nên không lọt qua nhánh thứ hai.
+   */
   private async findValidRefreshToken(refreshToken: string) {
     const tokenHash = this.hashToken(refreshToken);
+    const now = new Date();
     const stored = await this.refreshTokenModel.findOne({
       tokenHash,
-      revokedAt: null,
-      expiresAt: { $gt: new Date() },
+      expiresAt: { $gt: now },
+      $or: [
+        { revokedAt: null },
+        {
+          rotatedAt: {
+            $gt: new Date(now.getTime() - ROTATION_GRACE_MS),
+          },
+        },
+      ],
     });
     return stored;
   }
@@ -275,6 +301,14 @@ export class AuthsService {
     await this.refreshTokenModel.updateOne(
       { _id: id },
       { $set: { revokedAt: new Date() } },
+    );
+  }
+
+  private async rotateToken(id: Types.ObjectId) {
+    const now = new Date();
+    await this.refreshTokenModel.updateOne(
+      { _id: id },
+      { $set: { revokedAt: now, rotatedAt: now } },
     );
   }
 

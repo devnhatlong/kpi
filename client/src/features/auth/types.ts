@@ -27,9 +27,9 @@ export type ListQueryParams = {
   all?: boolean;
 };
 
+/** Refresh token không còn nằm trong body - server đặt vào cookie HttpOnly. */
 export type AuthTokens = {
   accessToken: string;
-  refreshToken: string;
 };
 
 export type AuthRoleAssignment = {

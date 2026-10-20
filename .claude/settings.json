@@ -730,7 +730,11 @@
       "Bash(node make-fix-report.js \"D:/Project/WebApp/KPI/docs/bao-cao-sau-khac-phuc-2026-10-19.docx\")",
       "PowerShell(Start-Process \"D:\\\\Project\\\\WebApp\\\\KPI\\\\docs\\\\bao-cao-sau-khac-phuc-2026-10-19.docx\")",
       "Bash(node make-remaining.js \"D:/Project/WebApp/KPI/docs/ton-tai-chua-khac-phuc-2026-10-19.docx\")",
-      "Bash(powershell -NoProfile -Command \"Start-Process 'D:\\\\Project\\\\WebApp\\\\KPI\\\\docs\\\\ton-tai-chua-khac-phuc-2026-10-19.docx'\")"
+      "Bash(powershell -NoProfile -Command \"Start-Process 'D:\\\\Project\\\\WebApp\\\\KPI\\\\docs\\\\ton-tai-chua-khac-phuc-2026-10-19.docx'\")",
+      "Bash(node dist/main)",
+      "PowerShell($c = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if \\($c\\) { Get-CimInstance Win32_Process -Filter \"ProcessId=$\\($c.OwningProcess\\)\" | Select-Object ProcessId, CreationDate, CommandLine | Format-List | Out-String -Width 300 } else { 'free' })",
+      "Bash(curl -s -X POST http://localhost:8080/api/v1/auth/refresh -H 'Content-Type: application/json' -d '{}')",
+      "Bash(node e2e-security.js)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

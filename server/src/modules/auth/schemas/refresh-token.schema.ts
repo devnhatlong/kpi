@@ -18,6 +18,14 @@ export class RefreshToken {
   revokedAt?: Date | null;
 
   /**
+   * Thu hồi vì đã đổi sang token mới (làm mới), khác với đăng xuất. Trong vài
+   * giây sau mốc này token cũ vẫn làm mới được: nhiều tab cùng gửi một cookie
+   * gần như cùng lúc, tab đến sau không bị đá ra chỉ vì tab kia đổi trước.
+   */
+  @Prop({ type: Date, default: null })
+  rotatedAt?: Date | null;
+
+  /**
    * Phiên mở bằng mật khẩu thứ 2 (quản trị vào hộ) - giữ qua các lần làm mới
    * token để phiên đó không bị bắt đổi mật khẩu thay chủ tài khoản.
    */

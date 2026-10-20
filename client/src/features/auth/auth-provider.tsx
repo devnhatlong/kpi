@@ -17,7 +17,7 @@ import {
 } from "@/features/auth/api";
 import type { AuthStatus, AuthUser } from "@/features/auth/types";
 import { getAccessToken } from "@/lib/auth-storage";
-import { getApiErrorMessage } from "@/lib/api-client";
+import { getApiErrorMessage, refreshAccessToken } from "@/lib/api-client";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -35,7 +35,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
 
   const refreshUser = useCallback(async () => {
-    if (!getAccessToken()) {
+    /* Access token chỉ sống trong bộ nhớ tab: mở trang mới / tải lại là chưa
+       có, thử lấy bằng cookie refresh token trước khi kết luận chưa đăng nhập. */
+    if (!getAccessToken() && !(await refreshAccessToken())) {
       setUser(null);
       setStatus("unauthenticated");
       return;

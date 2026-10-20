@@ -6,7 +6,12 @@ import {
   type ApiResponse,
   type AuthTokens,
 } from "@/features/auth/types";
-import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "@/lib/auth-storage";
+import {
+  clearTokens,
+  getAccessToken,
+  setAccessToken,
+  takeLegacyRefreshToken,
+} from "@/lib/auth-storage";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "/api/v1";
@@ -42,22 +47,36 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 let refreshPromise: Promise<string | null> | null = null;
 
-async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
-
+async function requestNewAccessToken(): Promise<string | null> {
+  // Phiên cũ còn refresh token trong localStorage: gửi kèm một lần để server
+  // chuyển sang cookie - người đang đăng nhập không phải đăng nhập lại.
+  const legacyRefreshToken = takeLegacyRefreshToken();
   try {
     const { data } = await axios.post<ApiResponse<AuthTokens>>(
       `${API_BASE_URL}/auth/refresh`,
-      { refreshToken },
+      legacyRefreshToken ? { refreshToken: legacyRefreshToken } : {},
+      // Cookie refresh token HttpOnly do trình duyệt tự gửi kèm.
+      { withCredentials: true },
     );
-    if (!data.data?.accessToken || !data.data.refreshToken) return null;
-    setTokens(data.data.accessToken, data.data.refreshToken);
+    if (!data.data?.accessToken) return null;
+    setAccessToken(data.data.accessToken);
     return data.data.accessToken;
   } catch {
     clearTokens();
     return null;
   }
+}
+
+/**
+ * Lấy access token mới từ cookie refresh token. Gộp các lần gọi trùng nhau
+ * trong cùng tab thành một request - nhiều API cùng nhận 401 một lúc không
+ * được làm mới nhiều lần.
+ */
+export function refreshAccessToken(): Promise<string | null> {
+  refreshPromise ??= requestNewAccessToken().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
 }
 
 /**
@@ -89,10 +108,7 @@ api.interceptors.response.use(
       !shouldSkipRefresh(original)
     ) {
       original._retry = true;
-      refreshPromise ??= refreshAccessToken().finally(() => {
-        refreshPromise = null;
-      });
-      const newToken = await refreshPromise;
+      const newToken = await refreshAccessToken();
       if (newToken) {
         original.headers.Authorization = `Bearer ${newToken}`;
         return api(original);
