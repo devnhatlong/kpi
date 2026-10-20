@@ -39,6 +39,12 @@ export class CreateAdjustmentItemDto {
   @NumberNotRequired('Tối đa - chỉ phần Điểm cộng dùng', { example: 2 })
   maxScore?: number | null;
 
+  @StringNotRequired(
+    'Mã nội dung công việc Trục 2 tương ứng - chỉ phần Điểm cộng; rỗng = nối theo tên',
+    { example: 'ND-0097' },
+  )
+  workContentCode?: string;
+
   @NumberNotRequired('Thứ tự hiển thị', { example: 0 })
   sortOrder?: number;
 

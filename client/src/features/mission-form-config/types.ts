@@ -176,6 +176,11 @@ export type AdjustmentItem = {
   rule: string;
   /** "Tối đa" - chỉ phần Điểm cộng có; hai phần kia null. */
   maxScore: number | null;
+  /**
+   * Mã nội dung công việc Trục 2 tương ứng (vd "ND-0097") - bảng thẩm định
+   * nối "Đơn vị tự nhận" theo mã này. Rỗng = còn nối theo tên.
+   */
+  workContentCode?: string;
   sortOrder: number;
   isActive: boolean;
 };
@@ -185,6 +190,7 @@ export type AdjustmentItemInput = {
   name: string;
   rule?: string;
   maxScore?: number | null;
+  workContentCode?: string;
   sortOrder?: number;
   isActive?: boolean;
 };

@@ -19,6 +19,10 @@ import {
   AdjustmentItemDocument,
   type AdjustmentSection,
 } from './schemas/adjustment-item.schema';
+import {
+  WorkContent,
+  WorkContentDocument,
+} from './schemas/work-content.schema';
 
 /**
  * Danh mục "nội dung để soi chiếu" của bảng đề xuất điểm cộng / trừ / xếp loại.
@@ -31,6 +35,8 @@ export class AdjustmentItemsService {
   constructor(
     @InjectModel(AdjustmentItem.name)
     private readonly itemModel: Model<AdjustmentItemDocument>,
+    @InjectModel(WorkContent.name)
+    private readonly workContentModel: Model<WorkContentDocument>,
   ) {}
 
   async create(dto: CreateAdjustmentItemDto) {
@@ -45,6 +51,11 @@ export class AdjustmentItemsService {
       name: dto.name.trim(),
       rule: dto.rule?.trim() ?? '',
       maxScore: this.normalizeMaxScore(dto.section, dto.maxScore),
+      workContentCode: await this.normalizeWorkContentCode(
+        dto.section,
+        dto.workContentCode,
+        null,
+      ),
       sortOrder: dto.sortOrder ?? 0,
       isActive: dto.isActive ?? true,
     });
@@ -136,6 +147,13 @@ export class AdjustmentItemsService {
     if (dto.maxScore !== undefined) {
       item.maxScore = this.normalizeMaxScore(item.section, dto.maxScore);
     }
+    if (dto.workContentCode !== undefined) {
+      item.workContentCode = await this.normalizeWorkContentCode(
+        item.section,
+        dto.workContentCode,
+        item._id,
+      );
+    }
     if (dto.sortOrder !== undefined) item.sortOrder = dto.sortOrder;
     if (dto.isActive !== undefined) item.isActive = dto.isActive;
 
@@ -162,6 +180,42 @@ export class AdjustmentItemsService {
       throw new BadRequestException('Điểm tối đa phải là số không âm.');
     }
     return value;
+  }
+
+  /**
+   * Mã nội dung Trục 2 nối với tiêu chí Điểm cộng (xem schema). Hai phần kia
+   * không có "đơn vị tự nhận" nên luôn rỗng. Mã phải có thật trong danh mục
+   * nội dung, và mỗi nội dung chỉ nối với MỘT tiêu chí - nối hai thì cùng một
+   * dòng báo cáo bị tính điểm hai lần.
+   */
+  private async normalizeWorkContentCode(
+    section: AdjustmentSection,
+    value: string | undefined,
+    selfId: Types.ObjectId | null,
+  ): Promise<string> {
+    if (section !== 'BONUS') return '';
+    const code = value?.trim().toUpperCase() ?? '';
+    if (!code) return '';
+    const content = await this.workContentModel
+      .findOne({ code })
+      .select('_id');
+    if (!content) {
+      throw new BadRequestException(
+        `Không có nội dung công việc mã "${code}".`,
+      );
+    }
+    const taken = await this.itemModel
+      .findOne({
+        workContentCode: code,
+        ...(selfId ? { _id: { $ne: selfId } } : {}),
+      })
+      .select('code');
+    if (taken) {
+      throw new BadRequestException(
+        `Nội dung "${code}" đã nối với tiêu chí ${taken.code}.`,
+      );
+    }
+    return code;
   }
 
   private async requireById(id: string) {

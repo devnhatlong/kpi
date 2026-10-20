@@ -69,6 +69,17 @@ export class AdjustmentItem {
   @Prop({ type: Number, default: null, min: 0 })
   maxScore!: number | null;
 
+  /**
+   * Mã NỘI DUNG CÔNG VIỆC Trục 2 tương ứng (vd "ND-0097") - chỉ phần Điểm cộng.
+   *
+   * Bảng thẩm định lấy "Đơn vị tự nhận" từ các dòng Trục 2 của báo cáo tháng;
+   * hai danh mục là hai collection khác nhau nên phải có khoá nối. Trước đây nối
+   * theo TÊN, gõ lệch một chữ ("huy động nguồn" / "nguồn lực") là mất cả nhóm.
+   * Theo mã thì đổi tên bên nào cũng không gãy. Rỗng = còn nối theo tên như cũ.
+   */
+  @Prop({ trim: true, uppercase: true, default: '' })
+  workContentCode!: string;
+
   @Prop({ default: 0, min: 0 })
   sortOrder!: number;
 

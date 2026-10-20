@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import useSWR from "swr";
 
+import { SearchableSelect } from "@/components/common/searchable-select";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SegmentedTabs } from "@/components/common/segmented-tabs";
 import {
   createAdjustmentItem,
+  fetchWorkContentsAll,
   updateAdjustmentItem,
 } from "@/features/mission-form-config/api";
 import {
@@ -65,6 +68,7 @@ export function AdjustmentItemFormDialog({
   const [name, setName] = useState("");
   const [rule, setRule] = useState("");
   const [maxScore, setMaxScore] = useState("");
+  const [workContentCode, setWorkContentCode] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -87,12 +91,27 @@ export function AdjustmentItemFormDialog({
         ? ""
         : String(edit.maxScore),
     );
+    setWorkContentCode(edit?.workContentCode ?? "");
     setSortOrder(String(edit?.sortOrder ?? 0));
     setIsActive(edit?.isActive ?? true);
   }
   if (!formKey && loadedKey !== null) setLoadedKey(null);
 
   const meta = ADJUSTMENT_SECTION_META[section];
+
+  // Danh mục nội dung chỉ cần cho phần Điểm cộng - nạp khi form đang mở.
+  const { data: workContents } = useSWR(
+    open && section === "BONUS" ? ["adjustment-form", "work-contents"] : null,
+    fetchWorkContentsAll,
+  );
+  const workContentOptions = [
+    { value: "", label: "Chưa nối mã - nối theo tên" },
+    ...(workContents ?? []).map((content) => ({
+      value: content.code,
+      label: `${content.code} - ${content.name}`,
+      keywords: content.code,
+    })),
+  ];
 
   const submit = async () => {
     if (!name.trim()) {
@@ -121,6 +140,7 @@ export function AdjustmentItemFormDialog({
           name: name.trim(),
           rule: rule.trim(),
           maxScore: maxScoreNum,
+          ...(section === "BONUS" ? { workContentCode } : {}),
           sortOrder: sortOrderNum,
           isActive,
         });
@@ -131,6 +151,7 @@ export function AdjustmentItemFormDialog({
           name: name.trim(),
           rule: rule.trim(),
           maxScore: maxScoreNum,
+          ...(section === "BONUS" ? { workContentCode } : {}),
           sortOrder: sortOrderNum,
           isActive,
         });
@@ -219,6 +240,25 @@ export function AdjustmentItemFormDialog({
               <p className="text-xs text-muted-foreground">
                 Cột &quot;Tối đa&quot; của dòng. Dòng TỔNG ĐIỂM CỘNG TỐI ĐA cuối
                 bảng I là tổng của mọi dòng đang hoạt động (mẫu giấy: 10 điểm).
+              </p>
+            </div>
+          ) : null}
+
+          {section === "BONUS" ? (
+            <div className="space-y-2">
+              <Label htmlFor="adj-work-content">Nội dung Trục 2 tương ứng</Label>
+              <SearchableSelect
+                id="adj-work-content"
+                value={workContentCode}
+                onValueChange={setWorkContentCode}
+                options={workContentOptions}
+                placeholder="Chưa nối mã - nối theo tên"
+                searchPlaceholder="Tìm theo mã hoặc tên nội dung..."
+              />
+              <p className="text-xs text-muted-foreground">
+                Bảng thẩm định lấy cột &quot;Đơn vị tự nhận&quot; từ các dòng
+                Trục 2 có đúng mã nội dung này. Chưa nối mã thì phải trùng tên
+                từng chữ.
               </p>
             </div>
           ) : null}

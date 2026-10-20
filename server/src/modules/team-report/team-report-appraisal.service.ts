@@ -39,6 +39,10 @@ import {
   DepartmentLevel,
   DepartmentLevelDocument,
 } from '@/modules/department-levels/schemas/department-level.schema';
+import {
+  WorkContent,
+  WorkContentDocument,
+} from '@/modules/mission-form-config/schemas/work-content.schema';
 import { FormTemplatesService } from '@/modules/mission-form-config/form-templates.service';
 import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
 import { departmentLabels } from './team-report.department-label';
@@ -191,6 +195,8 @@ export class TeamReportAppraisalService {
     private readonly commendationModel: Model<TeamReportCommendationDocument>,
     @InjectModel(DepartmentLevel.name)
     private readonly levelModel: Model<DepartmentLevelDocument>,
+    @InjectModel(WorkContent.name)
+    private readonly workContentModel: Model<WorkContentDocument>,
     private readonly routing: TeamReportAdjustmentRoutingService,
     private readonly formTemplatesService: FormTemplatesService,
   ) {}
@@ -1078,10 +1084,11 @@ export class TeamReportAppraisalService {
    * "ĐƠN VỊ TỰ NHẬN" theo từng tiêu chí cộng điểm: các dòng TRỤC 2 của chính
    * báo cáo tháng cho điểm tự chấm (cùng bản, cùng luật chọn bản mới nhất).
    *
-   * Năm nội dung Trục 2 trùng tên năm tiêu chí Điểm cộng (I) nên nối theo TÊN
-   * nội dung công việc (bỏ hoa thường / khoảng trắng thừa) - hai danh mục là
-   * hai collection khác nhau, không có khoá chung. Dòng không khớp tiêu chí nào
-   * thì bỏ qua.
+   * Nối dòng với tiêu chí theo MÃ nội dung công việc: tiêu chí khai
+   * `workContentCode`, dòng mang `workContentId` → tra ra mã. Tiêu chí chưa
+   * khai mã thì còn nối theo TÊN nội dung (bỏ hoa thường / khoảng trắng thừa)
+   * như cũ - nối theo tên từng mất cả nhóm "Sáng kiến…" chỉ vì tiêu chí thiếu
+   * chữ "lực". Dòng không khớp tiêu chí nào thì bỏ qua.
    *
    * Điểm mỗi dòng = các cột điểm của công thức trục (`footer.ratioColumnKeys`)
    * trong bản chụp - số đã chốt, cấp trên chấm lại đã đè. Tổng của tiêu chí
@@ -1101,11 +1108,49 @@ export class TeamReportAppraisalService {
       periodMonth,
       departmentIds,
     ).select(
-      'departmentId conclusion rows.name rows.product rows.workContentName rows.fieldValues rows.formTemplateId rows.formTemplateVersion',
+      'departmentId conclusion rows.name rows.product rows.workContentId rows.workContentName rows.fieldValues rows.formTemplateId rows.formTemplateVersion',
     );
     const norm = (text: string) =>
       text.trim().replace(/\s+/g, ' ').toLowerCase();
-    const itemByName = new Map(items.map((item) => [norm(item.name), item]));
+    const itemByCode = new Map(
+      items
+        .filter((item) => item.workContentCode)
+        .map((item) => [item.workContentCode, item]),
+    );
+    // Chỉ tiêu chí CHƯA khai mã mới nối theo tên - đã khai mã thì tên chỉ để đọc.
+    const itemByName = new Map(
+      items
+        .filter((item) => !item.workContentCode)
+        .map((item) => [norm(item.name), item]),
+    );
+
+    // Mã của mọi nội dung có mặt trong các báo cáo - tra một lượt.
+    const contentIds = new Set<string>();
+    for (const report of reports) {
+      for (const row of report.rows) {
+        if (row.workContentId) contentIds.add(String(row.workContentId));
+      }
+    }
+    const codeByContentId = new Map(
+      (
+        await this.workContentModel
+          .find({ _id: { $in: [...contentIds] } })
+          .select('code')
+          .lean()
+      ).map((content) => [String(content._id), content.code]),
+    );
+    const itemOf = (row: {
+      workContentId?: Types.ObjectId | null;
+      workContentName?: string;
+    }) => {
+      const code = row.workContentId
+        ? codeByContentId.get(String(row.workContentId))
+        : undefined;
+      return (
+        (code ? itemByCode.get(code) : undefined) ??
+        itemByName.get(norm(row.workContentName ?? ''))
+      );
+    };
     const scoreKeys = new Map<string, string[]>();
     const keysOf = async (
       templateId: Types.ObjectId | null,
@@ -1134,7 +1179,7 @@ export class TeamReportAppraisalService {
       if (result[deptId] || !report.conclusion) continue;
       const claims: Record<string, Claim> = {};
       for (const row of report.rows) {
-        const item = itemByName.get(norm(row.workContentName ?? ''));
+        const item = itemOf(row);
         if (!item) continue;
         let score: number | null = null;
         for (const key of await keysOf(

@@ -734,7 +734,10 @@
       "Bash(node dist/main)",
       "PowerShell($c = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; if \\($c\\) { Get-CimInstance Win32_Process -Filter \"ProcessId=$\\($c.OwningProcess\\)\" | Select-Object ProcessId, CreationDate, CommandLine | Format-List | Out-String -Width 300 } else { 'free' })",
       "Bash(curl -s -X POST http://localhost:8080/api/v1/auth/refresh -H 'Content-Type: application/json' -d '{}')",
-      "Bash(node e2e-security.js)"
+      "Bash(node e2e-security.js)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3000,8080 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $p = Get-CimInstance Win32_Process -Filter \"ProcessId=$\\($_.OwningProcess\\)\"; \"{0} pid={1} {2}\" -f $_.LocalPort, $p.ProcessId, $p.CommandLine }; Get-ChildItem -Force -Name D:\\\\Project\\\\WebApp\\\\KPI\\\\client\\\\.next -ErrorAction SilentlyContinue)",
+      "Bash(node scripts/link-adjustment-work-contents.js --apply)",
+      "Bash(node scripts/link-adjustment-work-contents.js)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
