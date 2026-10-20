@@ -2679,11 +2679,23 @@ export class TeamReportService {
     if (!tasks.length) {
       throw new BadRequestException('Báo cáo không còn nhiệm vụ nào để trình.');
     }
-    /* Bản nháp lập từ trước có thể đang chứa việc mà đơn vị dưới vừa bị trả
-       lại - chặn ở lúc trình, không để nó đi lên như việc đã được duyệt. */
+    /* Chặn việc của đơn vị dưới chưa được duyệt lọt lên - TRỪ việc đã nằm sẵn
+       trong chính bản này.
+
+       Từ 2026-10-19, bản con có việc đã được cấp trên gom (kể cả bản nháp / bị
+       trả lại) thì không trả lại được nữa, và rút về chỉ làm được với bản chưa
+       duyệt. Nên một việc đã nằm trong bản này thì bản con của nó KHÔNG thể rời
+       khỏi trạng thái đã duyệt theo đường thường - còn gặp trường hợp đó chỉ là
+       dữ liệu cũ (bản con bị trả trước khi có luật), chặn thì bản cha kẹt hẳn,
+       không trình lại được. Việc THÊM MỚI vẫn bị chặn như cũ - chặn ngay lúc
+       thêm (tạo bản / sửa danh sách nhiệm vụ), nên tới đây mọi dòng đều đã
+       qua kiểm. */
+    const alreadyIn = new Set(summary.rows.map((row) => String(row.taskId)));
     await this.assertSelectableTasks(
       actor,
-      tasks.map((task) => task._id),
+      tasks
+        .map((task) => task._id)
+        .filter((taskId) => !alreadyIn.has(String(taskId))),
     );
 
     const names = await this.departmentNames(
