@@ -49,6 +49,16 @@ async function bootstrap() {
   app.set('trust proxy', 1);
   app.use(securityHeaders);
 
+  /*
+    Body JSON mặc định của Express chỉ 100KB. Bảng thẩm định lưu CẢ BẢNG một
+    lượt (mọi đơn vị, mọi dòng cộng / trừ kèm minh chứng) - bảng 71 đơn vị của
+    Trung tâm TTCH đã lên ~103KB và bị chặn "request entity too large" (trả về
+    500). Tệp đính kèm đi multipart riêng (giới hạn 10MB ở uploads), không qua
+    đây.
+  */
+  app.useBodyParser('json', { limit: '5mb' });
+  app.useBodyParser('urlencoded', { limit: '5mb', extended: true });
+
   app.setGlobalPrefix('api/v1');
 
   app.enableCors({

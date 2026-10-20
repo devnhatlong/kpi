@@ -740,7 +740,16 @@
       "Bash(node scripts/link-adjustment-work-contents.js)",
       "Bash(node e2e-unlock.js)",
       "Bash(curl -s -o /dev/null http://localhost:8080/api/v1/system/server-time)",
-      "Bash(curl -s -o /dev/null -w \"server %{http_code}\\\\n\" http://localhost:8080/api/v1/system/server-time)"
+      "Bash(curl -s -o /dev/null -w \"server %{http_code}\\\\n\" http://localhost:8080/api/v1/system/server-time)",
+      "Bash(node scripts/diagnose-appraisal-save.js pv01.ttttch.duyet 2026-10)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/5430283f-f12f-4476-bd3a-1981248b3c7b/scratchpad/dry-save.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/5430283f-f12f-4476-bd3a-1981248b3c7b/scratchpad/dry-save-client.js\")",
+      "Bash(python -I -)",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/5430283f-f12f-4476-bd3a-1981248b3c7b/scratchpad/dry-write.js\")",
+      "Bash(node \"C:/Users/PV01/AppData/Local/Temp/claude/d--Project-WebApp-KPI/5430283f-f12f-4476-bd3a-1981248b3c7b/scratchpad/dry-write-full.js\")",
+      "Bash(git log *)",
+      "Bash(PORT=8091 node dist/main)",
+      "Bash(curl -s -o /dev/null http://localhost:8091/api/v1/system/server-time)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
