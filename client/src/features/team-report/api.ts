@@ -1,6 +1,10 @@
 import type { ApiResponse } from "@/features/auth/types";
 import { api, unwrapData, unwrapPaginated } from "@/lib/api-client";
 import type {
+  ReturnTarget,
+  StageReturn,
+} from "@/features/team-report/stages";
+import type {
   TeamReportAdjustmentData,
   TeamReportAdjustmentInboxRow,
   TeamReportAxisScore,
@@ -366,7 +370,12 @@ export function reviewTeamReportDay(
 
 export function decideTeamReportDay(
   id: string,
-  input: { decision: "APPROVE" | "RETURN"; reason?: string },
+  input: {
+    decision: "APPROVE" | "RETURN";
+    reason?: string;
+    /** Chỉ duyệt cuối: PREVIOUS = trả về người duyệt cấp 1. */
+    returnTo?: ReturnTarget;
+  },
 ) {
   return unwrapData(
     api.post<ApiResponse<TeamReportDay>>(
@@ -612,6 +621,10 @@ export type TeamReportSummaryDetail = {
   canDecide?: boolean;
   /** Người đã chốt bản - trả lại được cả khi bản đã duyệt. */
   canReturnApproved?: boolean;
+  /** Duyệt cuối được chọn trả về người duyệt cấp 1 thay vì đơn vị lập. */
+  canReturnToPrevious?: boolean;
+  /** Duyệt cuối vừa trả bản về cấp 1 - lý do để cấp 1 đọc. */
+  returnedToFirst?: StageReturn | null;
   /** Đơn vị lập rút về được - bản chờ duyệt mà cấp trên chưa đụng gì. */
   canRecall?: boolean;
 };
@@ -738,7 +751,12 @@ export function fetchIncomingTeamReportSummary(id: string) {
 
 export function decideTeamReportSummary(
   id: string,
-  input: { decision: "APPROVE" | "RETURN"; reason?: string },
+  input: {
+    decision: "APPROVE" | "RETURN";
+    reason?: string;
+    /** Chỉ duyệt cuối: PREVIOUS = trả về người duyệt cấp 1. */
+    returnTo?: ReturnTarget;
+  },
 ) {
   return unwrapData(
     api.post<ApiResponse<TeamReportSummary>>(
@@ -1099,7 +1117,12 @@ export function fetchIncomingTeamReportAdjustment(id: string) {
 
 export function decideTeamReportAdjustment(
   id: string,
-  input: { decision: "APPROVE" | "RETURN"; reason?: string },
+  input: {
+    decision: "APPROVE" | "RETURN";
+    reason?: string;
+    /** Chỉ duyệt cuối: PREVIOUS = trả về người duyệt cấp 1. */
+    returnTo?: ReturnTarget;
+  },
 ) {
   return unwrapData(
     api.post<ApiResponse<TeamReportAdjustmentData>>(

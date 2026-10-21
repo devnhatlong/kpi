@@ -63,6 +63,11 @@ import {
   type TeamReportColumn,
   type TeamReportDayStatus,
 } from "@/features/team-report/types";
+import {
+  ReturnTargetPicker,
+  StageReturnNotice,
+} from "@/features/team-report/components/return-target";
+import type { ReturnTarget } from "@/features/team-report/stages";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { formatServerHm } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
@@ -379,6 +384,7 @@ function ReviewPanel({
      như trả lại, dù không cần gõ gì. Cùng luật với báo cáo tổng hợp. */
   const [approveOpen, setApproveOpen] = useState(false);
   const [reason, setReason] = useState("");
+  const [returnTo, setReturnTo] = useState<ReturnTarget>("PREVIOUS");
   const [deciding, setDeciding] = useState(false);
   /* Duyệt là đọc; sửa điểm là việc chủ động, phải bật lên mới gõ được. */
   const [editing, setEditing] = useState(false);
@@ -455,19 +461,28 @@ function ReviewPanel({
       toast.error("Trả lại thì phải ghi lý do để đội biết chữa chỗ nào.");
       return;
     }
+    const toPrevious =
+      decision === "RETURN" &&
+      !!data.canReturnToPrevious &&
+      returnTo === "PREVIOUS";
     setDeciding(true);
     try {
       await apply(
         await decideTeamReportAdjustment(id, {
           decision,
           reason: decision === "RETURN" ? reason.trim() : undefined,
+          returnTo: toPrevious ? "PREVIOUS" : undefined,
         }),
       );
       setReturnOpen(false);
       setApproveOpen(false);
       setReason("");
       toast.success(
-        decision === "APPROVE" ? "Đã duyệt bảng." : "Đã trả lại cho đội.",
+        decision === "APPROVE"
+          ? "Đã duyệt bảng."
+          : toPrevious
+            ? "Đã trả về người duyệt cấp 1."
+            : "Đã trả lại cho đội.",
       );
       await onChanged();
     } catch (error) {
@@ -568,7 +583,10 @@ function ReviewPanel({
                   variant="outline"
                   className={RETURN_BUTTON_CLASS}
                   disabled={deciding || busyKey !== null}
-                  onClick={() => setReturnOpen(true)}
+                  onClick={() => {
+                    setReturnTo("PREVIOUS");
+                    setReturnOpen(true);
+                  }}
                 >
                   <Undo2 className="size-4" />
                   Trả lại
@@ -611,6 +629,9 @@ function ReviewPanel({
           />
         ) : null}
 
+        {sheet.status === "PENDING" ? (
+          <StageReturnNotice info={data.returnedToFirst} />
+        ) : null}
         {sheet.status === "RETURNED" ? (
           <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
             Đã trả lại
@@ -780,12 +801,24 @@ function ReviewPanel({
       <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Trả lại bảng cho đội</DialogTitle>
+            <DialogTitle>
+              {data.canReturnToPrevious ? "Trả lại bảng" : "Trả lại bảng cho đội"}
+            </DialogTitle>
             <DialogDescription>
-              {data.department?.name} · {monthLabel(sheet.periodMonth)}. Đội sẽ
-              sửa theo lý do bạn ghi rồi trình lại.
+              {data.department?.name} · {monthLabel(sheet.periodMonth)}.
+              {data.canReturnToPrevious
+                ? " Chọn trả về người duyệt cấp 1 hoặc về đội lập."
+                : " Đội sẽ sửa theo lý do bạn ghi rồi trình lại."}
             </DialogDescription>
           </DialogHeader>
+          {data.canReturnToPrevious ? (
+            <ReturnTargetPicker
+              value={returnTo}
+              onChange={setReturnTo}
+              creatorName={data.department?.name}
+              previousName={sheet.firstApproval?.byName}
+            />
+          ) : null}
           <Textarea
             value={reason}
             onChange={(event) => setReason(event.target.value)}

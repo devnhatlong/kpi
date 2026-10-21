@@ -28,6 +28,7 @@ import {
   TEAM_REPORT_UNIT_ROLES,
   type TeamReportUnitRole,
 } from '../schemas/team-report-adjustment-route.schema';
+import { RETURN_TARGETS, type ReturnTarget } from '../team-report.stages';
 
 /** Tệp kiểm chứng gửi kèm - id lấy từ module tải tệp dùng chung. */
 export class TeamReportEvidenceDto {
@@ -589,6 +590,15 @@ export class DecideTeamReportDayDto {
   @IsString()
   @MaxLength(1000)
   reason?: string;
+
+  @ApiPropertyOptional({
+    enum: RETURN_TARGETS,
+    description:
+      'Trả lại về đâu: CREATOR = đơn vị lập (mặc định), PREVIOUS = người duyệt cấp 1 (chỉ duyệt cuối dùng được)',
+  })
+  @IsOptional()
+  @IsIn([...RETURN_TARGETS])
+  returnTo?: ReturnTarget;
 }
 
 /** Phòng gộp các báo cáo đội đã duyệt rồi trình lên tỉnh. */

@@ -54,6 +54,11 @@ import {
 } from "@/features/team-report/components/month-switcher";
 import { CommendationTables } from "@/features/team-report/components/commendation-tables";
 import { ApprovalChain } from "@/features/team-report/components/participants-block";
+import {
+  ReturnTargetPicker,
+  StageReturnNotice,
+} from "@/features/team-report/components/return-target";
+import type { ReturnTarget } from "@/features/team-report/stages";
 import { commendationExportRows } from "@/features/team-report/components/team-report-commendation-view";
 import {
   DAY_STATUS_CLASS,
@@ -408,23 +413,40 @@ function CommendationIncomingDetail({
   );
   const [dialog, setDialog] = useState<"APPROVE" | "RETURN" | null>(null);
   const [reason, setReason] = useState("");
+  const [returnTo, setReturnTo] = useState<ReturnTarget>("PREVIOUS");
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  const openReturn = () => {
+    setReturnTo("PREVIOUS");
+    setDialog("RETURN");
+  };
 
   const decide = async () => {
     if (!dialog) return;
     if (dialog === "RETURN" && !reason.trim()) return;
+    const toPrevious =
+      dialog === "RETURN" &&
+      !!data?.canReturnToPrevious &&
+      returnTo === "PREVIOUS";
     setBusy(true);
     try {
       await decideCommendation(id, {
         decision: dialog,
         reason: dialog === "RETURN" ? reason.trim() : undefined,
+        returnTo: toPrevious ? "PREVIOUS" : undefined,
       });
       setDialog(null);
       setReason("");
       await mutate();
       onChanged();
-      toast.success(dialog === "RETURN" ? "Đã trả lại." : "Đã duyệt.");
+      toast.success(
+        dialog === "RETURN"
+          ? toPrevious
+            ? "Đã trả về người duyệt cấp 1."
+            : "Đã trả lại."
+          : "Đã duyệt.",
+      );
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Không thực hiện được."));
     } finally {
@@ -532,7 +554,7 @@ function CommendationIncomingDetail({
                       type="button"
                       variant="outline"
                       className={RETURN_BUTTON_CLASS}
-                      onClick={() => setDialog("RETURN")}
+                      onClick={openReturn}
                     >
                       <Undo2 className="size-4" aria-hidden="true" />
                       Trả lại
@@ -547,7 +569,7 @@ function CommendationIncomingDetail({
                     type="button"
                     variant="outline"
                     className={RETURN_BUTTON_CLASS}
-                    onClick={() => setDialog("RETURN")}
+                    onClick={openReturn}
                   >
                     <Undo2 className="size-4" aria-hidden="true" />
                     Trả lại
@@ -568,6 +590,9 @@ function CommendationIncomingDetail({
                 <strong className="font-semibold">Đã trả lại:</strong>{" "}
                 {data.returnReason}
               </p>
+            ) : null}
+            {data.status === "PENDING" ? (
+              <StageReturnNotice info={data.returnedToFirst} />
             ) : null}
 
             <CommendationTables
@@ -601,10 +626,20 @@ function CommendationIncomingDetail({
                 ? ` Đây là duyệt cấp 1 - duyệt xong chuyển lên ${data.finalRecipientName} duyệt cuối.`
                 : ""}
               {dialog === "RETURN" && data?.status === "APPROVED"
-                ? " Bảng này đã duyệt - trả lại thì phòng sửa rồi gửi lại, đi lại từ cấp 1."
+                ? data.canReturnToPrevious
+                  ? " Bảng này đã duyệt - chọn trả về người duyệt cấp 1 hoặc về phòng lập."
+                  : " Bảng này đã duyệt - trả lại thì phòng sửa rồi gửi lại, đi lại từ cấp 1."
                 : ""}
             </DialogDescription>
           </DialogHeader>
+          {dialog === "RETURN" && data?.canReturnToPrevious ? (
+            <ReturnTargetPicker
+              value={returnTo}
+              onChange={setReturnTo}
+              creatorName={data.departmentName}
+              previousName={data.firstApproval?.byName}
+            />
+          ) : null}
           {dialog === "RETURN" ? (
             <div className="space-y-1.5">
               <Label htmlFor="commendation-return-reason">

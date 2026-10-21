@@ -118,6 +118,11 @@ import {
   type TeamReportFormula,
   type TeamReportSummaryCriteria,
 } from "@/features/team-report/types";
+import {
+  ReturnTargetPicker,
+  StageReturnNotice,
+} from "@/features/team-report/components/return-target";
+import type { ReturnTarget } from "@/features/team-report/stages";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { formatYmd, formatServerHm, serverYmd } from "@/lib/server-time";
 import { cn } from "@/lib/utils";
@@ -445,6 +450,7 @@ export function TeamReportSummaryPanel({
   const { user } = useAuth();
   const [returnReason, setReturnReason] = useState("");
   const [returnReasonError, setReturnReasonError] = useState(false);
+  const [returnTo, setReturnTo] = useState<ReturnTarget>("PREVIOUS");
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   /* Trục nào đang mở. Thu sẵn tất cả: mở báo cáo ra là nhìn điểm trước, cần
@@ -900,17 +906,28 @@ export function TeamReportSummaryPanel({
       setReturnReasonError(true);
       return;
     }
+    const toPrevious =
+      decision === "RETURN" &&
+      !!detail.canReturnToPrevious &&
+      returnTo === "PREVIOUS";
     setBusy(true);
     try {
       await decideTeamReportSummary(summary._id, {
         decision,
         reason: returnReason.trim() || undefined,
+        returnTo: toPrevious ? "PREVIOUS" : undefined,
       });
       setReturnOpen(false);
       setApproveOpen(false);
       setReturnReason("");
       await onChanged();
-      toast.success(decision === "RETURN" ? "Đã trả lại." : "Đã duyệt.");
+      toast.success(
+        decision === "RETURN"
+          ? toPrevious
+            ? "Đã trả về người duyệt cấp 1."
+            : "Đã trả lại."
+          : "Đã duyệt.",
+      );
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Không thực hiện được."));
     } finally {
@@ -1054,6 +1071,7 @@ export function TeamReportSummaryPanel({
                   onClick={() => {
                     setReturnReason("");
                     setReturnReasonError(false);
+                    setReturnTo("PREVIOUS");
                     setReturnOpen(true);
                   }}
                 >
@@ -1080,6 +1098,7 @@ export function TeamReportSummaryPanel({
                 onClick={() => {
                   setReturnReason("");
                   setReturnReasonError(false);
+                  setReturnTo("PREVIOUS");
                   setReturnOpen(true);
                 }}
               >
@@ -1189,6 +1208,9 @@ export function TeamReportSummaryPanel({
           đầu, kèm luôn nút - không phải một dòng chữ đỏ để người ta tự nghĩ
           xem giờ bấm gì. Bản đã trình lại thì lý do cũ chỉ còn để tham khảo.
         */}
+        {reviewer && summary.status === "PENDING" ? (
+          <StageReturnNotice info={detail.returnedToFirst} />
+        ) : null}
         {returned && summary.returnReason ? (
           <div
             role="alert"
@@ -2142,10 +2164,21 @@ export function TeamReportSummaryPanel({
                 />
                 <span>
                   Bản này <strong className="font-medium">đã được duyệt</strong>
-                  . Trả lại sẽ huỷ kết quả duyệt: đơn vị được sửa và phải trình
-                  lại từ đầu, điểm của bản không còn được tính là đã duyệt.
+                  . Trả lại sẽ huỷ kết quả duyệt
+                  {detail.canReturnToPrevious && returnTo === "PREVIOUS"
+                    ? ": bản quay về chờ người duyệt cấp 1 xem lại, điểm của bản không còn được tính là đã duyệt."
+                    : ": đơn vị được sửa và phải trình lại từ đầu, điểm của bản không còn được tính là đã duyệt."}
                 </span>
               </p>
+            ) : null}
+
+            {detail.canReturnToPrevious ? (
+              <ReturnTargetPicker
+                value={returnTo}
+                onChange={setReturnTo}
+                creatorName={unitName}
+                previousName={summary.firstApproval?.byName}
+              />
             ) : null}
 
             <div className="space-y-1.5">

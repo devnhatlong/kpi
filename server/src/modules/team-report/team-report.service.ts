@@ -111,6 +111,9 @@ import { canEnterUnitTasks } from './team-report.entry-access';
 import { isYmd, serverDateYmd } from './team-report.time';
 import {
   applyApprove,
+  applyReturnToPrevious,
+  canReturnToPrevious,
+  resolveReturnTarget,
   isApprover,
   isClosingApprover,
   isHandler,
@@ -3047,6 +3050,11 @@ export class TeamReportService {
         viewerRole,
         /** Đúng người đang cầm bản (duyệt 2 cấp) - mới hiện nút duyệt / sửa. */
         canDecide: isHandler(summary, actor.id),
+        /** Duyệt cuối được chọn trả về người duyệt cấp 1 thay vì đơn vị lập. */
+        canReturnToPrevious:
+          (isHandler(summary, actor.id) || isClosingApprover(summary, actor.id)) &&
+          canReturnToPrevious(summary),
+        returnedToFirst: summary.returnedToFirst ?? null,
         /** Người đã chốt bản - trả lại được cả khi đã duyệt. */
         canReturnApproved: isClosingApprover(summary, actor.id),
         /** Đơn vị lập rút về được - cấp trên chưa đụng gì. */
@@ -3291,14 +3299,25 @@ export class TeamReportService {
          nháp hay bị trả lại - thì không trả về được nữa (user chốt 2026-10-19,
          thay luật cũ chỉ chặn bản chờ / đã duyệt). Trả về là bản cấp trên kẹt
          những việc không còn được tính, tới lúc trình mới vỡ ra. Muốn đội sửa
-         thì cấp trên bỏ các việc đó khỏi bản của mình trước. */
-      const upper = await this.summaryModel
-        .findOne({
-          _id: { $ne: summary._id },
-          departmentId: { $ne: summary.departmentId },
-          'rows.taskId': { $in: summary.rows.map((row) => row.taskId) },
-        })
-        .select('title status');
+         thì cấp trên bỏ các việc đó khỏi bản của mình trước.
+
+         CHỈ xét bản của đơn vị CẤP TRÊN (`ancestors`). Bản của đơn vị CẤP DƯỚI
+         cũng chứa đúng các việc này - chính là nguồn bản này gom lên (xã gom
+         việc của tổ) - xét cả chúng là bản xã / phòng nào có gom việc của
+         tổ / đội đều không trả lại được. */
+      const owner = await this.departmentModel
+        .findById(summary.departmentId)
+        .select('ancestors');
+      const ancestorIds = (owner?.ancestors ?? []) as Types.ObjectId[];
+      const upper = ancestorIds.length
+        ? await this.summaryModel
+            .findOne({
+              _id: { $ne: summary._id },
+              departmentId: { $in: ancestorIds },
+              'rows.taskId': { $in: summary.rows.map((row) => row.taskId) },
+            })
+            .select('title status')
+        : null;
       if (upper) {
         const state =
           upper.status === 'APPROVED'
@@ -3326,19 +3345,28 @@ export class TeamReportService {
     }
 
     const wasApproved = summary.status === 'APPROVED';
-    let outcome: 'RETURNED' | 'FORWARDED' | 'APPROVED' = 'RETURNED';
+    const firstName = summary.firstApproval?.byName ?? '';
+    let outcome: 'RETURNED' | 'RETURNED_TO_PREVIOUS' | 'FORWARDED' | 'APPROVED' =
+      'RETURNED';
     if (dto.decision === 'RETURN') {
       const reason = dto.reason?.trim() ?? '';
       if (!reason) throw new BadRequestException('Lý do trả lại là bắt buộc.');
-      // Trả lại ở bước nào cũng về đơn vị lập; trình lại thì đi lại từ cấp 1.
-      summary.status = 'RETURNED';
-      summary.returnReason = reason;
+      if (resolveReturnTarget(summary, dto.returnTo) === 'PREVIOUS') {
+        // Về người duyệt cấp 1: bản lại chờ cấp 1 duyệt, đơn vị lập chưa phải sửa.
+        applyReturnToPrevious(summary, actor, reason);
+        outcome = 'RETURNED_TO_PREVIOUS';
+      } else {
+        // Về đơn vị lập; trình lại thì đi lại từ cấp 1.
+        summary.status = 'RETURNED';
+        summary.returnReason = reason;
+      }
     } else {
       outcome = applyApprove(summary, actor);
       summary.returnReason = '';
     }
     summary.markModified('firstApproval');
-    if (outcome !== 'FORWARDED') {
+    summary.markModified('returnedToFirst');
+    if (outcome !== 'FORWARDED' && outcome !== 'RETURNED_TO_PREVIOUS') {
       summary.decidedById = actor.id;
       summary.decidedByName = actor.name;
       summary.decidedAt = new Date();
@@ -3356,9 +3384,11 @@ export class TeamReportService {
         ? wasApproved
           ? 'trả lại sau khi đã duyệt'
           : 'trả lại'
-        : outcome === 'FORWARDED'
-          ? `duyệt cấp 1, chuyển ${summary.finalRecipientName} duyệt cuối`
-          : 'đã duyệt',
+        : outcome === 'RETURNED_TO_PREVIOUS'
+          ? `trả về ${firstName || 'người duyệt cấp 1'}${wasApproved ? ' sau khi đã duyệt' : ''}`
+          : outcome === 'FORWARDED'
+            ? `duyệt cấp 1, chuyển ${summary.finalRecipientName} duyệt cuối`
+            : 'đã duyệt',
       dto.reason?.trim() ?? '',
     );
     await summary.save();
@@ -3367,9 +3397,11 @@ export class TeamReportService {
       message:
         outcome === 'RETURNED'
           ? 'Đã trả lại.'
-          : outcome === 'FORWARDED'
-            ? `Đã duyệt cấp 1 - chuyển ${summary.finalRecipientName} duyệt cuối.`
-            : 'Đã duyệt.',
+          : outcome === 'RETURNED_TO_PREVIOUS'
+            ? `Đã trả về ${firstName || 'người duyệt cấp 1'}.`
+            : outcome === 'FORWARDED'
+              ? `Đã duyệt cấp 1 - chuyển ${summary.finalRecipientName} duyệt cuối.`
+              : 'Đã duyệt.',
       data: summary,
     };
   }

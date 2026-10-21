@@ -2,6 +2,10 @@ import type { ApiResponse } from "@/features/auth/types";
 import type { CommendationUnitOrder } from "@/features/team-report/commendation-excel";
 import { api, unwrapData, unwrapPaginated } from "@/lib/api-client";
 import type {
+  ReturnTarget,
+  StageReturnInfo,
+} from "@/features/team-report/stages";
+import type {
   TeamReportDayStatus,
   TeamReportFirstApproval,
   TeamReportRecipient,
@@ -106,7 +110,7 @@ export type CommendationIncomingData = CommendationSheet & {
   canDecide: boolean;
   /** Người chốt bảng - trả lại được cả khi bảng đã duyệt. */
   canReturnApproved?: boolean;
-};
+} & StageReturnInfo;
 
 export type CommendationInboxBox = "LEAD" | "INFORM";
 
@@ -301,7 +305,12 @@ export function fetchCommendationIncoming(id: string) {
 
 export function decideCommendation(
   id: string,
-  input: { decision: "APPROVE" | "RETURN"; reason?: string },
+  input: {
+    decision: "APPROVE" | "RETURN";
+    reason?: string;
+    /** Chỉ duyệt cuối: PREVIOUS = trả về người duyệt cấp 1. */
+    returnTo?: ReturnTarget;
+  },
 ) {
   return unwrapData(
     api.post<ApiResponse<CommendationIncomingData>>(

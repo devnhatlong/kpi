@@ -10,6 +10,8 @@ import {
 import {
   TeamReportFirstApproval,
   TeamReportFirstApprovalSchema,
+  TeamReportStageReturn,
+  TeamReportStageReturnSchema,
   TeamReportParticipant,
   TeamReportParticipantSchema,
 } from './team-report-summary.schema';
@@ -140,6 +142,10 @@ export class TeamReportCommendation {
 
   @Prop({ type: TeamReportFirstApprovalSchema, default: null })
   firstApproval!: TeamReportFirstApproval | null;
+
+  /** Duyệt cuối trả về cấp 1 - xem TeamReportStageReturn. */
+  @Prop({ type: TeamReportStageReturnSchema, default: null })
+  returnedToFirst!: TeamReportStageReturn | null;
 
   @Prop({ type: Types.ObjectId, ref: User.name, default: null })
   updatedById!: Types.ObjectId | null;

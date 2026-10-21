@@ -82,6 +82,30 @@ export const TeamReportFirstApprovalSchema = SchemaFactory.createForClass(
   TeamReportFirstApproval,
 );
 
+/**
+ * Duyệt cuối trả bản về người duyệt cấp 1 (không về đơn vị lập) - lý do để cấp
+ * 1 đọc khi bản quay lại hộp chờ duyệt của mình. Dùng chung cho mọi luồng 2
+ * cấp; xoá khi cấp 1 duyệt lại hoặc khi đơn vị trình lại.
+ */
+@Schema({ _id: false })
+export class TeamReportStageReturn {
+  @Prop({ type: Types.ObjectId, ref: User.name, required: true })
+  byId!: Types.ObjectId;
+
+  @Prop({ trim: true, default: '' })
+  byName!: string;
+
+  @Prop({ trim: true, default: '' })
+  reason!: string;
+
+  @Prop({ type: Date, required: true })
+  at!: Date;
+}
+
+export const TeamReportStageReturnSchema = SchemaFactory.createForClass(
+  TeamReportStageReturn,
+);
+
 /** Mức đề nghị xếp loại tháng - đúng bốn mức của phụ lục. */
 export const TEAM_REPORT_RATINGS = [
   'Hoàn thành xuất sắc nhiệm vụ',
@@ -280,6 +304,10 @@ export class TeamReportSummary {
   /** Lần duyệt cấp 1 - giữ lại để bản nào cũng thấy ai đã duyệt trước. */
   @Prop({ type: TeamReportFirstApprovalSchema, default: null })
   firstApproval!: TeamReportFirstApproval | null;
+
+  /** Duyệt cuối trả về cấp 1 - xem TeamReportStageReturn. */
+  @Prop({ type: TeamReportStageReturnSchema, default: null })
+  returnedToFirst!: TeamReportStageReturn | null;
 
   @Prop({ type: Types.ObjectId, ref: User.name, default: null })
   sentById!: Types.ObjectId | null;

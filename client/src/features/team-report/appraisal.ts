@@ -1,6 +1,10 @@
 import type { ApiResponse } from "@/features/auth/types";
 import { api, unwrapData, unwrapPaginated } from "@/lib/api-client";
 import type {
+  ReturnTarget,
+  StageReturnInfo,
+} from "@/features/team-report/stages";
+import type {
   TeamReportDayStatus,
   TeamReportFirstApproval,
   TeamReportRating,
@@ -170,7 +174,9 @@ export type AppraisalComposerData = AppraisalSheet & {
   canEdit: boolean;
 };
 
-export type AppraisalIncomingData = AppraisalSheet & { canDecide: boolean };
+export type AppraisalIncomingData = AppraisalSheet & {
+  canDecide: boolean;
+} & StageReturnInfo;
 
 /** Một đơn vị trên BẢNG DUYỆT - kèm đội thẩm định và quyền quyết của tôi. */
 export type AppraisalBoardUnit = AppraisalUnit & {
@@ -178,7 +184,7 @@ export type AppraisalBoardUnit = AppraisalUnit & {
   /** Đội thẩm định (người lập). */
   teamName: string;
   canDecide: boolean;
-};
+} & StageReturnInfo;
 
 /**
  * Bảng duyệt: toàn bộ đơn vị trình tới tôi theo bộ lọc. `selfClaims` và
@@ -404,7 +410,12 @@ export function fetchAppraisalIncoming(id: string) {
 
 export function decideAppraisal(
   id: string,
-  input: { decision: "APPROVE" | "RETURN"; reason?: string },
+  input: {
+    decision: "APPROVE" | "RETURN";
+    reason?: string;
+    /** Chỉ duyệt cuối: PREVIOUS = trả về người duyệt cấp 1. */
+    returnTo?: ReturnTarget;
+  },
 ) {
   return unwrapData(
     api.post<ApiResponse<AppraisalIncomingData>>(

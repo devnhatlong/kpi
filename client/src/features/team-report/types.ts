@@ -14,6 +14,7 @@ import {
   type FormHeaderGroup,
   type FormTemplateColumn,
 } from "@/features/mission-form-config/types";
+import type { StageReturnInfo } from "@/features/team-report/stages";
 
 export const TEAM_REPORT_DAY_STATUSES = [
   "DRAFT",
@@ -835,4 +836,4 @@ export type TeamReportAdjustmentData = {
    * mọi cột kiểu này khai; từng ô lọc lại theo `departmentLevelIds` của cột.
    */
   departmentChoices?: TeamReportCatalogItem[];
-};
+} & StageReturnInfo;

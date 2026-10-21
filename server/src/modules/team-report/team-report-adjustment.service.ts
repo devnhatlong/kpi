@@ -48,7 +48,11 @@ import { isYmd, serverDateYmd } from './team-report.time';
 import { TeamReportAdjustmentAccessService } from './team-report-adjustment-access.service';
 import {
   applyApprove,
+  applyReturnToPrevious,
+  canReturnToPrevious,
+  resolveReturnTarget,
   isApprover,
+  isClosingApprover,
   isHandler,
   leadInboxFilter,
   resetStages,
@@ -543,6 +547,11 @@ export class TeamReportAdjustmentService {
         viewerRole,
         /** Đúng người đang cầm bản (duyệt 2 cấp) - mới hiện nút duyệt / sửa. */
         canDecide: isHandler(sheet, actor.id),
+        /** Duyệt cuối được chọn trả về người duyệt cấp 1 thay vì đơn vị lập. */
+        canReturnToPrevious:
+          (isHandler(sheet, actor.id) || isClosingApprover(sheet, actor.id)) &&
+          canReturnToPrevious(sheet),
+        returnedToFirst: sheet.returnedToFirst ?? null,
       },
     };
   }
@@ -597,19 +606,30 @@ export class TeamReportAdjustmentService {
     }
 
     const wasFinal = sheet.stage === 'FINAL';
-    let outcome: 'RETURNED' | 'FORWARDED' | 'APPROVED' = 'RETURNED';
+    const firstName = sheet.firstApproval?.byName ?? '';
+    let outcome:
+      'RETURNED' | 'RETURNED_TO_PREVIOUS' | 'FORWARDED' | 'APPROVED' =
+      'RETURNED';
+    let reason = '';
     if (dto.decision === 'RETURN') {
-      const reason = dto.reason?.trim() ?? '';
+      reason = dto.reason?.trim() ?? '';
       if (!reason) throw new BadRequestException('Lý do trả lại là bắt buộc.');
-      // Trả lại ở bước nào cũng về đơn vị lập; trình lại thì đi lại từ cấp 1.
-      sheet.status = 'RETURNED';
-      sheet.returnReason = reason;
+      if (resolveReturnTarget(sheet, dto.returnTo) === 'PREVIOUS') {
+        // Về người duyệt cấp 1: bản lại chờ cấp 1 duyệt.
+        applyReturnToPrevious(sheet, actor, reason);
+        outcome = 'RETURNED_TO_PREVIOUS';
+      } else {
+        // Về đơn vị lập; trình lại thì đi lại từ cấp 1.
+        sheet.status = 'RETURNED';
+        sheet.returnReason = reason;
+      }
     } else {
       outcome = applyApprove(sheet, actor);
       sheet.returnReason = '';
     }
     sheet.markModified('firstApproval');
-    if (outcome !== 'FORWARDED') {
+    sheet.markModified('returnedToFirst');
+    if (outcome !== 'FORWARDED' && outcome !== 'RETURNED_TO_PREVIOUS') {
       sheet.decidedById = actor.id;
       sheet.decidedByName = actor.name;
       sheet.decidedAt = new Date();
@@ -621,9 +641,11 @@ export class TeamReportAdjustmentService {
       wasFinal ? 'chờ duyệt cuối' : 'đã trình',
       outcome === 'RETURNED'
         ? `trả lại: ${sheet.returnReason}`
-        : outcome === 'FORWARDED'
-          ? `duyệt cấp 1, chuyển ${sheet.finalRecipientName} duyệt cuối`
-          : 'đã duyệt',
+        : outcome === 'RETURNED_TO_PREVIOUS'
+          ? `trả về ${firstName || 'người duyệt cấp 1'}: ${reason}`
+          : outcome === 'FORWARDED'
+            ? `duyệt cấp 1, chuyển ${sheet.finalRecipientName} duyệt cuối`
+            : 'đã duyệt',
     );
     sheet.version += 1;
     await sheet.save();
@@ -633,9 +655,11 @@ export class TeamReportAdjustmentService {
       message:
         outcome === 'RETURNED'
           ? 'Đã trả lại.'
-          : outcome === 'FORWARDED'
-            ? `Đã duyệt cấp 1 - chuyển ${sheet.finalRecipientName} duyệt cuối.`
-            : 'Đã duyệt.',
+          : outcome === 'RETURNED_TO_PREVIOUS'
+            ? `Đã trả về ${firstName || 'người duyệt cấp 1'}.`
+            : outcome === 'FORWARDED'
+              ? `Đã duyệt cấp 1 - chuyển ${sheet.finalRecipientName} duyệt cuối.`
+              : 'Đã duyệt.',
       data: await this.toClient(
         sheet,
         sheet.periodMonth,

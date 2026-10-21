@@ -28,6 +28,11 @@ import {
 } from "@/features/team-report/appraisal";
 import { AppraisalWorkspace } from "@/features/team-report/components/appraisal-workspace";
 import {
+  ReturnTargetPicker,
+  StageReturnNotice,
+} from "@/features/team-report/components/return-target";
+import type { ReturnTarget } from "@/features/team-report/stages";
+import {
   MonthSwitcher,
   useCurrentMonth,
 } from "@/features/team-report/components/month-switcher";
@@ -101,18 +106,30 @@ export function TeamReportAppraisalInboxView() {
     unit: AppraisalUnit;
   } | null>(null);
   const [reason, setReason] = useState("");
+  const [returnTo, setReturnTo] = useState<ReturnTarget>("PREVIOUS");
   const [busy, setBusy] = useState(false);
 
   const decide = async () => {
     if (!dialog) return;
     if (dialog.kind === "RETURN" && !reason.trim()) return;
+    const toPrevious =
+      dialog.kind === "RETURN" &&
+      !!boardUnit(dialog.unit)?.canReturnToPrevious &&
+      returnTo === "PREVIOUS";
     setBusy(true);
     try {
       await decideAppraisal(dialog.unit.departmentId, {
         decision: dialog.kind,
         reason: dialog.kind === "RETURN" ? reason.trim() : undefined,
+        returnTo: toPrevious ? "PREVIOUS" : undefined,
       });
-      toast.success(dialog.kind === "RETURN" ? "Đã trả lại." : "Đã duyệt.");
+      toast.success(
+        dialog.kind === "RETURN"
+          ? toPrevious
+            ? "Đã trả về người duyệt cấp 1."
+            : "Đã trả lại."
+          : "Đã duyệt.",
+      );
       setDialog(null);
       setReason("");
       await mutate();
@@ -191,6 +208,10 @@ export function TeamReportAppraisalInboxView() {
                 if (!found) return undefined;
                 return `Thẩm định bởi ${found.teamName}${
                   found.sentAt ? ` · trình lúc ${formatServerHm(found.sentAt)}` : ""
+                }${
+                  found.returnedToFirst && found.status === "PENDING"
+                    ? ` · ${found.returnedToFirst.byName} trả về: ${found.returnedToFirst.reason}`
+                    : ""
                 }`;
               }}
               reviewActions={{
@@ -199,6 +220,7 @@ export function TeamReportAppraisalInboxView() {
                 onApprove: (unit) => setDialog({ kind: "APPROVE", unit }),
                 onReturn: (unit) => {
                   setReason("");
+                  setReturnTo("PREVIOUS");
                   setDialog({ kind: "RETURN", unit });
                 },
               }}
@@ -238,6 +260,17 @@ export function TeamReportAppraisalInboxView() {
                 : ""}
             </DialogDescription>
           </DialogHeader>
+          {dialogUnit?.status === "PENDING" ? (
+            <StageReturnNotice info={dialogUnit.returnedToFirst} />
+          ) : null}
+          {dialog?.kind === "RETURN" && dialogUnit?.canReturnToPrevious ? (
+            <ReturnTargetPicker
+              value={returnTo}
+              onChange={setReturnTo}
+              creatorName={dialogUnit.teamName}
+              previousName={dialogUnit.firstApproval?.byName}
+            />
+          ) : null}
           {dialog?.kind === "RETURN" ? (
             <div className="space-y-1.5">
               <Label htmlFor="appraisal-return-reason">

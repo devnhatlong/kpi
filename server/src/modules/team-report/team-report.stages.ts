@@ -1,11 +1,17 @@
+import { BadRequestException } from '@nestjs/common';
 import { Types } from 'mongoose';
 
 /**
- * DUYỆT 2 CẤP - luật dùng chung cho báo cáo tổng hợp và bảng điểm cộng / trừ.
+ * DUYỆT 2 CẤP - luật dùng chung cho báo cáo tổng hợp, bảng điểm cộng / trừ,
+ * biểu dương / phê bình và thẩm định.
  *
  * Bản có `finalRecipientId` thì đi hai bước: chủ trì (`recipientId`) duyệt cấp
  * 1 → bản chuyển lên `finalRecipientId` duyệt cuối mới chốt. Không có thì một
- * cấp như cũ. Trả lại ở bước nào bản cũng về đơn vị lập.
+ * cấp như cũ.
+ *
+ * Trả lại: mặc định về ĐƠN VỊ LẬP. Riêng người duyệt cuối được chọn trả về
+ * NGƯỜI LIỀN TRƯỚC - người duyệt cấp 1 (user chốt 2026-10-21): bản quay lại hộp
+ * "Chờ duyệt" của cấp 1, cấp 1 sửa / duyệt lại hoặc trả tiếp xuống đơn vị lập.
  */
 export type StagedDoc = {
   status: string;
@@ -14,7 +20,20 @@ export type StagedDoc = {
   finalRecipientName?: string;
   stage?: 'FIRST' | 'FINAL';
   firstApproval?: { byId: Types.ObjectId; byName: string; at: Date } | null;
+  /** Lần gần nhất duyệt cuối trả về cấp 1 - để cấp 1 đọc lý do. */
+  returnedToFirst?: StageReturn | null;
 };
+
+export type StageReturn = {
+  byId: Types.ObjectId;
+  byName: string;
+  reason: string;
+  at: Date;
+};
+
+/** Trả về đâu: đơn vị lập (mặc định) hay người duyệt liền trước (cấp 1). */
+export const RETURN_TARGETS = ['CREATOR', 'PREVIOUS'] as const;
+export type ReturnTarget = (typeof RETURN_TARGETS)[number];
 
 type IdLike = Types.ObjectId | string | null | undefined;
 
@@ -50,7 +69,10 @@ export function isApprover(doc: StagedDoc, userId: IdLike): boolean {
   if (same(doc.recipientId, userId)) return true;
   return (
     same(doc.finalRecipientId, userId) &&
-    (doc.stage === 'FINAL' || !!doc.firstApproval)
+    (doc.stage === 'FINAL' ||
+      !!doc.firstApproval ||
+      // Vừa trả về cấp 1: vẫn đọc lại được bản mình đã trả.
+      same(doc.returnedToFirst?.byId, userId))
   );
 }
 
@@ -70,7 +92,11 @@ export function leadInboxFilter(
   const asFirst = { recipientId: userId };
   const asFinal = {
     finalRecipientId: userId,
-    $or: [{ stage: 'FINAL' }, { firstApproval: { $ne: null } }],
+    $or: [
+      { stage: 'FINAL' },
+      { firstApproval: { $ne: null } },
+      { 'returnedToFirst.byId': userId },
+    ],
   };
   if (status === 'PENDING') {
     return {
@@ -106,10 +132,65 @@ export function applyApprove(
   if (doc.finalRecipientId && doc.stage !== 'FINAL') {
     doc.stage = 'FINAL';
     doc.firstApproval = { byId: actor.id, byName: actor.name, at: new Date() };
+    // Cấp 1 đã xử lý xong lượt bị trả về - lời nhắn đó hết việc.
+    doc.returnedToFirst = null;
     return 'FORWARDED';
   }
   doc.status = 'APPROVED';
   return 'APPROVED';
+}
+
+/**
+ * Trả về người duyệt LIỀN TRƯỚC (cấp 1) được không: chỉ bản 2 cấp đã qua cấp
+ * 1, người trả là người đang cầm ở bước cuối (chờ duyệt cuối, hoặc đã chốt mà
+ * trả lại sau khi duyệt). Bản 1 cấp không có ai "liền trước" ngoài đơn vị lập.
+ */
+export function canReturnToPrevious(doc: StagedDoc): boolean {
+  return (
+    !!doc.finalRecipientId &&
+    !!doc.firstApproval &&
+    doc.stage === 'FINAL' &&
+    (doc.status === 'PENDING' || doc.status === 'APPROVED')
+  );
+}
+
+/**
+ * Duyệt cuối trả bản về cấp 1: bản lại CHỜ DUYỆT ở cấp 1 như lúc mới trình
+ * (cấp 1 duyệt lại thì đi tiếp lên duyệt cuối, hoặc trả xuống đơn vị lập).
+ * Gọi sau khi đã kiểm `canReturnToPrevious`.
+ */
+export function applyReturnToPrevious(
+  doc: StagedDoc,
+  actor: { id: Types.ObjectId; name: string },
+  reason: string,
+) {
+  doc.status = 'PENDING';
+  doc.stage = 'FIRST';
+  doc.firstApproval = null;
+  doc.returnedToFirst = {
+    byId: actor.id,
+    byName: actor.name,
+    reason,
+    at: new Date(),
+  };
+}
+
+/**
+ * Chốt lựa chọn trả về đâu: không chọn = đơn vị lập như trước. Chọn "liền
+ * trước" mà bản không có cấp 1 đã duyệt thì báo lỗi, không lặng lẽ trả về đơn
+ * vị lập - người bấm tưởng một đằng, bản đi một nẻo.
+ */
+export function resolveReturnTarget(
+  doc: StagedDoc,
+  target: ReturnTarget | undefined,
+): 'PREVIOUS' | 'CREATOR' {
+  if (target !== 'PREVIOUS') return 'CREATOR';
+  if (!canReturnToPrevious(doc)) {
+    throw new BadRequestException(
+      'Bản này không có người duyệt liền trước để trả về - chỉ trả về đơn vị lập được.',
+    );
+  }
+  return 'PREVIOUS';
 }
 
 /** Đặt lại bước khi trình (hoặc trình lại sau khi bị trả). */
@@ -128,4 +209,5 @@ export function resetStages(
   doc.finalRecipientDepartmentId = final?.departmentId ?? null;
   doc.stage = 'FIRST';
   doc.firstApproval = null;
+  doc.returnedToFirst = null;
 }

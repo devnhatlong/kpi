@@ -48,7 +48,11 @@ import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-rou
 import { departmentLabels } from './team-report.department-label';
 import {
   applyApprove,
+  applyReturnToPrevious,
+  canReturnToPrevious,
+  resolveReturnTarget,
   isApprover,
+  isClosingApprover,
   isHandler,
   leadInboxFilter,
   resetStages,
@@ -86,6 +90,7 @@ function blankLifecycle() {
     finalRecipientName: '',
     finalRecipientDepartmentId: null,
     firstApproval: null,
+    returnedToFirst: null,
     sentById: null,
     sentByName: '',
     sentAt: null,
@@ -855,6 +860,11 @@ export class TeamReportAppraisalService {
           /** Đội thẩm định (người lập). */
           teamName: labels.get(String(row.teamId)) ?? '',
           canDecide: isHandler(row, actor.id),
+          /** Duyệt cuối được chọn trả về người duyệt cấp 1 thay vì đơn vị lập. */
+          canReturnToPrevious:
+            (isHandler(row, actor.id) || isClosingApprover(row, actor.id)) &&
+            canReturnToPrevious(row),
+          returnedToFirst: row.returnedToFirst ?? null,
         })),
         selfClaims,
         commendationHints,
@@ -880,18 +890,27 @@ export class TeamReportAppraisalService {
         'Đơn vị này đang chờ cấp duyệt khác - không quyết được lúc này.',
       );
     }
-    let outcome: 'RETURNED' | 'FORWARDED' | 'APPROVED' = 'RETURNED';
+    const firstName = unit.firstApproval?.byName ?? '';
+    let outcome:
+      'RETURNED' | 'RETURNED_TO_PREVIOUS' | 'FORWARDED' | 'APPROVED' =
+      'RETURNED';
     if (dto.decision === 'RETURN') {
       const reason = dto.reason?.trim() ?? '';
       if (!reason) throw new BadRequestException('Lý do trả lại là bắt buộc.');
-      // Trả lại ở bước nào cũng về đội lập; trình lại thì đi lại từ cấp 1.
-      unit.status = 'RETURNED';
-      unit.returnReason = reason;
+      if (resolveReturnTarget(unit, dto.returnTo) === 'PREVIOUS') {
+        // Về người duyệt cấp 1: đơn vị lại chờ cấp 1 duyệt.
+        applyReturnToPrevious(unit, actor, reason);
+        outcome = 'RETURNED_TO_PREVIOUS';
+      } else {
+        // Về đội lập; trình lại thì đi lại từ cấp 1.
+        unit.status = 'RETURNED';
+        unit.returnReason = reason;
+      }
     } else {
       outcome = applyApprove(unit, actor);
       unit.returnReason = '';
     }
-    if (outcome !== 'FORWARDED') {
+    if (outcome !== 'FORWARDED' && outcome !== 'RETURNED_TO_PREVIOUS') {
       unit.decidedById = actor.id;
       unit.decidedByName = actor.name;
       unit.decidedAt = new Date();
@@ -903,9 +922,11 @@ export class TeamReportAppraisalService {
       message:
         outcome === 'RETURNED'
           ? 'Đã trả lại.'
-          : outcome === 'FORWARDED'
-            ? `Đã duyệt cấp 1 - chuyển ${unit.finalRecipientName} duyệt cuối.`
-            : 'Đã duyệt.',
+          : outcome === 'RETURNED_TO_PREVIOUS'
+            ? `Đã trả về ${firstName || 'người duyệt cấp 1'}.`
+            : outcome === 'FORWARDED'
+              ? `Đã duyệt cấp 1 - chuyển ${unit.finalRecipientName} duyệt cuối.`
+              : 'Đã duyệt.',
       data: await this.incomingView(sheet, unit, actor),
     };
   }
@@ -924,6 +945,11 @@ export class TeamReportAppraisalService {
       ...base,
       ...lifecycleView(unit),
       canDecide: isHandler(unit, actor.id),
+      /** Duyệt cuối được chọn trả về người duyệt cấp 1 thay vì đơn vị lập. */
+      canReturnToPrevious:
+        (isHandler(unit, actor.id) || isClosingApprover(unit, actor.id)) &&
+        canReturnToPrevious(unit),
+      returnedToFirst: unit.returnedToFirst ?? null,
     };
   }
 
