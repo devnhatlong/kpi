@@ -107,6 +107,14 @@ export class TeamReportCommendation {
   @Prop({ type: [RowSchema], default: [] })
   criticisms!: TeamReportCommendationRow[];
 
+  /**
+   * "Tháng này không có đề xuất" - chọn tường minh để gửi bảng rỗng (trước
+   * đây phải nhập dòng giả "không có", lọt sang phần soi chiếu khi thẩm
+   * định). Chỉ true khi cả hai bảng rỗng.
+   */
+  @Prop({ type: Boolean, default: false })
+  noProposal!: boolean;
+
   // ------------------------------------------------- vòng đời gửi / duyệt
   @Prop({
     type: String,

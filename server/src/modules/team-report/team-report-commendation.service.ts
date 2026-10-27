@@ -291,6 +291,12 @@ export class TeamReportCommendationService implements OnModuleInit {
     sheet.criticisms = dto.criticisms
       .filter(filled)
       .map((row) => toRow(row, false));
+    if (dto.noProposal && (sheet.praises.length || sheet.criticisms.length)) {
+      throw new BadRequestException(
+        'Đã chọn "Không có đề xuất" thì bảng không được có dòng nào.',
+      );
+    }
+    sheet.noProposal = !!dto.noProposal;
     sheet.updatedById = actor.id;
     sheet.updatedByName = actor.name;
     sheet.version = expected + 1;
@@ -322,9 +328,13 @@ export class TeamReportCommendationService implements OnModuleInit {
     if (sheet.status !== 'DRAFT' && sheet.status !== 'RETURNED') {
       throw new BadRequestException('Bảng này đã gửi rồi.');
     }
-    if (!sheet.praises.length && !sheet.criticisms.length) {
+    if (
+      !sheet.praises.length &&
+      !sheet.criticisms.length &&
+      !sheet.noProposal
+    ) {
       throw new BadRequestException(
-        'Bảng chưa có dòng biểu dương hay phê bình nào.',
+        'Bảng chưa có dòng biểu dương hay phê bình nào - không có thì chọn "Không có đề xuất".',
       );
     }
     const rows = [
@@ -496,6 +506,7 @@ export class TeamReportCommendationService implements OnModuleInit {
         departmentName: labels.get(String(row.departmentId)) ?? '',
         praiseCount: row.praises.length,
         criticismCount: row.criticisms.length,
+        noProposal: !!row.noProposal,
         recipientName: row.recipientName,
         finalRecipientName: row.finalRecipientName ?? '',
         sentByName: row.sentByName,
@@ -651,6 +662,7 @@ export class TeamReportCommendationService implements OnModuleInit {
       version: sheet?.version ?? 0,
       praises: (sheet?.praises ?? []).map(rowView),
       criticisms: (sheet?.criticisms ?? []).map(rowView),
+      noProposal: !!sheet?.noProposal,
       recipientName: sheet?.recipientName ?? '',
       finalRecipientName: sheet?.finalRecipientName ?? '',
       firstApproval: sheet?.firstApproval ?? null,
@@ -720,6 +732,7 @@ export class TeamReportCommendationService implements OnModuleInit {
       sentAt: sheet.sentAt,
       praises: sheet.praises.map((row) => this.rowView(row, short)),
       criticisms: sheet.criticisms.map((row) => this.rowView(row, short)),
+      noProposal: !!sheet.noProposal,
     }));
   }
 

@@ -1119,4 +1119,12 @@ export class SaveTeamReportCommendationDto {
   @ValidateNested({ each: true })
   @Type(() => TeamReportCommendationRowDto)
   criticisms!: TeamReportCommendationRowDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Tháng này không có đề xuất biểu dương, phê bình - chỉ có nghĩa khi hai bảng rỗng',
+  })
+  @IsOptional()
+  @IsBoolean()
+  noProposal?: boolean;
 }

@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -71,6 +72,11 @@ function monthLabel(month: string): string {
 type CommendationDraft = {
   praises: CommendationRow[];
   criticisms: CommendationRow[];
+  /** "Tháng này không có đề xuất" - chỉ giữ được khi hai bảng rỗng. */
+  noProposal: boolean;
+};
+type CommendationRowsChange = Omit<CommendationDraft, "noProposal"> & {
+  noProposal?: boolean;
 };
 type CommendationBase = CommendationDraft & { version: number };
 
@@ -158,15 +164,22 @@ export function TeamReportCommendationView() {
     { revalidateOnFocus: !dirty, refreshInterval: dirty ? 0 : 20_000 },
   );
 
-  const edit = (next: CommendationDraft) => {
+  /* Thêm / lấy dòng nào là tự bỏ "Không có đề xuất" - hai thứ không đi cùng
+     nhau, server cũng chặn. */
+  const edit = (next: CommendationRowsChange) => {
     if (draft === null && data) {
       setBase({
         version: data.version,
         praises: data.praises,
         criticisms: data.criticisms,
+        noProposal: !!data.noProposal,
       });
     }
-    setDraft(next);
+    const hasRows = next.praises.length > 0 || next.criticisms.length > 0;
+    setDraft({
+      ...next,
+      noProposal: !hasRows && (next.noProposal ?? noProposal),
+    });
   };
   const [saving, setSaving] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
@@ -190,6 +203,7 @@ export function TeamReportCommendationView() {
 
   const praises = draft?.praises ?? data?.praises ?? [];
   const criticisms = draft?.criticisms ?? data?.criticisms ?? [];
+  const noProposal = draft?.noProposal ?? !!data?.noProposal;
   const editable = !!data?.canEdit;
 
   useEffect(() => {
@@ -207,8 +221,11 @@ export function TeamReportCommendationView() {
   const save = async () => {
     if (!data) return;
     setSaving(true);
-    let current: CommendationBase = base ?? data;
-    let mine: CommendationDraft = { praises, criticisms };
+    let current: CommendationBase = base ?? {
+      ...data,
+      noProposal: !!data.noProposal,
+    };
+    let mine: CommendationDraft = { praises, criticisms, noProposal };
     try {
       for (let attempt = 0; ; attempt += 1) {
         try {
@@ -244,14 +261,23 @@ export function TeamReportCommendationView() {
             mine.criticisms,
             fresh.criticisms,
           );
-          current = fresh;
-          mine = { praises: praiseMerge.rows, criticisms: criticismMerge.rows };
+          current = { ...fresh, noProposal: !!fresh.noProposal };
+          mine = {
+            praises: praiseMerge.rows,
+            criticisms: criticismMerge.rows,
+            // Bên kia vừa thêm dòng thì "không có đề xuất" của mình hết nghĩa.
+            noProposal:
+              mine.noProposal &&
+              !praiseMerge.rows.length &&
+              !criticismMerge.rows.length,
+          };
           const conflicts = praiseMerge.conflicts + criticismMerge.conflicts;
           if (conflicts) {
             setBase({
               version: fresh.version,
               praises: fresh.praises,
               criticisms: fresh.criticisms,
+              noProposal: !!fresh.noProposal,
             });
             setDraft(mine);
             toast.warning(
@@ -273,8 +299,8 @@ export function TeamReportCommendationView() {
     praises.filter((row) => !commendationRowComplete(row, true)).length +
     criticisms.filter((row) => !commendationRowComplete(row, false)).length;
   const rowCount = praises.length + criticisms.length;
-  const sendBlocker = !rowCount
-    ? "Chưa có dòng biểu dương hay phê bình nào."
+  const sendBlocker = !rowCount && !noProposal
+    ? 'Chưa có dòng nào - không có thì chọn "Không có đề xuất".'
     : incomplete
       ? `Còn ${incomplete} dòng chưa đủ đơn vị / nội dung.`
       : dirty || !data?._id
@@ -313,6 +339,7 @@ export function TeamReportCommendationView() {
         criteria: data.criteria,
         praises: commendationExportRows(praises, data.departmentChoices),
         criticisms: commendationExportRows(criticisms, data.departmentChoices),
+        noProposal,
       });
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Không xuất được Excel."));
@@ -445,7 +472,7 @@ export function TeamReportCommendationView() {
                   type="button"
                   variant="outline"
                   className="bg-background"
-                  disabled={exporting || !rowCount}
+                  disabled={exporting || (!rowCount && !noProposal)}
                   onClick={() => void exportExcel()}
                 >
                   {exporting ? (
@@ -546,17 +573,56 @@ export function TeamReportCommendationView() {
               />
             ) : null}
 
-            <CommendationTables
-              praises={praises}
-              criticisms={criticisms}
-              criteria={data.criteria}
-              departmentChoices={data.departmentChoices}
-              editable={editable}
-              onChange={edit}
-              /* Bảng của phòng có đội gửi lên: dòng nào cũng ghi nguồn. */
-              sourceTags={!!data.teamSheets?.length}
-              ownerName={data.departmentName}
-            />
+            {/* "Không có đề xuất": chỉ chọn được khi bảng chưa có dòng nào -
+                có dòng rồi thì ô này vô nghĩa, ẩn đi cho đỡ rối. */}
+            {editable && !rowCount ? (
+              <label
+                htmlFor="commendation-no-proposal"
+                className="flex cursor-pointer items-start gap-3 rounded-md border bg-muted/30 px-3 py-2.5"
+              >
+                <Checkbox
+                  id="commendation-no-proposal"
+                  checked={noProposal}
+                  onCheckedChange={(checked) =>
+                    edit({ praises, criticisms, noProposal: checked === true })
+                  }
+                  className="mt-0.5"
+                />
+                <span className="space-y-0.5">
+                  <span className="block text-sm font-medium">
+                    Tháng này không có đề xuất biểu dương, phê bình
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Vẫn gửi bảng như thường để cấp trên biết đơn vị đã báo cáo -
+                    không cần nhập dòng "không có".
+                  </span>
+                </span>
+              </label>
+            ) : null}
+
+            {noProposal && !editable ? (
+              <p className="rounded-md border bg-muted/30 px-3 py-2.5 text-sm">
+                Tháng này không có đề xuất biểu dương, phê bình.
+              </p>
+            ) : null}
+            {/* "Không có đề xuất": vẫn bày bảng cho thấy mẫu, chỉ khoá nhập -
+                bỏ tick là nhập lại được. */}
+            <div
+              aria-disabled={noProposal || undefined}
+              className={cn(noProposal && "opacity-60")}
+            >
+              <CommendationTables
+                praises={praises}
+                criticisms={criticisms}
+                criteria={data.criteria}
+                departmentChoices={data.departmentChoices}
+                editable={editable && !noProposal}
+                onChange={edit}
+                /* Bảng của phòng có đội gửi lên: dòng nào cũng ghi nguồn. */
+                sourceTags={!!data.teamSheets?.length}
+                ownerName={data.departmentName}
+              />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -569,8 +635,10 @@ export function TeamReportCommendationView() {
               {month ? monthLabel(month).toLowerCase() : ""}
             </DialogTitle>
             <DialogDescription>
-              {praises.length} dòng biểu dương · {criticisms.length} dòng phê
-              bình. Bảng khoá lại cho tới khi được duyệt hoặc trả lại.
+              {noProposal
+                ? "Không có đề xuất biểu dương, phê bình."
+                : `${praises.length} dòng biểu dương · ${criticisms.length} dòng phê bình.`}{" "}
+              Bảng khoá lại cho tới khi được duyệt hoặc trả lại.
             </DialogDescription>
           </DialogHeader>
           {routeUnits || people ? (

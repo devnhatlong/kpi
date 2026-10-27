@@ -287,15 +287,16 @@ function TeamSheetCard({
   /* Đội đã lấy hết thì gọn lại một dòng - bấm mới xổ ra xem lại. */
   const [expanded, setExpanded] = useState(!(ready && left === 0));
 
-  // Lọc ra không còn dòng nào của đội này thì ẩn cả thẻ cho đỡ rối.
-  if (!rows.length) return null;
+  /* Lọc ra không còn dòng nào của đội này thì ẩn cả thẻ cho đỡ rối. Đội báo
+     "Không có đề xuất" thì vẫn hiện ở "Tất cả" - để biết đội đã gửi. */
+  if (!rows.length && !(sheet.noProposal && filter === "ALL")) return null;
 
   return (
     <article className="overflow-hidden rounded-md border bg-background shadow-xs">
       <header
         className={cn(
           "flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3",
-          expanded && "border-b",
+          expanded && rows.length > 0 && "border-b",
         )}
       >
         <button
@@ -318,8 +319,9 @@ function TeamSheetCard({
           <h4 className="truncate text-sm font-semibold">{team}</h4>
           <p className="text-xs text-muted-foreground tabular-nums">
             {parent ? `${parent} · ` : ""}
-            {sheet.praises.length} biểu dương · {sheet.criticisms.length} phê
-            bình
+            {sheet.noProposal
+              ? "Không có đề xuất"
+              : `${sheet.praises.length} biểu dương · ${sheet.criticisms.length} phê bình`}
             {sheet.sentAt ? ` · gửi lúc ${formatServerHm(sheet.sentAt)}` : ""}
           </p>
         </div>
@@ -347,7 +349,7 @@ function TeamSheetCard({
         ) : null}
       </header>
 
-      {expanded ? (
+      {expanded && rows.length ? (
         <ul className="divide-y">
           {rows.map(({ row, praise }) => {
             const done = !!row._id && taken.has(row._id);

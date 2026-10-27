@@ -39,6 +39,8 @@ export type CommendationExportInput = {
   criteria: Array<{ id: string; name: string }>;
   praises: CommendationExportRow[];
   criticisms: CommendationExportRow[];
+  /** "Không có đề xuất" - ô trống của hai bảng in chữ "Không có". */
+  noProposal?: boolean;
 };
 
 const HEAD_FILL: ExcelJS.Fill = {
@@ -58,6 +60,7 @@ function writeSheet(
 ) {
   const [y, m] = input.periodMonth.split("-");
   const LAST_COL = withSource ? 7 : 6;
+  const none = input.noProposal ? "Không có" : "";
   const sheet = workbook.addWorksheet(sheetName(`Thang ${m}-${y}`, "Bang"), {
     pageSetup: {
       paperSize: 9,
@@ -163,7 +166,7 @@ function writeSheet(
     const top = cursor;
     for (let i = 0; i < count; i += 1) {
       const row = rows[i];
-      body(top + i, 3, row?.units ?? "");
+      body(top + i, 3, row?.units ?? none);
       body(top + i, 4, row?.content ?? "");
       body(top + i, 5, row?.evidence ?? "");
       body(top + i, 6, row?.note ?? "");
@@ -206,7 +209,7 @@ function writeSheet(
     : [null as CommendationExportRow | null];
   criticisms.forEach((row, index) => {
     body(cursor, 1, row ? index + 1 : "");
-    body(cursor, 2, row?.units ?? "");
+    body(cursor, 2, row?.units ?? none);
     sheet.mergeCells(cursor, 3, cursor, 4);
     body(cursor, 3, row?.content ?? "");
     body(cursor, 5, row?.evidence ?? "");

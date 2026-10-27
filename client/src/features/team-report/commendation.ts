@@ -46,6 +46,8 @@ export type CommendationTeamSheet = {
   sentAt: string | null;
   praises: CommendationRow[];
   criticisms: CommendationRow[];
+  /** Đội gửi bảng rỗng, chọn "Không có đề xuất". */
+  noProposal?: boolean;
 };
 
 export type CommendationDepartmentChoice = {
@@ -73,6 +75,11 @@ export type CommendationSheet = {
   version: number;
   praises: CommendationRow[];
   criticisms: CommendationRow[];
+  /**
+   * "Tháng này không có đề xuất" - chọn tường minh để gửi bảng rỗng, thay
+   * cho dòng giả "không có". Chỉ true khi hai bảng rỗng.
+   */
+  noProposal?: boolean;
   recipientName: string;
   finalRecipientName: string;
   firstApproval: TeamReportFirstApproval | null;
@@ -122,6 +129,7 @@ export type CommendationInboxRow = {
   departmentName: string;
   praiseCount: number;
   criticismCount: number;
+  noProposal?: boolean;
   recipientName: string;
   finalRecipientName: string;
   sentByName: string;
@@ -189,6 +197,7 @@ export function saveCommendation(
     version?: number;
     praises: CommendationRow[];
     criticisms: CommendationRow[];
+    noProposal?: boolean;
   },
 ) {
   // Chỉ gửi trường nhập - tên đơn vị / tên nhóm là server tự chép.
@@ -212,6 +221,10 @@ export function saveCommendation(
           ...pick(row),
           itemId: null,
         })),
+        noProposal:
+          !input.praises.length &&
+          !input.criticisms.length &&
+          !!input.noProposal,
       },
     ),
   );

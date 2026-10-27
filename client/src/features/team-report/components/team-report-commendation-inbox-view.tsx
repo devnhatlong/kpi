@@ -371,8 +371,10 @@ export function TeamReportCommendationInboxView() {
                         )}
                       </span>
                       <span className="text-xs text-muted-foreground tabular-nums">
-                        {monthLabel(row.periodMonth)} · {row.praiseCount} biểu
-                        dương · {row.criticismCount} phê bình
+                        {monthLabel(row.periodMonth)} ·{" "}
+                        {row.noProposal
+                          ? "Không có đề xuất"
+                          : `${row.praiseCount} biểu dương · ${row.criticismCount} phê bình`}
                         {row.sentAt
                           ? ` · gửi lúc ${formatServerHm(row.sentAt)}`
                           : ""}
@@ -465,6 +467,7 @@ function CommendationIncomingDetail({
         criteria: data.criteria,
         praises: commendationExportRows(data.praises, []),
         criticisms: commendationExportRows(data.criticisms, []),
+        noProposal: data.noProposal,
       });
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Không xuất được Excel."));
@@ -526,8 +529,10 @@ function CommendationIncomingDetail({
                   {data.sentByName ? `${data.sentByName} gửi` : "Đã gửi"}
                   {data.sentAt
                     ? ` lúc ${formatServerHm(data.sentAt)}`
-                    : ""} · {data.praises.length} biểu dương ·{" "}
-                  {data.criticisms.length} phê bình
+                    : ""} ·{" "}
+                  {data.noProposal
+                    ? "Không có đề xuất"
+                    : `${data.praises.length} biểu dương · ${data.criticisms.length} phê bình`}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -595,13 +600,19 @@ function CommendationIncomingDetail({
               <StageReturnNotice info={data.returnedToFirst} />
             ) : null}
 
-            <CommendationTables
-              praises={data.praises}
-              criticisms={data.criticisms}
-              criteria={data.criteria ?? []}
-              editable={false}
-              ownerName={data.departmentName}
-            />
+            {data.noProposal ? (
+              <p className="rounded-md border bg-muted/30 px-3 py-2.5 text-sm">
+                Đơn vị báo tháng này không có đề xuất biểu dương, phê bình.
+              </p>
+            ) : (
+              <CommendationTables
+                praises={data.praises}
+                criticisms={data.criticisms}
+                criteria={data.criteria ?? []}
+                editable={false}
+                ownerName={data.departmentName}
+              />
+            )}
           </CardContent>
         </Card>
       )}
