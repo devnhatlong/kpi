@@ -35,7 +35,11 @@ import {
   TeamReportTaskDocument,
 } from './schemas/team-report-task.schema';
 import { UNIT_ENTRY_ROLES } from './team-report.entry-access';
-import { serverDateYmd, shiftYmd, TEAM_REPORT_TIMEZONE } from './team-report.time';
+import {
+  serverDateYmd,
+  shiftYmd,
+  TEAM_REPORT_TIMEZONE,
+} from './team-report.time';
 
 /** Tình trạng trình báo cáo tháng của MỘT đơn vị cho MỘT kỳ. */
 type MonthStatus = 'ON_TIME' | 'LATE' | 'MISSING' | 'NOT_DUE';
@@ -66,13 +70,13 @@ const day14 = (ym: string) => `${ym}-14`;
 /** Tháng liền trước của YYYY-MM. */
 function prevMonth(ym: string): string {
   const [y, m] = ym.split('-').map(Number);
-  const date = new Date(Date.UTC(y!, m! - 2, 1));
+  const date = new Date(Date.UTC(y, m - 2, 1));
   return date.toISOString().slice(0, 7);
 }
 
 function nextMonth(ym: string): string {
   const [y, m] = ym.split('-').map(Number);
-  const date = new Date(Date.UTC(y!, m!, 1));
+  const date = new Date(Date.UTC(y, m, 1));
   return date.toISOString().slice(0, 7);
 }
 
@@ -330,7 +334,9 @@ export class TeamReportOverviewService {
       for (const p of monthPeriods) {
         const deadline = shiftYmd(p.toDate, grace);
         const at = firstSent.get(`${String(unit._id)}|${p.toDate}`);
-        const submittedDate = at ? serverDateYmd(at, TEAM_REPORT_TIMEZONE) : null;
+        const submittedDate = at
+          ? serverDateYmd(at, TEAM_REPORT_TIMEZONE)
+          : null;
         let status: MonthStatus;
         if (submittedDate) {
           status = submittedDate <= deadline ? 'ON_TIME' : 'LATE';
@@ -343,7 +349,9 @@ export class TeamReportOverviewService {
       monthByDept.set(String(unit._id), list);
     }
     const due = counts.ON_TIME + counts.LATE + counts.MISSING;
-    const onTimeRate = due ? Math.round((counts.ON_TIME / due) * 1000) / 10 : null;
+    const onTimeRate = due
+      ? Math.round((counts.ON_TIME / due) * 1000) / 10
+      : null;
 
     /* -------------------------------------------- bảng từng đơn vị */
     const expectedIds = new Set(expected.map((d) => String(d._id)));
@@ -352,9 +360,7 @@ export class TeamReportOverviewService {
       .filter((d) => {
         const id = String(d._id);
         return (
-          expectedIds.has(id) ||
-          tasksByDept.has(id) ||
-          summariesByDept.has(id)
+          expectedIds.has(id) || tasksByDept.has(id) || summariesByDept.has(id)
         );
       })
       .map((d) => {
@@ -462,7 +468,27 @@ export class TeamReportOverviewService {
    */
   private async expectedUnits(departments: DeptLite[]) {
     const active = departments.filter((d) => d.isActive !== false);
-    if (!active.length) return [];
+    const submitters = await this.submitters(active);
+    return active.filter((d) => submitters.has(String(d._id)));
+  }
+
+  /**
+   * Tài khoản lập được báo cáo tổng hợp, theo đơn vị (chỉ đơn vị có ít nhất
+   * một tài khoản). `unitLevel` = trưởng / phó phòng, xã (lập ở màn "báo cáo
+   * của đơn vị"); còn lại là đội / tổ. Dùng chung cho tỷ lệ đúng hạn và nhắc
+   * hạn - hai chỗ phải cùng một luật "ai phải trình".
+   */
+  async submitters(
+    departments: Array<{ _id: Types.ObjectId; isActive?: boolean }>,
+  ): Promise<
+    Map<string, Array<{ userId: Types.ObjectId; unitLevel: boolean }>>
+  > {
+    const out = new Map<
+      string,
+      Array<{ userId: Types.ObjectId; unitLevel: boolean }>
+    >();
+    const active = departments.filter((d) => d.isActive !== false);
+    if (!active.length) return out;
     const roles = await this.roleModel
       .find({ isActive: true })
       .select('code permissions')
@@ -484,18 +510,30 @@ export class TeamReportOverviewService {
       })
       .select('departmentId roleAssignments')
       .lean();
-    const submitting = new Set<string>();
     for (const u of users) {
       const codes = (u.roleAssignments ?? []).map((a) => a.roleCode);
       if (codes.includes(RoleCode.SUPER_ADMIN)) continue;
       if (codes.includes(RoleCode.REPORT_REVIEWER)) continue;
-      const canSubmit =
-        codes.some((c) => entry.has(c)) ||
-        (codes.some((c) => review.has(c)) &&
-          codes.some((c) => UNIT_ENTRY_ROLES.includes(c)));
-      if (canSubmit) submitting.add(String(u.departmentId));
+      const asTeam = codes.some((c) => entry.has(c));
+      const asUnit =
+        codes.some((c) => review.has(c)) &&
+        codes.some((c) => UNIT_ENTRY_ROLES.includes(c));
+      if (!asTeam && !asUnit) continue;
+      const key = String(u.departmentId);
+      const list = out.get(key) ?? [];
+      list.push({ userId: u._id, unitLevel: !asTeam && asUnit });
+      out.set(key, list);
     }
-    return active.filter((d) => submitting.has(String(d._id)));
+    return out;
+  }
+
+  /** Số ngày sau ngày 14 vẫn tính đúng hạn - quản trị đặt, mặc định 0. */
+  async graceDays(): Promise<number> {
+    const doc = await this.settingModel
+      .findOne({ key: TEAM_REPORT_SETTING_KEY })
+      .select('monthSubmitGraceDays')
+      .lean();
+    return doc?.monthSubmitGraceDays ?? 0;
   }
 
   /** Xếp đơn vị theo đúng thứ tự cây (cha trước, con theo sortOrder, tên). */

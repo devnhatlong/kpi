@@ -263,6 +263,10 @@ export const NAV_ITEMS: NavItem[] = [
     icon: ClipboardList,
     permissions: [PERM.EVALUATION_SELF],
   },
+  /*
+    Tạm ẩn - luồng nhiệm vụ cũ chưa dùng tới. Quyền vào trang vẫn giữ ở
+    EXTRA_PATH_PERMISSIONS bên dưới, gõ thẳng đường dẫn cũng không lọt.
+
   {
     // Một mục thôi: màn này vừa theo dõi tiến độ vừa duyệt, tách hai dòng menu
     // cho cùng một việc chỉ làm người dùng phải đoán nên bấm dòng nào.
@@ -278,6 +282,7 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Target,
     permissions: [PERM.TASK_VIEW],
   },
+  */
   // {
   //   // Hai ngăn tách thành hai mục con: bản mình lập và bản cấp dưới trình lên
   //   // là hai việc khác nhau, gộp một trang rồi bắt người dùng gạt qua lại thì
@@ -414,6 +419,9 @@ export const NAV_ITEMS: NavItem[] = [
 /** Đường không nằm trong menu nhưng vẫn phải chặn. */
 const EXTRA_PATH_PERMISSIONS: Record<string, string[]> = {
   "/mission/personal/inbox": [PERM.EVALUATION_APPROVE],
+  // Hai mục đang ẩn khỏi menu - vẫn phải chặn khi gõ thẳng đường dẫn.
+  "/mission/received": [PERM.EVALUATION_APPROVE],
+  "/mission/assigned": [PERM.TASK_VIEW],
 };
 
 /**

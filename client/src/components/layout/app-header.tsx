@@ -1,10 +1,10 @@
 "use client";
 
-import { Bell, Search } from "lucide-react";
+import { Search } from "lucide-react";
 
 import { ThemeToggle } from "@/components/common/theme-toggle";
+import { NotificationBell } from "@/components/layout/notification-bell";
 import { UserMenu } from "@/components/layout/user-menu";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -26,17 +26,7 @@ export function AppHeader() {
       <div className="flex items-center gap-1 sm:gap-2">
         <ThemeToggle />
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative rounded-full text-muted-foreground"
-          aria-label="Thông báo"
-        >
-          <Bell className="size-5" />
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground ring-2 ring-card">
-            5
-          </span>
-        </Button>
+        <NotificationBell />
 
         <Separator
           orientation="vertical"

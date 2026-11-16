@@ -22,6 +22,7 @@ import { MissionAssignmentsModule } from './modules/mission-assignments/mission-
 import { MissionScopeConfigModule } from './modules/mission-scope-config/mission-scope-config.module';
 import { MissionSummaryReportsModule } from './modules/mission-summary-reports/mission-summary-reports.module';
 import { TeamReportModule } from './modules/team-report/team-report.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { mongooseConfig } from './config/database.config';
 import { JwtModule } from '@nestjs/jwt';
 import type { SignOptions } from 'jsonwebtoken';
@@ -61,6 +62,7 @@ import type { SignOptions } from 'jsonwebtoken';
     MissionAssignmentsModule,
     // Bản nghiệp vụ mới: báo cáo ngày cấp đội, tách hẳn khỏi PersonalMissionModule.
     TeamReportModule,
+    NotificationsModule,
     UploadsModule,
   ],
 })

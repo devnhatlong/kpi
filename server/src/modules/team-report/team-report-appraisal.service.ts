@@ -59,6 +59,7 @@ import {
 } from './team-report.stages';
 import { conflict, saveIfUnchanged } from './team-report.concurrency';
 import { serverDateYmd } from './team-report.time';
+import { TeamReportNotifier, monthLabel } from './team-report.notifier';
 
 type Actor = { id: Types.ObjectId; name: string; departmentId: Types.ObjectId };
 
@@ -204,6 +205,7 @@ export class TeamReportAppraisalService {
     private readonly workContentModel: Model<WorkContentDocument>,
     private readonly routing: TeamReportAdjustmentRoutingService,
     private readonly formTemplatesService: FormTemplatesService,
+    private readonly notifier: TeamReportNotifier,
   ) {}
 
   /**
@@ -672,6 +674,16 @@ export class TeamReportAppraisalService {
     sheet.markModified('units');
     sheet.version += 1;
     await saveIfUnchanged(sheet, sheet.version - 1);
+    // Một lượt trình nhiều đơn vị = một thông báo, không phải mỗi đơn vị một cái.
+    await this.notifier.sent(
+      await this.notifySubject(sheet),
+      {
+        handlerId: fixed.recipient.id,
+        participants: fixed.participants,
+        detail: `${picked.length} đơn vị: ${picked.map((unit) => unit.departmentName).join(', ')}`,
+      },
+      actor.id,
+    );
 
     return {
       message: `Đã trình ${picked.length} đơn vị lên ${fixed.recipient.name}.`,
@@ -879,6 +891,18 @@ export class TeamReportAppraisalService {
     return { message: 'OK', data: await this.incomingView(sheet, unit, actor) };
   }
 
+  /** Tên bảng + đội lập để ghi vào thông báo. */
+  private async notifySubject(sheet: TeamReportAppraisalDocument) {
+    const department = await this.departmentModel
+      .findById(sheet.departmentId)
+      .select('name');
+    return {
+      flow: 'APPRAISAL' as const,
+      label: `bảng thẩm định tháng ${monthLabel(sheet.periodMonth)}`,
+      fromName: department?.name ?? 'Đơn vị',
+    };
+  }
+
   async decide(userId: string, id: string, dto: DecideTeamReportDayDto) {
     const actor = await this.requireActor(userId);
     const { sheet, unit } = await this.requireIncoming(actor, id);
@@ -918,6 +942,17 @@ export class TeamReportAppraisalService {
     sheet.markModified('units');
     sheet.version += 1;
     await saveIfUnchanged(sheet, sheet.version - 1);
+    const subject = await this.notifySubject(sheet);
+    await this.notifier.decided(
+      {
+        ...subject,
+        label: `thẩm định ${unit.departmentName} tháng ${monthLabel(sheet.periodMonth)}`,
+      },
+      unit,
+      outcome,
+      actor,
+      dto.reason?.trim() ?? '',
+    );
     return {
       message:
         outcome === 'RETURNED'

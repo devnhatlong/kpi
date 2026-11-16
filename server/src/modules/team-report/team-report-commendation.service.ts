@@ -53,6 +53,7 @@ import {
 } from './team-report.stages';
 import { conflict, saveIfUnchanged } from './team-report.concurrency';
 import { serverDateYmd } from './team-report.time';
+import { TeamReportNotifier, monthLabel } from './team-report.notifier';
 
 type Actor = { id: Types.ObjectId; name: string; departmentId: Types.ObjectId };
 
@@ -120,6 +121,7 @@ export class TeamReportCommendationService implements OnModuleInit {
     @InjectModel(TeamReportAdjustmentRoute.name)
     private readonly routeModel: Model<TeamReportAdjustmentRouteDocument>,
     private readonly routing: TeamReportAdjustmentRoutingService,
+    private readonly notifier: TeamReportNotifier,
   ) {}
 
   async onModuleInit() {
@@ -383,6 +385,11 @@ export class TeamReportCommendationService implements OnModuleInit {
     sheet.returnReason = '';
     sheet.version += 1;
     await saveIfUnchanged(sheet, sheet.version - 1);
+    await this.notifier.sent(
+      await this.notifySubject(sheet),
+      { handlerId: sheet.recipientId, participants: sheet.participants },
+      actor.id,
+    );
 
     return {
       message: `Đã gửi bảng lên ${recipient.name}${
@@ -560,6 +567,18 @@ export class TeamReportCommendationService implements OnModuleInit {
     };
   }
 
+  /** Tên bảng + phòng lập để ghi vào thông báo. */
+  private async notifySubject(sheet: TeamReportCommendationDocument) {
+    const department = await this.departmentModel
+      .findById(sheet.departmentId)
+      .select('name');
+    return {
+      flow: 'COMMENDATION' as const,
+      label: `bảng biểu dương, phê bình tháng ${monthLabel(sheet.periodMonth)}`,
+      fromName: department?.name ?? 'Đơn vị',
+    };
+  }
+
   async decide(userId: string, id: string, dto: DecideTeamReportDayDto) {
     const actor = await this.requireActor(userId);
     const { sheet, viewerRole } = await this.requireVisible(actor, id);
@@ -613,6 +632,13 @@ export class TeamReportCommendationService implements OnModuleInit {
     }
     sheet.version += 1;
     await saveIfUnchanged(sheet, sheet.version - 1);
+    await this.notifier.decided(
+      await this.notifySubject(sheet),
+      sheet,
+      outcome,
+      actor,
+      dto.reason?.trim() ?? '',
+    );
     return {
       message:
         outcome === 'RETURNED'

@@ -50,6 +50,7 @@ import {
   applyApprove,
   applyReturnToPrevious,
   canReturnToPrevious,
+  handlerIdOf,
   resolveReturnTarget,
   isApprover,
   isClosingApprover,
@@ -58,6 +59,7 @@ import {
   resetStages,
 } from './team-report.stages';
 import { TeamReportAdjustmentRoutingService } from './team-report-adjustment-routing.service';
+import { TeamReportNotifier, monthLabel } from './team-report.notifier';
 
 /** Tên trường nhật ký khi đơn vị phối hợp gửi ý kiến - để lọc khỏi bản nhận để biết. */
 const OPINION_FIELD = 'Ý kiến phối hợp';
@@ -120,6 +122,7 @@ export class TeamReportAdjustmentService {
     private readonly access: TeamReportAdjustmentAccessService,
     private readonly routing: TeamReportAdjustmentRoutingService,
     private readonly teamReportService: TeamReportService,
+    private readonly notifier: TeamReportNotifier,
   ) {}
 
   /**
@@ -442,6 +445,11 @@ export class TeamReportAdjustmentService {
     );
     sheet.version += 1;
     await sheet.save();
+    await this.notifier.sent(
+      await this.notifySubject(sheet),
+      { handlerId: sheet.recipientId, participants: sheet.participants },
+      actor.id,
+    );
 
     const templates = await this.templatesOfSheet(sheet);
     return {
@@ -589,12 +597,32 @@ export class TeamReportAdjustmentService {
       comment,
     );
     await sheet.save();
+    if (comment !== before) {
+      await this.notifier.commented(
+        await this.notifySubject(sheet),
+        handlerIdOf(sheet),
+        { departmentName: mine.departmentName, comment },
+        actor.id,
+      );
+    }
     return {
       message: comment ? 'Đã gửi ý kiến cho chủ trì.' : 'Đã xoá ý kiến.',
     };
   }
 
   /** Duyệt hoặc trả lại. Trả lại BẮT BUỘC có lý do - đội phải biết sửa gì. */
+  /** Tên bảng + đội lập để ghi vào thông báo. */
+  private async notifySubject(sheet: TeamReportAdjustmentSheetDocument) {
+    const department = await this.departmentModel
+      .findById(sheet.departmentId)
+      .select('name');
+    return {
+      flow: 'ADJUSTMENT' as const,
+      label: `bảng đề xuất điểm cộng, trừ tháng ${monthLabel(sheet.periodMonth)}`,
+      fromName: department?.name ?? 'Đơn vị',
+    };
+  }
+
   async decide(userId: string, id: string, dto: DecideTeamReportDayDto) {
     const actor = await this.requireActor(userId);
     const sheet = await this.requireIncoming(actor, id);
@@ -649,6 +677,13 @@ export class TeamReportAdjustmentService {
     );
     sheet.version += 1;
     await sheet.save();
+    await this.notifier.decided(
+      await this.notifySubject(sheet),
+      sheet,
+      outcome,
+      actor,
+      reason,
+    );
 
     const templates = await this.templatesOfSheet(sheet);
     return {

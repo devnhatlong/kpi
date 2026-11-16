@@ -103,6 +103,9 @@ import {
 } from './schemas/team-report-setting.schema';
 import { TeamReportOverviewController } from './team-report-overview.controller';
 import { TeamReportOverviewService } from './team-report-overview.service';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { TeamReportNotifier } from './team-report.notifier';
+import { TeamReportDeadlineTask } from './team-report-deadline.task';
 
 /**
  * Báo cáo ngày cấp đội - bản nghiệp vụ mới, tách hẳn khỏi `personal-mission`.
@@ -155,6 +158,7 @@ import { TeamReportOverviewService } from './team-report-overview.service';
     // Chỉ để dùng lại FormTemplatesService.resolveVersion - tra đúng bộ cột của
     // phiên bản mẫu đã đóng dấu, kể cả khi mẫu đã bị sửa sau đó.
     forwardRef(() => MissionFormConfigModule),
+    NotificationsModule,
   ],
   controllers: [
     TeamReportController,
@@ -175,6 +179,8 @@ import { TeamReportOverviewService } from './team-report-overview.service';
     TeamReportAppraisalService,
     TeamReportCommendationService,
     TeamReportOverviewService,
+    TeamReportNotifier,
+    TeamReportDeadlineTask,
   ],
   exports: [TeamReportService],
 })

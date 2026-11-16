@@ -113,6 +113,7 @@ import {
   applyApprove,
   applyReturnToPrevious,
   canReturnToPrevious,
+  handlerIdOf,
   resolveReturnTarget,
   isApprover,
   isClosingApprover,
@@ -125,6 +126,7 @@ import {
   describeFooter,
   type ScoreCatalogs,
 } from './team-report.score';
+import { TeamReportNotifier } from './team-report.notifier';
 
 /**
  * Bộ cột của một mẫu, đã rút gọn còn đúng thứ bảng cần để dựng.
@@ -282,6 +284,7 @@ export class TeamReportService {
     private readonly reportTemplatesService: ReportTemplatesService,
     private readonly routing: TeamReportAdjustmentRoutingService,
     private readonly criteriaService: TeamReportCriteriaService,
+    private readonly notifier: TeamReportNotifier,
   ) {}
 
   // ==================================================== giai đoạn 1: nhập thô
@@ -2775,6 +2778,15 @@ export class TeamReportService {
       '',
     );
     await summary.save();
+    await this.notifier.sent(
+      await this.summarySubject(summary),
+      {
+        handlerId: summary.recipientId,
+        participants: summary.participants,
+        detail: `${summary.rows.length} nhiệm vụ · tự chấm ${summary.conclusion.totalScore}/${summary.conclusion.maxScore}`,
+      },
+      actor.id,
+    );
 
     return {
       message: `Đã trình báo cáo lên ${recipient.name}${
@@ -3270,9 +3282,38 @@ export class TeamReportService {
       '',
     );
     await summary.save();
+    if (comment !== before) {
+      await this.notifier.commented(
+        await this.summarySubject(summary),
+        handlerIdOf(summary),
+        { departmentName: mine.departmentName, comment },
+        actor.id,
+      );
+    }
     return {
       message: comment ? 'Đã gửi ý kiến cho đơn vị chủ trì.' : 'Đã xoá ý kiến.',
       data: summary,
+    };
+  }
+
+  /**
+   * Tên bản + đơn vị lập để ghi vào thông báo. Dùng ĐÚNG tiêu đề của bản
+   * (VD "Báo cáo tổng hợp 15/09/2026 - 14/10/2026") - người nhận phải nhận ra
+   * ngay bản mình thấy trong hộp duyệt, không phải một cái tên tự đặt khác.
+   *
+   * Bản của phòng / xã (có đơn vị con) mở về màn "Tạo báo cáo của đơn vị",
+   * bản của đội mở về "Tạo báo cáo" - hai màn khác route.
+   */
+  private async summarySubject(summary: TeamReportSummaryDocument) {
+    const [names, hasChildren] = await Promise.all([
+      this.departmentNames([summary.departmentId]),
+      this.departmentModel.exists({ ancestors: summary.departmentId }),
+    ]);
+    return {
+      flow: 'SUMMARY' as const,
+      label: summary.title?.trim() || 'Báo cáo tổng hợp',
+      fromName: names.get(String(summary.departmentId)) ?? 'Đơn vị',
+      ownHref: hasChildren ? '/team-report/summary/unit' : undefined,
     };
   }
 
@@ -3403,6 +3444,13 @@ export class TeamReportService {
       dto.reason?.trim() ?? '',
     );
     await summary.save();
+    await this.notifier.decided(
+      await this.summarySubject(summary),
+      summary,
+      outcome,
+      actor,
+      dto.reason?.trim() ?? '',
+    );
 
     return {
       message:
