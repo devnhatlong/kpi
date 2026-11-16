@@ -1,16 +1,12 @@
 import type { Metadata } from "next";
 
-import { PlaceholderPage } from "@/components/common/placeholder-page";
+import { ReportOverviewView } from "@/features/team-report/components/report-overview-view";
 
 export const metadata: Metadata = {
-  title: "Báo cáo",
+  title: "Số liệu báo cáo",
+  description: "Số nhiệm vụ, báo cáo đã trình và tỷ lệ trình đúng hạn.",
 };
 
 export default function ReportsPage() {
-  return (
-    <PlaceholderPage
-      title="Báo cáo"
-      description="Xem và xuất báo cáo nhiệm vụ."
-    />
-  );
+  return <ReportOverviewView />;
 }

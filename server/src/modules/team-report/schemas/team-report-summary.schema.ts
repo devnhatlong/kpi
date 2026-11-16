@@ -318,6 +318,17 @@ export class TeamReportSummary {
   @Prop({ type: Date, default: null })
   sentAt!: Date | null;
 
+  /**
+   * Lần trình ĐẦU TIÊN - mốc để xét đúng hạn.
+   *
+   * `sentAt` bị ghi đè mỗi lần trình lại sau khi bị trả, nên đơn vị trình đúng
+   * hạn rồi bị trả sửa sẽ trông như trình trễ. Trường này chỉ ghi một lần; rút
+   * về nháp ngay sau lần trình đầu thì xoá (coi như chưa trình). Bản cũ chưa có
+   * trường này thì đọc `sentAt`.
+   */
+  @Prop({ type: Date, default: null })
+  firstSentAt!: Date | null;
+
   @Prop({ trim: true, default: '' })
   note!: string;
 

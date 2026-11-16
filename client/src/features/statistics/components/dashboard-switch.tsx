@@ -1,7 +1,8 @@
 "use client";
 
 import { useAuth } from "@/features/auth/auth-provider";
-import { userHasAnyPermission } from "@/features/auth/types";
+import { isSuperAdmin, userHasAnyPermission } from "@/features/auth/types";
+import { ReportOverviewView } from "@/features/team-report/components/report-overview-view";
 import { PERM } from "@/constants/permissions";
 import { StatisticsView } from "@/features/statistics/components/statistics-view";
 import { TeamReportDashboardView } from "@/features/team-report/components/team-report-dashboard-view";
@@ -16,6 +17,9 @@ import { TeamReportDashboardView } from "@/features/team-report/components/team-
  */
 export function DashboardSwitch() {
   const { user } = useAuth();
+  /* Quản trị hệ thống không gắn đơn vị - màn thống kê theo đơn vị báo "chưa
+     gắn đơn vị". Cho xem số liệu tổng hợp toàn bộ đơn vị thay vào. */
+  if (isSuperAdmin(user)) return <ReportOverviewView />;
   const teamReport = userHasAnyPermission(user, [
     PERM.TEAM_REPORT_ENTRY,
     PERM.TEAM_REPORT_REVIEW,

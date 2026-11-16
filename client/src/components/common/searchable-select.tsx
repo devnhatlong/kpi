@@ -32,6 +32,8 @@ export type SearchableSelectOption = {
   label: string;
   /** Chuỗi phụ để tìm (mã, alias…) */
   keywords?: string;
+  /** Cấp trong cây (0 = gốc) - thụt lề để đọc ra cha / con. */
+  depth?: number;
 };
 
 type SearchableSelectProps = {
@@ -143,7 +145,14 @@ export function SearchableSelect({
                         value === option.value ? "opacity-100" : "opacity-0",
                       )}
                     />
-                    <span className="min-w-0 flex-1 whitespace-normal break-words text-xs leading-snug">
+                    <span
+                      className="min-w-0 flex-1 whitespace-normal break-words text-xs leading-snug"
+                      style={
+                        option.depth
+                          ? { paddingLeft: option.depth * 12 }
+                          : undefined
+                      }
+                    >
                       {option.label}
                     </span>
                   </CommandItem>

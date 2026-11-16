@@ -13,6 +13,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
   Min,
   ValidateNested,
@@ -900,6 +901,79 @@ export class TeamReportDashboardQueryDto {
   @IsOptional()
   @IsString()
   toDate?: string;
+}
+
+/**
+ * Số liệu tổng hợp cho văn bản báo cáo. Bỏ trống ngày = kỳ tháng đang chạy
+ * (15 tháng trước → 14 tháng này) theo giờ server.
+ */
+export class TeamReportOverviewQueryDto {
+  @ApiPropertyOptional({ example: '2026-10-15' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  fromDate?: string;
+
+  @ApiPropertyOptional({ example: '2026-11-14' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  toDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'Lọc một đơn vị (gộp cả cấp dưới). Bỏ trống = cả phạm vi.',
+  })
+  @IsOptional()
+  @IsMongoId()
+  departmentId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Loại báo cáo tổng hợp được đếm, phân tách dấu phẩy. Bỏ trống = MONTH.',
+    example: 'MONTH,WEEK',
+  })
+  @IsOptional()
+  @IsString()
+  periods?: string;
+
+  /* ---------- bảng từng đơn vị: chỉ cắt danh sách, số tổng vẫn tính đủ */
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ example: 10 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @ApiPropertyOptional({ description: 'Tìm theo tên đơn vị (không dấu cũng được)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Lọc đơn vị theo tình trạng báo cáo tháng; NOT_REQUIRED = không phải trình.',
+    enum: ['ON_TIME', 'LATE', 'MISSING', 'NOT_DUE', 'NOT_REQUIRED'],
+  })
+  @IsOptional()
+  @IsIn(['ON_TIME', 'LATE', 'MISSING', 'NOT_DUE', 'NOT_REQUIRED'])
+  status?: 'ON_TIME' | 'LATE' | 'MISSING' | 'NOT_DUE' | 'NOT_REQUIRED';
+}
+
+export class SaveTeamReportOverviewSettingsDto {
+  @ApiProperty({ example: 3, description: 'Hạn = ngày 14 + số ngày này' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(60)
+  monthSubmitGraceDays!: number;
 }
 
 /* ------------------------------------------------- bảng thẩm định (PV01) */

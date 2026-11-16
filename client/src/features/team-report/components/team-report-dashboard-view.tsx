@@ -9,6 +9,7 @@ import {
   Inbox,
   ListChecks,
   RefreshCw,
+  Search,
   Undo2,
 } from "lucide-react";
 import useSWR from "swr";
@@ -17,6 +18,7 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   ChartContainer,
   ChartLegend,
@@ -29,9 +31,11 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TablePagination } from "@/components/common/table-pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -51,19 +55,40 @@ import {
 } from "@/features/team-report/types";
 import { useServerTime } from "@/hooks/use-server-time";
 import { getApiErrorMessage } from "@/lib/api-client";
-import { formatServerHm, formatYmd, serverYmd } from "@/lib/server-time";
+import {
+  formatServerHm,
+  formatYmd,
+  serverYmd,
+} from "@/lib/server-time";
+import { monthPeriodOptions } from "@/features/team-report/month-periods";
 import { cn } from "@/lib/utils";
 
-const RANGES = [
-  { value: "7", label: "7 ngày gần nhất" },
-  { value: "30", label: "30 ngày gần nhất" },
-  { value: "90", label: "90 ngày gần nhất" },
+/** Khoảng trượt tính lùi từ hôm nay - để sau các kỳ tháng. */
+const ROLLING = [
+  { value: "d7", days: 7, label: "7 ngày gần nhất" },
+  { value: "d30", days: 30, label: "30 ngày gần nhất" },
+  { value: "d90", days: 90, label: "90 ngày gần nhất" },
 ] as const;
+
+const CUSTOM = "custom";
+/** Biểu đồ theo ngày dựng từng ngày một - khoảng quá dài thì nặng và rối. */
+const MAX_CUSTOM_DAYS = 366;
 
 const chartConfig = {
   created: { label: "Nhiệm vụ mới", color: "var(--chart-1)" },
   closed: { label: "Đã đóng", color: "var(--chart-2)" },
 } satisfies ChartConfig;
+
+/** Bỏ dấu, chữ thường - gõ "canh sat" vẫn ra "Cảnh sát khu vực". */
+function foldVi(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/đ/gi, "d")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function shiftYmd(ymd: string, days: number): string {
   const [y, m, d] = ymd.split("-").map(Number);
@@ -79,12 +104,45 @@ function shiftYmd(ymd: string, days: number): string {
  */
 export function TeamReportDashboardView() {
   const { ready } = useServerTime();
-  const [range, setRange] = useState<(typeof RANGES)[number]["value"]>("30");
-  const toDate = ready ? serverYmd() : "";
-  const fromDate = toDate ? shiftYmd(toDate, -(Number(range) - 1)) : "";
+  /* Cùng bộ chọn với trang Số liệu báo cáo: mặc định kỳ tháng mới nhất. */
+  const [rangeKey, setRangeKey] = useState<string>("");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const months = useMemo(() => (ready ? monthPeriodOptions() : []), [ready]);
+  const range = rangeKey || months[0]?.value || "";
+  const month = months.find((m) => m.value === range);
+  const rolling = ROLLING.find((r) => r.value === range);
+  const today = ready ? serverYmd() : "";
+
+  let fromDate = "";
+  let toDate = "";
+  if (month) {
+    fromDate = month.from;
+    toDate = month.to;
+  } else if (rolling && today) {
+    fromDate = shiftYmd(today, -(rolling.days - 1));
+    toDate = today;
+  } else if (range === CUSTOM) {
+    fromDate = customFrom;
+    toDate = customTo;
+  }
+  const customError =
+    range === CUSTOM && customFrom && customTo
+      ? customFrom > customTo
+        ? "Từ ngày phải trước hoặc bằng đến ngày."
+        : shiftYmd(customFrom, MAX_CUSTOM_DAYS - 1) < customTo
+          ? `Khoảng tự chọn tối đa ${MAX_CUSTOM_DAYS} ngày.`
+          : ""
+      : "";
+  const rangeValid = Boolean(fromDate && toDate && !customError);
+
+  // Bảng đơn vị phân trang phía máy - server trả đủ, chỉ cắt lúc bày.
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [limit, setLimit] = useState(10);
 
   const { data, error, isLoading, mutate, isValidating } = useSWR(
-    toDate ? ["team-report", "dashboard", fromDate, toDate] : null,
+    rangeValid ? ["team-report", "dashboard", fromDate, toDate] : null,
     () => fetchTeamReportDashboard({ fromDate, toDate }),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
@@ -115,6 +173,17 @@ export function TeamReportDashboardView() {
   const tickGap = Math.max(1, Math.ceil(daily.length / 12));
   const hasDaily = daily.some((row) => row.created || row.closed);
   const unit = data?.level === "UNIT";
+  // Vài chục đơn vị con - lọc ngay trên máy, không cần hỏi lại server.
+  const needle = foldVi(search);
+  const unitRows = (data?.units ?? []).filter(
+    (row) => !needle || foldVi(row.name).includes(needle),
+  );
+  const totalPages = Math.max(1, Math.ceil(unitRows.length / limit));
+  const safePage = Math.min(page, totalPages);
+  const pagedUnits = unitRows.slice(
+    (safePage - 1) * limit,
+    safePage * limit,
+  );
 
   return (
     <div className="space-y-4">
@@ -134,19 +203,58 @@ export function TeamReportDashboardView() {
         <div className="flex flex-wrap items-center gap-2">
           <Select
             value={range}
-            onValueChange={(v) => setRange(v as typeof range)}
+            onValueChange={(v) => {
+              setRangeKey(v);
+              setPage(1);
+            }}
           >
-            <SelectTrigger className="w-44 bg-background">
-              <SelectValue />
+            <SelectTrigger
+              className="w-72 bg-background"
+              aria-label="Kỳ báo cáo"
+            >
+              <SelectValue placeholder="Đang đồng bộ giờ server..." />
             </SelectTrigger>
             <SelectContent>
-              {RANGES.map((item) => (
+              {months.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label} ({formatYmd(item.from).slice(0, 5)} -{" "}
+                  {formatYmd(item.to).slice(0, 5)})
+                </SelectItem>
+              ))}
+              <SelectItem value={CUSTOM}>Tự chọn khoảng ngày</SelectItem>
+              <SelectSeparator />
+              {ROLLING.map((item) => (
                 <SelectItem key={item.value} value={item.value}>
                   {item.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {range === CUSTOM ? (
+            <>
+              <Input
+                type="date"
+                aria-label="Từ ngày"
+                className="w-40 bg-background"
+                value={customFrom}
+                onChange={(e) => {
+                  setCustomFrom(e.target.value);
+                  setPage(1);
+                }}
+              />
+              <span className="text-sm text-muted-foreground">đến</span>
+              <Input
+                type="date"
+                aria-label="Đến ngày"
+                className="w-40 bg-background"
+                value={customTo}
+                onChange={(e) => {
+                  setCustomTo(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </>
+          ) : null}
           <Button
             type="button"
             variant="outline"
@@ -161,7 +269,18 @@ export function TeamReportDashboardView() {
         </div>
       </div>
 
-      {error ? (
+      {range === CUSTOM && !rangeValid ? (
+        <Card>
+          <CardContent
+            className={cn(
+              "py-6 text-center text-sm",
+              customError ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {customError || "Chọn từ ngày và đến ngày để xem số liệu."}
+          </CardContent>
+        </Card>
+      ) : error ? (
         <Card>
           <CardContent className="py-6 text-center text-sm text-destructive">
             {getApiErrorMessage(error, "Không tải được số liệu.")}
@@ -303,16 +422,37 @@ export function TeamReportDashboardView() {
 
           {unit && data.units.length ? (
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">
-                  Theo đơn vị cấp dưới
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Chỉ liệt kê đơn vị có việc hoặc có báo cáo trong khoảng này.
-                </p>
+              <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-3 pb-3">
+                <div>
+                  <CardTitle className="text-base">
+                    Theo đơn vị cấp dưới
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Chỉ liệt kê đơn vị có việc hoặc có báo cáo trong khoảng
+                    này.
+                  </p>
+                </div>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setPage(1);
+                    }}
+                    placeholder="Tìm tên đơn vị..."
+                    aria-label="Tìm tên đơn vị"
+                    className="h-8 w-64 bg-background pl-8"
+                  />
+                </div>
               </CardHeader>
               <CardContent className="overflow-x-auto">
-                <Table>
+                {unitRows.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    Không có đơn vị nào khớp &quot;{search.trim()}&quot;.
+                  </p>
+                ) : null}
+                <Table className={cn(unitRows.length === 0 && "hidden")}>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Đơn vị</TableHead>
@@ -329,7 +469,7 @@ export function TeamReportDashboardView() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.units.map((row) => (
+                    {pagedUnits.map((row) => (
                       <TableRow key={row.departmentId}>
                         <TableCell className="font-medium">
                           {row.name}
@@ -367,6 +507,19 @@ export function TeamReportDashboardView() {
                     ))}
                   </TableBody>
                 </Table>
+                <div className="mt-3">
+                  <TablePagination
+                    page={safePage}
+                    limit={limit}
+                    total={unitRows.length}
+                    totalPages={totalPages}
+                    onPageChange={setPage}
+                    onLimitChange={(next) => {
+                      setLimit(next);
+                      setPage(1);
+                    }}
+                  />
+                </div>
               </CardContent>
             </Card>
           ) : null}

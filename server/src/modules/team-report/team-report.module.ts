@@ -97,6 +97,12 @@ import {
 } from './schemas/team-report-commendation.schema';
 import { TeamReportCommendationController } from './team-report-commendation.controller';
 import { TeamReportCommendationService } from './team-report-commendation.service';
+import {
+  TeamReportSetting,
+  TeamReportSettingSchema,
+} from './schemas/team-report-setting.schema';
+import { TeamReportOverviewController } from './team-report-overview.controller';
+import { TeamReportOverviewService } from './team-report-overview.service';
 
 /**
  * Báo cáo ngày cấp đội - bản nghiệp vụ mới, tách hẳn khỏi `personal-mission`.
@@ -142,6 +148,7 @@ import { TeamReportCommendationService } from './team-report-commendation.servic
         schema: TeamReportCommendationSchema,
       },
       { name: DepartmentLevel.name, schema: DepartmentLevelSchema },
+      { name: TeamReportSetting.name, schema: TeamReportSettingSchema },
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),
@@ -157,6 +164,7 @@ import { TeamReportCommendationService } from './team-report-commendation.servic
     TeamReportRoutingController,
     TeamReportAppraisalController,
     TeamReportCommendationController,
+    TeamReportOverviewController,
   ],
   providers: [
     TeamReportService,
@@ -166,6 +174,7 @@ import { TeamReportCommendationService } from './team-report-commendation.servic
     TeamReportAdjustmentRoutingService,
     TeamReportAppraisalService,
     TeamReportCommendationService,
+    TeamReportOverviewService,
   ],
   exports: [TeamReportService],
 })

@@ -2721,6 +2721,8 @@ export class TeamReportService {
     summary.sentById = actor.id;
     summary.sentByName = actor.name;
     summary.sentAt = new Date();
+    // Mốc xét đúng hạn - chỉ ghi lần đầu, trình lại sau khi bị trả không đổi.
+    if (!summary.firstSentAt) summary.firstSentAt = summary.sentAt;
     summary.returnReason = '';
     if (dto.note?.trim()) summary.note = dto.note.trim();
     // Bảng A chụp cùng lúc với nhiệm vụ - cấp trên duyệt đúng bảng đội vừa thấy.
@@ -2813,6 +2815,15 @@ export class TeamReportService {
     summary.status = 'DRAFT';
     summary.stage = 'FIRST';
     summary.firstApproval = null;
+    /* Rút ngay sau lần trình ĐẦU thì coi như chưa trình. Rút một lần trình lại
+       (sau khi bị trả) thì giữ mốc lần đầu - đơn vị đã nộp từ trước rồi. */
+    if (
+      summary.firstSentAt &&
+      summary.sentAt &&
+      summary.firstSentAt.getTime() === summary.sentAt.getTime()
+    ) {
+      summary.firstSentAt = null;
+    }
     summary.sentAt = null;
     // Phối hợp / nhận để biết cũng rút theo: hộp đến của họ chỉ bày bản đã trình.
     this.appendEdit(
