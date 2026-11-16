@@ -769,7 +769,15 @@
       "PowerShell(npx eslint src/features/team-report/components/team-report-dashboard-view.tsx src/features/team-report/components/report-overview-view.tsx src/features/statistics/components/dashboard-switch.tsx 2>&1)",
       "PowerShell(npx eslint src/features/team-report/components/report-overview-view.tsx src/components/common/searchable-select.tsx 2>&1)",
       "PowerShell(npx eslint src/features/team-report/components/team-report-dashboard-view.tsx 2>&1)",
-      "PowerShell(npx eslint src/features/team-report/components/team-report-dashboard-view.tsx src/features/team-report/components/report-overview-view.tsx src/features/team-report/month-periods.ts 2>&1)"
+      "PowerShell(npx eslint src/features/team-report/components/team-report-dashboard-view.tsx src/features/team-report/components/report-overview-view.tsx src/features/team-report/month-periods.ts 2>&1)",
+      "PowerShell(npx eslint src/features/team-report/components/report-overview-view.tsx 2>&1)",
+      "PowerShell(npx eslint src/features/statistics/components/dashboard-switch.tsx src/features/team-report/components/period-picker.tsx src/features/team-report/components/team-report-dashboard-view.tsx src/features/team-report/components/report-overview-view.tsx \"src/app/\\(dashboard\\)/reports/page.tsx\" src/constants/navigation.ts 2>&1)",
+      "PowerShell(npx eslint src/features/statistics/components/dashboard-switch.tsx src/features/team-report/components/period-picker.tsx src/features/team-report/components/team-report-dashboard-view.tsx src/features/team-report/components/report-overview-view.tsx \"src/app/\\(dashboard\\)/reports/page.tsx\" 2>&1)",
+      "Bash(curl -s -o /dev/null -m 120 -w 'dashboard %{http_code}\\\\n' http://localhost:3000/dashboard)",
+      "Bash(curl -s -o /dev/null -m 120 -w 'reports %{http_code} -> %{redirect_url}\\\\n' http://localhost:3000/reports)",
+      "Bash(curl -s -m 60 http://localhost:3000/reports)",
+      "Bash(grep -oE 'NEXT_REDIRECT[^\"]{0,60}|http-equiv=\"refresh\"[^>]{0,80}')",
+      "Bash(xargs sed -i 's/Tình hình trình báo cáo/Tiến độ báo cáo/g')"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",

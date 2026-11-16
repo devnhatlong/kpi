@@ -3,11 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarClock,
-  Check,
   ClipboardList,
-  Copy,
   FileCheck2,
-  RefreshCw,
   Search,
 } from "lucide-react";
 import useSWR from "swr";
@@ -19,13 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -52,10 +42,8 @@ import {
   TEAM_REPORT_PERIOD_LABEL,
   type TeamReportPeriod,
 } from "@/features/team-report/types";
-import { useServerTime } from "@/hooks/use-server-time";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { formatYmd } from "@/lib/server-time";
-import { monthPeriodOptions } from "@/features/team-report/month-periods";
 import { cn } from "@/lib/utils";
 
 const PERIOD_ORDER: TeamReportPeriod[] = [
@@ -68,7 +56,6 @@ const PERIOD_ORDER: TeamReportPeriod[] = [
 ];
 
 const ALL_UNITS = "__all__";
-const CUSTOM = "custom";
 
 const STATUS_LABEL: Record<OverviewMonthStatus, string> = {
   ON_TIME: "Đúng hạn",
@@ -95,39 +82,40 @@ const pf = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 });
  * Quản trị xem toàn bộ, chọn được đơn vị bất kỳ; tài khoản khác chỉ thấy đơn
  * vị mình + cấp dưới (server khoá, màn chỉ bày đúng danh sách server trả).
  */
-export function ReportOverviewView() {
+export function ReportOverviewView({
+  fromDate,
+  toDate,
+}: {
+  fromDate: string;
+  toDate: string;
+}) {
   const { user } = useAuth();
   const admin = isSuperAdmin(user);
-  const { ready } = useServerTime();
-  const months = useMemo(() => (ready ? monthPeriodOptions() : []), [ready]);
 
-  const [monthKey, setMonthKey] = useState<string>("");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
   const [unit, setUnit] = useState<string>(ALL_UNITS);
   const [periods, setPeriods] = useState<TeamReportPeriod[]>(["MONTH"]);
 
   // Bảng từng đơn vị: phân trang, tìm, lọc đều ở server.
-  const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<OverviewUnitFilter | "">("");
   useEffect(() => {
     // Gõ xong 300ms mới gọi - không bắn một request cho mỗi phím.
-    const timer = setTimeout(() => {
-      setQ(search.trim());
-      setPage(1);
-    }, 300);
+    const timer = setTimeout(() => setQ(search.trim()), 300);
     return () => clearTimeout(timer);
   }, [search]);
-  /** Đổi bộ lọc của cả trang thì bảng về trang 1. */
-  const resetPage = () => setPage(1);
 
-  const activeMonth = monthKey || months[0]?.value || "";
-  const month = months.find((m) => m.value === activeMonth);
-  const fromDate = activeMonth === CUSTOM ? customFrom : (month?.from ?? "");
-  const toDate = activeMonth === CUSTOM ? customTo : (month?.to ?? "");
+  /* Trang gắn với bộ lọc: đổi kỳ, đơn vị, loại báo cáo, chữ tìm, tình trạng
+     hay số dòng thì tự về trang 1 - không phải nhớ gọi tay ở từng chỗ. */
+  const filterKey = [fromDate, toDate, unit, periods.join(","), q, status, limit]
+    .map(String)
+    .join("|");
+  const [pageState, setPageState] = useState({ key: filterKey, page: 1 });
+  const page = pageState.key === filterKey ? pageState.page : 1;
+  const setPage = (next: number) =>
+    setPageState({ key: filterKey, page: next });
+
   const rangeValid = Boolean(fromDate && toDate && fromDate <= toDate);
 
   const params = {
@@ -177,105 +165,18 @@ export function ReportOverviewView() {
     [admin, departmentOptions],
   );
 
-  const sentence = data
-    ? `Hệ thống ghi nhận ${nf.format(data.tasks.total)} nhiệm vụ, kết quả công tác được cập nhật và ${nf.format(data.summaries.total)} báo cáo tự đánh giá, chấm điểm được gửi, trình thẩm định trên hệ thống. Tỷ lệ các đơn vị, địa phương gửi báo cáo đúng thời hạn đạt ${data.onTime.rate === null ? "[chưa tới hạn]" : `${pf.format(data.onTime.rate)}%`}.`
-    : "";
-  const [copied, setCopied] = useState(false);
-  const copySentence = async () => {
-    try {
-      await navigator.clipboard.writeText(sentence);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast.error("Trình duyệt không cho chép - bôi đen đoạn văn để chép tay.");
-    }
-  };
-
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <h1 className="font-display text-2xl font-semibold tracking-tight">
-          Số liệu báo cáo
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {data
-            ? `${data.scopeName} · ${formatYmd(data.fromDate)} - ${formatYmd(data.toDate)}`
-            : "Tổng hợp số nhiệm vụ, báo cáo đã trình và tỷ lệ trình đúng hạn."}
-        </p>
-      </div>
-
-      {/* Một hàng lọc, đặt trên mọi thẻ - các thẻ luôn nói về cùng một lát. */}
+      {/* Lọc riêng của phần này - kỳ đã chọn ở đầu trang. */}
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 py-4">
-          <div className="space-y-1.5">
-            <div className="text-xs font-medium text-muted-foreground">
-              Kỳ báo cáo
-            </div>
-            <Select
-              value={activeMonth}
-              onValueChange={(v) => {
-                setMonthKey(v);
-                resetPage();
-              }}
-            >
-              <SelectTrigger className="w-72 bg-background">
-                <SelectValue placeholder="Đang đồng bộ giờ server..." />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map((m) => (
-                  <SelectItem key={m.value} value={m.value}>
-                    {m.label} ({formatYmd(m.from).slice(0, 5)} -{" "}
-                    {formatYmd(m.to).slice(0, 5)})
-                  </SelectItem>
-                ))}
-                <SelectItem value={CUSTOM}>Tự chọn khoảng ngày</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {activeMonth === CUSTOM ? (
-            <>
-              <div className="space-y-1.5">
-                <div className="text-xs font-medium text-muted-foreground">
-                  Từ ngày
-                </div>
-                <Input
-                  type="date"
-                  className="w-40 bg-background"
-                  value={customFrom}
-                  onChange={(e) => {
-                    setCustomFrom(e.target.value);
-                    resetPage();
-                  }}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <div className="text-xs font-medium text-muted-foreground">
-                  Đến ngày
-                </div>
-                <Input
-                  type="date"
-                  className="w-40 bg-background"
-                  value={customTo}
-                  onChange={(e) => {
-                    setCustomTo(e.target.value);
-                    resetPage();
-                  }}
-                />
-              </div>
-            </>
-          ) : null}
-
           <div className="space-y-1.5">
             <div className="text-xs font-medium text-muted-foreground">
               Đơn vị
             </div>
             <SearchableSelect
               value={unit}
-              onValueChange={(v) => {
-                setUnit(v);
-                resetPage();
-              }}
+              onValueChange={setUnit}
               options={unitOptions}
               searchPlaceholder="Tìm đơn vị (gõ không dấu cũng được)..."
               emptyText="Không có đơn vị nào khớp."
@@ -298,7 +199,6 @@ export function ReportOverviewView() {
                 // Giữ ít nhất một loại - bỏ hết thì không có gì để đếm.
                 if (!v.length) return;
                 setPeriods(v as TeamReportPeriod[]);
-                resetPage();
               }}
               className="flex-wrap justify-start"
             >
@@ -310,26 +210,8 @@ export function ReportOverviewView() {
             </ToggleGroup>
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            className="ml-auto bg-background"
-            onClick={() => void mutate()}
-            disabled={!rangeValid}
-          >
-            <RefreshCw
-              className={cn("size-4", isValidating && "animate-spin")}
-            />
-            Làm mới
-          </Button>
         </CardContent>
       </Card>
-
-      {activeMonth === CUSTOM && customFrom && customTo && !rangeValid ? (
-        <p className="text-sm text-destructive">
-          Từ ngày phải trước hoặc bằng đến ngày.
-        </p>
-      ) : null}
 
       {error ? (
         <Card>
@@ -397,43 +279,17 @@ export function ReportOverviewView() {
             />
           </div>
 
-          <Card>
-            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-3">
-              <div>
-                <CardTitle className="text-base">Câu báo cáo điền sẵn</CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Hạn trình báo cáo tháng: ngày 14 + {data.onTime.graceDays}{" "}
-                  ngày
-                  {data.onTime.periods.length
-                    ? ` (kỳ này hạn hết ngày ${data.onTime.periods
-                        .map((p) => formatYmd(p.deadline))
-                        .join(", ")})`
-                    : ""}
-                  . Mốc là lần trình đầu, trình lại sau khi bị trả không tính
-                  trễ.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="bg-background"
-                onClick={() => void copySentence()}
-              >
-                {copied ? (
-                  <Check className="size-4" />
-                ) : (
-                  <Copy className="size-4" />
-                )}
-                {copied ? "Đã chép" : "Chép đoạn văn"}
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <p className="rounded-md border bg-muted/40 p-3 text-sm leading-relaxed">
-                {sentence}
-              </p>
-            </CardContent>
-          </Card>
+          {/* Luật đúng hạn phải đọc được ngay cạnh con số - tài khoản đơn vị
+              không thấy ô cài đặt của quản trị. */}
+          <p className="text-xs text-muted-foreground">
+            Hạn trình báo cáo tháng: ngày 14 + {data.onTime.graceDays} ngày
+            {data.onTime.periods.length
+              ? ` (kỳ này hạn hết ngày ${data.onTime.periods
+                  .map((p) => formatYmd(p.deadline))
+                  .join(", ")})`
+              : ""}
+            . Mốc là lần trình đầu, trình lại sau khi bị trả không tính trễ.
+          </p>
 
           {admin ? <GraceDaysSetting onSaved={() => void mutate()} /> : null}
 
@@ -445,15 +301,9 @@ export function ReportOverviewView() {
             search={search}
             onSearchChange={setSearch}
             status={status}
-            onStatusChange={(next) => {
-              setStatus(next);
-              resetPage();
-            }}
+            onStatusChange={setStatus}
             onPageChange={setPage}
-            onLimitChange={(next) => {
-              setLimit(next);
-              resetPage();
-            }}
+            onLimitChange={setLimit}
             busy={isValidating}
           />
         </div>

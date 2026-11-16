@@ -1,12 +1,7 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { ReportOverviewView } from "@/features/team-report/components/report-overview-view";
-
-export const metadata: Metadata = {
-  title: "Số liệu báo cáo",
-  description: "Số nhiệm vụ, báo cáo đã trình và tỷ lệ trình đúng hạn.",
-};
-
+/* "Số liệu báo cáo" đã gộp vào trang Thống kê (tab "Tiến độ báo cáo").
+   Giữ đường cũ để liên kết đã lưu không rơi vào trang trống. */
 export default function ReportsPage() {
-  return <ReportOverviewView />;
+  redirect("/dashboard");
 }

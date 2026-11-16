@@ -8,7 +8,6 @@ import {
   FileStack,
   Inbox,
   ListChecks,
-  RefreshCw,
   Search,
   Undo2,
 } from "lucide-react";
@@ -27,14 +26,6 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { TablePagination } from "@/components/common/table-pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -53,26 +44,12 @@ import {
   TEAM_REPORT_PERIOD_LABEL,
   TEAM_REPORT_STATUS_LABEL,
 } from "@/features/team-report/types";
-import { useServerTime } from "@/hooks/use-server-time";
 import { getApiErrorMessage } from "@/lib/api-client";
 import {
   formatServerHm,
   formatYmd,
-  serverYmd,
 } from "@/lib/server-time";
-import { monthPeriodOptions } from "@/features/team-report/month-periods";
 import { cn } from "@/lib/utils";
-
-/** Khoảng trượt tính lùi từ hôm nay - để sau các kỳ tháng. */
-const ROLLING = [
-  { value: "d7", days: 7, label: "7 ngày gần nhất" },
-  { value: "d30", days: 30, label: "30 ngày gần nhất" },
-  { value: "d90", days: 90, label: "90 ngày gần nhất" },
-] as const;
-
-const CUSTOM = "custom";
-/** Biểu đồ theo ngày dựng từng ngày một - khoảng quá dài thì nặng và rối. */
-const MAX_CUSTOM_DAYS = 366;
 
 const chartConfig = {
   created: { label: "Nhiệm vụ mới", color: "var(--chart-1)" },
@@ -90,11 +67,6 @@ function foldVi(value: string): string {
     .trim();
 }
 
-function shiftYmd(ymd: string, days: number): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  return new Date(Date.UTC(y!, m! - 1, d! + days)).toISOString().slice(0, 10);
-}
-
 /**
  * Trang Thống kê cho tài khoản dùng bản báo cáo ngày cấp đội.
  *
@@ -102,47 +74,24 @@ function shiftYmd(ymd: string, days: number): string {
  * xã / tỉnh thấy gộp cả cấp dưới kèm bảng từng đơn vị. Không có ô nào từ bản
  * nghiệp vụ cũ, nên đội trưởng không còn gặp "không có quyền".
  */
-export function TeamReportDashboardView() {
-  const { ready } = useServerTime();
-  /* Cùng bộ chọn với trang Số liệu báo cáo: mặc định kỳ tháng mới nhất. */
-  const [rangeKey, setRangeKey] = useState<string>("");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
-  const months = useMemo(() => (ready ? monthPeriodOptions() : []), [ready]);
-  const range = rangeKey || months[0]?.value || "";
-  const month = months.find((m) => m.value === range);
-  const rolling = ROLLING.find((r) => r.value === range);
-  const today = ready ? serverYmd() : "";
-
-  let fromDate = "";
-  let toDate = "";
-  if (month) {
-    fromDate = month.from;
-    toDate = month.to;
-  } else if (rolling && today) {
-    fromDate = shiftYmd(today, -(rolling.days - 1));
-    toDate = today;
-  } else if (range === CUSTOM) {
-    fromDate = customFrom;
-    toDate = customTo;
-  }
-  const customError =
-    range === CUSTOM && customFrom && customTo
-      ? customFrom > customTo
-        ? "Từ ngày phải trước hoặc bằng đến ngày."
-        : shiftYmd(customFrom, MAX_CUSTOM_DAYS - 1) < customTo
-          ? `Khoảng tự chọn tối đa ${MAX_CUSTOM_DAYS} ngày.`
-          : ""
-      : "";
-  const rangeValid = Boolean(fromDate && toDate && !customError);
-
+export function TeamReportDashboardView({
+  fromDate,
+  toDate,
+}: {
+  fromDate: string;
+  toDate: string;
+}) {
   // Bảng đơn vị phân trang phía máy - server trả đủ, chỉ cắt lúc bày.
-  const [page, setPage] = useState(1);
+  // Trang gắn với kỳ: đổi kỳ thì tự về trang 1.
+  const rangeKey = `${fromDate}|${toDate}`;
+  const [pageState, setPageState] = useState({ key: rangeKey, page: 1 });
+  const page = pageState.key === rangeKey ? pageState.page : 1;
+  const setPage = (next: number) => setPageState({ key: rangeKey, page: next });
   const [search, setSearch] = useState("");
   const [limit, setLimit] = useState(10);
 
-  const { data, error, isLoading, mutate, isValidating } = useSWR(
-    rangeValid ? ["team-report", "dashboard", fromDate, toDate] : null,
+  const { data, error, isLoading } = useSWR(
+    fromDate && toDate ? ["team-report", "dashboard", fromDate, toDate] : null,
     () => fetchTeamReportDashboard({ fromDate, toDate }),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
@@ -187,100 +136,14 @@ export function TeamReportDashboardView() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="font-display text-2xl font-semibold tracking-tight">
-            Thống kê
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {data?.departmentName ? `${data.departmentName} · ` : ""}
-            {fromDate && toDate
-              ? `${formatYmd(fromDate)} - ${formatYmd(toDate)}`
-              : "Đang đồng bộ giờ server..."}
-            {unit ? " · gộp cả đơn vị cấp dưới" : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={range}
-            onValueChange={(v) => {
-              setRangeKey(v);
-              setPage(1);
-            }}
-          >
-            <SelectTrigger
-              className="w-72 bg-background"
-              aria-label="Kỳ báo cáo"
-            >
-              <SelectValue placeholder="Đang đồng bộ giờ server..." />
-            </SelectTrigger>
-            <SelectContent>
-              {months.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label} ({formatYmd(item.from).slice(0, 5)} -{" "}
-                  {formatYmd(item.to).slice(0, 5)})
-                </SelectItem>
-              ))}
-              <SelectItem value={CUSTOM}>Tự chọn khoảng ngày</SelectItem>
-              <SelectSeparator />
-              {ROLLING.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {range === CUSTOM ? (
-            <>
-              <Input
-                type="date"
-                aria-label="Từ ngày"
-                className="w-40 bg-background"
-                value={customFrom}
-                onChange={(e) => {
-                  setCustomFrom(e.target.value);
-                  setPage(1);
-                }}
-              />
-              <span className="text-sm text-muted-foreground">đến</span>
-              <Input
-                type="date"
-                aria-label="Đến ngày"
-                className="w-40 bg-background"
-                value={customTo}
-                onChange={(e) => {
-                  setCustomTo(e.target.value);
-                  setPage(1);
-                }}
-              />
-            </>
-          ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            className="bg-background"
-            onClick={() => void mutate()}
-          >
-            <RefreshCw
-              className={cn("size-4", isValidating && "animate-spin")}
-            />
-            Làm mới
-          </Button>
-        </div>
-      </div>
+      {data?.departmentName ? (
+        <p className="text-sm text-muted-foreground">
+          {data.departmentName}
+          {unit ? " · gộp cả đơn vị cấp dưới" : ""}
+        </p>
+      ) : null}
 
-      {range === CUSTOM && !rangeValid ? (
-        <Card>
-          <CardContent
-            className={cn(
-              "py-6 text-center text-sm",
-              customError ? "text-destructive" : "text-muted-foreground",
-            )}
-          >
-            {customError || "Chọn từ ngày và đến ngày để xem số liệu."}
-          </CardContent>
-        </Card>
-      ) : error ? (
+      {error ? (
         <Card>
           <CardContent className="py-6 text-center text-sm text-destructive">
             {getApiErrorMessage(error, "Không tải được số liệu.")}

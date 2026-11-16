@@ -2,7 +2,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   BookMarked,
   CalendarCheck,
-  ChartColumn,
   ClipboardCheck,
   ClipboardPen,
   ClipboardList,
@@ -91,13 +90,6 @@ export const NAV_ITEMS: NavItem[] = [
     title: "Thống kê",
     href: "/dashboard",
     icon: Gauge,
-  },
-  {
-    /* Số liệu điền văn bản báo cáo. Không gác quyền: server tự khoá phạm vi -
-       quản trị thấy toàn bộ, tài khoản khác thấy đơn vị mình + cấp dưới. */
-    title: "Số liệu báo cáo",
-    href: "/reports",
-    icon: ChartColumn,
   },
   {
     /* Khối A của báo cáo - bảng chấm phẳng, THÁNG một bản. Mục riêng chứ không
