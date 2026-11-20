@@ -6,7 +6,11 @@ import {
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection, Types, mongo } from 'mongoose';
 
-import { mimeTypeFor } from './upload-file.utils';
+import {
+  mimeTypeFor,
+  parseClassification,
+  type DocumentClassification,
+} from './upload-file.utils';
 
 /** Tên bucket -> hai collection uploads.files và uploads.chunks. */
 const BUCKET_NAME = 'uploads';
@@ -16,6 +20,7 @@ export type UploadRef = {
   name: string;
   size: number;
   mimeType: string;
+  classification: DocumentClassification;
 };
 
 /**
@@ -48,6 +53,7 @@ export class UploadsService {
     originalName: string;
     buffer: Buffer;
     uploadedById: string;
+    classification: DocumentClassification;
   }): Promise<UploadRef> {
     const bucket = this.bucket();
     const mimeType = mimeTypeFor(input.originalName);
@@ -56,6 +62,7 @@ export class UploadsService {
         contentType: mimeType,
         uploadedById: new Types.ObjectId(input.uploadedById),
         uploadedAt: new Date(),
+        classification: input.classification,
       },
     });
 
@@ -71,6 +78,7 @@ export class UploadsService {
       name: input.originalName,
       size: input.buffer.length,
       mimeType,
+      classification: input.classification,
     };
   }
 
@@ -119,6 +127,34 @@ export class UploadsService {
       'metadata.uploadedById': new Types.ObjectId(userId),
       uploadDate: { $gte: since },
     });
+  }
+
+  /**
+   * Id tệp có thật -> độ mật đã chọn lúc tải lên.
+   * Nghiệp vụ chép độ mật từ đây, KHÔNG lấy từ client gửi lúc lưu nhiệm vụ -
+   * nếu không, sửa request là hạ được nhãn "Mật" của tệp xuống "Thường".
+   * Tệp tải lên trước khi có độ mật thì giá trị là null.
+   */
+  async classificationsOf(
+    ids: string[],
+  ): Promise<Map<string, DocumentClassification | null>> {
+    const valid = ids.filter((id) => Types.ObjectId.isValid(id));
+    if (!valid.length) return new Map();
+
+    const files = await this.bucket()
+      .find({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) } })
+      .project({ _id: 1, 'metadata.classification': 1 })
+      .toArray();
+
+    return new Map(
+      files.map((file) => [
+        String(file._id),
+        parseClassification(
+          (file.metadata as { classification?: unknown } | undefined)
+            ?.classification,
+        ),
+      ]),
+    );
   }
 
   /** Lọc ra id tệp thật sự tồn tại - dùng khi lưu nhiệm vụ. */

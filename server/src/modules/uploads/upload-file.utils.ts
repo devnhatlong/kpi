@@ -29,6 +29,45 @@ export const ALLOWED_UPLOAD_EXTENSIONS = [
 
 const ALLOWED_SET = new Set<string>(ALLOWED_UPLOAD_EXTENSIONS);
 
+/**
+ * Độ mật của tài liệu kiểm chứng - bắt buộc chọn khi tải lên.
+ * Từ MAT trở lên chỉ nhận tệp .bm3 (tệp đã mã hoá của hệ thống báo cáo ngày):
+ * tài liệu mật không được nằm trên máy chủ dưới dạng đọc thẳng được.
+ */
+export const DOCUMENT_CLASSIFICATIONS = [
+  'THUONG',
+  'MAT',
+  'TOI_MAT',
+  'TUYET_MAT',
+] as const;
+export type DocumentClassification = (typeof DOCUMENT_CLASSIFICATIONS)[number];
+
+export function parseClassification(
+  value: unknown,
+): DocumentClassification | null {
+  return typeof value === 'string' &&
+    (DOCUMENT_CLASSIFICATIONS as readonly string[]).includes(value)
+    ? (value as DocumentClassification)
+    : null;
+}
+
+/**
+ * Một nhiệm vụ giữ tối đa chừng này văn bản kiểm chứng TỔNG CỘNG - mọi độ mật
+ * gộp chung, không phải 5 cho mỗi loại.
+ */
+export const MAX_EVIDENCE_FILES = 5;
+
+/** Độ mật này có bắt buộc tệp .bm3 không. */
+export function requiresEncryptedFile(
+  classification: DocumentClassification,
+): boolean {
+  return classification !== 'THUONG';
+}
+
+export function isEncryptedFileName(fileName: string): boolean {
+  return extname(fileName).toLowerCase() === '.bm3';
+}
+
 export function isAllowedExtension(fileName: string): boolean {
   return ALLOWED_SET.has(extname(fileName).toLowerCase());
 }

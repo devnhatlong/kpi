@@ -58,6 +58,8 @@ export type TaskAttachment = {
   name: string;
   size: number;
   mimeType: string;
+  /** Độ mật chọn lúc tải lên - tệp cũ (trước khi có trường này) không có. */
+  classification?: string;
 };
 
 export type PersonalTaskDraft = {

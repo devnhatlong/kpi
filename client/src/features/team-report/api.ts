@@ -260,7 +260,15 @@ export function classifyTeamReportTask(
   return unwrapData(
     api.patch<ApiResponse<TeamReportTask>>(
       `/team-report/tasks/${id}/classify`,
-      input,
+      {
+        ...input,
+        // Chỉ gửi đúng hai trường DTO nhận: server bật forbidNonWhitelisted,
+        // còn tệp lấy từ nhiệm vụ mang thêm url/độ mật - độ mật server tự tra.
+        evidence: input.evidence?.map(({ uploadId, name }) => ({
+          uploadId,
+          name,
+        })),
+      },
     ),
   );
 }

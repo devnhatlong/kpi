@@ -9,6 +9,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 
 import { buildPaginatedResponse } from '@/common/utils/pagination.util';
+import { UploadsService } from '@/modules/uploads/uploads.service';
+import { MAX_EVIDENCE_FILES } from '@/modules/uploads/upload-file.utils';
 import {
   Department,
   DepartmentDocument,
@@ -285,6 +287,7 @@ export class TeamReportService {
     private readonly routing: TeamReportAdjustmentRoutingService,
     private readonly criteriaService: TeamReportCriteriaService,
     private readonly notifier: TeamReportNotifier,
+    private readonly uploadsService: UploadsService,
   ) {}
 
   // ==================================================== giai đoạn 1: nhập thô
@@ -383,7 +386,7 @@ export class TeamReportService {
       name,
       deadline: this.optionalDate(dto.deadline),
       product: dto.product?.trim() ?? '',
-      evidence: this.mapEvidence(dto.evidence),
+      evidence: await this.mapEvidence(dto.evidence),
       createdDate: reportDate,
       isOpen: true,
       version: 1,
@@ -467,7 +470,7 @@ export class TeamReportService {
     task.name = name;
     task.deadline = this.optionalDate(dto.deadline);
     task.product = dto.product?.trim() ?? '';
-    if (dto.evidence) task.evidence = this.mapEvidence(dto.evidence);
+    if (dto.evidence) task.evidence = await this.mapEvidence(dto.evidence);
 
     /* Đẩy luôn sang bộ cột của mẫu nếu nhiệm vụ đã chọn trục. Bảng nhập là nguồn
        của tên / hạn / sản phẩm, nên sửa ở đây mà bảng chấm vẫn giữ số cũ là hai
@@ -848,7 +851,7 @@ export class TeamReportService {
 
     // Tài liệu kiểm chứng gắn với nhiệm vụ, không theo cột - cột kiểu "tệp"
     // của mẫu chỉ là chỗ bày và sửa danh sách này.
-    if (dto.evidence) task.evidence = this.mapEvidence(dto.evidence);
+    if (dto.evidence) task.evidence = await this.mapEvidence(dto.evidence);
 
     if (dto.fieldValues || dto.catalogValues) {
       await this.stampTemplate(task);
@@ -3548,7 +3551,7 @@ export class TeamReportService {
          vào nhiệm vụ sống - lần chụp lại bên dưới mang theo. Bổ sung tệp lúc
          bản bị trả lại là chuyện thường (cấp trên chê thiếu căn cứ). */
       if (patch.evidence !== undefined) {
-        task.evidence = this.mapEvidence(patch.evidence);
+        task.evidence = await this.mapEvidence(patch.evidence);
         task.markModified('evidence');
         changed += 1;
       }
@@ -4819,6 +4822,7 @@ export class TeamReportService {
       evidence: (task.evidence ?? []).map((item) => ({
         uploadId: item.uploadId,
         name: item.name,
+        classification: item.classification ?? null,
       })),
       closed,
     };
@@ -4951,11 +4955,25 @@ export class TeamReportService {
     return content?.name ?? '';
   }
 
-  private mapEvidence(list: CreateTeamReportTaskDto['evidence']) {
-    return (list ?? []).map((item) => ({
+  /**
+   * Danh sách tệp kiểm chứng để lưu. Độ mật chép từ bản ghi tệp trên server,
+   * không lấy từ client - xem UploadsService.classificationsOf.
+   */
+  private async mapEvidence(list: CreateTeamReportTaskDto['evidence']) {
+    const items = list ?? [];
+    if (items.length > MAX_EVIDENCE_FILES) {
+      throw new BadRequestException(
+        `Mỗi nhiệm vụ chỉ được đính kèm tối đa ${MAX_EVIDENCE_FILES} văn bản kiểm chứng.`,
+      );
+    }
+    const classifications = await this.uploadsService.classificationsOf(
+      items.map((item) => item.uploadId),
+    );
+    return items.map((item) => ({
       uploadId: this.requireObjectId(item.uploadId, 'Tệp'),
       name: item.name?.trim() ?? '',
       url: '',
+      classification: classifications.get(item.uploadId) ?? null,
     }));
   }
 

@@ -7,20 +7,30 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
-  ACCEPT_UPLOAD,
+  MAX_EVIDENCE_FILES,
   MAX_UPLOAD_BYTES,
+  acceptFor,
   canOpenInOnlyOffice,
+  classificationError,
   downloadAttachment,
   fetchOnlyOfficeStatus,
   uploadFile,
+  type DocumentClassification,
 } from "@/features/uploads/api";
+import {
+  ClassificationBadge,
+  ClassificationSelect,
+} from "@/features/uploads/components/classification-select";
 import { OnlyOfficeViewer } from "@/features/uploads/components/onlyoffice-viewer";
 import type { TeamReportEvidence } from "@/features/team-report/types";
 import { getApiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 /** Tệp đã gắn - đủ để bày tên và tải về. */
-export type EvidenceItem = Pick<TeamReportEvidence, "uploadId" | "name">;
+export type EvidenceItem = Pick<
+  TeamReportEvidence,
+  "uploadId" | "name" | "classification"
+>;
 
 type EvidenceCellProps = {
   items: EvidenceItem[];
@@ -49,6 +59,8 @@ export function EvidenceCell({
   const [uploading, setUploading] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [viewing, setViewing] = useState<EvidenceItem | null>(null);
+  const [classification, setClassification] =
+    useState<DocumentClassification | null>(null);
   const editable = Boolean(onChange) && !disabled;
   /* Có Document Server thì bấm tên là mở xem tại chỗ; không có thì tải về. */
   const onlyOffice = useSWR("onlyoffice-status", fetchOnlyOfficeStatus, {
@@ -58,30 +70,48 @@ export function EvidenceCell({
   const viewable = (item: EvidenceItem) =>
     onlyOffice.data?.enabled === true && canOpenInOnlyOffice(item.name);
 
+  const full = items.length >= MAX_EVIDENCE_FILES;
+
+  /**
+   * Mỗi lần một văn bản, độ mật chọn riêng cho văn bản đó: tải xong thì xoá
+   * lựa chọn để văn bản sau phải chọn lại, không vô tình mang độ mật cũ.
+   */
   const pick = async (files: FileList | null) => {
-    if (!files?.length || !onChange) return;
-    const next = [...items];
-    for (const file of Array.from(files)) {
-      if (file.size > MAX_UPLOAD_BYTES) {
-        toast.error(
-          `"${file.name}" quá ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB.`,
-        );
-        continue;
-      }
-      setUploading(file.name);
-      try {
-        const saved = await uploadFile(file);
-        next.push({ uploadId: saved.id, name: saved.name });
-      } catch (error) {
-        toast.error(
-          getApiErrorMessage(error, `Không tải được "${file.name}".`),
-        );
-      } finally {
-        setUploading(null);
-      }
-    }
+    const file = files?.[0];
     if (inputRef.current) inputRef.current.value = "";
-    if (next.length !== items.length) await onChange(next);
+    if (!file || !onChange || !classification) return;
+    if (full) {
+      toast.error(`Chỉ được đính kèm tối đa ${MAX_EVIDENCE_FILES} văn bản.`);
+      return;
+    }
+    const wrongType = classificationError(file, classification);
+    if (wrongType) {
+      toast.error(wrongType);
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.error(
+        `"${file.name}" quá ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB.`,
+      );
+      return;
+    }
+    setUploading(file.name);
+    try {
+      const saved = await uploadFile(file, classification);
+      await onChange([
+        ...items,
+        {
+          uploadId: saved.id,
+          name: saved.name,
+          classification: saved.classification ?? classification,
+        },
+      ]);
+      setClassification(null);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, `Không tải được "${file.name}".`));
+    } finally {
+      setUploading(null);
+    }
   };
 
   const remove = async (uploadId: string) => {
@@ -138,6 +168,7 @@ export function EvidenceCell({
                 )}
                 <span className="truncate">{item.name || item.uploadId}</span>
               </button>
+              <ClassificationBadge value={item.classification} />
               {viewable(item) ? (
                 <button
                   type="button"
@@ -166,32 +197,50 @@ export function EvidenceCell({
         <span className="text-xs text-muted-foreground">Không có tệp</span>
       ) : null}
 
-      {editable ? (
-        <>
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            accept={ACCEPT_UPLOAD}
-            className="hidden"
-            onChange={(event) => void pick(event.target.files)}
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="bg-background"
-            disabled={uploading !== null}
-            onClick={() => inputRef.current?.click()}
-          >
-            {uploading ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <Paperclip className="size-3.5" />
-            )}
-            {uploading ? `Đang tải "${uploading}"…` : "Đính kèm tệp"}
-          </Button>
-        </>
+      {editable && full ? (
+        <p className="text-xs text-muted-foreground">
+          Đã đủ {MAX_EVIDENCE_FILES} văn bản - bỏ bớt một văn bản để đính kèm
+          văn bản khác.
+        </p>
+      ) : null}
+
+      {editable && !full ? (
+        <ClassificationSelect
+          value={classification}
+          onChange={setClassification}
+          disabled={uploading !== null}
+          action={
+            /* Chưa chọn độ mật thì chưa hiện chỗ đính kèm. */
+            classification ? (
+              <>
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept={acceptFor(classification)}
+                  className="hidden"
+                  onChange={(event) => void pick(event.target.files)}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 bg-background"
+                  disabled={uploading !== null}
+                  onClick={() => inputRef.current?.click()}
+                >
+                  {uploading ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Paperclip className="size-3.5" />
+                  )}
+                  {uploading
+                    ? `Đang tải "${uploading}"…`
+                    : `Đính kèm văn bản (${items.length}/${MAX_EVIDENCE_FILES})`}
+                </Button>
+              </>
+            ) : null
+          }
+        />
       ) : null}
 
       <OnlyOfficeViewer file={viewing} onClose={() => setViewing(null)} />

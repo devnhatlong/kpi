@@ -4,6 +4,7 @@ import { Axis } from '@/modules/mission-form-config/schemas/axis.schema';
 import { FormTemplate } from '@/modules/mission-form-config/schemas/form-template.schema';
 import { WorkContent } from '@/modules/mission-form-config/schemas/work-content.schema';
 import { User } from '@/modules/users/schemas/user.schema';
+import type { DocumentClassification } from '@/modules/uploads/upload-file.utils';
 
 export type PersonalMissionItemDocument = HydratedDocument<PersonalMissionItem>;
 
@@ -36,6 +37,8 @@ export type PersonalMissionAttachment = {
   name: string;
   size: number;
   mimeType: string;
+  /** Độ mật chép từ bản ghi tệp lúc lưu; tệp cũ không có. */
+  classification?: DocumentClassification;
 };
 
 /**

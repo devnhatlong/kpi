@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   HttpException,
@@ -30,11 +31,15 @@ import { UploadAccessService } from './upload-access.service';
 import { UploadExceptionFilter } from './upload-exception.filter';
 import {
   ALLOWED_UPLOAD_EXTENSIONS,
+  DOCUMENT_CLASSIFICATIONS,
   MAX_UPLOAD_BYTES,
   asciiFallbackName,
   contentMatchesExtension,
   fixOriginalName,
   isAllowedExtension,
+  isEncryptedFileName,
+  parseClassification,
+  requiresEncryptedFile,
   setFileSecurityHeaders,
 } from './upload-file.utils';
 
@@ -60,7 +65,15 @@ export class UploadsController {
   @ApiBody({
     schema: {
       type: 'object',
-      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file', 'classification'],
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        classification: {
+          type: 'string',
+          enum: [...DOCUMENT_CLASSIFICATIONS],
+          description: 'Độ mật. Từ MAT trở lên chỉ nhận tệp .bm3.',
+        },
+      },
     },
   })
   @Post()
@@ -73,9 +86,15 @@ export class UploadsController {
   )
   async upload(
     @CurrentUser() user: JwtPayloadUser,
+    @Body('classification') rawClassification: unknown,
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('Chưa chọn tệp.');
+
+    const classification = parseClassification(rawClassification);
+    if (!classification) {
+      throw new BadRequestException('Chưa chọn độ mật của tài liệu.');
+    }
 
     // Hạn mức theo tài khoản: chặn một tài khoản đẩy liên tục tệp 10MB làm
     // đầy CSDL. Mức rộng hơn hẳn nhu cầu thật của một đội trong một giờ.
@@ -96,6 +115,16 @@ export class UploadsController {
         `Chỉ nhận tệp: ${ALLOWED_UPLOAD_EXTENSIONS.join(', ')}.`,
       );
     }
+    // Kiểm trước magic number để báo đúng lỗi: tệp mật mà không phải .bm3 là
+    // sai loại, không phải "tệp hỏng".
+    if (
+      requiresEncryptedFile(classification) &&
+      !isEncryptedFileName(originalName)
+    ) {
+      throw new BadRequestException(
+        'Tài liệu độ mật Mật trở lên chỉ được tải lên tệp .bm3.',
+      );
+    }
     if (!contentMatchesExtension(file.buffer, originalName)) {
       throw new BadRequestException(
         'Nội dung tệp không đúng định dạng - có thể tệp hỏng hoặc bị đổi đuôi.',
@@ -106,6 +135,7 @@ export class UploadsController {
       originalName,
       buffer: file.buffer,
       uploadedById: user.uid,
+      classification,
     });
 
     return { message: 'Đã tải tệp lên.', data };

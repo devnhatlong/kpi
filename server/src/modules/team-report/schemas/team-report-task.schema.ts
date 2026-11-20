@@ -6,6 +6,10 @@ import { User } from '@/modules/users/schemas/user.schema';
 import { Axis } from '@/modules/mission-form-config/schemas/axis.schema';
 import { FormTemplate } from '@/modules/mission-form-config/schemas/form-template.schema';
 import { WorkContent } from '@/modules/mission-form-config/schemas/work-content.schema';
+import {
+  DOCUMENT_CLASSIFICATIONS,
+  type DocumentClassification,
+} from '@/modules/uploads/upload-file.utils';
 
 export type TeamReportTaskDocument = TeamReportTask & Document;
 
@@ -20,6 +24,14 @@ export class TeamReportEvidence {
 
   @Prop({ trim: true, default: '' })
   url!: string;
+
+  /** Độ mật chép từ bản ghi tệp lúc lưu; tệp cũ không có. */
+  @Prop({
+    type: String,
+    enum: [...DOCUMENT_CLASSIFICATIONS, null],
+    default: null,
+  })
+  classification?: DocumentClassification | null;
 }
 
 export const TeamReportEvidenceSchema =

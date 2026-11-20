@@ -27,6 +27,7 @@ import {
 } from '@/modules/mission-form-config/schemas/form-template.schema';
 import { FormTemplatesService } from '@/modules/mission-form-config/form-templates.service';
 import { UploadsService } from '@/modules/uploads/uploads.service';
+import { MAX_EVIDENCE_FILES } from '@/modules/uploads/upload-file.utils';
 import {
   formatScoreGroupRange,
   isScoreInGroupRange,
@@ -5184,14 +5185,28 @@ export class PersonalMissionService implements OnModuleInit {
     }
     if (!candidates.length) return {};
 
-    const existing = await this.uploadsService.keepExistingIds(
+    // Độ mật lấy từ bản ghi tệp, không lấy từ client - xem classificationsOf.
+    const existing = await this.uploadsService.classificationsOf(
       candidates.map((item) => item.file.id),
     );
 
     const result: Record<string, PersonalMissionAttachment[]> = {};
     for (const item of candidates) {
       if (!existing.has(item.file.id)) continue;
-      (result[item.key] ??= []).push(item.file);
+      const classification = existing.get(item.file.id);
+      (result[item.key] ??= []).push(
+        classification ? { ...item.file, classification } : item.file,
+      );
+    }
+    // Tối đa 5 văn bản cho CẢ nhiệm vụ - không tách theo độ mật hay theo cột.
+    const total = Object.values(result).reduce(
+      (sum, files) => sum + files.length,
+      0,
+    );
+    if (total > MAX_EVIDENCE_FILES) {
+      throw new BadRequestException(
+        `Chỉ được đính kèm tối đa ${MAX_EVIDENCE_FILES} văn bản kiểm chứng.`,
+      );
     }
     return result;
   }

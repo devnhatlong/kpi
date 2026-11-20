@@ -242,6 +242,8 @@ export type TeamReportEvidence = {
   uploadId: string;
   name: string;
   url: string;
+  /** Độ mật server chép từ bản ghi tệp; tệp cũ là null/không có. */
+  classification?: string | null;
 };
 
 export type TeamReportEdit = {
@@ -386,7 +388,9 @@ export type TeamReportDayRow = {
   catalogValues: Record<string, CatalogValue>;
   evidenceCount: number;
   /** Bản chụp tệp kiểm chứng lúc gửi (dòng cũ có thể không có). */
-  evidence?: Array<Pick<TeamReportEvidence, "uploadId" | "name">>;
+  evidence?: Array<
+    Pick<TeamReportEvidence, "uploadId" | "name" | "classification">
+  >;
   closed: boolean;
 };
 

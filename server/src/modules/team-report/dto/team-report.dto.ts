@@ -539,7 +539,7 @@ export class ReviewEditRowDto {
   @ApiPropertyOptional({ type: () => [TeamReportEvidenceDto] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(30)
+  @ArrayMaxSize(5)
   @ValidateNested({ each: true })
   @Type(() => TeamReportEvidenceDto)
   evidence?: TeamReportEvidenceDto[];

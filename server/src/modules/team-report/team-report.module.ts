@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 import { AuthsModule } from '../auth/auth.module';
 import { RolesModule } from '../roles/roles.module';
+import { UploadsModule } from '../uploads/uploads.module';
 import { Role, RoleSchema } from '../roles/schemas/role.schema';
 import {
   Department,
@@ -155,6 +156,8 @@ import { TeamReportDeadlineTask } from './team-report-deadline.task';
     ]),
     forwardRef(() => AuthsModule),
     forwardRef(() => RolesModule),
+    // Tra độ mật của tệp kiểm chứng lúc lưu nhiệm vụ.
+    forwardRef(() => UploadsModule),
     // Chỉ để dùng lại FormTemplatesService.resolveVersion - tra đúng bộ cột của
     // phiên bản mẫu đã đóng dấu, kể cả khi mẫu đã bị sửa sau đó.
     forwardRef(() => MissionFormConfigModule),

@@ -96,10 +96,20 @@ export class TeamReportDayRow {
 
   /** Bản chụp tệp kiểm chứng lúc gửi - cấp trên tải theo uploadId. */
   @Prop({
-    type: [{ uploadId: { type: Types.ObjectId }, name: { type: String } }],
+    type: [
+      {
+        uploadId: { type: Types.ObjectId },
+        name: { type: String },
+        classification: { type: String, default: null },
+      },
+    ],
     default: [],
   })
-  evidence!: Array<{ uploadId: Types.ObjectId; name: string }>;
+  evidence!: Array<{
+    uploadId: Types.ObjectId;
+    name: string;
+    classification?: string | null;
+  }>;
 
   /** Việc này đóng lại ngay trong lượt gửi đó hay không. */
   @Prop({ default: false })

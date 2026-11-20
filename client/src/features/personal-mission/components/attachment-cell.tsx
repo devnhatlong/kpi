@@ -8,11 +8,18 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  ACCEPT_UPLOAD,
+  MAX_EVIDENCE_FILES,
   MAX_UPLOAD_BYTES,
+  acceptFor,
+  classificationError,
   downloadAttachment,
   uploadFile,
+  type DocumentClassification,
 } from "@/features/uploads/api";
+import {
+  ClassificationBadge,
+  ClassificationSelect,
+} from "@/features/uploads/components/classification-select";
 import type { TaskAttachment } from "@/features/personal-mission/types";
 import {
   canOpenInOnlyOffice,
@@ -57,6 +64,8 @@ export function AttachmentCell({
   /** Phần trăm thật của tệp đang tải; null = không có tệp nào đang tải. */
   const [percent, setPercent] = useState<number | null>(null);
   const [viewing, setViewing] = useState<TaskAttachment | null>(null);
+  const [classification, setClassification] =
+    useState<DocumentClassification | null>(null);
   const onlyOffice = useSWR("onlyoffice-status", fetchOnlyOfficeStatus, {
     revalidateOnFocus: false,
     dedupingInterval: 5 * 60_000,
@@ -64,41 +73,50 @@ export function AttachmentCell({
   const viewable = (item: TaskAttachment) =>
     onlyOffice.data?.enabled === true && canOpenInOnlyOffice(item.name);
 
-  const pickFiles = async (fileList: FileList | null) => {
-    if (!fileList?.length) return;
+  const full = files.length >= MAX_EVIDENCE_FILES;
 
-    const chosen = Array.from(fileList);
-    const tooBig = chosen.find((file) => file.size > MAX_UPLOAD_BYTES);
-    if (tooBig) {
+  /**
+   * Mỗi lần một văn bản, độ mật chọn riêng cho văn bản đó: tải xong thì xoá
+   * lựa chọn để văn bản sau phải chọn lại, không vô tình mang độ mật cũ.
+   * Kéo thả nhiều tệp thì báo lỗi, không lặng lẽ lấy tệp đầu.
+   */
+  const pickFiles = async (fileList: FileList | null) => {
+    if (inputRef.current) inputRef.current.value = "";
+    if (!fileList?.length || !classification) return;
+    if (fileList.length > 1) {
+      toast.error("Mỗi lần chỉ đính kèm một văn bản.");
+      return;
+    }
+    if (full) {
+      toast.error(`Chỉ được đính kèm tối đa ${MAX_EVIDENCE_FILES} văn bản.`);
+      return;
+    }
+
+    const file = fileList[0];
+    const wrongType = classificationError(file, classification);
+    if (wrongType) {
+      toast.error(wrongType);
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
       toast.error(
-        `"${tooBig.name}" nặng ${formatFileSize(tooBig.size)}, vượt mức ${formatFileSize(MAX_UPLOAD_BYTES)}.`,
+        `"${file.name}" nặng ${formatFileSize(file.size)}, vượt mức ${formatFileSize(MAX_UPLOAD_BYTES)}.`,
       );
-      if (inputRef.current) inputRef.current.value = "";
       return;
     }
 
     setUploading(true);
-    const uploaded: TaskAttachment[] = [];
+    setPercent(0);
     try {
-      // Tải tuần tự để lỗi ở tệp nào thì biết đúng tệp đó.
-      for (const file of chosen) {
-        setPercent(0);
-        uploaded.push(await uploadFile(file, setPercent));
-      }
-      onChange([...files, ...uploaded]);
-      toast.success(
-        uploaded.length > 1
-          ? `Đã tải lên ${uploaded.length} tệp.`
-          : "Đã tải tệp lên.",
-      );
+      const saved = await uploadFile(file, classification, setPercent);
+      onChange([...files, saved]);
+      setClassification(null);
+      toast.success("Đã tải văn bản lên.");
     } catch (error) {
-      // Giữ lại những tệp đã lên trước khi lỗi, người dùng khỏi tải lại từ đầu.
-      if (uploaded.length) onChange([...files, ...uploaded]);
       toast.error(getApiErrorMessage(error, "Tải tệp lên thất bại."));
     } finally {
       setUploading(false);
       setPercent(null);
-      if (inputRef.current) inputRef.current.value = "";
     }
   };
 
@@ -112,14 +130,50 @@ export function AttachmentCell({
 
   return (
     <div className="flex flex-col gap-1.5">
-      {!readOnly ? (
+      {!readOnly && full ? (
+        <p className="text-xs text-muted-foreground">
+          Đã đủ {MAX_EVIDENCE_FILES} văn bản - bỏ bớt một văn bản để đính kèm
+          văn bản khác.
+        </p>
+      ) : null}
+      {!readOnly && !full ? (
+        <ClassificationSelect
+          value={classification}
+          onChange={setClassification}
+          disabled={uploading}
+          action={
+            /* Nút nhỏ thì nằm cùng hàng với ô độ mật; vùng kéo thả to nên
+               vẫn để xuống dưới. Chưa chọn độ mật thì chưa hiện. */
+            classification && !dropzone ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 px-2 py-0 text-xs"
+                disabled={uploading}
+                onClick={() => inputRef.current?.click()}
+              >
+                {uploading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Paperclip className="h-3.5 w-3.5" />
+                )}
+                {uploading
+                  ? percent === null
+                    ? "Đang tải..."
+                    : `Đang tải ${percent}%`
+                  : `Chọn văn bản (${files.length}/${MAX_EVIDENCE_FILES})`}
+              </Button>
+            ) : null
+          }
+        />
+      ) : null}
+      {!readOnly && !full && classification ? (
         <>
           <input
             ref={inputRef}
             type="file"
-            multiple
             className="hidden"
-            accept={ACCEPT_UPLOAD}
+            accept={acceptFor(classification)}
             onChange={(e) => void pickFiles(e.target.files)}
           />
           {dropzone ? (
@@ -155,26 +209,7 @@ export function AttachmentCell({
                   : `Đang tải ${percent}%`
                 : dropzoneHint}
             </button>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-8 w-full justify-start px-2 py-0 text-xs"
-              disabled={uploading}
-              onClick={() => inputRef.current?.click()}
-            >
-              {uploading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Paperclip className="h-3.5 w-3.5" />
-              )}
-              {uploading
-                ? percent === null
-                  ? "Đang tải..."
-                  : `Đang tải ${percent}%`
-                : "Chọn tệp"}
-            </Button>
-          )}
+          ) : null}
           {uploading && percent !== null ? (
             <div className="h-1 w-full overflow-hidden rounded bg-muted">
               <div
@@ -203,6 +238,7 @@ export function AttachmentCell({
               >
                 {file.name}
               </button>
+              <ClassificationBadge value={file.classification} />
               {viewable(file) ? (
                 <button
                   type="button"
