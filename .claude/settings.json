@@ -779,7 +779,9 @@
       "Bash(grep -oE 'NEXT_REDIRECT[^\"]{0,60}|http-equiv=\"refresh\"[^>]{0,80}')",
       "Bash(xargs sed -i 's/Tình hình trình báo cáo/Tiến độ báo cáo/g')",
       "PowerShell(npx eslint src/components/layout/notification-bell.tsx src/components/layout/app-header.tsx 2>&1)",
-      "Bash(NODE_PATH=__TRACKED_VAR__/node_modules node C:/Users/PV01/AppData/Local/Temp/claude/d4672bf720c334b7/3e4f5ebe-9559-40b0-a7e1-70b8c31a632e/scratchpad/notif-e2e.js seed)"
+      "Bash(NODE_PATH=__TRACKED_VAR__/node_modules node C:/Users/PV01/AppData/Local/Temp/claude/d4672bf720c334b7/3e4f5ebe-9559-40b0-a7e1-70b8c31a632e/scratchpad/notif-e2e.js seed)",
+      "PowerShell(npm view next dist-tags --json)",
+      "PowerShell(npm view next@16 version --json)"
     ],
     "additionalDirectories": [
       "D:\\Project\\WebApp\\KPI\\src\\modules\\personal-kpi\\dto",
