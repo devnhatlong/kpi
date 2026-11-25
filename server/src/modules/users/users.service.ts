@@ -16,8 +16,13 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ImportUserRowDto } from './dto/import-users.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { RoleCode } from '@/common/enums/role-code.enum';
+import type { JwtPayloadUser } from '@/common/interfaces/jwt-payload-user.interface';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 import { DEFAULT_IMPORT_PASSWORD } from '@/modules/auth/password-policy';
+import {
+  RefreshToken,
+  RefreshTokenDocument,
+} from '@/modules/auth/schemas/refresh-token.schema';
 import { buildPaginatedResponse } from '@/common/utils/pagination.util';
 import {
   Department,
@@ -33,6 +38,14 @@ const DUMMY_PASSWORD_HASH = bcrypt.hashSync(
   `dummy-${Math.random().toString(36)}`,
   10,
 );
+
+function hasSuperAdminRole(
+  assignments?: Array<{ roleCode?: string }> | null,
+): boolean {
+  return (assignments ?? []).some(
+    (item) => item?.roleCode === RoleCode.SUPER_ADMIN,
+  );
+}
 
 type ImportRowResult = {
   row: number;
@@ -50,6 +63,8 @@ export class UsersService {
     @InjectModel(Department.name)
     private readonly departmentModel: Model<DepartmentDocument>,
     @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
+    @InjectModel(RefreshToken.name)
+    private readonly refreshTokenModel: Model<RefreshTokenDocument>,
   ) {}
 
   /** Tìm user theo username, kèm password để phục vụ so sánh đăng nhập. */
@@ -66,7 +81,7 @@ export class UsersService {
     if (!Types.ObjectId.isValid(id)) return null;
     return this.userModel
       .findById(id)
-      .select('isActive mustChangePassword roleAssignments')
+      .select('isActive mustChangePassword roleAssignments +passwordChangedAt')
       .lean();
   }
 
@@ -204,7 +219,7 @@ export class UsersService {
     };
   }
 
-  async create(dto: AdminCreateUserDto) {
+  async create(dto: AdminCreateUserDto, actor: JwtPayloadUser) {
     const username = dto.username.trim().toLowerCase();
     if (!username || !dto.password?.trim()) {
       throw new BadRequestException('Vui lòng nhập tên đăng nhập và mật khẩu.');
@@ -229,6 +244,7 @@ export class UsersService {
       dto.roleAssignments,
       departmentId,
     );
+    this.assertCanGrantRoles(actor, roleAssignments);
 
     const user = await this.userModel.create({
       username,
@@ -292,8 +308,15 @@ export class UsersService {
     return user.toSafeObject();
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto) {
+  async update(
+    id: string,
+    updateUserDto: UpdateUserDto,
+    actor: JwtPayloadUser,
+  ) {
     const user = await this.requireUser(id, true);
+    this.assertCanManage(actor, user);
+    const wasActiveSuperAdmin =
+      user.isActive && hasSuperAdminRole(user.roleAssignments);
 
     if (updateUserDto.password !== undefined) {
       if (!updateUserDto.password.trim()) {
@@ -346,9 +369,28 @@ export class UsersService {
         updateUserDto.roleAssignments,
         fallbackScope,
       );
+      this.assertCanGrantRoles(actor, user.roleAssignments);
+    }
+
+    // Khoá hay gỡ vai trò của quản trị cuối cùng cũng mất đường vào hệ thống
+    // như xoá - và còn mở lại route đăng ký quản trị đầu tiên.
+    if (
+      wasActiveSuperAdmin &&
+      !(user.isActive && hasSuperAdminRole(user.roleAssignments))
+    ) {
+      await this.assertSuperAdminRemains([user._id]);
     }
 
     await user.save();
+
+    /*
+      Đặt lại mật khẩu thường là vì nghi lộ: phiên đang mở phải mất hiệu lực
+      theo. Access token cũ bị chặn bằng `passwordChangedAt` (JwtStrategy),
+      refresh token thì xoá ở đây.
+    */
+    if (updateUserDto.password !== undefined) {
+      await this.refreshTokenModel.deleteMany({ userId: user._id });
+    }
 
     return {
       message: 'Cập nhật người dùng thành công.',
@@ -411,8 +453,17 @@ export class UsersService {
     await user.save();
   }
 
-  async remove(id: string) {
+  /** Cùng hai chốt chặn với `removeMany`. */
+  async remove(id: string, actor: JwtPayloadUser) {
     const user = await this.requireUser(id);
+    this.assertCanManage(actor, user);
+    if (user.id === actor.uid) {
+      throw new BadRequestException(
+        'Không thể tự xoá tài khoản đang đăng nhập.',
+      );
+    }
+    await this.assertSuperAdminRemains([user._id]);
+
     await user.deleteOne();
 
     return { message: 'Xóa người dùng thành công.' };
@@ -422,9 +473,9 @@ export class UsersService {
    * Xoá hàng loạt. Không cho tự xoá tài khoản đang đăng nhập, và không xoá
    * SUPER_ADMIN cuối cùng - hai lỗi này làm mất luôn đường vào hệ thống.
    */
-  async removeMany(ids: string[], actorId: string) {
+  async removeMany(ids: string[], actor: JwtPayloadUser) {
     const requested = new Set(ids);
-    const unique = [...requested].filter((id) => id !== actorId);
+    const unique = [...requested].filter((id) => id !== actor.uid);
     const skippedSelf = unique.length !== requested.size;
     if (!unique.length) {
       throw new BadRequestException(
@@ -433,20 +484,14 @@ export class UsersService {
     }
     const objectIds = unique.map((id) => new Types.ObjectId(id));
 
-    const adminsTotal = await this.userModel.countDocuments({
-      'roleAssignments.roleCode': RoleCode.SUPER_ADMIN,
-      isActive: true,
-    });
-    const adminsPicked = await this.userModel.countDocuments({
-      _id: { $in: objectIds },
-      'roleAssignments.roleCode': RoleCode.SUPER_ADMIN,
-      isActive: true,
-    });
-    if (adminsTotal - adminsPicked < 1) {
-      throw new BadRequestException(
-        'Phải giữ lại ít nhất một Quản trị hệ thống đang hoạt động.',
-      );
+    if (!hasSuperAdminRole(actor.role)) {
+      const picksSuperAdmin = await this.userModel.exists({
+        _id: { $in: objectIds },
+        'roleAssignments.roleCode': RoleCode.SUPER_ADMIN,
+      });
+      if (picksSuperAdmin) this.denySuperAdminTarget();
     }
+    await this.assertSuperAdminRemains(objectIds);
 
     const result = await this.userModel.deleteMany({ _id: { $in: objectIds } });
     return {
@@ -455,7 +500,7 @@ export class UsersService {
     };
   }
 
-  async importMany(rows: ImportUserRowDto[]) {
+  async importMany(rows: ImportUserRowDto[], actor: JwtPayloadUser) {
     const results: ImportRowResult[] = [];
     const defaultPassword = DEFAULT_IMPORT_PASSWORD;
 
@@ -534,6 +579,19 @@ export class UsersService {
         continue;
       }
 
+      if (
+        roleCodes.includes(RoleCode.SUPER_ADMIN) &&
+        !hasSuperAdminRole(actor.role)
+      ) {
+        results.push({
+          row: index,
+          code: username,
+          status: 'error',
+          message: 'Chỉ Quản trị hệ thống mới được gán vai trò này.',
+        });
+        continue;
+      }
+
       try {
         if (row.email?.trim()) {
           const emailTaken = await this.userModel.exists({
@@ -595,6 +653,46 @@ export class UsersService {
     };
 
     return { summary, results };
+  }
+
+  /**
+   * Quyền `user.manage` KHÔNG đủ để đụng tới SUPER_ADMIN: người giữ quyền đó mà
+   * gán được vai trò này, hoặc đặt lại được mật khẩu của người đang giữ nó, là
+   * tự nâng mình thành quản trị hệ thống.
+   */
+  private assertCanManage(actor: JwtPayloadUser, target: UserDocument) {
+    if (hasSuperAdminRole(actor.role)) return;
+    if (hasSuperAdminRole(target.roleAssignments)) this.denySuperAdminTarget();
+  }
+
+  private denySuperAdminTarget(): never {
+    throw new ForbiddenException(
+      'Chỉ Quản trị hệ thống mới được sửa, xoá tài khoản Quản trị hệ thống.',
+    );
+  }
+
+  private assertCanGrantRoles(
+    actor: JwtPayloadUser,
+    assignments: Array<{ roleCode?: string }>,
+  ) {
+    if (hasSuperAdminRole(actor.role) || !hasSuperAdminRole(assignments)) return;
+    throw new ForbiddenException(
+      'Chỉ Quản trị hệ thống mới được gán vai trò Quản trị hệ thống.',
+    );
+  }
+
+  /** Sau thao tác trên các tài khoản này vẫn phải còn SUPER_ADMIN hoạt động. */
+  private async assertSuperAdminRemains(removingIds: Types.ObjectId[]) {
+    const remains = await this.userModel.exists({
+      _id: { $nin: removingIds },
+      'roleAssignments.roleCode': RoleCode.SUPER_ADMIN,
+      isActive: true,
+    });
+    if (!remains) {
+      throw new BadRequestException(
+        'Phải giữ lại ít nhất một Quản trị hệ thống đang hoạt động.',
+      );
+    }
   }
 
   private async resolveDepartmentId(

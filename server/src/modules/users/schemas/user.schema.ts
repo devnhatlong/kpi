@@ -86,6 +86,13 @@ export class User {
 
     @Prop({ type: Date, default: null })
     lastLoginAt?: Date | null;
+
+    /**
+     * Lần gần nhất mật khẩu chính bị đổi (tự đổi hoặc quản trị đặt lại) - hook
+     * pre-save tự ghi. JwtStrategy từ chối mọi access token cấp trước mốc này.
+     */
+    @Prop({ type: Date, default: null, select: false })
+    passwordChangedAt?: Date | null;
 }
 
 /** Object user an toàn (không kèm hai mật khẩu), có thêm virtual id. */
@@ -95,6 +102,7 @@ export type SafeUser = Omit<
     | 'secondaryPassword'
     | 'lastSecondaryLoginAt'
     | 'lastSecondaryLoginIp'
+    | 'passwordChangedAt'
 > & {
     id: string;
 };
@@ -130,6 +138,7 @@ UserSchema.methods.toSafeObject = function (this: UserDocument): SafeUser {
         secondaryPassword,
         lastSecondaryLoginAt,
         lastSecondaryLoginIp,
+        passwordChangedAt,
         _id,
         __v,
         ...rest
@@ -154,6 +163,7 @@ UserSchema.pre('save', async function () {
 
     if (!this.isModified('password')) return;
     this.password = await bcrypt.hash(this.password, 10);
+    if (!this.isNew) this.passwordChangedAt = new Date();
 });
 
 /** Tìm người dùng theo đơn vị và trạng thái. */

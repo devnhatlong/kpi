@@ -35,12 +35,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    */
   async validate(
     req: Request,
-    payload: { uid: string; imp?: boolean },
+    payload: { uid: string; imp?: boolean; iat?: number },
   ): Promise<JwtPayloadUser> {
     const user = await this.usersService.findAuthState(payload.uid);
     if (!user || !user.isActive) {
       throw new UnauthorizedException(
         'Tài khoản không hợp lệ hoặc đã bị khoá.',
+      );
+    }
+
+    // `iat` chỉ tính tới giây nên so theo giây: token cấp ngay sau khi đổi mật
+    // khẩu (cùng giây) vẫn dùng được.
+    if (
+      user.passwordChangedAt &&
+      (payload.iat ?? 0) < Math.floor(user.passwordChangedAt.getTime() / 1000)
+    ) {
+      throw new UnauthorizedException(
+        'Mật khẩu đã thay đổi. Vui lòng đăng nhập lại.',
       );
     }
 
