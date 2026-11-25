@@ -41,8 +41,8 @@ export class UsersController {
   @UseGuards(JwtGuard, PermissionsGuard)
   @Permissions(Permission.USER_MANAGE)
   @Post()
-  create(@Body() dto: AdminCreateUserDto) {
-    return this.usersService.create(dto);
+  create(@CurrentUser() user: JwtPayloadUser, @Body() dto: AdminCreateUserDto) {
+    return this.usersService.create(dto, user);
   }
 
   @ApiBearerAuth()
@@ -50,8 +50,8 @@ export class UsersController {
   @UseGuards(JwtGuard, PermissionsGuard)
   @Permissions(Permission.USER_MANAGE)
   @Post('import')
-  importMany(@Body() dto: ImportUsersDto) {
-    return this.usersService.importMany(dto.rows);
+  importMany(@CurrentUser() user: JwtPayloadUser, @Body() dto: ImportUsersDto) {
+    return this.usersService.importMany(dto.rows, user);
   }
 
   @ApiBearerAuth()
@@ -72,7 +72,7 @@ export class UsersController {
     @CurrentUser() user: JwtPayloadUser,
     @Body() dto: BulkDeleteUsersDto,
   ) {
-    return this.usersService.removeMany(dto.ids, user.uid);
+    return this.usersService.removeMany(dto.ids, user);
   }
 
   @ApiBearerAuth()
@@ -89,8 +89,12 @@ export class UsersController {
   @UseGuards(JwtGuard, PermissionsGuard)
   @Permissions(Permission.USER_MANAGE)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(id, updateUserDto);
+  update(
+    @CurrentUser() user: JwtPayloadUser,
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
+    return this.usersService.update(id, updateUserDto, user);
   }
 
   @ApiBearerAuth()
@@ -98,7 +102,7 @@ export class UsersController {
   @UseGuards(JwtGuard, PermissionsGuard)
   @Permissions(Permission.USER_MANAGE)
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.usersService.remove(id);
+  remove(@CurrentUser() user: JwtPayloadUser, @Param('id') id: string) {
+    return this.usersService.remove(id, user);
   }
 }

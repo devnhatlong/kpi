@@ -6,6 +6,10 @@ import { UsersService } from './users.service';
 import { AuthsModule } from '../auth/auth.module';
 import { RolesModule } from '../roles/roles.module';
 import {
+  RefreshToken,
+  RefreshTokenSchema,
+} from '../auth/schemas/refresh-token.schema';
+import {
   Department,
   DepartmentSchema,
 } from '../departments/schemas/department.schema';
@@ -20,6 +24,11 @@ import {
       {
         name: Department.name,
         schema: DepartmentSchema,
+      },
+      // Đặt lại mật khẩu thì thu hồi phiên - xem UsersService.update.
+      {
+        name: RefreshToken.name,
+        schema: RefreshTokenSchema,
       },
     ]),
     forwardRef(() => AuthsModule),
